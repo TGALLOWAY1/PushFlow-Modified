@@ -46,7 +46,15 @@ import {
   combinePerformabilityComponents,
   combineComponents,
   objectiveToDifficultyBreakdown,
+  objectiveToCanonicalFactors,
+  objectiveToGripDetail,
+  createZeroComponents,
 } from '../evaluation/objective';
+import {
+  type DiagnosticsPayload,
+  computeTopContributors,
+  deriveFeasibilityVerdict,
+} from '../../types/diagnostics';
 import {
   type NeutralHandCentersResult,
   type NeutralPadPositions as RichNeutralPadPositions,
@@ -654,6 +662,10 @@ export class BeamSolver implements SolverStrategy {
       fatigue: 0, crossover: 0, total: 0,
     };
 
+    // Phase 3: Accumulate canonical ObjectiveComponents for diagnostics
+    const totalObjectiveComponents = createZeroComponents();
+    let fallbackGripCount = 0;
+
     const assignmentMap = new Map<number, NoteAssignment>();
     for (const assignment of assignments) {
       assignmentMap.set(assignment.eventIndex, assignment);
@@ -735,6 +747,18 @@ export class BeamSolver implements SolverStrategy {
       totalMetrics.total += costBreakdown.total;
       totalCost += assignment.cost;
 
+      // Phase 3: Accumulate canonical objective components
+      if (assignment.costComponents) {
+        totalObjectiveComponents.transition += assignment.costComponents.transition;
+        totalObjectiveComponents.stretch += assignment.costComponents.stretch;
+        totalObjectiveComponents.poseAttractor += assignment.costComponents.poseAttractor;
+        totalObjectiveComponents.perFingerHome += assignment.costComponents.perFingerHome;
+        totalObjectiveComponents.alternation += assignment.costComponents.alternation;
+        totalObjectiveComponents.handBalance += assignment.costComponents.handBalance;
+        totalObjectiveComponents.constraints += assignment.costComponents.constraints;
+        if (assignment.costComponents.constraints > 0) fallbackGripCount++;
+      }
+
       const padId = padKey(assignment.row, assignment.col);
 
       fingerAssignments.push({
@@ -777,6 +801,23 @@ export class BeamSolver implements SolverStrategy {
     let score = 100 - (5 * hardCount) - (20 * unplayableCount);
     if (score < 0) score = 0;
 
+    // Phase 3: Build canonical diagnostics payload
+    const canonicalFactors = objectiveToCanonicalFactors(totalObjectiveComponents);
+    const gripDetail = objectiveToGripDetail(totalObjectiveComponents);
+    const feasibility = deriveFeasibilityVerdict(
+      unplayableCount,
+      hardCount,
+      unmappedIndices.size,
+      fallbackGripCount,
+      totalEvents,
+    );
+    const diagnostics: DiagnosticsPayload = {
+      feasibility,
+      factors: canonicalFactors,
+      gripDetail,
+      topContributors: computeTopContributors(canonicalFactors),
+    };
+
     return {
       score,
       unplayableCount,
@@ -792,6 +833,7 @@ export class BeamSolver implements SolverStrategy {
         layoutHash: hashLayout(this.layout),
         layoutRole: this.sourceLayoutRole ?? this.layout.role ?? 'active',
       } as ExecutionPlanLayoutBinding : undefined,
+      diagnostics,
       metadata: {
         layoutIdUsed: this.layout?.id,
         layoutHashUsed: this.layout ? hashLayout(this.layout) : undefined,
