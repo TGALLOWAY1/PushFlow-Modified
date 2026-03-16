@@ -4,7 +4,7 @@
  * Tests the 3-component scoring model:
  *   1. poseNaturalness: unified grip quality (attractor + perFingerHome + dominance)
  *   2. transitionDifficulty: Fitts's Law movement cost
- *   3. constraintPenalty: fallback grip penalty
+ *   3. constraintPenalty: constraint violation penalty (V1: always 0, no fallback grips)
  *
  * Also tests:
  *   - calculatePoseNaturalness sub-component weighting

@@ -298,7 +298,7 @@ export class BeamSolver implements SolverStrategy {
       const gripResults = generateValidGripsWithTier(uniquePads, hand);
 
       for (const gripResult of gripResults) {
-        const { pose: grip, isFallback, tier } = gripResult;
+        const { pose: grip } = gripResult;
         const transitionCost = calculateTransitionCost(prevPose, grip, timeDelta);
 
         // V1 (D-01): All grips are strict — reject impossible transitions
@@ -1218,110 +1218,13 @@ export class BeamSolver implements SolverStrategy {
         }
       }
 
-      // Safety net: emergency fallback
-      // TODO(A2): Remove this entire block — D-03 eliminates emergency fallback.
-      // Temporary: use local penalty constant since EMERGENCY_FALLBACK_PENALTY was removed in A1.
-      if (newBeam.length === 0) {
-        const EMERGENCY_FALLBACK_PENALTY = 1000;
-        const fallbackFingers: FingerType[] = ['index', 'middle', 'ring', 'thumb', 'pinky'];
-        const emergencyComponents: ObjectiveComponents = {
-          transition: 0, stretch: 0, poseAttractor: 0,
-          perFingerHome: 0, alternation: 0, handBalance: 0,
-          constraints: EMERGENCY_FALLBACK_PENALTY,
-        };
-
-        for (const node of beam) {
-          const assignments: NoteAssignment[] = [];
-
-          const leftIndices: number[] = [];
-          const rightIndices: number[] = [];
-          for (let i = 0; i < group.notes.length; i++) {
-            if (Math.abs(group.positions[i].col - 2) <= Math.abs(group.positions[i].col - 5)) {
-              leftIndices.push(i);
-            } else {
-              rightIndices.push(i);
-            }
-          }
-
-          const newPadOwnership = new Map(node.padOwnership);
-
-          for (let j = 0; j < Math.min(leftIndices.length, fallbackFingers.length); j++) {
-            const i = leftIndices[j];
-            const pKey = `${group.positions[i].row},${group.positions[i].col}`;
-            // Respect prior ownership if exists
-            const existing = node.padOwnership.get(pKey);
-            const finger = existing ? existing.finger : fallbackFingers[j];
-            const hand = existing ? existing.hand : 'left' as const;
-            const fallbackGrip: HandPose = {
-              centroid: { x: group.positions[i].col, y: group.positions[i].row },
-              fingers: { [finger]: { x: group.positions[i].col, y: group.positions[i].row } },
-            };
-            assignments.push({
-              eventIndex: group.eventIndices[i],
-              eventKey: group.eventKeys[i],
-              noteNumber: group.notes[i].noteNumber,
-              voiceId: group.notes[i].voiceId,
-              startTime: group.notes[i].startTime,
-              hand, finger,
-              grip: fallbackGrip,
-              cost: EMERGENCY_FALLBACK_PENALTY,
-              row: group.positions[i].row,
-              col: group.positions[i].col,
-              costComponents: emergencyComponents,
-            });
-            if (!newPadOwnership.has(pKey)) {
-              newPadOwnership.set(pKey, { hand, finger });
-            }
-          }
-          for (let j = 0; j < Math.min(rightIndices.length, fallbackFingers.length); j++) {
-            const i = rightIndices[j];
-            const pKey = `${group.positions[i].row},${group.positions[i].col}`;
-            const existing = node.padOwnership.get(pKey);
-            const finger = existing ? existing.finger : fallbackFingers[j];
-            const hand = existing ? existing.hand : 'right' as const;
-            const fallbackGrip: HandPose = {
-              centroid: { x: group.positions[i].col, y: group.positions[i].row },
-              fingers: { [finger]: { x: group.positions[i].col, y: group.positions[i].row } },
-            };
-            assignments.push({
-              eventIndex: group.eventIndices[i],
-              eventKey: group.eventKeys[i],
-              noteNumber: group.notes[i].noteNumber,
-              voiceId: group.notes[i].voiceId,
-              startTime: group.notes[i].startTime,
-              hand, finger,
-              grip: fallbackGrip,
-              cost: EMERGENCY_FALLBACK_PENALTY,
-              row: group.positions[i].row,
-              col: group.positions[i].col,
-              costComponents: emergencyComponents,
-            });
-            if (!newPadOwnership.has(pKey)) {
-              newPadOwnership.set(pKey, { hand, finger });
-            }
-          }
-
-          const firstFallbackGrip: HandPose = {
-            centroid: { x: group.positions[0].col, y: group.positions[0].row },
-            fingers: { index: { x: group.positions[0].col, y: group.positions[0].row } },
-          };
-          const primaryHand = Math.abs(group.positions[0].col - 2) <= Math.abs(group.positions[0].col - 5) ? 'left' : 'right';
-
-          newBeam.push({
-            leftPose: primaryHand === 'left' ? firstFallbackGrip : node.leftPose,
-            rightPose: primaryHand === 'right' ? firstFallbackGrip : node.rightPose,
-            totalCost: node.totalCost + EMERGENCY_FALLBACK_PENALTY,
-            parent: node,
-            assignments,
-            depth: node.depth + 1,
-            leftCount: node.leftCount + leftIndices.length,
-            rightCount: node.rightCount + rightIndices.length,
-            padOwnership: newPadOwnership,
-          });
-        }
+      // V1 (D-03): No emergency fallback. If beam expansion produces no valid
+      // children for this group, carry the previous beam forward unchanged.
+      // Events in this group become infeasible (no assignment in backtrack).
+      if (newBeam.length > 0) {
+        beam = this.pruneBeam(newBeam, effectiveConfig.beamWidth);
       }
-
-      beam = this.pruneBeam(newBeam, effectiveConfig.beamWidth);
+      // else: beam stays unchanged — previous nodes carry forward
       prevTimestamp = group.timestamp;
     }
 
