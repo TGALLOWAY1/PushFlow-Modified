@@ -89,6 +89,91 @@ export interface CandidateSolution {
   difficultyAnalysis: DifficultyAnalysis;
   tradeoffProfile: TradeoffProfile;
   metadata: CandidateMetadata;
+  /**
+   * Phase 4: Baseline-relative diversity summary.
+   * Present when the candidate was generated with a baseline Active Layout.
+   * Explains what changed and how different this candidate is.
+   */
+  baselineDiff?: BaselineDiffSummary;
+}
+
+// ============================================================================
+// Baseline-relative diversity (Phase 4)
+// ============================================================================
+
+/**
+ * VoicePlacementDiff: How a single voice's placement differs from the baseline.
+ */
+export interface VoicePlacementDiff {
+  voiceId: string;
+  voiceName: string;
+  /** Pad key in the baseline layout, or null if absent. */
+  baselinePad: string | null;
+  /** Pad key in the candidate layout, or null if absent. */
+  candidatePad: string | null;
+  /** Manhattan distance between the two pads (null if either is absent). */
+  manhattanDistance: number | null;
+}
+
+/**
+ * LayoutDiversityMetrics: Quantitative measurement of how different
+ * a candidate layout is from the Active Layout baseline.
+ *
+ * Used for trivial-duplicate filtering and low-diversity explanations.
+ */
+export interface LayoutDiversityMetrics {
+  /** Number of voices whose pad position changed. */
+  voicesMoved: number;
+  /** Total number of voices in the baseline. */
+  totalVoices: number;
+  /** Fraction of voices that moved (0–1). */
+  moveFraction: number;
+  /** Average Manhattan distance of moved voices (0 if none moved). */
+  averageDisplacement: number;
+  /** Maximum Manhattan distance of any moved voice (0 if none moved). */
+  maxDisplacement: number;
+  /** Per-voice placement diffs (only for moved voices). */
+  placementDiffs: VoicePlacementDiff[];
+}
+
+/**
+ * DiversityLevel: Coarse classification of how different a candidate is.
+ */
+export type DiversityLevel = 'identical' | 'trivial' | 'low' | 'moderate' | 'high';
+
+/**
+ * BaselineDiffSummary: Human-readable explanation of how a candidate
+ * differs from the Active Layout baseline.
+ *
+ * Attached to each CandidateSolution so the UI can explain diversity.
+ */
+export interface BaselineDiffSummary {
+  /** Quantitative diversity metrics. */
+  metrics: LayoutDiversityMetrics;
+  /** Coarse diversity level. */
+  diversityLevel: DiversityLevel;
+  /** Human-readable summary of what changed. */
+  summary: string;
+  /** Which tradeoff dimensions improved/degraded vs baseline. */
+  tradeoffDeltas?: Partial<Record<keyof TradeoffProfile, number>>;
+}
+
+/**
+ * CandidateGenerationSummary: Metadata about the entire generation run.
+ *
+ * Includes low-diversity explanation when candidates are too similar.
+ */
+export interface CandidateGenerationSummary {
+  /** Total candidates generated before filtering. */
+  candidatesGenerated: number;
+  /** Candidates removed as trivial duplicates. */
+  duplicatesRemoved: number;
+  /** Candidates remaining after filtering. */
+  candidatesReturned: number;
+  /** Whether the candidate set has low diversity. */
+  isLowDiversity: boolean;
+  /** Explanation when diversity is low (why candidates are similar). */
+  lowDiversityExplanation?: string;
 }
 
 /**
