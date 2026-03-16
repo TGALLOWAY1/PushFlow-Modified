@@ -19,6 +19,9 @@ export * from './layout';
 // Execution plan
 export * from './executionPlan';
 
+// Diagnostics (Phase 3: canonical factor names and feasibility)
+export * from './diagnostics';
+
 // Performance structure analysis
 export * from './performanceStructure';
 

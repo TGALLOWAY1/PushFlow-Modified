@@ -12,8 +12,15 @@
  * The beam search scores by PerformabilityObjective (3 terms).
  * The UI displays ObjectiveComponents (7 terms) for rich diagnostic breakdown.
  *
+ * Phase 3 adds canonical mapping to DiagnosticFactors (stable naming contract).
+ *
  * Ported from Version1/src/engine/objective.ts.
  */
+
+import {
+  type DiagnosticFactors,
+  type GripNaturalnessDetail,
+} from '../../types/diagnostics';
 
 // ============================================================================
 // Performability Objective (3-Component Primary Model)
@@ -195,6 +202,73 @@ export function performabilityToDifficultyBreakdown(
     bounce: 0,             // alternation (diagnostic only)
     fatigue: pose * 0.4,   // per-finger home portion
     crossover: components.constraintPenalty,
+    total,
+  };
+}
+
+// ============================================================================
+// Phase 3: Canonical DiagnosticFactors Mapping
+// ============================================================================
+
+/**
+ * Maps ObjectiveComponents to canonical DiagnosticFactors.
+ *
+ * Collapses the legacy 7-component model into the 5 canonical factors:
+ *   transition ← transition
+ *   gripNaturalness ← stretch + poseAttractor + perFingerHome
+ *   alternation ← alternation
+ *   handBalance ← handBalance
+ *   constraintPenalty ← constraints
+ */
+export function objectiveToCanonicalFactors(
+  components: ObjectiveComponents,
+): DiagnosticFactors {
+  const total = combineComponents(components);
+  return {
+    transition: components.transition,
+    gripNaturalness: components.stretch + components.poseAttractor + components.perFingerHome,
+    alternation: components.alternation,
+    handBalance: components.handBalance,
+    constraintPenalty: components.constraints,
+    total,
+  };
+}
+
+/**
+ * Maps ObjectiveComponents to GripNaturalnessDetail sub-breakdown.
+ */
+export function objectiveToGripDetail(
+  components: ObjectiveComponents,
+): GripNaturalnessDetail {
+  return {
+    attractor: components.poseAttractor,
+    perFingerHome: components.perFingerHome,
+    fingerDominance: components.stretch,
+  };
+}
+
+/**
+ * Maps PerformabilityObjective to canonical DiagnosticFactors.
+ *
+ * When diagnosticComponents are available, uses them for richer breakdown.
+ * Otherwise uses the 3-component approximation (alternation and handBalance
+ * are zero since they're not tracked in PerformabilityObjective directly).
+ */
+export function performabilityToCanonicalFactors(
+  components: PerformabilityObjective,
+  diagnosticComponents?: ObjectiveComponents,
+): DiagnosticFactors {
+  if (diagnosticComponents) {
+    return objectiveToCanonicalFactors(diagnosticComponents);
+  }
+
+  const total = combinePerformabilityComponents(components);
+  return {
+    transition: components.transitionDifficulty,
+    gripNaturalness: components.poseNaturalness,
+    alternation: 0,
+    handBalance: 0,
+    constraintPenalty: components.constraintPenalty,
     total,
   };
 }
