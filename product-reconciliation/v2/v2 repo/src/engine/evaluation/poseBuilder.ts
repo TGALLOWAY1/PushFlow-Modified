@@ -13,7 +13,6 @@ import { type PadFingerAssignment } from '../../types/executionPlan';
 import { type ConstraintTier } from '../prior/feasibility';
 import {
   FINGER_PAIR_MAX_SPAN_STRICT,
-  FINGER_PAIR_MAX_SPAN_RELAXED,
   MAX_FINGER_SPAN_STRICT,
   pairKey,
 } from '../prior/biomechanicalModel';
@@ -105,7 +104,8 @@ function buildHandPose(
 
 /**
  * Determines the constraint tier for the given finger positions.
- * Checks all finger pairs against strict and relaxed span limits.
+ * V1 Cost Model (D-01): Only strict tier exists. Returns 'strict' if all
+ * finger pairs pass strict span limits, 'fallback' otherwise.
  */
 function classifyGripTier(
   leftFingers: Partial<Record<FingerType, FingerCoordinate>>,
@@ -113,13 +113,7 @@ function classifyGripTier(
 ): ConstraintTier {
   const strictOk = checkSpan(leftFingers, FINGER_PAIR_MAX_SPAN_STRICT)
     && checkSpan(rightFingers, FINGER_PAIR_MAX_SPAN_STRICT);
-  if (strictOk) return 'strict';
-
-  const relaxedOk = checkSpan(leftFingers, FINGER_PAIR_MAX_SPAN_RELAXED)
-    && checkSpan(rightFingers, FINGER_PAIR_MAX_SPAN_RELAXED);
-  if (relaxedOk) return 'relaxed';
-
-  return 'fallback';
+  return strictOk ? 'strict' : 'fallback';
 }
 
 function checkSpan(

@@ -26,7 +26,6 @@ import { calculateTransitionCost } from '../../../src/engine/evaluation/costFunc
 import { getPreferredHand } from '../../../src/engine/surface/handZone';
 import {
   FINGER_PAIR_MAX_SPAN_STRICT,
-  FINGER_PAIR_MAX_SPAN_RELAXED,
   MAX_REACH_GRID_UNITS,
   pairKey,
   type GripRejection,
@@ -132,14 +131,10 @@ describe('Atomic Feasibility Constraints', () => {
       expect(reachable).toBe(false);
     });
 
-    it('should not find strict grips — distance 6.0 exceeds pinky-thumb strict (5.5)', () => {
+    it('should return no grips — distance 6.0 exceeds pinky-thumb strict (5.5)', () => {
+      // V1 (D-01): Strict-only. Distance 6.0 > pinky-thumb strict (5.5) → infeasible.
       const gripResults = generateValidGripsWithTier(SCENARIO_A5.pads, SCENARIO_A5.hand);
-      const hasStrictGrips = gripResults.some(g => g.tier === 'strict');
-      const hasRelaxedGrips = gripResults.some(g => g.tier === 'relaxed');
-      // Distance 6.0 > pinky-thumb strict (5.5), so no strict grips.
-      // But 6.0 < pinky-thumb relaxed (6.33), so relaxed grips exist.
-      expect(hasStrictGrips).toBe(SCENARIO_A5.expected.strictFeasible); // false
-      expect(hasRelaxedGrips).toBe(SCENARIO_A5.expected.relaxedFeasible); // true
+      expect(gripResults.length).toBe(0);
     });
   });
 
@@ -244,11 +239,11 @@ describe('Atomic Feasibility Constraints', () => {
   });
 
   // ========================================================================
-  // Fallback Grip Topology
+  // Infeasible Chord Detection (V1: no fallback grips)
   // ========================================================================
-  describe('Fallback Grip Topology', () => {
-    it('right hand: thumb should be leftmost, pinky rightmost', () => {
-      // 5 pads spanning cols 0–7 forces Tier 3 fallback (distance 7 > all span limits)
+  describe('Infeasible Chord Detection (V1 — no fallback)', () => {
+    it('should return empty array for extreme right-hand spread (cols 0–7)', () => {
+      // V1 (D-01): 5 pads spanning cols 0–7 is infeasible — no fallback tier.
       const pads = [
         { row: 3, col: 0 },
         { row: 3, col: 2 },
@@ -257,21 +252,10 @@ describe('Atomic Feasibility Constraints', () => {
         { row: 3, col: 7 },
       ];
       const gripResults = generateValidGripsWithTier(pads, 'right');
-      expect(gripResults.length).toBeGreaterThan(0);
-
-      // Should be fallback tier given the extreme spread
-      const fallbackGrips = gripResults.filter(g => g.tier === 'fallback');
-      expect(fallbackGrips.length).toBeGreaterThan(0);
-
-      const grip = fallbackGrips[0].pose;
-      // Right hand L→R: thumb(col 0) < index(col 2) < middle(col 4) < ring(col 5) < pinky(col 7)
-      expect(grip.fingers.thumb!.x).toBeLessThan(grip.fingers.index!.x);
-      expect(grip.fingers.index!.x).toBeLessThan(grip.fingers.middle!.x);
-      expect(grip.fingers.middle!.x).toBeLessThan(grip.fingers.ring!.x);
-      expect(grip.fingers.ring!.x).toBeLessThan(grip.fingers.pinky!.x);
+      expect(gripResults.length).toBe(0);
     });
 
-    it('left hand: pinky should be leftmost, thumb rightmost', () => {
+    it('should return empty array for extreme left-hand spread (cols 0–7)', () => {
       const pads = [
         { row: 3, col: 0 },
         { row: 3, col: 2 },
@@ -280,17 +264,7 @@ describe('Atomic Feasibility Constraints', () => {
         { row: 3, col: 7 },
       ];
       const gripResults = generateValidGripsWithTier(pads, 'left');
-      expect(gripResults.length).toBeGreaterThan(0);
-
-      const fallbackGrips = gripResults.filter(g => g.tier === 'fallback');
-      expect(fallbackGrips.length).toBeGreaterThan(0);
-
-      const grip = fallbackGrips[0].pose;
-      // Left hand L→R: pinky(col 0) < ring(col 2) < middle(col 4) < index(col 5) < thumb(col 7)
-      expect(grip.fingers.pinky!.x).toBeLessThan(grip.fingers.ring!.x);
-      expect(grip.fingers.ring!.x).toBeLessThan(grip.fingers.middle!.x);
-      expect(grip.fingers.middle!.x).toBeLessThan(grip.fingers.index!.x);
-      expect(grip.fingers.index!.x).toBeLessThan(grip.fingers.thumb!.x);
+      expect(gripResults.length).toBe(0);
     });
   });
 });

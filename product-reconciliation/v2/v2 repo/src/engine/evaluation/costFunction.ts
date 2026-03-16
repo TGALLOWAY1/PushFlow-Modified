@@ -4,7 +4,6 @@
  * Primary scoring model (3-component PerformabilityObjective):
  *   - calculatePoseNaturalness: unified grip quality score
  *   - calculateTransitionCost: Fitts's Law movement difficulty
- *   - FALLBACK_GRIP_PENALTY: hard constraint penalty for Tier 3 grips
  *
  * Active scoring costs (included in beam score with configurable weights):
  *   - calculateAlternationCost: same-finger repetition penalty
@@ -24,8 +23,6 @@ import { type NeutralHandCentersResult } from '../prior/handPose';
 import {
   MAX_HAND_SPEED,
   SPEED_COST_WEIGHT,
-  FALLBACK_GRIP_PENALTY,
-  RELAXED_GRIP_PENALTY,
   ALTERNATION_DT_THRESHOLD,
   ALTERNATION_PENALTY,
   HAND_BALANCE_TARGET_LEFT,
@@ -38,8 +35,6 @@ import {
 export {
   MAX_HAND_SPEED,
   SPEED_COST_WEIGHT,
-  FALLBACK_GRIP_PENALTY,
-  RELAXED_GRIP_PENALTY,
   ALTERNATION_DT_THRESHOLD,
   ALTERNATION_PENALTY,
   HAND_BALANCE_TARGET_LEFT,

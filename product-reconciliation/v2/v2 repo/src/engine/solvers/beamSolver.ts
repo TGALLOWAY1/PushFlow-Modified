@@ -41,8 +41,6 @@ import {
   calculatePerFingerHomeCost,
   calculateAlternationCost,
   calculateHandBalanceCost,
-  FALLBACK_GRIP_PENALTY,
-  RELAXED_GRIP_PENALTY,
 } from '../evaluation/costFunction';
 import {
   type PerformabilityObjective,
@@ -303,7 +301,8 @@ export class BeamSolver implements SolverStrategy {
         const { pose: grip, isFallback, tier } = gripResult;
         const transitionCost = calculateTransitionCost(prevPose, grip, timeDelta);
 
-        if (transitionCost === Infinity && !isFirstGroup && !isFallback) continue;
+        // V1 (D-01): All grips are strict — reject impossible transitions
+        if (transitionCost === Infinity && !isFirstGroup) continue;
 
         const effectiveTransitionCost = transitionCost === Infinity ? 0 : transitionCost;
         const attractorCost = calculateAttractorCost(grip, restPose, stiffness);
@@ -311,13 +310,8 @@ export class BeamSolver implements SolverStrategy {
         const perFingerHomeCost = neutralHandCenters
           ? calculatePerFingerHomeCost(grip, hand, neutralHandCenters, 0.8)
           : 0;
-        // Tier-based penalty: Tier 2 (relaxed) gets moderate penalty,
-        // Tier 3 (fallback) gets severe penalty, Tier 1 (strict) gets none.
-        const constraintPenalty = isFallback
-          ? FALLBACK_GRIP_PENALTY
-          : tier === 'relaxed'
-            ? RELAXED_GRIP_PENALTY
-            : 0;
+        // V1 (D-01): No tier penalties — all grips are strict tier
+        const constraintPenalty = 0;
 
         // Diagnostic-only costs (computed for display, not in beam score)
         const prevAssignments = node.assignments.map(a => ({ hand: a.hand, finger: a.finger }));
@@ -533,16 +527,9 @@ export class BeamSolver implements SolverStrategy {
         const rightStatic = calculateFingerDominanceCost(rightResult.pose);
         const leftHome = neutralHandCenters ? calculatePerFingerHomeCost(leftResult.pose, 'left', neutralHandCenters, 0.8) : 0;
         const rightHome = neutralHandCenters ? calculatePerFingerHomeCost(rightResult.pose, 'right', neutralHandCenters, 0.8) : 0;
-        const leftConstraintPenalty = leftResult.isFallback
-          ? FALLBACK_GRIP_PENALTY
-          : leftResult.tier === 'relaxed'
-            ? RELAXED_GRIP_PENALTY
-            : 0;
-        const rightConstraintPenalty = rightResult.isFallback
-          ? FALLBACK_GRIP_PENALTY
-          : rightResult.tier === 'relaxed'
-            ? RELAXED_GRIP_PENALTY
-            : 0;
+        // V1 (D-01): No tier penalties — all grips are strict tier
+        const leftConstraintPenalty = 0;
+        const rightConstraintPenalty = 0;
 
         // Map notes to exact fingers based on their target pad coordinates
         const resolvedLeftFingers: FingerType[] = [];
@@ -1141,11 +1128,8 @@ export class BeamSolver implements SolverStrategy {
               const perFingerHomeCost = neutralHandCenters
                 ? calculatePerFingerHomeCost(matchingResult.pose, override.hand, neutralHandCenters, 0.8)
                 : 0;
-              const manualConstraintPenalty = matchingResult.isFallback
-                ? FALLBACK_GRIP_PENALTY
-                : matchingResult.tier === 'relaxed'
-                  ? RELAXED_GRIP_PENALTY
-                  : 0;
+              // V1 (D-01): No tier penalties — all grips are strict tier
+              const manualConstraintPenalty = 0;
               const effectiveTransition = transitionCost === Infinity ? 100 : transitionCost;
 
               // Primary score (3-component) for beam
@@ -1235,13 +1219,15 @@ export class BeamSolver implements SolverStrategy {
       }
 
       // Safety net: emergency fallback
+      // TODO(A2): Remove this entire block — D-03 eliminates emergency fallback.
+      // Temporary: use local penalty constant since EMERGENCY_FALLBACK_PENALTY was removed in A1.
       if (newBeam.length === 0) {
+        const EMERGENCY_FALLBACK_PENALTY = 1000;
         const fallbackFingers: FingerType[] = ['index', 'middle', 'ring', 'thumb', 'pinky'];
-        // Emergency fallback: full moment cost (Invariant E), not divided per-note
         const emergencyComponents: ObjectiveComponents = {
           transition: 0, stretch: 0, poseAttractor: 0,
           perFingerHome: 0, alternation: 0, handBalance: 0,
-          constraints: FALLBACK_GRIP_PENALTY,
+          constraints: EMERGENCY_FALLBACK_PENALTY,
         };
 
         for (const node of beam) {
@@ -1278,7 +1264,7 @@ export class BeamSolver implements SolverStrategy {
               startTime: group.notes[i].startTime,
               hand, finger,
               grip: fallbackGrip,
-              cost: FALLBACK_GRIP_PENALTY,
+              cost: EMERGENCY_FALLBACK_PENALTY,
               row: group.positions[i].row,
               col: group.positions[i].col,
               costComponents: emergencyComponents,
@@ -1305,7 +1291,7 @@ export class BeamSolver implements SolverStrategy {
               startTime: group.notes[i].startTime,
               hand, finger,
               grip: fallbackGrip,
-              cost: FALLBACK_GRIP_PENALTY,
+              cost: EMERGENCY_FALLBACK_PENALTY,
               row: group.positions[i].row,
               col: group.positions[i].col,
               costComponents: emergencyComponents,
@@ -1324,7 +1310,7 @@ export class BeamSolver implements SolverStrategy {
           newBeam.push({
             leftPose: primaryHand === 'left' ? firstFallbackGrip : node.leftPose,
             rightPose: primaryHand === 'right' ? firstFallbackGrip : node.rightPose,
-            totalCost: node.totalCost + FALLBACK_GRIP_PENALTY,
+            totalCost: node.totalCost + EMERGENCY_FALLBACK_PENALTY,
             parent: node,
             assignments,
             depth: node.depth + 1,

@@ -22,7 +22,6 @@ import {
   calculateTransitionCost,
   calculateAlternationCost,
   calculateHandBalanceCost,
-  FALLBACK_GRIP_PENALTY,
 } from '../../../src/engine/evaluation/costFunction';
 import {
   type PerformabilityObjective,
@@ -120,9 +119,9 @@ describe('PerformabilityObjective', () => {
       const components: PerformabilityObjective = {
         poseNaturalness: 0,
         transitionDifficulty: 0,
-        constraintPenalty: FALLBACK_GRIP_PENALTY,
+        constraintPenalty: 1000,
       };
-      expect(combinePerformabilityComponents(components)).toBe(FALLBACK_GRIP_PENALTY);
+      expect(combinePerformabilityComponents(components)).toBe(1000);
     });
 
     it('should return 0 for zero components', () => {

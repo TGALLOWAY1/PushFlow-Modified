@@ -51,8 +51,6 @@ import {
   calculateFingerDominanceCost,
   calculateAlternationCost,
   calculateHandBalanceCost,
-  FALLBACK_GRIP_PENALTY,
-  RELAXED_GRIP_PENALTY,
 } from './costFunction';
 
 import {
@@ -675,12 +673,12 @@ function computePoseDetail(
   };
 }
 
-function tierToPenalty(tier: ConstraintTier): number {
-  switch (tier) {
-    case 'strict': return 0;
-    case 'relaxed': return RELAXED_GRIP_PENALTY;
-    case 'fallback': return FALLBACK_GRIP_PENALTY;
-  }
+/**
+ * V1 Cost Model (D-01): Tier penalty removed. All grips are strict tier.
+ * Returns 0 for backward compatibility with costBreakdown consumers.
+ */
+function tierToPenalty(_tier: ConstraintTier): number {
+  return 0;
 }
 
 function resolveMomentPadKeys(
