@@ -182,7 +182,8 @@ export interface ConstraintViolation {
     | 'zone_violation'
     | 'finger_ordering'
     | 'span_exceeded'
-    | 'speed_exceeded';
+    | 'speed_exceeded'
+    | 'pad_ownership_inconsistency';
   /** Human-readable explanation. */
   explanation: string;
   /** Measured value that violated the constraint. */

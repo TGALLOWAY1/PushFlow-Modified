@@ -12,15 +12,17 @@
 
 import { type ExecutionPlanResult, type FingerAssignment } from '../../types/executionPlan';
 import { gridDistance } from '../../types/padGrid';
+import { MOMENT_EPSILON } from '../../types/performanceEvent';
 import {
   MAX_REACH_GRID_UNITS,
   MAX_HAND_SPEED,
 } from '../prior/biomechanicalModel';
 import { zoneViolationScore } from '../surface/handZone';
 import { type ConstraintViolation } from './types';
+import { validatePadOwnershipConsistency } from '../structure/momentBuilder';
 
-/** Time epsilon for detecting simultaneous events. */
-const SIMULTANEOUS_EPSILON = 0.001;
+/** Time epsilon for detecting simultaneous events. Uses canonical MOMENT_EPSILON. */
+const SIMULTANEOUS_EPSILON = MOMENT_EPSILON;
 
 /** Minimum zone violation distance to flag. */
 const ZONE_VIOLATION_THRESHOLD = 1;
@@ -39,6 +41,7 @@ export function validateExecutionPlan(
   violations.push(...detectTempoInfeasible(assignments));
   violations.push(...detectZoneViolations(assignments));
   violations.push(...detectSpeedExceeded(assignments));
+  violations.push(...detectPadOwnershipViolations(assignments));
 
   // Sort by event index
   violations.sort((a, b) => a.eventIndex - b.eventIndex);
@@ -274,4 +277,29 @@ function detectSpeedExceeded(
   }
 
   return violations;
+}
+
+// ============================================================================
+// Pad Ownership Consistency Detection (Invariant B)
+// ============================================================================
+
+/**
+ * Detects pad-to-finger ownership violations: the same pad assigned to
+ * different fingers at different points in the performance.
+ *
+ * Invariant B: each pad maps to exactly one finger within a solution.
+ */
+function detectPadOwnershipViolations(
+  assignments: FingerAssignment[],
+): ConstraintViolation[] {
+  const { violations } = validatePadOwnershipConsistency(assignments);
+
+  return violations.map(v => ({
+    eventIndex: 0,
+    constraintName: 'pad_ownership_inconsistency',
+    explanation: `Pad ${v.padKey} assigned to ${v.fingers.map(f => `${f.hand}-${f.finger}`).join(' and ')} at different times`,
+    actual: v.fingers.length,
+    limit: 1,
+    type: 'hard' as const,
+  }));
 }

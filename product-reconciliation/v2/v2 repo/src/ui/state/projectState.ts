@@ -119,6 +119,8 @@ export interface ProjectState {
 
   // Ephemeral UI state (not persisted, not in undo stack)
   selectedEventIndex: number | null;
+  /** Moment-level selection index (indexes into ExecutionPlanResult.momentAssignments). */
+  selectedMomentIndex: number | null;
   compareCandidateId: string | null;
   isProcessing: boolean;
   error: string | null;
@@ -228,6 +230,7 @@ export type ProjectAction =
 
   // Ephemeral UI
   | { type: 'SELECT_EVENT'; payload: number | null }
+  | { type: 'SELECT_MOMENT'; payload: number | null }
   | { type: 'SET_COMPARE_CANDIDATE'; payload: string | null }
   | { type: 'SET_PROCESSING'; payload: boolean }
   | { type: 'SET_ERROR'; payload: string | null }
@@ -244,6 +247,7 @@ export type ProjectAction =
 /** Actions that should NOT be recorded in the undo stack. */
 const EPHEMERAL_ACTIONS = new Set<ProjectAction['type']>([
   'SELECT_EVENT',
+  'SELECT_MOMENT',
   'SET_COMPARE_CANDIDATE',
   'SET_PROCESSING',
   'SET_ERROR',
@@ -323,6 +327,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         // Reset ephemeral state
         workingLayout: null, // Session-scoped: strip working layout on load
         selectedEventIndex: null,
+        selectedMomentIndex: null,
         compareCandidateId: null,
         isProcessing: false,
         error: null,
@@ -434,14 +439,30 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         return { ...layout, padToVoice: newPadToVoice, layoutMode: 'manual' };
       });
 
-    case 'SET_FINGER_CONSTRAINT':
+    case 'SET_FINGER_CONSTRAINT': {
+      const { padKey: constraintPadKey, constraint } = action.payload;
+
+      // Check for conflict with existing pad ownership in active solution
+      if (constraint && state.analysisResult?.executionPlan?.padFingerOwnership) {
+        const ownership = state.analysisResult.executionPlan.padFingerOwnership;
+        const existing = ownership[constraintPadKey];
+        if (existing) {
+          const existingStr = `${existing.hand === 'left' ? 'L' : 'R'}-${existing.finger.charAt(0).toUpperCase() + existing.finger.slice(1)}`;
+          if (existingStr !== constraint) {
+            console.warn(
+              `[PushFlow] Finger constraint conflict: pad ${constraintPadKey} is currently assigned to ${existingStr} in the active solution, but constraint is being set to ${constraint}. The solver will need to re-run.`
+            );
+          }
+        }
+      }
+
       return updateWorkingLayout(state, layout => {
-        const { padKey, constraint } = action.payload;
         const newConstraints = { ...layout.fingerConstraints };
-        if (constraint) newConstraints[padKey] = constraint;
-        else delete newConstraints[padKey];
+        if (constraint) newConstraints[constraintPadKey] = constraint;
+        else delete newConstraints[constraintPadKey];
         return { ...layout, fingerConstraints: newConstraints };
       });
+    }
 
     // -- Placement locks --
 
@@ -485,6 +506,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         workingLayout: null,
         analysisStale: true,
         selectedEventIndex: null,
+        selectedMomentIndex: null,
         candidates: [],
         selectedCandidateId: null,
         compareCandidateId: null,
@@ -614,6 +636,9 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'SELECT_EVENT':
       return { ...state, selectedEventIndex: action.payload };
 
+    case 'SELECT_MOMENT':
+      return { ...state, selectedMomentIndex: action.payload };
+
     case 'SET_COMPARE_CANDIDATE':
       return { ...state, compareCandidateId: action.payload };
 
@@ -684,6 +709,7 @@ export function createEmptyProjectState(): ProjectState {
     laneGroups: [],
     sourceFiles: [],
     selectedEventIndex: null,
+    selectedMomentIndex: null,
     compareCandidateId: null,
     isProcessing: false,
     error: null,

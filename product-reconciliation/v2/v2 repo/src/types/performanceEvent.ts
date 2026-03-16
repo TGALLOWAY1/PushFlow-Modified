@@ -6,6 +6,13 @@
  */
 
 /**
+ * Canonical epsilon for grouping notes into moments.
+ * Notes within this window (in seconds) are considered simultaneous.
+ * This is the single source of truth — no other epsilon should be used.
+ */
+export const MOMENT_EPSILON = 0.001;
+
+/**
  * A single performance event (formerly NoteEvent in Version1).
  *
  * Represents a MIDI note event with timing, dynamics, and identity.
@@ -34,4 +41,39 @@ export interface PerformanceEvent {
    * Used to stably identify events across solver runs.
    */
   eventKey?: string;
+}
+
+/**
+ * NoteInstance: A single note within a performance moment.
+ * Contains the note-level detail (sound, pad, MIDI provenance).
+ */
+export interface NoteInstance {
+  /** Stable voice/sound identity. */
+  soundId: string;
+  /** Pad key "row,col" where this sound is mapped. */
+  padId: string;
+  /** MIDI note number (provenance). */
+  noteNumber: number;
+  /** MIDI velocity 0-127. */
+  velocity?: number;
+  /** Duration in seconds. */
+  duration?: number;
+  /** Deterministic unique ID for stable identification. */
+  noteKey?: string;
+}
+
+/**
+ * PerformanceMoment: A time slice containing all notes at the same moment.
+ * This is the canonical grouped event — the atomic timeline unit.
+ *
+ * Invariant A: all notes within MOMENT_EPSILON of startTime belong here.
+ * A single-note moment is still a PerformanceMoment.
+ */
+export interface PerformanceMoment {
+  /** Index of this moment in the performance timeline. */
+  momentIndex: number;
+  /** Absolute start time in seconds. */
+  startTime: number;
+  /** All notes occurring at this moment. */
+  notes: NoteInstance[];
 }

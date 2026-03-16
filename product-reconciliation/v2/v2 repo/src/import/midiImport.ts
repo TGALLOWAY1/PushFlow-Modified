@@ -10,10 +10,11 @@
 
 import { Midi } from '@tonejs/midi';
 import { type Performance, type InstrumentConfig } from '../types/performance';
-import { type PerformanceEvent } from '../types/performanceEvent';
+import { type PerformanceEvent, type PerformanceMoment } from '../types/performanceEvent';
 import { type Voice } from '../types/voice';
 import { type Layout } from '../types/layout';
 import { generateId } from '../utils/idGenerator';
+import { buildPerformanceMoments } from '../engine/structure/momentBuilder';
 
 // ============================================================================
 // Result Types
@@ -26,6 +27,8 @@ import { generateId } from '../utils/idGenerator';
 export interface MidiProjectData {
   /** The parsed performance with all events. */
   performance: Performance;
+  /** Canonical grouped moments (all notes at same time = one moment). */
+  moments: PerformanceMoment[];
   /** Unique voices extracted from the MIDI file. */
   voices: Voice[];
   /** Instrument configuration with intelligent root note adjustment. */
@@ -179,8 +182,12 @@ export async function parseMidiProject(
     role: 'active' as const,
   };
 
+  // Build canonical moments from flat events (group by timestamp)
+  const moments = buildPerformanceMoments(events);
+
   return {
     performance,
+    moments,
     voices,
     instrumentConfig,
     layout,
