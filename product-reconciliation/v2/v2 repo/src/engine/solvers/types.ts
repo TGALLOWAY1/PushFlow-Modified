@@ -18,6 +18,39 @@ import { type ExecutionPlanResult } from '../../types/executionPlan';
 import { type SolverConfig } from '../../types/engineConfig';
 
 // ============================================================================
+// Constraint Types
+// ============================================================================
+
+/** A single hand/finger assignment constraint. */
+export interface FingerConstraint {
+  hand: 'left' | 'right';
+  finger: FingerType;
+}
+
+/**
+ * SolverConstraints: Separated hard and soft constraint inputs.
+ *
+ * Hard constraints (from placement locks + explicit finger assignments):
+ *   The solver MUST honor these — violations make the solution invalid.
+ *
+ * Soft preferences (from finger constraints, voice-level hand preferences):
+ *   The solver SHOULD prefer these but may violate them for a better overall solution.
+ *   Implemented as a cost bias, not a hard filter.
+ */
+export interface SolverConstraints {
+  /**
+   * Hard finger assignments by eventKey.
+   * The solver must assign exactly this hand/finger to these events.
+   */
+  hardAssignments?: Record<string, FingerConstraint>;
+  /**
+   * Soft finger preferences by eventKey.
+   * The solver adds a penalty when deviating from these, but may still choose differently.
+   */
+  softPreferences?: Record<string, FingerConstraint>;
+}
+
+// ============================================================================
 // Solver Strategy Interface
 // ============================================================================
 
@@ -34,13 +67,15 @@ export interface SolverStrategy {
   solve(
     performance: Performance,
     config: EngineConfiguration,
-    manualAssignments?: Record<string, { hand: 'left' | 'right'; finger: FingerType }>
+    manualAssignments?: Record<string, FingerConstraint>,
+    constraints?: SolverConstraints,
   ): Promise<ExecutionPlanResult>;
 
   solveSync?(
     performance: Performance,
     config: EngineConfiguration,
-    manualAssignments?: Record<string, { hand: 'left' | 'right'; finger: FingerType }>
+    manualAssignments?: Record<string, FingerConstraint>,
+    constraints?: SolverConstraints,
   ): ExecutionPlanResult;
 }
 

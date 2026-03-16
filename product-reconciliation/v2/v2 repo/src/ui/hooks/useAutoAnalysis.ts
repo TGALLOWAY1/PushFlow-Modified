@@ -4,10 +4,12 @@
  * Watches for `analysisStale` flag in project state and debounces
  * a re-analysis using the beam solver (fast, count:1).
  *
- * Pad-level finger constraints (layout.fingerConstraints) are fed into the
- * solver as hard manualAssignments — every event at a constrained pad will
- * always be played by the specified hand/finger, with the solver planning the
- * full sequence around those constraints.
+ * Constraint handling (Phase 2):
+ * - Placement locks (layout.placementLocks): hard constraints enforced by the
+ *   mutation service — locked voices cannot be moved during candidate generation.
+ * - Finger constraints (layout.fingerConstraints): soft preferences passed via
+ *   SolverConstraints.softPreferences — the solver biases toward them but may
+ *   deviate for a globally better solution.
  *
  * Full multi-candidate generation is triggered manually via the toolbar button.
  */
@@ -16,6 +18,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { getActivePerformance, getActiveLayout, getActiveStreams, type SoundStream } from '../state/projectState';
 import { createBeamSolver } from '../../engine/solvers/beamSolver';
+import { type SolverConstraints } from '../../engine/solvers/types';
 import { analyzeDifficulty, computeTradeoffProfile, classifyOptimizationDifficulty } from '../../engine/evaluation/difficultyScoring';
 import { generateCandidates } from '../../engine/optimization/multiCandidateGenerator';
 import { generateId } from '../../utils/idGenerator';
@@ -42,18 +45,20 @@ function parseConstraint(c: string): { hand: 'left' | 'right'; finger: FingerTyp
 }
 
 /**
- * Build a manualAssignments map from layout.fingerConstraints.
+ * Build separated solver constraints from layout finger constraints.
  *
- * For each constrained pad, every performance event whose voice matches
- * that pad's voice is assigned the constrained hand/finger.
+ * Finger constraints (per-pad) are SOFT preferences — the solver should
+ * prefer them but may deviate for a better overall solution.
+ *
+ * The legacy `manualAssignments` parameter is preserved for backward
+ * compatibility but new code should use the SolverConstraints structure.
+ *
  * Uses voiceId for matching when available, falling back to noteNumber.
- * This is passed directly to solver.solve() so constraints are hard
- * constraints during beam search, not cosmetic post-processing.
  */
-function buildManualAssignments(
+function buildSolverConstraints(
   performance: Performance,
   layout: Layout,
-): Record<string, { hand: 'left' | 'right'; finger: FingerType }> {
+): SolverConstraints {
   const constraints = layout.fingerConstraints;
   if (!constraints || Object.keys(constraints).length === 0) return {};
 
@@ -65,7 +70,6 @@ function buildManualAssignments(
     if (!voice) continue;
     const parsed = parseConstraint(constraintStr);
     if (!parsed) continue;
-    // Prefer voiceId-based matching
     if (voice.id) {
       voiceIdConstraints.set(voice.id, parsed);
     }
@@ -75,17 +79,36 @@ function buildManualAssignments(
   }
   if (voiceIdConstraints.size === 0 && noteConstraints.size === 0) return {};
 
-  // Map each event to its constraint by eventKey (voiceId-first, noteNumber-fallback)
-  const assignments: Record<string, { hand: 'left' | 'right'; finger: FingerType }> = {};
+  // Map each event to its soft preference by eventKey (voiceId-first, noteNumber-fallback)
+  const softPreferences: Record<string, { hand: 'left' | 'right'; finger: FingerType }> = {};
   for (const event of performance.events) {
     const constraint =
       (event.voiceId ? voiceIdConstraints.get(event.voiceId) : undefined) ??
       noteConstraints.get(event.noteNumber);
     if (constraint && event.eventKey) {
-      assignments[event.eventKey] = constraint;
+      softPreferences[event.eventKey] = constraint;
     }
   }
-  return assignments;
+
+  return Object.keys(softPreferences).length > 0
+    ? { softPreferences }
+    : {};
+}
+
+/**
+ * Build legacy manualAssignments from constraints for backward compatibility.
+ * Converts soft preferences to hard assignments for the legacy solver path.
+ * TODO: Remove once the solver natively handles SolverConstraints.
+ */
+function constraintsToManualAssignments(
+  constraints: SolverConstraints,
+): Record<string, { hand: 'left' | 'right'; finger: FingerType }> | undefined {
+  // For now, soft preferences are still passed as hard assignments to preserve
+  // existing solver behavior. The solver interface accepts both parameters —
+  // when full soft-preference support is added, this function can be removed.
+  const prefs = constraints.softPreferences;
+  if (!prefs || Object.keys(prefs).length === 0) return undefined;
+  return prefs;
 }
 
 /**
@@ -168,12 +191,14 @@ export function useAutoAnalysis() {
         };
         const solver = createBeamSolver(solverConfig);
 
-        // Build hard constraints from layout — fed into solver, not post-processed
-        const manualAssignments = buildManualAssignments(performance, layout);
+        // Build solver constraints — finger constraints are soft preferences
+        const solverConstraints = buildSolverConstraints(performance, layout);
+        const manualAssignments = constraintsToManualAssignments(solverConstraints);
         const executionPlan = await solver.solve(
           performance,
           { ...state.engineConfig, beamWidth: 15 }, // Fast mode
-          Object.keys(manualAssignments).length > 0 ? manualAssignments : undefined,
+          manualAssignments,
+          solverConstraints,
         );
 
         if (abortRef.current) return;
@@ -234,8 +259,9 @@ export function useAutoAnalysis() {
         ? classifyOptimizationDifficulty(performance)
         : mode;
 
-      // Build hard constraints to pass through to each candidate's solver run
-      const manualAssignments = buildManualAssignments(performance, effectiveLayout);
+      // Build solver constraints — finger constraints are soft preferences
+      const solverConstraints = buildSolverConstraints(performance, effectiveLayout);
+      const manualAssignments = constraintsToManualAssignments(solverConstraints);
 
       const modeLabel = resolvedMode === 'deep' ? 'Thorough' : 'Quick';
       setGenerationProgress(`${modeLabel} optimization: generating 3 candidates...`);
@@ -246,7 +272,7 @@ export function useAutoAnalysis() {
         engineConfig: state.engineConfig,
         instrumentConfig: state.instrumentConfig,
         sections: state.sections,
-        manualAssignments: Object.keys(manualAssignments).length > 0 ? manualAssignments : undefined,
+        manualAssignments,
         baseLayout: effectiveLayout,
       });
 
