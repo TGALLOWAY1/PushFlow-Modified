@@ -14,6 +14,25 @@ import { type PadCoord, padKey, parsePadKey } from '../../types/padGrid';
 
 export type Rng = () => number;
 
+// ============================================================================
+// Placement Lock Helpers
+// ============================================================================
+
+/**
+ * Build a set of pad keys that are placement-locked.
+ * Locked pads must not have their voices moved or swapped during mutation.
+ *
+ * placementLocks maps voiceId → padKey. We invert this to get the set of
+ * pad keys that are immovable.
+ */
+function getLockedPadKeys(layout: Layout): Set<string> {
+  const locked = new Set<string>();
+  for (const lockedPadKey of Object.values(layout.placementLocks ?? {})) {
+    locked.add(lockedPadKey);
+  }
+  return locked;
+}
+
 /**
  * Returns a list of all 8x8 pad coordinates that do not currently have a Voice assigned.
  */
@@ -64,33 +83,37 @@ function getOccupiedPads(layout: Layout): PadCoord[] {
  * @param rng - Optional RNG (default Math.random). Use seeded RNG for determinism.
  */
 export function applyRandomMutation(layout: Layout, rng: Rng = Math.random): Layout {
+  const lockedPadKeys = getLockedPadKeys(layout);
   const occupiedPads = getOccupiedPads(layout);
   const emptyPads = getEmptyPads(layout);
 
-  if (occupiedPads.length === 0) {
-    return layout;
+  // Only unlocked occupied pads are eligible for mutation
+  const mutablePads = occupiedPads.filter(p => !lockedPadKeys.has(padKey(p.row, p.col)));
+
+  if (mutablePads.length === 0) {
+    return layout; // All voices are locked — no valid mutation possible
   }
 
   const roll = rng();
 
-  if (roll < 0.35 && occupiedPads.length >= 2) {
-    // Single swap
-    const [pad1, pad2] = getRandomPair(occupiedPads, rng);
+  if (roll < 0.35 && mutablePads.length >= 2) {
+    // Single swap (only between unlocked pads)
+    const [pad1, pad2] = getRandomPair(mutablePads, rng);
     return applySwapMutation(layout, pad1, pad2);
   } else if (roll < 0.70 && emptyPads.length > 0) {
-    // Single move
-    const sourcePad = getRandomElement(occupiedPads, rng);
+    // Single move (only from unlocked pad)
+    const sourcePad = getRandomElement(mutablePads, rng);
     const targetPad = getRandomElement(emptyPads, rng);
     return applyMoveMutation(layout, sourcePad, targetPad);
-  } else if (roll < 0.85 && occupiedPads.length >= 4) {
-    // Cluster swap: swap two groups of adjacent voices
-    return applyClusterSwapMutation(layout, occupiedPads, rng);
-  } else if (occupiedPads.length >= 2) {
-    // Row/col shift: shift occupied pads in a row or column
-    return applyShiftMutation(layout, occupiedPads, emptyPads, rng);
+  } else if (roll < 0.85 && mutablePads.length >= 4) {
+    // Cluster swap: swap two groups of adjacent unlocked voices
+    return applyClusterSwapMutation(layout, mutablePads, rng);
+  } else if (mutablePads.length >= 2) {
+    // Row/col shift: shift unlocked pads in a row or column
+    return applyShiftMutation(layout, mutablePads, emptyPads, rng);
   } else if (emptyPads.length > 0) {
-    // Fallback to move
-    const sourcePad = getRandomElement(occupiedPads, rng);
+    // Fallback to move (from unlocked pad)
+    const sourcePad = getRandomElement(mutablePads, rng);
     const targetPad = getRandomElement(emptyPads, rng);
     return applyMoveMutation(layout, sourcePad, targetPad);
   } else {
@@ -384,11 +407,14 @@ function applyMultiMove(
  * Falls back to applyRandomMutation if no valid transfer target exists.
  */
 export function applyZoneTransferMutation(layout: Layout, rng: Rng = Math.random): Layout {
+  const lockedPadKeys = getLockedPadKeys(layout);
   const occupiedPads = getOccupiedPads(layout);
-  if (occupiedPads.length === 0) return layout;
+  // Only unlocked pads can be transferred across zones
+  const mutablePads = occupiedPads.filter(p => !lockedPadKeys.has(padKey(p.row, p.col)));
+  if (mutablePads.length === 0) return layout;
 
-  // Pick a random occupied pad as the source
-  const sourcePad = occupiedPads[Math.floor(rng() * occupiedPads.length)];
+  // Pick a random unlocked occupied pad as the source
+  const sourcePad = mutablePads[Math.floor(rng() * mutablePads.length)];
   const sourceZone = sourcePad.col < 4 ? 'left' : 'right';
 
   // Find empty pads in the opposite zone
