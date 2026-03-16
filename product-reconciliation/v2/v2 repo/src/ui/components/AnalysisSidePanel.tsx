@@ -82,6 +82,20 @@ export function AnalysisSidePanel() {
                   );
                 })}
               </div>
+
+              {/* Promote selected candidate to active layout */}
+              {state.selectedCandidateId && (
+                <button
+                  className="w-full px-2 py-1.5 text-[11px] rounded transition-colors bg-green-600/20 border border-green-500/40 text-green-300 hover:bg-green-600/30"
+                  onClick={() => {
+                    if (confirm('Promote this candidate to become the Active Layout? The current active layout will be auto-saved as a variant.')) {
+                      dispatch({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: state.selectedCandidateId! } });
+                    }
+                  }}
+                >
+                  Promote Candidate to Active
+                </button>
+              )}
             </div>
           )}
         </div>
