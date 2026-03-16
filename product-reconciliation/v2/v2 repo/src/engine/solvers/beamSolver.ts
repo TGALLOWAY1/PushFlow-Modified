@@ -55,6 +55,7 @@ import {
 } from '../evaluation/objective';
 import {
   type DiagnosticsPayload,
+  type InfeasibilityDiagnostic,
   computeTopContributors,
   deriveFeasibilityVerdict,
 } from '../../types/diagnostics';
@@ -895,11 +896,33 @@ export class BeamSolver implements SolverStrategy {
       fallbackGripCount,
       totalEvents,
     );
+    // V1 (D-03): Aggregate infeasible events by sound/voiceId
+    let infeasibleSounds: InfeasibilityDiagnostic[] | undefined;
+    if (unplayableCount > 0) {
+      const soundCounts = new Map<string, { infeasible: number; total: number }>();
+      for (const fa of fingerAssignments) {
+        const soundId = fa.voiceId ?? String(fa.noteNumber);
+        const entry = soundCounts.get(soundId) ?? { infeasible: 0, total: 0 };
+        entry.total++;
+        if (fa.assignedHand === 'Unplayable') entry.infeasible++;
+        soundCounts.set(soundId, entry);
+      }
+      infeasibleSounds = [...soundCounts.entries()]
+        .filter(([_, v]) => v.infeasible > 0)
+        .map(([soundId, v]) => ({
+          soundId,
+          violationCount: v.infeasible,
+          totalEvents: v.total,
+        }))
+        .sort((a, b) => b.violationCount - a.violationCount);
+    }
+
     const diagnostics: DiagnosticsPayload = {
       feasibility,
       factors: canonicalFactors,
       gripDetail,
       topContributors: computeTopContributors(canonicalFactors),
+      infeasibleSounds,
     };
 
     // === Build pad-to-finger ownership map (Invariant B) ===

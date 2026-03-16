@@ -62,8 +62,8 @@ export interface GripNaturalnessDetail {
 /**
  * FeasibilityLevel: Overall feasibility classification.
  *
- * - feasible: all events can be played with strict or relaxed grips.
- * - degraded: playable but requires fallback grips or has hard events.
+ * - feasible: all events can be played with valid grips.
+ * - degraded: playable but has hard events.
  * - infeasible: one or more events cannot be mapped or played.
  */
 export type FeasibilityLevel = 'feasible' | 'degraded' | 'infeasible';
@@ -101,6 +101,26 @@ export interface FeasibilityVerdict {
 }
 
 // ============================================================================
+// Infeasibility Diagnostics (V1)
+// ============================================================================
+
+/**
+ * Per-sound infeasibility diagnostic.
+ *
+ * V1 (D-03): When an event cannot be assigned (no valid grip or transition),
+ * it is marked infeasible. This type aggregates infeasible events by sound/voiceId
+ * so the user can identify which sounds need layout changes.
+ */
+export interface InfeasibilityDiagnostic {
+  /** Sound identifier (voiceId or noteNumber string). */
+  soundId: string;
+  /** Number of events for this sound that are infeasible. */
+  violationCount: number;
+  /** Total events for this sound. */
+  totalEvents: number;
+}
+
+// ============================================================================
 // Unified Diagnostics Payload
 // ============================================================================
 
@@ -127,6 +147,8 @@ export interface DiagnosticsPayload {
   topContributors: string[];
   /** Binding constraints — human-readable reasons this layout is hard to optimize further. */
   bindingConstraints?: string[];
+  /** V1: Per-sound infeasibility breakdown (only present if there are infeasible events). */
+  infeasibleSounds?: InfeasibilityDiagnostic[];
 }
 
 // ============================================================================
