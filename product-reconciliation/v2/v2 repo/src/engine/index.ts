@@ -6,7 +6,7 @@
 
 // Surface model
 export { ALL_PADS, adjacentPads, manhattanDistance, padRegion, samePad } from './surface/padGrid';
-export { getDefaultHandZones, getPreferredHand, zoneViolationScore } from './surface/handZone';
+export { getDefaultHandZones, getPreferredHand, isZoneValid, allPadsInZone, zoneViolationScore } from './surface/handZone';
 
 // Biomechanical model (canonical source of truth)
 export {

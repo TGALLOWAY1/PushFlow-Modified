@@ -32,6 +32,7 @@ import {
 } from '../../types/executionPlan';
 import { MOMENT_EPSILON } from '../../types/performanceEvent';
 import { buildNoteToPadIndex, buildVoiceIdToPadIndex, resolveEventToPad, hashLayout } from '../mapping/mappingResolver';
+import { allPadsInZone } from '../surface/handZone';
 import { generateValidGripsWithTier } from '../prior/feasibility';
 import {
   calculatePoseNaturalness,
@@ -292,6 +293,9 @@ export class BeamSolver implements SolverStrategy {
       }
       if (handConflict) continue;
 
+      // V1 (D-02): Hard zone constraint — skip hand if any pad is outside its zone
+      if (!allPadsInZone(uniquePads, hand)) continue;
+
       const prevPose = hand === 'left' ? node.leftPose : node.rightPose;
       const restPose = hand === 'left' ? restingPose.left : restingPose.right;
 
@@ -493,6 +497,9 @@ export class BeamSolver implements SolverStrategy {
     const rightPads = [...forcedRight, ...unforced.slice(midpoint)];
 
     if (leftPads.length === 0 || rightPads.length === 0) return children;
+
+    // V1 (D-02): Hard zone constraint — skip if pads violate hand zones
+    if (!allPadsInZone(leftPads, 'left') || !allPadsInZone(rightPads, 'right')) return children;
 
     const leftPadKeys = new Set(leftPads.map(p => `${p.row},${p.col}`));
     const leftNoteIndices: number[] = [];
