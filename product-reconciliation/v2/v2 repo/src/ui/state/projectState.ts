@@ -31,6 +31,12 @@ export interface SoundEvent {
   duration: number;
   velocity: number;
   eventKey: string;
+  /**
+   * Back-reference to the parent SoundStream.id.
+   * Populated during import so events carry stable identity
+   * even when flattened into a Performance timeline.
+   */
+  voiceId?: string;
 }
 
 /**
@@ -135,6 +141,7 @@ export function getActivePerformance(state: ProjectState): Performance {
   const events = activeStreams.flatMap(stream =>
     stream.events.map(e => ({
       noteNumber: stream.originalMidiNote,
+      voiceId: e.voiceId ?? stream.id,
       startTime: e.startTime,
       duration: e.duration,
       velocity: e.velocity,

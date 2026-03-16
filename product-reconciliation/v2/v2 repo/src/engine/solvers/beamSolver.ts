@@ -21,12 +21,13 @@ import { type Layout } from '../../types/layout';
 import { type PadCoord, padKey } from '../../types/padGrid';
 import {
   type ExecutionPlanResult,
+  type ExecutionPlanLayoutBinding,
   type FingerAssignment,
   type FingerUsageStats,
   type FatigueMap,
   type DifficultyBreakdown,
 } from '../../types/executionPlan';
-import { buildNoteToPadIndex, resolveNoteToPad, hashLayout } from '../mapping/mappingResolver';
+import { buildNoteToPadIndex, buildVoiceIdToPadIndex, resolveEventToPad, hashLayout } from '../mapping/mappingResolver';
 import { generateValidGripsWithTier } from '../prior/feasibility';
 import {
   calculatePoseNaturalness,
@@ -83,6 +84,7 @@ const HAND_BALANCE_BEAM_WEIGHT = 0.3;
 interface NoteAssignment {
   eventIndex: number;
   eventKey?: string;
+  voiceId?: string;
   noteNumber: number;
   startTime: number;
   hand: 'left' | 'right';
@@ -206,12 +208,14 @@ export class BeamSolver implements SolverStrategy {
 
   private instrumentConfig: InstrumentConfig;
   private layout: Layout | null;
+  private sourceLayoutRole: import('../../types/layout').LayoutRole | undefined;
   private neutralPadPositionsOverride: NeutralPadPositions | null;
   private mappingResolverMode: 'strict' | 'allow-fallback';
 
   constructor(config: SolverConfig) {
     this.instrumentConfig = config.instrumentConfig;
     this.layout = config.layout ?? null;
+    this.sourceLayoutRole = config.sourceLayoutRole ?? config.layout?.role;
     this.neutralPadPositionsOverride = config.neutralPadPositionsOverride ?? null;
     this.mappingResolverMode = config.mappingResolverMode ?? 'strict';
   }
@@ -364,6 +368,7 @@ export class BeamSolver implements SolverStrategy {
             eventIndex: group.eventIndices[i],
             eventKey: group.eventKeys[i],
             noteNumber: group.notes[i].noteNumber,
+            voiceId: group.notes[i].voiceId,
             startTime: group.notes[i].startTime,
             hand,
             finger: resolvedFingers[i],
@@ -564,6 +569,7 @@ export class BeamSolver implements SolverStrategy {
             eventIndex: group.eventIndices[i],
             eventKey: group.eventKeys[i],
             noteNumber: group.notes[i].noteNumber,
+            voiceId: group.notes[i].voiceId,
             startTime: group.notes[i].startTime,
             hand: 'left',
             finger: resolvedLeftFingers[j],
@@ -580,6 +586,7 @@ export class BeamSolver implements SolverStrategy {
             eventIndex: group.eventIndices[i],
             eventKey: group.eventKeys[i],
             noteNumber: group.notes[i].noteNumber,
+            voiceId: group.notes[i].voiceId,
             startTime: group.notes[i].startTime,
             hand: 'right',
             finger: resolvedRightFingers[j],
@@ -659,6 +666,7 @@ export class BeamSolver implements SolverStrategy {
         const ev = sortedEvents[i]?.event;
         fingerAssignments.push({
           noteNumber: ev?.noteNumber ?? 0,
+          voiceId: ev?.voiceId,
           startTime: ev?.startTime ?? 0,
           assignedHand: 'Unplayable',
           finger: null,
@@ -731,6 +739,7 @@ export class BeamSolver implements SolverStrategy {
 
       fingerAssignments.push({
         noteNumber: assignment.noteNumber,
+        voiceId: assignment.voiceId,
         startTime: assignment.startTime,
         assignedHand: assignment.hand,
         finger: assignment.finger,
@@ -777,6 +786,12 @@ export class BeamSolver implements SolverStrategy {
       fatigueMap,
       averageDrift: driftCount > 0 ? totalDrift / driftCount : 0,
       averageMetrics,
+      // Layout binding: tracks which layout state this plan was computed against
+      layoutBinding: this.layout ? {
+        layoutId: this.layout.id,
+        layoutHash: hashLayout(this.layout),
+        layoutRole: this.sourceLayoutRole ?? this.layout.role ?? 'active',
+      } as ExecutionPlanLayoutBinding : undefined,
       metadata: {
         layoutIdUsed: this.layout?.id,
         layoutHashUsed: this.layout ? hashLayout(this.layout) : undefined,
@@ -858,11 +873,13 @@ export class BeamSolver implements SolverStrategy {
         return (a.event.eventKey ?? '').localeCompare(b.event.eventKey ?? '');
       });
 
-    // Build note-to-pad index
-    const noteToPadIndex = buildNoteToPadIndex(this.layout?.padToVoice ?? {});
+    // Build pad lookup indices — voiceId-first, noteNumber-fallback
+    const padToVoice = this.layout?.padToVoice ?? {};
+    const noteToPadIndex = buildNoteToPadIndex(padToVoice);
+    const voiceIdToPadIndex = buildVoiceIdToPadIndex(padToVoice);
     const effectiveMode = this.layout === null ? 'allow-fallback' : this.mappingResolverMode;
     const eventsWithPositions = sortedEvents.map(({ event, originalIndex }) => {
-      const res = resolveNoteToPad(event.noteNumber, noteToPadIndex, this.instrumentConfig, effectiveMode);
+      const res = resolveEventToPad(event, voiceIdToPadIndex, noteToPadIndex, this.instrumentConfig, effectiveMode);
       const position: PadCoord | null =
         res.source === 'mapping' || res.source === 'fallback'
           ? { row: res.pad.row, col: res.pad.col }
@@ -976,6 +993,7 @@ export class BeamSolver implements SolverStrategy {
                   eventIndex: group.eventIndices[i],
                   eventKey: group.eventKeys[i],
                   noteNumber: group.notes[i].noteNumber,
+            voiceId: group.notes[i].voiceId,
                   startTime: group.notes[i].startTime,
                   hand: override.hand,
                   finger: gripFingers[i % gripFingers.length] || override.finger,
@@ -1050,6 +1068,7 @@ export class BeamSolver implements SolverStrategy {
               eventIndex: group.eventIndices[i],
               eventKey: group.eventKeys[i],
               noteNumber: group.notes[i].noteNumber,
+            voiceId: group.notes[i].voiceId,
               startTime: group.notes[i].startTime,
               hand: 'left', finger,
               grip: fallbackGrip,
@@ -1070,6 +1089,7 @@ export class BeamSolver implements SolverStrategy {
               eventIndex: group.eventIndices[i],
               eventKey: group.eventKeys[i],
               noteNumber: group.notes[i].noteNumber,
+            voiceId: group.notes[i].voiceId,
               startTime: group.notes[i].startTime,
               hand: 'right', finger,
               grip: fallbackGrip,

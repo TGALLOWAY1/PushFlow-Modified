@@ -52,6 +52,53 @@ export function buildNoteToPadIndex(padToVoice: Record<string, Voice>): Map<numb
   return index;
 }
 
+/**
+ * Builds a reverse index from Voice.id to pad coordinates.
+ * This is the voiceId-based complement to buildNoteToPadIndex.
+ * When a PerformanceEvent carries a voiceId, we can resolve its pad
+ * position without relying on pitch — enabling transposition, re-mapping,
+ * and multi-instrument scenarios where pitches may collide.
+ */
+export function buildVoiceIdToPadIndex(padToVoice: Record<string, Voice>): Map<string, PadCoord> {
+  const index = new Map<string, PadCoord>();
+
+  for (const [key, voice] of Object.entries(padToVoice)) {
+    if (!voice.id) continue;
+
+    const coord = parsePadKey(key);
+    if (coord) {
+      index.set(voice.id, coord);
+    }
+  }
+
+  return index;
+}
+
+/**
+ * Resolves a performance event to a pad using voiceId-first, noteNumber-fallback strategy.
+ *
+ * Priority:
+ * 1. If voiceId is present and exists in voiceIdIndex → use it (stable identity)
+ * 2. Else fall back to noteNumber-based resolution via resolveNoteToPad
+ */
+export function resolveEventToPad(
+  event: { noteNumber: number; voiceId?: string },
+  voiceIdIndex: Map<string, PadCoord>,
+  noteIndex: Map<number, PadCoord>,
+  instrumentConfig: InstrumentConfig,
+  mode: 'strict' | 'allow-fallback',
+): MappingResolution {
+  // Prefer voiceId when available
+  if (event.voiceId) {
+    const fromVoiceId = voiceIdIndex.get(event.voiceId);
+    if (fromVoiceId) {
+      return { source: 'mapping', pad: fromVoiceId };
+    }
+  }
+  // Fall back to pitch-based lookup
+  return resolveNoteToPad(event.noteNumber, noteIndex, instrumentConfig, mode);
+}
+
 // ============================================================================
 // Fallback: noteToGrid (chromatic layout)
 // ============================================================================

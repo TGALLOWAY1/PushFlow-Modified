@@ -65,7 +65,7 @@ export {
 } from './diagnostics/fatigueModel';
 
 // Mapping
-export { buildNoteToPadIndex, resolveNoteToPad, hashLayout } from './mapping/mappingResolver';
+export { buildNoteToPadIndex, buildVoiceIdToPadIndex, resolveNoteToPad, resolveEventToPad, hashLayout } from './mapping/mappingResolver';
 export { computeMappingCoverage } from './mapping/mappingCoverage';
 export { seedLayoutFromPose0 } from './mapping/seedFromPose';
 
@@ -101,6 +101,7 @@ export {
 export { analyzeTransition, analyzeAllTransitions } from './evaluation/transitionAnalyzer';
 export { scorePassage, scorePassagesFromSections, scorePassagesFixedWindow } from './evaluation/passageDifficulty';
 export { analyzeDifficulty, classifyDifficulty, computeTradeoffProfile, roleWeightedScore } from './evaluation/difficultyScoring';
+export { checkPlanFreshness, getEffectiveLayoutBinding, type FreshnessCheck } from './evaluation/executionPlanValidation';
 
 // Structure analysis
 export { groupEventsByTime, getPolyphonyTimeline, getMaxPolyphony } from './structure/eventGrouping';

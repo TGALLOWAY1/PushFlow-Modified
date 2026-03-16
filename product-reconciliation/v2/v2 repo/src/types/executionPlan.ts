@@ -44,6 +44,8 @@ export type DifficultyLevel = 'Easy' | 'Medium' | 'Hard' | 'Unplayable';
  */
 export interface FingerAssignment {
   noteNumber: number;
+  /** Stable voice identity (from PerformanceEvent.voiceId). */
+  voiceId?: string;
   startTime: number;
   assignedHand: 'left' | 'right' | 'Unplayable';
   finger: FingerType | null;
@@ -130,7 +132,24 @@ export interface SolverTelemetry {
 }
 
 /**
+ * Layout provenance: tracks which layout state an execution plan was computed against.
+ * Required so downstream consumers can verify freshness and context.
+ */
+export interface ExecutionPlanLayoutBinding {
+  /** The layout ID this plan was computed against. */
+  layoutId: string;
+  /** Deterministic hash of the layout's padToVoice mapping. */
+  layoutHash: string;
+  /** The workflow role of the source layout. */
+  layoutRole: import('./layout').LayoutRole;
+}
+
+/**
  * ExecutionPlanResult: Complete output from a solver run.
+ *
+ * Every execution plan is bound to a specific layout state via `layoutBinding`.
+ * This enables staleness detection, compare-mode correctness, and event
+ * analysis that always knows which layout it's explaining.
  *
  * Formerly EngineResult in Version1.
  */
@@ -153,9 +172,18 @@ export interface ExecutionPlanResult {
   averageMetrics: DifficultyBreakdown;
   /** Annealing trace (only for AnnealingSolver). */
   annealingTrace?: AnnealingIterationSnapshot[];
-  /** Run metadata for debugging. */
+
+  /**
+   * Layout binding: which layout state this plan was computed against.
+   * Required for staleness detection and compare-mode correctness.
+   */
+  layoutBinding?: ExecutionPlanLayoutBinding;
+
+  /** Run metadata for debugging and telemetry. */
   metadata?: {
+    /** @deprecated Use layoutBinding.layoutId instead. */
     layoutIdUsed?: string;
+    /** @deprecated Use layoutBinding.layoutHash instead. */
     layoutHashUsed?: string;
     layoutCoverage?: { totalNotes: number; unmappedNotesCount: number; fallbackNotesCount: number };
     invalidReason?: string;
