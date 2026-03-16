@@ -39,3 +39,9 @@ export * from './performanceLane';
 
 // Pattern candidate (rudiment/ostinato generator)
 export * from './patternCandidate';
+
+// Canonical cost evaluation types
+export * from './costBreakdown';
+
+// Evaluation configuration
+export * from './evaluationConfig';
