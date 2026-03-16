@@ -65,7 +65,7 @@ export {
 } from './diagnostics/fatigueModel';
 
 // Mapping
-export { buildNoteToPadIndex, resolveNoteToPad, hashLayout } from './mapping/mappingResolver';
+export { buildNoteToPadIndex, buildVoiceIdToPadIndex, resolveNoteToPad, resolveEventToPad, hashLayout } from './mapping/mappingResolver';
 export { computeMappingCoverage } from './mapping/mappingCoverage';
 export { seedLayoutFromPose0 } from './mapping/seedFromPose';
 

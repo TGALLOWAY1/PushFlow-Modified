@@ -44,8 +44,9 @@ function parseConstraint(c: string): { hand: 'left' | 'right'; finger: FingerTyp
 /**
  * Build a manualAssignments map from layout.fingerConstraints.
  *
- * For each constrained pad, every performance event whose noteNumber
- * matches that pad's voice is assigned the constrained hand/finger.
+ * For each constrained pad, every performance event whose voice matches
+ * that pad's voice is assigned the constrained hand/finger.
+ * Uses voiceId for matching when available, falling back to noteNumber.
  * This is passed directly to solver.solve() so constraints are hard
  * constraints during beam search, not cosmetic post-processing.
  */
@@ -56,21 +57,30 @@ function buildManualAssignments(
   const constraints = layout.fingerConstraints;
   if (!constraints || Object.keys(constraints).length === 0) return {};
 
-  // Build noteNumber → {hand, finger} from pad constraints
+  // Build voiceId → {hand, finger} and noteNumber → {hand, finger} from pad constraints
+  const voiceIdConstraints = new Map<string, { hand: 'left' | 'right'; finger: FingerType }>();
   const noteConstraints = new Map<number, { hand: 'left' | 'right'; finger: FingerType }>();
   for (const [padKey, constraintStr] of Object.entries(constraints)) {
     const voice = layout.padToVoice[padKey];
-    if (!voice || voice.originalMidiNote == null) continue;
+    if (!voice) continue;
     const parsed = parseConstraint(constraintStr);
     if (!parsed) continue;
-    noteConstraints.set(voice.originalMidiNote, parsed);
+    // Prefer voiceId-based matching
+    if (voice.id) {
+      voiceIdConstraints.set(voice.id, parsed);
+    }
+    if (voice.originalMidiNote != null) {
+      noteConstraints.set(voice.originalMidiNote, parsed);
+    }
   }
-  if (noteConstraints.size === 0) return {};
+  if (voiceIdConstraints.size === 0 && noteConstraints.size === 0) return {};
 
-  // Map each event to its constraint by eventKey
+  // Map each event to its constraint by eventKey (voiceId-first, noteNumber-fallback)
   const assignments: Record<string, { hand: 'left' | 'right'; finger: FingerType }> = {};
   for (const event of performance.events) {
-    const constraint = noteConstraints.get(event.noteNumber);
+    const constraint =
+      (event.voiceId ? voiceIdConstraints.get(event.voiceId) : undefined) ??
+      noteConstraints.get(event.noteNumber);
     if (constraint && event.eventKey) {
       assignments[event.eventKey] = constraint;
     }
