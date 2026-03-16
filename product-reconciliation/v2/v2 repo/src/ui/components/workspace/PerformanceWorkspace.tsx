@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProject } from '../../state/ProjectContext';
 import { saveProject } from '../../persistence/projectStorage';
@@ -11,11 +11,8 @@ import { DiagnosticsPanel } from '../DiagnosticsPanel';
 import { EventDetailPanel } from '../EventDetailPanel';
 import { TransitionDetailPanel } from './TransitionDetailPanel';
 import { UnifiedTimeline } from '../UnifiedTimeline';
-import { WorkspacePatternStudio } from './WorkspacePatternStudio';
 import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
-
-type DrawerTab = 'execution' | 'composer';
 
 export function PerformanceWorkspace() {
   const { state, dispatch } = useProject();
@@ -23,7 +20,6 @@ export function PerformanceWorkspace() {
   const { generateFull, generationProgress, canGenerate, generateDisabledReason } = useAutoAnalysis();
   useKeyboardShortcuts();
 
-  const [drawerTab, setDrawerTab] = useState<DrawerTab>('execution');
   const [gridExpanded, setGridExpanded] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
@@ -117,25 +113,7 @@ export function PerformanceWorkspace() {
                     ◂
                   </button>
                 </div>
-                <div className="text-sm text-gray-200">Edit the performance timeline below, watch the Push grid update on the right, and open the composer to generate or sketch new material.</div>
-                <div className="flex gap-2 pt-1">
-                  <button
-                    className={`px-2 py-1 text-xs rounded transition-colors ${
-                      drawerTab === 'composer' ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30' : 'bg-gray-800 text-gray-400 hover:text-gray-200'
-                    }`}
-                    onClick={() => setDrawerTab('composer')}
-                  >
-                    Open Composer
-                  </button>
-                  <button
-                    className={`px-2 py-1 text-xs rounded transition-colors ${
-                      drawerTab === 'execution' ? 'bg-sky-600/20 text-sky-300 border border-sky-500/30' : 'bg-gray-800 text-gray-400 hover:text-gray-200'
-                    }`}
-                    onClick={() => setDrawerTab('execution')}
-                  >
-                    Timeline View
-                  </button>
-                </div>
+                <div className="text-sm text-gray-200">Edit the performance timeline below and watch the Push grid update on the right.</div>
               </div>
 
               <div className="p-3 rounded-lg glass-panel">
@@ -188,6 +166,7 @@ export function PerformanceWorkspace() {
                 selectedEventIndex={state.selectedEventIndex}
                 onEventClick={idx => dispatch({ type: 'SELECT_EVENT', payload: idx })}
                 onionSkin={onionSkin}
+                voiceConstraints={state.voiceConstraints}
               />
             )}
           </div>
@@ -197,26 +176,14 @@ export function PerformanceWorkspace() {
         </div>
       </div>
 
-      {/* ─── Bottom Drawer: Unified Timeline / Pattern Composer ─────────── */}
+      {/* ─── Bottom Drawer: Unified Timeline ─────────────────────────────── */}
       <div className="rounded-lg glass-panel overflow-hidden">
         <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-800 bg-gray-900/40">
-          <DrawerButton active={drawerTab === 'execution'} onClick={() => setDrawerTab('execution')}>
-            Timeline
-          </DrawerButton>
-          <DrawerButton active={drawerTab === 'composer'} onClick={() => setDrawerTab('composer')}>
-            Pattern Composer
-          </DrawerButton>
+          <span className="px-2 py-1 text-xs rounded bg-gray-700 text-gray-200">Timeline</span>
           <div className="flex-1" />
-          <span className="text-[10px] text-gray-600">
-            {drawerTab === 'execution'
-              ? 'Performance timeline with execution analysis'
-              : 'Generate or sketch new material into the same timeline'}
-          </span>
+          <span className="text-[10px] text-gray-600">Performance timeline with execution analysis</span>
         </div>
-
-        <div className={drawerTab === 'execution' ? '' : 'p-3'}>
-          {drawerTab === 'execution' ? <UnifiedTimeline /> : <WorkspacePatternStudio />}
-        </div>
+        <UnifiedTimeline />
       </div>
 
       {/* ─── Analysis & Diagnostics Slide-out Panel ─────────────────────── */}
@@ -247,26 +214,4 @@ export function PerformanceWorkspace() {
   );
 }
 
-// ─── Helper Components ──────────────────────────────────────────────────────
-
-function DrawerButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      className={`px-2 py-1 text-xs rounded transition-colors ${
-        active ? 'bg-gray-700 text-gray-200' : 'text-gray-500 hover:text-gray-300'
-      }`}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
-}
 

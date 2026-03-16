@@ -21,7 +21,6 @@ const TRACK_HEIGHT = 32;
 const SIDEBAR_WIDTH = 180;
 const MIN_ZOOM = 30;  // px per second minimum
 const MAX_ZOOM = 500; // px per second maximum
-const DEFAULT_ZOOM = 80;
 
 const FINGER_ABBREV: Record<string, string> = {
   thumb: 'Th', index: 'Ix', middle: 'Md', ring: 'Rg', pinky: 'Pk',
@@ -43,7 +42,7 @@ export function UnifiedTimeline() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
 
-  const [zoom, setZoom] = useState(DEFAULT_ZOOM); // pixels per second
+  const [zoomOverride, setZoomOverride] = useState<number | null>(null); // null = auto-fit
   const [searchQuery, setSearchQuery] = useState('');
 
   // ─── Lane ↔ Stream Sync ──────────────────────────────────────────────────
@@ -60,26 +59,6 @@ export function UnifiedTimeline() {
     }
   }, [state.performanceLanes, dispatch]);
 
-  // ─── Playback RAF Loop ───────────────────────────────────────────────────
-
-  useEffect(() => {
-    let handle: number;
-    let lastTime = performance.now();
-
-    const loop = (time: number) => {
-      const dt = (time - lastTime) / 1000;
-      lastTime = time;
-      dispatch({ type: 'TICK_TIME', payload: dt });
-      handle = requestAnimationFrame(loop);
-    };
-
-    if (state.isPlaying) {
-      lastTime = performance.now();
-      handle = requestAnimationFrame(loop);
-    }
-    return () => cancelAnimationFrame(handle);
-  }, [state.isPlaying, dispatch]);
-
   // ─── Derived Data ────────────────────────────────────────────────────────
 
   const activeStreams = getActiveStreams(state);
@@ -92,7 +71,11 @@ export function UnifiedTimeline() {
     return activeStreams.filter(s => s.name.toLowerCase().includes(q));
   }, [activeStreams, searchQuery]);
 
-  // Compute time range across all streams
+  // Beat duration (used for bar-quantization and grid lines)
+  const beatDurationRaw = 60 / (state.tempo || 120);
+  const barDuration = beatDurationRaw * 4; // 4 beats per bar
+
+  // Compute time range across all streams, snapped to bar boundaries
   const { minTime, maxTime, totalDuration } = useMemo(() => {
     let min = Infinity;
     let max = -Infinity;
@@ -103,11 +86,62 @@ export function UnifiedTimeline() {
         if (end > max) max = end;
       }
     }
-    if (min === Infinity) { min = 0; max = 4; }
-    return { minTime: min, maxTime: max, totalDuration: Math.max(max - min, 0.5) };
-  }, [state.soundStreams]);
+    if (min === Infinity) { min = 0; max = barDuration * 4; }
+    // Snap min down and max up to bar boundaries
+    min = Math.floor(min / barDuration) * barDuration;
+    max = Math.ceil(max / barDuration) * barDuration;
+    if (max <= min) max = min + barDuration;
+    return { minTime: min, maxTime: max, totalDuration: max - min };
+  }, [state.soundStreams, barDuration]);
 
-  // Build per-stream finger assignments (or dummies pre-analysis)
+  // ─── Playback RAF Loop (with looping) ───────────────────────────────────
+
+  const maxTimeRef = useRef(maxTime);
+  const minTimeRef = useRef(minTime);
+  useEffect(() => { maxTimeRef.current = maxTime; minTimeRef.current = minTime; }, [maxTime, minTime]);
+
+  useEffect(() => {
+    let handle: number;
+    let lastTime = performance.now();
+
+    const loop = (time: number) => {
+      const dt = (time - lastTime) / 1000;
+      lastTime = time;
+      const newTime = state.currentTime + dt;
+      if (newTime >= maxTimeRef.current) {
+        dispatch({ type: 'SET_CURRENT_TIME', payload: minTimeRef.current });
+      } else {
+        dispatch({ type: 'TICK_TIME', payload: dt });
+      }
+      handle = requestAnimationFrame(loop);
+    };
+
+    if (state.isPlaying) {
+      lastTime = performance.now();
+      handle = requestAnimationFrame(loop);
+    }
+    return () => cancelAnimationFrame(handle);
+  }, [state.isPlaying, state.currentTime, dispatch]);
+
+  // Auto-fit zoom: measure container width and fill it with the clip
+  const [containerWidth, setContainerWidth] = useState(0);
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const measure = () => setContainerWidth(el.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const autoFitZoom = containerWidth > 0 && totalDuration > 0
+    ? Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, (containerWidth - 20) / totalDuration))
+    : MIN_ZOOM;
+  const zoom = zoomOverride ?? autoFitZoom;
+
+  // Build per-stream finger assignments (or dummies pre-analysis),
+  // then overlay voiceConstraints so user hand/finger selections show immediately
   const streamAssignments = useMemo(() => {
     const map = new Map<string, FingerAssignment[]>();
 
@@ -120,21 +154,30 @@ export function UnifiedTimeline() {
       for (const a of assignments) {
         const streamId = noteToStream.get(a.noteNumber);
         if (streamId) {
+          const constraint = state.voiceConstraints[streamId];
+          const overlaid = constraint
+            ? {
+                ...a,
+                assignedHand: constraint.hand ?? a.assignedHand,
+                finger: (constraint.finger ?? a.finger) as any,
+              }
+            : a;
           const list = map.get(streamId) ?? [];
-          list.push(a);
+          list.push(overlaid);
           map.set(streamId, list);
         }
       }
     } else {
-      // Dummy assignments for pre-analysis rendering
+      // Dummy assignments for pre-analysis rendering — apply constraints if set
       for (const s of activeStreams) {
+        const constraint = state.voiceConstraints[s.id];
         const dummies: FingerAssignment[] = s.events.map((e, i) => ({
           eventKey: e.eventKey,
           eventIndex: i,
           noteNumber: s.originalMidiNote,
           startTime: e.startTime,
-          assignedHand: 'raw' as any,
-          finger: 'unassigned' as any,
+          assignedHand: (constraint?.hand ?? 'raw') as any,
+          finger: (constraint?.finger ?? 'unassigned') as any,
           cost: 0,
           difficulty: 'Easy',
           costBreakdown: { movement: 0, stretch: 0, drift: 0, bounce: 0, fatigue: 0, crossover: 0, total: 0 } as any,
@@ -143,10 +186,10 @@ export function UnifiedTimeline() {
       }
     }
     return map;
-  }, [assignments, activeStreams]);
+  }, [assignments, activeStreams, state.voiceConstraints]);
 
   // Beat grid lines
-  const beatDuration = 60 / (state.tempo || 120);
+  const beatDuration = beatDurationRaw;
   const beatLines = useMemo(() => {
     const lines: Array<{ time: number; x: number; isMeasure: boolean; label: string }> = [];
     const pixelsPerBeat = beatDuration * zoom;
@@ -275,7 +318,7 @@ export function UnifiedTimeline() {
             min={MIN_ZOOM}
             max={MAX_ZOOM}
             value={zoom}
-            onChange={e => setZoom(Number(e.target.value))}
+            onChange={e => setZoomOverride(Number(e.target.value))}
             className="w-20 h-1 accent-blue-500"
           />
         </div>
@@ -393,41 +436,33 @@ export function UnifiedTimeline() {
               />
             )}
 
-            {/* Event blocks + finger pills per stream */}
+            {/* Event pills per stream (single layer — no duplicate blocks) */}
             {visibleStreams.map((stream, trackIdx) => {
               const trackAssignments = streamAssignments.get(stream.id) ?? [];
               const trackY = trackIdx * TRACK_HEIGHT;
 
+              // Build duration lookup from stream events
+              const durationByTime = new Map<number, number>();
+              for (const e of stream.events) {
+                durationByTime.set(e.startTime, e.duration);
+              }
+
               return (
                 <div key={stream.id}>
-                  {/* Base event blocks (from stream events) */}
-                  {stream.events.map((event, ei) => {
-                    const x = (event.startTime - minTime) * zoom;
-                    const w = Math.max(event.duration * zoom, 3);
-
-                    return (
-                      <div
-                        key={`evt-${stream.id}-${ei}`}
-                        className="absolute rounded-sm"
-                        style={{
-                          left: x,
-                          top: trackY + 4,
-                          width: w,
-                          height: TRACK_HEIGHT - 8,
-                          backgroundColor: stream.color,
-                          opacity: 0.5,
-                        }}
-                      />
-                    );
-                  })}
-
-                  {/* Finger assignment pills overlay */}
                   {trackAssignments.map((a, ai) => {
                     const x = (a.startTime - minTime) * zoom;
+                    const eventDuration = durationByTime.get(a.startTime) ?? 0.1;
+                    const w = Math.max(eventDuration * zoom, 6);
                     const style = HAND_COLORS[a.assignedHand] ?? HAND_COLORS.raw;
-                    const fingerLabel = a.finger ? FINGER_ABBREV[a.finger] ?? a.finger : '';
+                    const hand = a.assignedHand as string;
+                    const finger = a.finger as string | null;
+                    const isRaw = hand === 'raw' || finger === 'unassigned';
+                    const fingerLabel = (finger && finger !== 'unassigned') ? FINGER_ABBREV[finger] ?? finger : '';
                     const isSelected = a.eventIndex === state.selectedEventIndex;
                     const handPrefix = a.assignedHand === 'left' ? 'L' : a.assignedHand === 'right' ? 'R' : '';
+
+                    const pillBg = isRaw ? stream.color : style.bg;
+                    const pillText = isRaw ? '#ffffff' : style.text;
 
                     return (
                       <button
@@ -436,18 +471,20 @@ export function UnifiedTimeline() {
                           ${isSelected ? 'z-20 ring-2 ring-yellow-400 scale-110' : 'z-10 hover:z-20 hover:scale-105'}`}
                         style={{
                           left: x,
-                          top: trackY + 5,
-                          width: 18,
-                          height: TRACK_HEIGHT - 10,
-                          backgroundColor: style.bg,
-                          opacity: isSelected ? 1 : 0.85,
+                          top: trackY + 4,
+                          width: w,
+                          height: TRACK_HEIGHT - 8,
+                          backgroundColor: pillBg,
+                          opacity: isSelected ? 1 : isRaw ? 0.5 : 0.85,
                         }}
                         onClick={() => handleEventClick(a.eventIndex ?? ai)}
-                        title={`${a.startTime.toFixed(3)}s | ${handPrefix}-${fingerLabel} | cost: ${a.cost.toFixed(1)} | ${a.difficulty}`}
+                        title={`${a.startTime.toFixed(3)}s${fingerLabel ? ` | ${handPrefix}-${fingerLabel}` : ''}${a.cost ? ` | cost: ${a.cost.toFixed(1)} | ${a.difficulty}` : ''}`}
                       >
-                        <span className="text-[7px] font-bold leading-none" style={{ color: style.text }}>
-                          {fingerLabel}
-                        </span>
+                        {fingerLabel && (
+                          <span className="text-[7px] font-bold leading-none" style={{ color: pillText }}>
+                            {fingerLabel}
+                          </span>
+                        )}
                       </button>
                     );
                   })}

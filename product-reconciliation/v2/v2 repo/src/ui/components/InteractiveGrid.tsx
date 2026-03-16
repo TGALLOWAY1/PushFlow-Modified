@@ -9,7 +9,7 @@
  * - Drop-target highlighting
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import chroma from 'chroma-js';
 import { useProject } from '../state/ProjectContext';
 import { getDisplayedLayout, getActiveStreams, type SoundStream } from '../state/projectState';
@@ -27,6 +27,8 @@ interface InteractiveGridProps {
   layoutOverride?: import('../../types/layout').Layout;
   /** Show onion skin overlay: previous/current/next event layers. */
   onionSkin?: boolean;
+  /** Voice-level hand/finger constraints from SOUNDS panel (keyed by stream ID). */
+  voiceConstraints?: Record<string, { hand?: 'left' | 'right'; finger?: string }>;
 }
 
 /** Abbreviated finger names for display */
@@ -68,7 +70,7 @@ function safeColorAlpha(color: string | null | undefined, alpha: number, fallbac
 /** Physical reach threshold: pads farther apart than this are flagged as impossible. */
 const IMPOSSIBLE_REACH_THRESHOLD = 5;
 
-export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false }: InteractiveGridProps) {
+export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false, voiceConstraints = {} }: InteractiveGridProps) {
   const { state, dispatch } = useProject();
   const layout = layoutOverride ?? getDisplayedLayout(state);
   const activeStreams = getActiveStreams(state);
@@ -85,7 +87,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     return map;
   }, [state.soundStreams]);
 
-  // Build per-pad summary from assignments (analysis results)
+  // Build per-pad summary from assignments, overlaying voiceConstraints
   const padSummaries = useMemo(() => {
     const map = new Map<string, PadSummary>();
     if (!assignments) return map;
@@ -105,12 +107,17 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
         };
         map.set(key, summary);
       }
-      summary.hands.add(a.assignedHand);
-      if (a.finger) summary.fingers.add(`${a.assignedHand[0].toUpperCase()}-${FINGER_ABBREV[a.finger] ?? a.finger}`);
+      // Overlay voiceConstraints: if the user set a hand/finger for this voice, use it
+      const voice = voiceByNote.get(a.noteNumber);
+      const constraint = voice ? voiceConstraints[voice.id] : undefined;
+      const effectiveHand = constraint?.hand ?? a.assignedHand;
+      const effectiveFinger = constraint?.finger ?? a.finger;
+      summary.hands.add(effectiveHand);
+      if (effectiveFinger) summary.fingers.add(`${effectiveHand[0].toUpperCase()}-${FINGER_ABBREV[effectiveFinger] ?? effectiveFinger}`);
       summary.hitCount++;
     }
     return map;
-  }, [assignments, voiceByNote]);
+  }, [assignments, voiceByNote, voiceConstraints]);
 
   // Selected pads: all assignments at the same start time as the selected event
   const selectedPadKeys = useMemo(() => {
@@ -175,11 +182,15 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       });
   }, [selectedTransition]);
 
-  // Active playing pads
+  // Active playing pads — with blink tracking for repeated hits
+  const BLINK_DURATION_MS = 120; // how long the flash lasts
+  const prevActivePadsRef = useRef(new Set<string>());
+  const [blinkingPads, setBlinkingPads] = useState(new Map<string, number>()); // padKey → timestamp
+
   const activePadKeys = useMemo(() => {
     const keys = new Set<string>();
     if (!assignments || (!state.isPlaying && state.currentTime === 0)) return keys;
-    
+
     // Map event keys to durations
     const durationMap = new Map<string, number>();
     for (const stream of state.soundStreams) {
@@ -199,6 +210,39 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     }
     return keys;
   }, [assignments, state.currentTime, state.isPlaying, state.soundStreams]);
+
+  // Detect new note-on events: pads that just became active (weren't active last frame)
+  useEffect(() => {
+    if (!state.isPlaying) {
+      prevActivePadsRef.current = new Set();
+      setBlinkingPads(new Map());
+      return;
+    }
+
+    const prev = prevActivePadsRef.current;
+    const now = Date.now();
+    let hasNew = false;
+    const newBlinks = new Map(blinkingPads);
+
+    // Find pads that are newly active (note-on)
+    for (const key of activePadKeys) {
+      if (!prev.has(key)) {
+        newBlinks.set(key, now);
+        hasNew = true;
+      }
+    }
+
+    // Clean up expired blinks
+    for (const [key, t] of newBlinks) {
+      if (now - t > BLINK_DURATION_MS) {
+        newBlinks.delete(key);
+        hasNew = true;
+      }
+    }
+
+    if (hasNew) setBlinkingPads(newBlinks);
+    prevActivePadsRef.current = new Set(activePadKeys);
+  }, [activePadKeys, state.isPlaying]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle dropping a sound onto a pad
   const handleDrop = useCallback((e: React.DragEvent, padKey: string) => {
@@ -282,6 +326,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const summary = padSummaries.get(padKey);
       const isSelected = selectedPadKeys.has(padKey);
       const isActivePlaying = activePadKeys.has(padKey);
+      const isBlinking = blinkingPads.has(padKey);
       const isNext = nextPadKeys.has(padKey);
       const isPrevious = onionSkin && previousPadKeys.has(padKey) && !isSelected;
       const isShared = sharedPadKeys.has(padKey);
@@ -334,11 +379,13 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
 
       // Active/selected states override glow level, but keep the color if we have one
       const displayGlowColor = glowColor ?? borderColor;
-      const boxGlow = isSelected || isActivePlaying 
-        ? `inset 0 0 15px ${displayGlowColor}, 0 0 10px ${displayGlowColor}`
-        : isGlowActive
-          ? `inset 0 0 8px ${safeColorAlpha(displayGlowColor, 0.3, displayGlowColor)}`
-          : 'none';
+      const boxGlow = isBlinking
+        ? `inset 0 0 25px ${displayGlowColor}, 0 0 18px ${displayGlowColor}, 0 0 4px rgba(255,255,255,0.6)`
+        : isSelected || isActivePlaying
+          ? `inset 0 0 15px ${displayGlowColor}, 0 0 10px ${displayGlowColor}`
+          : isGlowActive
+            ? `inset 0 0 8px ${safeColorAlpha(displayGlowColor, 0.3, displayGlowColor)}`
+            : 'none';
 
       cells.push(
         <div
@@ -348,7 +395,8 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             w-14 h-14 rounded-lg text-[10px] font-mono leading-tight
             border transition-all duration-100 select-none
             ${isSelected ? 'z-10 scale-105 brightness-125 bg-[var(--bg-card)]' : ''}
-            ${isActivePlaying && !isSelected ? 'z-10 scale-105 brightness-150 bg-[var(--bg-card)]' : ''}
+            ${isBlinking && !isSelected ? 'z-10 scale-110 brightness-200 bg-[var(--bg-card)]' : ''}
+            ${isActivePlaying && !isSelected && !isBlinking ? 'z-10 scale-105 brightness-150 bg-[var(--bg-card)]' : ''}
             ${isNext && !isSelected ? 'border-dashed brightness-110' : ''}
             ${isPrevious ? 'opacity-60' : ''}
             ${isShared ? 'ring-1 ring-emerald-400/50' : ''}
