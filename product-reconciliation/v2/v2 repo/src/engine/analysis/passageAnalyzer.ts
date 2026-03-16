@@ -2,9 +2,10 @@
  * Passage Analyzer.
  *
  * Surfaces where difficulty concentrates in a performance
- * and explains why passages are hard.
+ * and explains why passages are hard using canonical factor labels.
  *
  * NEW in PushFlow rebuild (not ported from Version1).
+ * Updated Phase 6: Factor labels normalized to canonical terminology.
  */
 
 import { type ExecutionPlanResult } from '../../types/executionPlan';
@@ -105,14 +106,25 @@ function buildExplanation(
   return parts.join(' ');
 }
 
+/**
+ * Maps factor keys to human-readable labels.
+ * Handles both canonical and legacy factor names for compatibility.
+ */
 function formatFactor(factor: string): string {
   const labels: Record<string, string> = {
-    movement: 'large hand movements',
+    // Canonical factor names (DiagnosticFactors)
+    transition: 'large hand movements between pads',
+    gripNaturalness: 'finger stretching or drift from comfortable position',
+    alternation: 'repeated same-finger usage',
+    handBalance: 'uneven hand workload distribution',
+    constraintPenalty: 'fallback grip penalties',
+    // Legacy factor names (DifficultyBreakdown) — kept for passage scoring compatibility
     stretch: 'finger stretching',
-    drift: 'hand drift from resting position',
-    bounce: 'repeated same-finger usage',
-    fatigue: 'finger fatigue accumulation',
     crossover: 'hand crossover constraints',
+    // Passage-specific factors
+    polyphony: 'simultaneous note density',
+    speed: 'high event rate',
+    mixed: 'multiple contributing factors',
   };
   return labels[factor] ?? factor;
 }
