@@ -26,7 +26,11 @@ import {
   type FingerUsageStats,
   type FatigueMap,
   type DifficultyBreakdown,
+  type PadFingerAssignment,
+  type MomentAssignment,
+  type NoteAssignmentInfo,
 } from '../../types/executionPlan';
+import { MOMENT_EPSILON } from '../../types/performanceEvent';
 import { buildNoteToPadIndex, buildVoiceIdToPadIndex, resolveEventToPad, hashLayout } from '../mapping/mappingResolver';
 import { generateValidGripsWithTier } from '../prior/feasibility';
 import {
@@ -113,6 +117,13 @@ interface BeamNode {
   depth: number;
   leftCount: number;
   rightCount: number;
+  /**
+   * Tracks pad-to-finger ownership across the entire solve.
+   * Key: padKey ("row,col"), Value: { hand, finger }.
+   * Invariant B: once a pad is assigned a finger, all future groups
+   * must use the same finger for that pad.
+   */
+  padOwnership: Map<string, { hand: 'left' | 'right'; finger: FingerType }>;
 }
 
 interface PerformanceGroup {
@@ -138,7 +149,6 @@ function getDifficulty(cost: number): 'Easy' | 'Medium' | 'Hard' | 'Unplayable' 
 function groupEventsByTimestamp(
   events: Array<{ event: PerformanceEvent; index: number; position: PadCoord | null }>
 ): PerformanceGroup[] {
-  const TIME_EPSILON = 0.001;
   const groups: PerformanceGroup[] = [];
   let currentGroup: PerformanceGroup | null = null;
 
@@ -147,7 +157,7 @@ function groupEventsByTimestamp(
 
     const pad: PadCoord = { row: position.row, col: position.col };
 
-    if (!currentGroup || event.startTime - currentGroup.timestamp > TIME_EPSILON) {
+    if (!currentGroup || event.startTime - currentGroup.timestamp > MOMENT_EPSILON) {
       currentGroup = {
         timestamp: event.startTime,
         notes: [event],
@@ -239,6 +249,7 @@ export class BeamSolver implements SolverStrategy {
       depth: 0,
       leftCount: 0,
       rightCount: 0,
+      padOwnership: new Map(),
     }];
   }
 
@@ -270,6 +281,19 @@ export class BeamSolver implements SolverStrategy {
 
       if (uniquePads.length === 0 || uniquePads.length > 5) continue;
 
+      // === Invariant B: Check if any pad in this group is already owned
+      //     by the OTHER hand. If so, skip this hand for the entire group. ===
+      let handConflict = false;
+      for (const pad of uniquePads) {
+        const key = `${pad.row},${pad.col}`;
+        const existing = node.padOwnership.get(key);
+        if (existing && existing.hand !== hand) {
+          handConflict = true;
+          break;
+        }
+      }
+      if (handConflict) continue;
+
       const prevPose = hand === 'left' ? node.leftPose : node.rightPose;
       const restPose = hand === 'left' ? restingPose.left : restingPose.right;
 
@@ -298,7 +322,7 @@ export class BeamSolver implements SolverStrategy {
         // Diagnostic-only costs (computed for display, not in beam score)
         const prevAssignments = node.assignments.map(a => ({ hand: a.hand, finger: a.finger }));
         const gripFingers = Object.keys(grip.fingers) as FingerType[];
-        
+
         // Map notes to the exact finger assigned to their target pad
         const resolvedFingers: FingerType[] = [];
         for (const pos of group.positions) {
@@ -311,6 +335,19 @@ export class BeamSolver implements SolverStrategy {
           }
           resolvedFingers.push(assignedFinger ?? gripFingers[0]);
         }
+
+        // === Invariant B: Check pad ownership consistency ===
+        // Reject grips where a pad's resolved finger conflicts with prior ownership.
+        let ownershipViolation = false;
+        for (let i = 0; i < group.positions.length; i++) {
+          const pKey = `${group.positions[i].row},${group.positions[i].col}`;
+          const existing = node.padOwnership.get(pKey);
+          if (existing && (existing.hand !== hand || existing.finger !== resolvedFingers[i])) {
+            ownershipViolation = true;
+            break;
+          }
+        }
+        if (ownershipViolation) continue;
 
         const currentAssignments = resolvedFingers.map(finger => ({ hand, finger }));
         const alternationCost = calculateAlternationCost(prevAssignments, currentAssignments, rawTimeDelta);
@@ -344,7 +381,7 @@ export class BeamSolver implements SolverStrategy {
 
         const newTotalCost = node.totalCost + stepCostForBeam;
 
-        // === LEGACY DISPLAY COMPONENTS (7-component, for UI backward compatibility) ===
+        // === DISPLAY COMPONENTS (7-component, moment-level — NOT divided per-note) ===
         const stepComponents: ObjectiveComponents = {
           transition: effectiveTransitionCost,
           stretch: staticCost,
@@ -358,18 +395,9 @@ export class BeamSolver implements SolverStrategy {
 
         if (gripFingers.length === 0 || gripFingers.length < uniquePads.length) continue;
 
+        // Build per-note assignments with FULL moment cost (Invariant E)
         const assignments: NoteAssignment[] = [];
         const n = group.notes.length;
-        const costPerNote = displayStepCost / n;
-        const componentsPerNote: ObjectiveComponents = {
-          transition: stepComponents.transition / n,
-          stretch: stepComponents.stretch / n,
-          poseAttractor: stepComponents.poseAttractor / n,
-          perFingerHome: stepComponents.perFingerHome / n,
-          alternation: stepComponents.alternation / n,
-          handBalance: stepComponents.handBalance / n,
-          constraints: stepComponents.constraints / n,
-        };
 
         for (let i = 0; i < n; i++) {
           assignments.push({
@@ -381,11 +409,20 @@ export class BeamSolver implements SolverStrategy {
             hand,
             finger: resolvedFingers[i],
             grip,
-            cost: costPerNote,
+            cost: displayStepCost,
             row: group.positions[i].row,
             col: group.positions[i].col,
-            costComponents: componentsPerNote,
+            costComponents: stepComponents,
           });
+        }
+
+        // === Update pad ownership for newly touched pads ===
+        const newPadOwnership = new Map(node.padOwnership);
+        for (let i = 0; i < group.positions.length; i++) {
+          const pKey = `${group.positions[i].row},${group.positions[i].col}`;
+          if (!newPadOwnership.has(pKey)) {
+            newPadOwnership.set(pKey, { hand, finger: resolvedFingers[i] });
+          }
         }
 
         children.push({
@@ -397,6 +434,7 @@ export class BeamSolver implements SolverStrategy {
           depth: node.depth + 1,
           leftCount: newLeftCount,
           rightCount: newRightCount,
+          padOwnership: newPadOwnership,
         });
       }
     }
@@ -432,10 +470,35 @@ export class BeamSolver implements SolverStrategy {
     const timeDelta = isFirstGroup ? Math.max(rawTimeDelta, 1.0) : rawTimeDelta;
     const { stiffness, restingPose } = config;
 
+    // === Invariant B: Determine hand split respecting prior ownership ===
+    // If prior ownership constrains a pad to a specific hand, honor that.
     const sortedPads = [...uniquePads].sort((a, b) => a.col - b.col);
-    const midpoint = Math.ceil(sortedPads.length / 2);
-    const leftPads = sortedPads.slice(0, midpoint);
-    const rightPads = sortedPads.slice(midpoint);
+
+    // Check if any pad has prior ownership forcing a specific hand
+    const forcedLeft: PadCoord[] = [];
+    const forcedRight: PadCoord[] = [];
+    const unforced: PadCoord[] = [];
+    for (const pad of sortedPads) {
+      const key = `${pad.row},${pad.col}`;
+      const existing = node.padOwnership.get(key);
+      if (existing) {
+        if (existing.hand === 'left') forcedLeft.push(pad);
+        else forcedRight.push(pad);
+      } else {
+        unforced.push(pad);
+      }
+    }
+
+    // If all pads are forced to the same hand, this isn't a valid split
+    if (forcedLeft.length > 0 && forcedRight.length === 0 && unforced.length === 0) return children;
+    if (forcedRight.length > 0 && forcedLeft.length === 0 && unforced.length === 0) return children;
+
+    // Split unforced pads by position
+    const midpoint = Math.ceil(unforced.length / 2);
+    const leftPads = [...forcedLeft, ...unforced.slice(0, midpoint)];
+    const rightPads = [...forcedRight, ...unforced.slice(midpoint)];
+
+    if (leftPads.length === 0 || rightPads.length === 0) return children;
 
     const leftPadKeys = new Set(leftPads.map(p => `${p.row},${p.col}`));
     const leftNoteIndices: number[] = [];
@@ -470,7 +533,6 @@ export class BeamSolver implements SolverStrategy {
         const rightStatic = calculateFingerDominanceCost(rightResult.pose);
         const leftHome = neutralHandCenters ? calculatePerFingerHomeCost(leftResult.pose, 'left', neutralHandCenters, 0.8) : 0;
         const rightHome = neutralHandCenters ? calculatePerFingerHomeCost(rightResult.pose, 'right', neutralHandCenters, 0.8) : 0;
-        // Tier-based penalties for each hand
         const leftConstraintPenalty = leftResult.isFallback
           ? FALLBACK_GRIP_PENALTY
           : leftResult.tier === 'relaxed'
@@ -503,6 +565,30 @@ export class BeamSolver implements SolverStrategy {
           resolvedRightFingers.push(assignedFinger ?? Object.keys(rightResult.pose.fingers)[0] as FingerType);
         }
 
+        // === Invariant B: Check pad ownership consistency ===
+        let ownershipViolation = false;
+        for (let j = 0; j < leftNoteIndices.length; j++) {
+          const i = leftNoteIndices[j];
+          const pKey = `${group.positions[i].row},${group.positions[i].col}`;
+          const existing = node.padOwnership.get(pKey);
+          if (existing && (existing.hand !== 'left' || existing.finger !== resolvedLeftFingers[j])) {
+            ownershipViolation = true;
+            break;
+          }
+        }
+        if (!ownershipViolation) {
+          for (let j = 0; j < rightNoteIndices.length; j++) {
+            const i = rightNoteIndices[j];
+            const pKey = `${group.positions[i].row},${group.positions[i].col}`;
+            const existing = node.padOwnership.get(pKey);
+            if (existing && (existing.hand !== 'right' || existing.finger !== resolvedRightFingers[j])) {
+              ownershipViolation = true;
+              break;
+            }
+          }
+        }
+        if (ownershipViolation) continue;
+
         // Diagnostic-only costs
         const prevAssignments = node.assignments.map(a => ({ hand: a.hand, finger: a.finger }));
         const currentAssignments: Array<{ hand: 'left' | 'right'; finger: FingerType }> = [
@@ -529,15 +615,10 @@ export class BeamSolver implements SolverStrategy {
         };
         let stepCostForBeam = combinePerformabilityComponents(perfComponents);
 
-        // === ALTERNATION COST (promotes finger variety on rapid passages) ===
         stepCostForBeam += alternationCost * ALTERNATION_BEAM_WEIGHT;
-
-        // === HAND BALANCE COST (prevents single-hand dominance) ===
         stepCostForBeam += handBalanceCost * HAND_BALANCE_BEAM_WEIGHT;
 
-        // === 1-STEP LOOKAHEAD BONUS ===
         if (nextGroup && stepCostForBeam > 0) {
-          // Use average of both hand centroids for split-chord lookahead
           const avgCentroid = {
             x: (leftResult.pose.centroid.x + rightResult.pose.centroid.x) / 2,
             y: (leftResult.pose.centroid.y + rightResult.pose.centroid.y) / 2,
@@ -546,7 +627,7 @@ export class BeamSolver implements SolverStrategy {
           stepCostForBeam -= bonus;
         }
 
-        // === LEGACY DISPLAY COMPONENTS (7-component) ===
+        // === DISPLAY COMPONENTS (7-component, moment-level — NOT divided per-note) ===
         const stepComponents: ObjectiveComponents = {
           transition: effectiveLeftTransition + effectiveRightTransition,
           stretch: leftStatic + rightStatic,
@@ -558,18 +639,8 @@ export class BeamSolver implements SolverStrategy {
         };
         const displayStepCost = combineComponents(stepComponents);
 
+        // Build per-note assignments with FULL moment cost (Invariant E)
         const assignments: NoteAssignment[] = [];
-        const n = group.notes.length;
-        const costPerNote = displayStepCost / n;
-        const componentsPerNote: ObjectiveComponents = {
-          transition: stepComponents.transition / n,
-          stretch: stepComponents.stretch / n,
-          poseAttractor: stepComponents.poseAttractor / n,
-          perFingerHome: stepComponents.perFingerHome / n,
-          alternation: stepComponents.alternation / n,
-          handBalance: stepComponents.handBalance / n,
-          constraints: stepComponents.constraints / n,
-        };
 
         for (let j = 0; j < leftNoteIndices.length; j++) {
           const i = leftNoteIndices[j];
@@ -582,10 +653,10 @@ export class BeamSolver implements SolverStrategy {
             hand: 'left',
             finger: resolvedLeftFingers[j],
             grip: leftResult.pose,
-            cost: costPerNote,
+            cost: displayStepCost,
             row: group.positions[i].row,
             col: group.positions[i].col,
-            costComponents: componentsPerNote,
+            costComponents: stepComponents,
           });
         }
         for (let j = 0; j < rightNoteIndices.length; j++) {
@@ -599,11 +670,28 @@ export class BeamSolver implements SolverStrategy {
             hand: 'right',
             finger: resolvedRightFingers[j],
             grip: rightResult.pose,
-            cost: costPerNote,
+            cost: displayStepCost,
             row: group.positions[i].row,
             col: group.positions[i].col,
-            costComponents: componentsPerNote,
+            costComponents: stepComponents,
           });
+        }
+
+        // === Update pad ownership for newly touched pads ===
+        const newPadOwnership = new Map(node.padOwnership);
+        for (let j = 0; j < leftNoteIndices.length; j++) {
+          const i = leftNoteIndices[j];
+          const pKey = `${group.positions[i].row},${group.positions[i].col}`;
+          if (!newPadOwnership.has(pKey)) {
+            newPadOwnership.set(pKey, { hand: 'left', finger: resolvedLeftFingers[j] });
+          }
+        }
+        for (let j = 0; j < rightNoteIndices.length; j++) {
+          const i = rightNoteIndices[j];
+          const pKey = `${group.positions[i].row},${group.positions[i].col}`;
+          if (!newPadOwnership.has(pKey)) {
+            newPadOwnership.set(pKey, { hand: 'right', finger: resolvedRightFingers[j] });
+          }
         }
 
         children.push({
@@ -615,6 +703,7 @@ export class BeamSolver implements SolverStrategy {
           depth: node.depth + 1,
           leftCount: newLeftCount,
           rightCount: newRightCount,
+          padOwnership: newPadOwnership,
         });
       }
     }
@@ -645,7 +734,8 @@ export class BeamSolver implements SolverStrategy {
     unmappedIndices: Set<number>,
     config: EngineConfiguration,
     sortedEvents: Array<{ event: PerformanceEvent; originalIndex: number }>,
-    coverage: { totalNotes: number; unmappedNotesCount: number; fallbackNotesCount: number }
+    coverage: { totalNotes: number; unmappedNotesCount: number; fallbackNotesCount: number },
+    winningPadOwnership?: Map<string, { hand: 'left' | 'right'; finger: FingerType }>,
   ): ExecutionPlanResult {
     const fingerAssignments: FingerAssignment[] = [];
     const fingerUsageStats: FingerUsageStats = {};
@@ -818,16 +908,80 @@ export class BeamSolver implements SolverStrategy {
       topContributors: computeTopContributors(canonicalFactors),
     };
 
+    // === Build pad-to-finger ownership map (Invariant B) ===
+    const padFingerOwnership: PadFingerAssignment = {};
+    if (winningPadOwnership) {
+      for (const [key, value] of winningPadOwnership) {
+        padFingerOwnership[key] = { hand: value.hand, finger: value.finger };
+      }
+    }
+
+    // === Build moment assignments (Invariant E: full moment cost) ===
+    const momentAssignments: MomentAssignment[] = [];
+    let unplayableMomentCount = 0;
+    let hardMomentCount = 0;
+
+    // Group fingerAssignments by startTime into moments
+    const momentGroups = new Map<number, FingerAssignment[]>();
+    for (const fa of fingerAssignments) {
+      const timeKey = Math.round(fa.startTime * 1000); // ms resolution
+      if (!momentGroups.has(timeKey)) momentGroups.set(timeKey, []);
+      momentGroups.get(timeKey)!.push(fa);
+    }
+
+    const sortedTimeKeys = [...momentGroups.keys()].sort((a, b) => a - b);
+    for (let mIdx = 0; mIdx < sortedTimeKeys.length; mIdx++) {
+      const timeKey = sortedTimeKeys[mIdx];
+      const groupAssignments = momentGroups.get(timeKey)!;
+      const startTime = groupAssignments[0].startTime;
+
+      // Use the first non-unplayable assignment's cost as the moment cost,
+      // since cost is now moment-level (all assignments in the group share it)
+      const playableAssignment = groupAssignments.find(a => a.assignedHand !== 'Unplayable');
+      const momentCost = playableAssignment?.cost ?? Infinity;
+      const momentDifficulty = getDifficulty(momentCost);
+      const momentBreakdown = playableAssignment?.costBreakdown ?? {
+        movement: 0, stretch: 0, drift: 0, bounce: 0,
+        fatigue: 0, crossover: 0, total: Infinity,
+      };
+
+      if (momentDifficulty === 'Unplayable') unplayableMomentCount++;
+      else if (momentDifficulty === 'Hard') hardMomentCount++;
+
+      const noteAssignments: NoteAssignmentInfo[] = groupAssignments.map(fa => ({
+        noteNumber: fa.noteNumber,
+        soundId: fa.voiceId ?? String(fa.noteNumber),
+        padId: fa.padId ?? (fa.row !== undefined && fa.col !== undefined ? `${fa.row},${fa.col}` : ''),
+        row: fa.row ?? 0,
+        col: fa.col ?? 0,
+        hand: fa.assignedHand,
+        finger: fa.finger,
+        noteKey: fa.eventKey,
+      }));
+
+      momentAssignments.push({
+        momentIndex: mIdx,
+        startTime,
+        noteAssignments,
+        cost: momentCost,
+        difficulty: momentDifficulty,
+        costBreakdown: momentBreakdown,
+      });
+    }
+
     return {
       score,
       unplayableCount,
       hardCount,
       fingerAssignments,
+      padFingerOwnership,
+      momentAssignments,
+      unplayableMomentCount,
+      hardMomentCount,
       fingerUsageStats,
       fatigueMap,
       averageDrift: driftCount > 0 ? totalDrift / driftCount : 0,
       averageMetrics,
-      // Layout binding: tracks which layout state this plan was computed against
       layoutBinding: this.layout ? {
         layoutId: this.layout.id,
         layoutHash: hashLayout(this.layout),
@@ -1005,7 +1159,7 @@ export class BeamSolver implements SolverStrategy {
                 constraintPenalty: manualConstraintPenalty,
               });
 
-              // Legacy display components (7-component)
+              // Display components (7-component, moment-level — NOT divided per-note)
               const stepComponents: ObjectiveComponents = {
                 transition: effectiveTransition,
                 stretch: staticCost,
@@ -1019,15 +1173,6 @@ export class BeamSolver implements SolverStrategy {
 
               const assignments: NoteAssignment[] = [];
               const n = group.notes.length;
-              const costPerNote = displayStepCost / n;
-              const componentsPerNote: ObjectiveComponents = {
-                transition: stepComponents.transition / n,
-                stretch: stepComponents.stretch / n,
-                poseAttractor: stepComponents.poseAttractor / n,
-                perFingerHome: stepComponents.perFingerHome / n,
-                alternation: 0, handBalance: 0,
-                constraints: stepComponents.constraints / n,
-              };
               const gripFingers = Object.keys(matchingResult.pose.fingers) as FingerType[];
 
               for (let i = 0; i < n; i++) {
@@ -1035,20 +1180,32 @@ export class BeamSolver implements SolverStrategy {
                   eventIndex: group.eventIndices[i],
                   eventKey: group.eventKeys[i],
                   noteNumber: group.notes[i].noteNumber,
-            voiceId: group.notes[i].voiceId,
+                  voiceId: group.notes[i].voiceId,
                   startTime: group.notes[i].startTime,
                   hand: override.hand,
                   finger: gripFingers[i % gripFingers.length] || override.finger,
                   grip: matchingResult.pose,
-                  cost: costPerNote,
+                  cost: displayStepCost,
                   row: group.positions[i].row,
                   col: group.positions[i].col,
-                  costComponents: componentsPerNote,
+                  costComponents: stepComponents,
                 });
               }
 
               const newLeftCount = node.leftCount + (override.hand === 'left' ? n : 0);
               const newRightCount = node.rightCount + (override.hand === 'right' ? n : 0);
+
+              // Update pad ownership for manually overridden pads
+              const newPadOwnership = new Map(node.padOwnership);
+              for (let i = 0; i < n; i++) {
+                const pKey = `${group.positions[i].row},${group.positions[i].col}`;
+                if (!newPadOwnership.has(pKey)) {
+                  newPadOwnership.set(pKey, {
+                    hand: override.hand,
+                    finger: gripFingers[i % gripFingers.length] || override.finger,
+                  });
+                }
+              }
 
               newBeam.push({
                 leftPose: override.hand === 'left' ? matchingResult.pose : node.leftPose,
@@ -1059,6 +1216,7 @@ export class BeamSolver implements SolverStrategy {
                 depth: node.depth + 1,
                 leftCount: newLeftCount,
                 rightCount: newRightCount,
+                padOwnership: newPadOwnership,
               });
             }
             continue;
@@ -1079,15 +1237,15 @@ export class BeamSolver implements SolverStrategy {
       // Safety net: emergency fallback
       if (newBeam.length === 0) {
         const fallbackFingers: FingerType[] = ['index', 'middle', 'ring', 'thumb', 'pinky'];
-        const emergencyComponentsPerNote: ObjectiveComponents = {
+        // Emergency fallback: full moment cost (Invariant E), not divided per-note
+        const emergencyComponents: ObjectiveComponents = {
           transition: 0, stretch: 0, poseAttractor: 0,
           perFingerHome: 0, alternation: 0, handBalance: 0,
-          constraints: FALLBACK_GRIP_PENALTY / group.notes.length,
+          constraints: FALLBACK_GRIP_PENALTY,
         };
 
         for (const node of beam) {
           const assignments: NoteAssignment[] = [];
-          const costPerNote = FALLBACK_GRIP_PENALTY / group.notes.length;
 
           const leftIndices: number[] = [];
           const rightIndices: number[] = [];
@@ -1099,9 +1257,15 @@ export class BeamSolver implements SolverStrategy {
             }
           }
 
+          const newPadOwnership = new Map(node.padOwnership);
+
           for (let j = 0; j < Math.min(leftIndices.length, fallbackFingers.length); j++) {
             const i = leftIndices[j];
-            const finger = fallbackFingers[j];
+            const pKey = `${group.positions[i].row},${group.positions[i].col}`;
+            // Respect prior ownership if exists
+            const existing = node.padOwnership.get(pKey);
+            const finger = existing ? existing.finger : fallbackFingers[j];
+            const hand = existing ? existing.hand : 'left' as const;
             const fallbackGrip: HandPose = {
               centroid: { x: group.positions[i].col, y: group.positions[i].row },
               fingers: { [finger]: { x: group.positions[i].col, y: group.positions[i].row } },
@@ -1110,19 +1274,25 @@ export class BeamSolver implements SolverStrategy {
               eventIndex: group.eventIndices[i],
               eventKey: group.eventKeys[i],
               noteNumber: group.notes[i].noteNumber,
-            voiceId: group.notes[i].voiceId,
+              voiceId: group.notes[i].voiceId,
               startTime: group.notes[i].startTime,
-              hand: 'left', finger,
+              hand, finger,
               grip: fallbackGrip,
-              cost: costPerNote,
+              cost: FALLBACK_GRIP_PENALTY,
               row: group.positions[i].row,
               col: group.positions[i].col,
-              costComponents: emergencyComponentsPerNote,
+              costComponents: emergencyComponents,
             });
+            if (!newPadOwnership.has(pKey)) {
+              newPadOwnership.set(pKey, { hand, finger });
+            }
           }
           for (let j = 0; j < Math.min(rightIndices.length, fallbackFingers.length); j++) {
             const i = rightIndices[j];
-            const finger = fallbackFingers[j];
+            const pKey = `${group.positions[i].row},${group.positions[i].col}`;
+            const existing = node.padOwnership.get(pKey);
+            const finger = existing ? existing.finger : fallbackFingers[j];
+            const hand = existing ? existing.hand : 'right' as const;
             const fallbackGrip: HandPose = {
               centroid: { x: group.positions[i].col, y: group.positions[i].row },
               fingers: { [finger]: { x: group.positions[i].col, y: group.positions[i].row } },
@@ -1131,15 +1301,18 @@ export class BeamSolver implements SolverStrategy {
               eventIndex: group.eventIndices[i],
               eventKey: group.eventKeys[i],
               noteNumber: group.notes[i].noteNumber,
-            voiceId: group.notes[i].voiceId,
+              voiceId: group.notes[i].voiceId,
               startTime: group.notes[i].startTime,
-              hand: 'right', finger,
+              hand, finger,
               grip: fallbackGrip,
-              cost: costPerNote,
+              cost: FALLBACK_GRIP_PENALTY,
               row: group.positions[i].row,
               col: group.positions[i].col,
-              costComponents: emergencyComponentsPerNote,
+              costComponents: emergencyComponents,
             });
+            if (!newPadOwnership.has(pKey)) {
+              newPadOwnership.set(pKey, { hand, finger });
+            }
           }
 
           const firstFallbackGrip: HandPose = {
@@ -1157,6 +1330,7 @@ export class BeamSolver implements SolverStrategy {
             depth: node.depth + 1,
             leftCount: node.leftCount + leftIndices.length,
             rightCount: node.rightCount + rightIndices.length,
+            padOwnership: newPadOwnership,
           });
         }
       }
@@ -1177,7 +1351,7 @@ export class BeamSolver implements SolverStrategy {
     };
 
     if (beam.length === 0) {
-      return this.buildResult([], performance.events.length, unmappedIndices, effectiveConfig, sortedEvents, coverage);
+      return this.buildResult([], performance.events.length, unmappedIndices, effectiveConfig, sortedEvents, coverage, new Map());
     }
 
     const bestNode = beam.reduce((best, node) =>
@@ -1185,7 +1359,7 @@ export class BeamSolver implements SolverStrategy {
     );
 
     const assignments = this.backtrack(bestNode);
-    return this.buildResult(assignments, performance.events.length, unmappedIndices, effectiveConfig, sortedEvents, coverage);
+    return this.buildResult(assignments, performance.events.length, unmappedIndices, effectiveConfig, sortedEvents, coverage, bestNode.padOwnership);
   }
 }
 

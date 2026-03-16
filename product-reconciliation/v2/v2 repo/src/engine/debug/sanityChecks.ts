@@ -17,6 +17,7 @@
 
 import { type ExecutionPlanResult } from '../../types/executionPlan';
 import { type SanityCheckResult, type SanityCheckReport } from './types';
+import { validatePadOwnershipConsistency } from '../structure/momentBuilder';
 
 /**
  * Default thresholds for sanity checks.
@@ -60,6 +61,7 @@ export function runSanityChecks(
   checks.push(checkHandBalance(result, t.maxHandImbalancePercent));
   checks.push(checkAverageCost(result, t.maxAverageCost));
   checks.push(checkSameFingerRepeat(result, t.maxSameFingerRepeatPercent));
+  checks.push(checkPadOwnershipConsistency(result));
 
   const allPassed = checks.every(c => c.passed);
   const warnings = checks.filter(c => !c.passed && c.severity === 'warning').length;
@@ -277,5 +279,26 @@ function checkSameFingerRepeat(
       ? `Same-finger rapid repeat rate ${pct.toFixed(1)}% is within threshold (${threshold}%)`
       : `Same-finger rapid repeat rate ${pct.toFixed(1)}% exceeds ${threshold}% — alternation not working properly`,
     severity: pct > threshold * 1.5 ? 'error' : 'warning',
+  };
+}
+
+/**
+ * Checks that no pad is assigned to multiple different fingers
+ * across the entire solution (Invariant B).
+ */
+function checkPadOwnershipConsistency(
+  result: ExecutionPlanResult,
+): SanityCheckResult {
+  const { valid, violations } = validatePadOwnershipConsistency(result.fingerAssignments);
+
+  return {
+    name: 'pad_ownership_consistency',
+    passed: valid,
+    actual: violations.length,
+    threshold: 0,
+    message: valid
+      ? 'Pad ownership is consistent — each pad maps to exactly one finger'
+      : `${violations.length} pad(s) assigned to multiple fingers: ${violations.map(v => v.padKey).join(', ')}`,
+    severity: 'error',
   };
 }

@@ -8,14 +8,15 @@
  * Extracted from the BeamSolver's internal groupEventsByTimestamp logic.
  */
 
-import { type PerformanceEvent } from '../../types/performanceEvent';
+import { type PerformanceEvent, MOMENT_EPSILON } from '../../types/performanceEvent';
 import { type SimultaneityGroup } from '../../types/performanceStructure';
 
 /**
  * Events within this window (in seconds) are considered simultaneous.
- * 1ms epsilon handles floating-point timing imprecision.
+ * Uses the canonical MOMENT_EPSILON from performanceEvent.ts.
+ * @deprecated Import MOMENT_EPSILON from '../../types/performanceEvent' directly.
  */
-export const TIME_EPSILON = 0.001;
+export const TIME_EPSILON = MOMENT_EPSILON;
 
 /**
  * Group performance events by timestamp into simultaneity groups.

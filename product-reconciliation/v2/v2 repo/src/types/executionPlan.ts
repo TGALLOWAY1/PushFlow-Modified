@@ -13,6 +13,62 @@
 import { type DiagnosticsPayload } from './diagnostics';
 import { type FingerType } from './fingerModel';
 
+// ============================================================================
+// Pad-to-Finger Ownership (Invariant B)
+// ============================================================================
+
+/**
+ * PadFingerAssignment: Stable mapping of pads to fingers for an entire solution.
+ *
+ * Invariant B: Within an active solution, each pad maps to exactly one finger.
+ * Different candidate solutions may assign different fingers (Invariant D).
+ */
+export type PadFingerAssignment = Record<string, {
+  hand: 'left' | 'right';
+  finger: FingerType;
+}>;
+
+// ============================================================================
+// Moment-Level Assignment Types
+// ============================================================================
+
+/**
+ * NoteAssignment: Per-note finger/hand info within a moment.
+ * Carries identity and position but NOT split cost.
+ */
+export interface NoteAssignmentInfo {
+  noteNumber: number;
+  soundId: string;
+  padId: string;
+  row: number;
+  col: number;
+  hand: 'left' | 'right' | 'Unplayable';
+  finger: FingerType | null;
+  noteKey?: string;
+}
+
+/**
+ * MomentAssignment: Per-moment assignment with full moment-level cost.
+ *
+ * Invariant E: Cost is per-moment, not divided per-note.
+ * The difficulty of a moment reflects the combined hand pose required
+ * to play all notes simultaneously.
+ */
+export interface MomentAssignment {
+  /** Index of this moment in the performance timeline. */
+  momentIndex: number;
+  /** Absolute start time in seconds. */
+  startTime: number;
+  /** Per-note assignments within this moment. */
+  noteAssignments: NoteAssignmentInfo[];
+  /** Full moment-level cost (NOT divided per-note). */
+  cost: number;
+  /** Difficulty classification for this moment. */
+  difficulty: DifficultyLevel;
+  /** Full cost breakdown for this moment. */
+  costBreakdown: DifficultyBreakdown;
+}
+
 /**
  * DifficultyBreakdown: Per-event or aggregate breakdown of difficulty by factor.
  *
@@ -163,6 +219,24 @@ export interface ExecutionPlanResult {
   hardCount: number;
   /** Per-event finger assignments. */
   fingerAssignments: FingerAssignment[];
+
+  /**
+   * Stable pad-to-finger ownership for the entire solution.
+   * Invariant B: each pad maps to exactly one finger within a solution.
+   */
+  padFingerOwnership?: PadFingerAssignment;
+
+  /**
+   * Per-moment assignments with full moment-level cost.
+   * Invariant E: cost is per-moment, not divided per-note.
+   */
+  momentAssignments?: MomentAssignment[];
+
+  /** Count of moments classified as Unplayable. */
+  unplayableMomentCount?: number;
+  /** Count of moments classified as Hard. */
+  hardMomentCount?: number;
+
   /** Per-finger usage counts. */
   fingerUsageStats: FingerUsageStats;
   /** Per-finger fatigue levels. */

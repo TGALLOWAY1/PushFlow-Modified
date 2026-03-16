@@ -124,7 +124,13 @@ export function computeCompositeDifficultyScore(
 // Moment Grouping
 // ============================================================================
 
-const EVENT_TIME_EPSILON = 1e-4;
+import { MOMENT_EPSILON } from '../../types/performanceEvent';
+
+/**
+ * @deprecated Use MOMENT_EPSILON from performanceEvent.ts.
+ * Kept for backward compatibility; value now matches canonical epsilon.
+ */
+const EVENT_TIME_EPSILON = MOMENT_EPSILON;
 
 /**
  * Groups finger assignments by timestamp into analyzed moments.
