@@ -187,3 +187,25 @@ export {
   type TransitionExplanation,
   type HardMomentReport,
 } from './analysis/eventExplainer';
+
+// Canonical Cost Evaluation API
+// These are the primary evaluation entry points. They do NOT require the beam solver.
+export {
+  evaluateEvent,
+  evaluateTransition,
+  evaluatePerformance,
+  compareLayouts,
+  validateAssignment,
+  type EvaluateEventInput,
+  type EvaluateTransitionInput,
+  type EvaluatePerformanceInput,
+  type CompareLayoutsInput,
+  type ValidateAssignmentInput,
+} from './evaluation/canonicalEvaluator';
+
+// Pose Builder (used internally by canonical evaluator, also useful standalone)
+export {
+  buildMomentPoses,
+  getHandForPad,
+  type MomentPoseResult,
+} from './evaluation/poseBuilder';
