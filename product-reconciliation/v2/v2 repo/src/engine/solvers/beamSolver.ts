@@ -35,6 +35,8 @@ import { buildNoteToPadIndex, buildVoiceIdToPadIndex, resolveEventToPad, hashLay
 import { allPadsInZone } from '../surface/handZone';
 import { generateValidGripsWithTier } from '../prior/feasibility';
 import {
+  calculateHandShapeDeviation,
+  buildNaturalPairwiseDistances,
   calculatePoseNaturalness,
   calculateAttractorCost,
   calculateTransitionCost,
@@ -224,6 +226,7 @@ export class BeamSolver implements SolverStrategy {
     prevTimestamp: number,
     config: EngineConfiguration,
     neutralHandCenters?: NeutralHandCentersResult | null,
+    naturalDistances?: { left: Map<string, number>; right: Map<string, number> },
   ): BeamNode[] {
     const children: BeamNode[] = [];
     const rawTimeDelta = group.timestamp - prevTimestamp;
@@ -274,11 +277,20 @@ export class BeamSolver implements SolverStrategy {
         if (transitionCost === Infinity && !isFirstGroup) continue;
 
         const effectiveTransitionCost = transitionCost === Infinity ? 0 : transitionCost;
+
+        // V1 (D-05, D-20): Translation-invariant hand shape deviation + finger preference
+        const handNaturalDist = naturalDistances
+          ? (hand === 'left' ? naturalDistances.left : naturalDistances.right)
+          : new Map<string, number>();
+        const handShapeDeviation = calculateHandShapeDeviation(grip, handNaturalDist);
+        const fingerPreferenceCost = calculateFingerDominanceCost(grip);
+
+        // Legacy sub-components (computed for display backward compat)
         const attractorCost = calculateAttractorCost(grip, restPose, stiffness);
-        const staticCost = calculateFingerDominanceCost(grip);
         const perFingerHomeCost = neutralHandCenters
           ? calculatePerFingerHomeCost(grip, hand, neutralHandCenters, 0.8)
           : 0;
+
         // V1 (D-01): No tier penalties — all grips are strict tier
         const constraintPenalty = 0;
 
@@ -319,10 +331,8 @@ export class BeamSolver implements SolverStrategy {
         const newRightCount = node.rightCount + (hand === 'right' ? group.notes.length : 0);
         const handBalanceCost = calculateHandBalanceCost(newLeftCount, newRightCount);
 
-        // === PRIMARY SCORE (3-component PerformabilityObjective) ===
-        const poseNaturalness = calculatePoseNaturalness(
-          grip, restPose, stiffness, hand, neutralHandCenters ?? null
-        );
+        // === PRIMARY SCORE (V1: hand shape deviation + finger preference + transition) ===
+        const poseNaturalness = handShapeDeviation + fingerPreferenceCost;
         const perfComponents: PerformabilityObjective = {
           poseNaturalness,
           transitionDifficulty: effectiveTransitionCost,
@@ -341,7 +351,7 @@ export class BeamSolver implements SolverStrategy {
         // === DISPLAY COMPONENTS (7-component, moment-level — NOT divided per-note) ===
         const stepComponents: ObjectiveComponents = {
           transition: effectiveTransitionCost,
-          stretch: staticCost,
+          stretch: fingerPreferenceCost,
           poseAttractor: attractorCost,
           perFingerHome: perFingerHomeCost,
           alternation: alternationCost,
@@ -405,6 +415,7 @@ export class BeamSolver implements SolverStrategy {
     prevTimestamp: number,
     config: EngineConfiguration,
     neutralHandCenters?: NeutralHandCentersResult | null,
+    naturalDistances?: { left: Map<string, number>; right: Map<string, number> },
   ): BeamNode[] {
     const children: BeamNode[] = [];
 
@@ -486,10 +497,22 @@ export class BeamSolver implements SolverStrategy {
 
         const effectiveLeftTransition = leftTransition === Infinity ? 0 : leftTransition;
         const effectiveRightTransition = rightTransition === Infinity ? 0 : rightTransition;
+
+        // V1 (D-05, D-20): Translation-invariant hand shape deviation
+        const leftShapeDev = calculateHandShapeDeviation(
+          leftResult.pose,
+          naturalDistances ? naturalDistances.left : new Map<string, number>()
+        );
+        const rightShapeDev = calculateHandShapeDeviation(
+          rightResult.pose,
+          naturalDistances ? naturalDistances.right : new Map<string, number>()
+        );
+        const leftFingerPref = calculateFingerDominanceCost(leftResult.pose);
+        const rightFingerPref = calculateFingerDominanceCost(rightResult.pose);
+
+        // Legacy sub-components (for display backward compat)
         const leftAttractor = calculateAttractorCost(leftResult.pose, restingPose.left, stiffness);
         const rightAttractor = calculateAttractorCost(rightResult.pose, restingPose.right, stiffness);
-        const leftStatic = calculateFingerDominanceCost(leftResult.pose);
-        const rightStatic = calculateFingerDominanceCost(rightResult.pose);
         const leftHome = neutralHandCenters ? calculatePerFingerHomeCost(leftResult.pose, 'left', neutralHandCenters, 0.8) : 0;
         const rightHome = neutralHandCenters ? calculatePerFingerHomeCost(rightResult.pose, 'right', neutralHandCenters, 0.8) : 0;
         // V1 (D-01): No tier penalties — all grips are strict tier
@@ -553,15 +576,10 @@ export class BeamSolver implements SolverStrategy {
         const newRightCount = node.rightCount + rightNoteIndices.length;
         const handBalanceCost = calculateHandBalanceCost(newLeftCount, newRightCount);
 
-        // === PRIMARY SCORE (3-component PerformabilityObjective) ===
-        const leftPoseNat = calculatePoseNaturalness(
-          leftResult.pose, restingPose.left, stiffness, 'left', neutralHandCenters ?? null
-        );
-        const rightPoseNat = calculatePoseNaturalness(
-          rightResult.pose, restingPose.right, stiffness, 'right', neutralHandCenters ?? null
-        );
+        // === PRIMARY SCORE (V1: hand shape deviation + finger preference + transition) ===
+        const totalPoseNat = (leftShapeDev + leftFingerPref) + (rightShapeDev + rightFingerPref);
         const perfComponents: PerformabilityObjective = {
-          poseNaturalness: leftPoseNat + rightPoseNat,
+          poseNaturalness: totalPoseNat,
           transitionDifficulty: effectiveLeftTransition + effectiveRightTransition,
           constraintPenalty: leftConstraintPenalty + rightConstraintPenalty,
         };
@@ -573,7 +591,7 @@ export class BeamSolver implements SolverStrategy {
         // === DISPLAY COMPONENTS (7-component, moment-level — NOT divided per-note) ===
         const stepComponents: ObjectiveComponents = {
           transition: effectiveLeftTransition + effectiveRightTransition,
-          stretch: leftStatic + rightStatic,
+          stretch: leftFingerPref + rightFingerPref,
           poseAttractor: leftAttractor + rightAttractor,
           perFingerHome: leftHome + rightHome,
           alternation: alternationCost,
@@ -1006,6 +1024,15 @@ export class BeamSolver implements SolverStrategy {
       }
     }
 
+    // V1 (D-05, D-20): Precompute natural pairwise distances for hand shape deviation
+    const naturalPads = neutralHandCenters?.neutralPads;
+    const leftNaturalDistances = naturalPads
+      ? buildNaturalPairwiseDistances(naturalPads, 'left')
+      : new Map<string, number>();
+    const rightNaturalDistances = naturalPads
+      ? buildNaturalPairwiseDistances(naturalPads, 'right')
+      : new Map<string, number>();
+
     // When Pose 0 override is present, use it as the resting pose.
     // Stiffness is no longer doubled — the original 2× multiplier over-constrained
     // the solver when Pose0 was defined, making it reluctant to deviate from rest
@@ -1100,8 +1127,14 @@ export class BeamSolver implements SolverStrategy {
                 : effectiveConfig.restingPose.right;
 
               const transitionCost = calculateTransitionCost(prevPose, matchingResult.pose, timeDelta);
+
+              // V1 (D-05, D-20): Translation-invariant hand shape deviation
+              const manualNaturalDist = override.hand === 'left' ? leftNaturalDistances : rightNaturalDistances;
+              const manualShapeDev = calculateHandShapeDeviation(matchingResult.pose, manualNaturalDist);
+              const manualFingerPref = calculateFingerDominanceCost(matchingResult.pose);
+
+              // Legacy sub-components (for display)
               const attractorCost = calculateAttractorCost(matchingResult.pose, restPose, effectiveConfig.stiffness);
-              const staticCost = calculateFingerDominanceCost(matchingResult.pose);
               const perFingerHomeCost = neutralHandCenters
                 ? calculatePerFingerHomeCost(matchingResult.pose, override.hand, neutralHandCenters, 0.8)
                 : 0;
@@ -1109,11 +1142,8 @@ export class BeamSolver implements SolverStrategy {
               const manualConstraintPenalty = 0;
               const effectiveTransition = transitionCost === Infinity ? 100 : transitionCost;
 
-              // Primary score (3-component) for beam
-              const poseNat = calculatePoseNaturalness(
-                matchingResult.pose, restPose, effectiveConfig.stiffness,
-                override.hand, neutralHandCenters ?? null
-              );
+              // Primary score (V1: shape deviation + finger preference + transition)
+              const poseNat = manualShapeDev + manualFingerPref;
               const stepCostForBeam = combinePerformabilityComponents({
                 poseNaturalness: poseNat,
                 transitionDifficulty: effectiveTransition,
@@ -1123,7 +1153,7 @@ export class BeamSolver implements SolverStrategy {
               // Display components (7-component, moment-level — NOT divided per-note)
               const stepComponents: ObjectiveComponents = {
                 transition: effectiveTransition,
-                stretch: staticCost,
+                stretch: manualFingerPref,
                 poseAttractor: attractorCost,
                 perFingerHome: perFingerHomeCost,
                 alternation: 0,
@@ -1185,12 +1215,13 @@ export class BeamSolver implements SolverStrategy {
         }
 
         // Standard expansion
-        const children = this.expandNodeForGroup(node, group, prevTimestamp, effectiveConfig, neutralHandCenters);
+        const natDist = { left: leftNaturalDistances, right: rightNaturalDistances };
+        const children = this.expandNodeForGroup(node, group, prevTimestamp, effectiveConfig, neutralHandCenters, natDist);
         newBeam.push(...children);
 
         // Split-hand approach for chords
         if (group.activePads.length >= 2) {
-          const splitChildren = this.expandNodeForSplitChord(node, group, prevTimestamp, config, neutralHandCenters);
+          const splitChildren = this.expandNodeForSplitChord(node, group, prevTimestamp, config, neutralHandCenters, natDist);
           newBeam.push(...splitChildren);
         }
       }

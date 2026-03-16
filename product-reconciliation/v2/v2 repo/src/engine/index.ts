@@ -66,6 +66,8 @@ export { seedLayoutFromPose0 } from './mapping/seedFromPose';
 
 // Evaluation (primary scoring model)
 export {
+  calculateHandShapeDeviation,
+  buildNaturalPairwiseDistances,
   calculatePoseNaturalness,
   calculateTransitionCost,
   calculateAttractorCost,
