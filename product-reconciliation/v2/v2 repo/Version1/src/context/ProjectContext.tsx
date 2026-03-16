@@ -1,0 +1,442 @@
+import React, { createContext, useContext, ReactNode, useMemo } from 'react';
+import { ProjectState, DEFAULT_ENGINE_CONFIGURATION } from '../types/projectState';
+import { createDefaultPose0 } from '../types/naturalHandPose';
+import { InstrumentConfig } from '../types/performance';
+import { useProjectHistory } from '../hooks/useProjectHistory';
+import { EngineResult, BiomechanicalSolver, SolverType } from '../engine/core';
+import { FingerType } from '../engine/models';
+import { getActivePerformance } from '../utils/performanceSelectors';
+import { GridMapping, LayoutMode } from '../types/layout';
+import { createAnnealingSolver } from '../engine/solvers/AnnealingSolver';
+import { buildNeutralGreedyInitialAssignment } from '../engine/solvers/greedyInitialAssignment';
+import { getNeutralPadPositionsFromPose0 } from '../engine/handPose';
+import { poseHasAssignments } from '../types/naturalHandPose';
+
+// Initial Data
+const INITIAL_INSTRUMENT_CONFIG: InstrumentConfig = {
+    id: 'inst-1',
+    name: 'Standard Drum Kit',
+    bottomLeftNote: 36, // C2
+    rows: 8,
+    cols: 8,
+    layoutMode: 'drum_64'
+};
+
+const INITIAL_PROJECT_STATE: ProjectState = {
+    layouts: [],
+    instrumentConfigs: [INITIAL_INSTRUMENT_CONFIG],
+    sectionMaps: [], // Initialize empty
+    instrumentConfig: INITIAL_INSTRUMENT_CONFIG,
+    activeLayoutId: null,
+    activeMappingId: null,
+    projectTempo: 120,
+    parkedSounds: [],
+    mappings: [],
+    ignoredNoteNumbers: [],
+    manualAssignments: {},
+    // Engine configuration with defaults:
+    // - beamWidth: 50 (balance between accuracy and performance)
+    // - stiffness: 1.0 (strong attractor force to home position)
+    // - restingPose: Standard Hand "Claw" shape at (2,2) left, (5,2) right
+    engineConfiguration: DEFAULT_ENGINE_CONFIGURATION,
+    solverResults: {},
+    activeSolverId: undefined,
+    naturalHandPoses: [createDefaultPose0()],
+};
+
+
+
+interface ProjectContextType {
+    projectState: ProjectState;
+    setProjectState: (state: ProjectState | ((prev: ProjectState) => ProjectState), skipHistory?: boolean) => void;
+    undo: () => void;
+    redo: () => void;
+    canUndo: boolean;
+    canRedo: boolean;
+    /** 
+     * Currently active engine result (derived from solverResults[activeSolverId]).
+     * This is the result that should be visualized on the grid.
+     */
+    engineResult: EngineResult | null;
+    /** 
+     * @deprecated Removed in favor of running explicit solvers via runSolver()
+     */
+    setEngineResult?: never;
+    /**
+     * Runs a solver and stores the result in the solverResults map.
+     * The result is stored under the solverType key (e.g., 'beam', 'genetic').
+     * Does NOT overwrite results from different solvers.
+     * 
+     * @param solverType - The solver algorithm to run ('beam' | 'genetic')
+     * @param activeMapping - Optional grid mapping to use (defaults to first mapping)
+     * @returns Promise that resolves when the solver completes
+     */
+    runSolver: (solverType: SolverType, activeMapping?: GridMapping | null) => Promise<void>;
+    /**
+     * Sets the active solver ID, which determines which result is visualized.
+     * 
+     * @param solverId - The solver ID (must exist in solverResults)
+     */
+    setActiveSolverId: (solverId: string) => void;
+    /**
+     * Gets a specific solver result by ID.
+     * 
+     * @param solverId - The solver ID
+     * @returns The engine result, or null if not found
+     */
+    getSolverResult: (solverId: string) => EngineResult | null;
+    /**
+     * Optimizes the layout using Simulated Annealing.
+     * This will rearrange pad assignments to minimize ergonomic cost.
+     * 
+     * @param activeMapping - The mapping to optimize (defaults to first mapping)
+     * @returns Promise that resolves when optimization completes
+     */
+    optimizeLayout: (activeMapping?: GridMapping | null) => Promise<void>;
+    /**
+     * Sets initial finger assignments using a greedy heuristic seeded from the neutral hand pose.
+     * This creates a reasonable starting point for solvers instead of random initialization.
+     * 
+     * @param activeMapping - The mapping to use (defaults to first mapping)
+     * @returns Promise that resolves when assignments are set
+     */
+    setInitialStateFromNeutralPose: (activeMapping?: GridMapping | null) => Promise<void>;
+}
+
+const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
+
+export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    const {
+        projectState,
+        setProjectState,
+        undo,
+        redo,
+        canUndo,
+        canRedo,
+    } = useProjectHistory(INITIAL_PROJECT_STATE);
+
+
+
+    // Derive active result from solverResults map
+    const activeResult = useMemo(() => {
+        const { solverResults, activeSolverId } = projectState;
+
+        // If activeSolverId is set and exists in results, use it
+        if (activeSolverId && solverResults && solverResults[activeSolverId]) {
+            return solverResults[activeSolverId];
+        }
+
+        return null;
+    }, [projectState.solverResults, projectState.activeSolverId]);
+
+    /**
+     * Runs a solver and stores the result in the solverResults map.
+     * Mapping is resolved via activeMappingId only (no first-mapping fallback).
+     */
+    const runSolver = async (solverType: SolverType, activeMapping?: GridMapping | null): Promise<void> => {
+        // Get filtered performance
+        const filteredPerformance = getActivePerformance(projectState);
+        if (!filteredPerformance) {
+            console.warn('[ProjectContext] Cannot run solver: no active performance');
+            return;
+        }
+
+        // Resolve mapping via activeMappingId (caller may pass activeMapping for consistency)
+        const mapping = activeMapping ?? (projectState.activeMappingId
+            ? projectState.mappings.find(m => m.id === projectState.activeMappingId) ?? null
+            : null);
+
+        // When mappings exist but none selected, require activeMappingId
+        if (!mapping && projectState.mappings.length > 0) {
+            throw new Error('No active mapping selected. Please select a mapping from the layout dropdown.');
+        }
+
+        // Get manual assignments for current layout (keyed by eventKey for stable identity)
+        const currentLayoutId = projectState.activeLayoutId;
+        const manualAssignments: Record<string, { hand: 'left' | 'right'; finger: FingerType }> | undefined =
+            currentLayoutId && projectState.manualAssignments
+                ? projectState.manualAssignments[currentLayoutId]
+                : undefined;
+
+        try {
+            // Create solver with the specified type
+            const solver = new BiomechanicalSolver(
+                projectState.instrumentConfig,
+                mapping,
+                undefined, // Use default engine constants
+                projectState.engineConfiguration || DEFAULT_ENGINE_CONFIGURATION,
+                solverType
+            );
+
+            // Apply Natural Hand Pose 0 override if available
+            const pose0 = projectState.naturalHandPoses?.[0];
+            if (pose0 && poseHasAssignments(pose0)) {
+                const neutralPadOverride = getNeutralPadPositionsFromPose0(
+                    pose0,
+                    undefined, // Auto-pick max safe offset
+                    projectState.instrumentConfig
+                );
+                if (neutralPadOverride) {
+                    solver.setNeutralPadPositionsOverride(neutralPadOverride);
+                }
+            }
+
+            // Run solver (async for genetic, sync for beam). Pass string-keyed manualAssignments as-is.
+            let result: EngineResult;
+            if (solverType === 'genetic') {
+                // Genetic solver is always async
+                result = await solver.solveAsync(filteredPerformance, manualAssignments);
+            } else {
+                // Beam solver supports sync
+                try {
+                    result = solver.solve(filteredPerformance, manualAssignments);
+                } catch (error) {
+                    // Fallback to async if sync fails
+                    result = await solver.solveAsync(filteredPerformance, manualAssignments);
+                }
+            }
+
+            // Store result in solverResults map
+            setProjectState(prev => ({
+                ...prev,
+                solverResults: {
+                    ...(prev.solverResults || {}),
+                    [solverType]: result,
+                },
+                // Auto-set as active if no active solver is set
+                activeSolverId: prev.activeSolverId || solverType,
+            }));
+
+            console.log(`[ProjectContext] Solver '${solverType}' completed:`, {
+                score: result.score,
+                hardCount: result.hardCount,
+                unplayableCount: result.unplayableCount,
+            });
+        } catch (error) {
+            console.error(`[ProjectContext] Solver '${solverType}' failed:`, error);
+            throw error;
+        }
+    };
+
+    /**
+     * Sets the active solver ID.
+     */
+    const setActiveSolverId = (solverId: string): void => {
+        setProjectState(prev => {
+            // Validate that the solver ID exists in results
+            if (prev.solverResults && prev.solverResults[solverId]) {
+                return {
+                    ...prev,
+                    activeSolverId: solverId,
+                };
+            }
+            console.warn(`[ProjectContext] Cannot set active solver: '${solverId}' not found in results`);
+            return prev;
+        });
+    };
+
+    /**
+     * Gets a specific solver result by ID.
+     */
+    const getSolverResult = (solverId: string): EngineResult | null => {
+        return projectState.solverResults?.[solverId] || null;
+    };
+
+    /**
+     * Optimizes the layout using Simulated Annealing.
+     * Mapping is resolved via activeMappingId only (no first-mapping fallback).
+     */
+    const optimizeLayout = async (activeMapping?: GridMapping | null): Promise<void> => {
+        // Get filtered performance
+        const filteredPerformance = getActivePerformance(projectState);
+        if (!filteredPerformance) {
+            console.warn('[ProjectContext] Cannot optimize layout: no active performance');
+            throw new Error('No performance data available. Please load a MIDI file first.');
+        }
+
+        // Resolve mapping via activeMappingId (caller may pass activeMapping for consistency)
+        const mapping = activeMapping ?? (projectState.activeMappingId
+            ? projectState.mappings.find(m => m.id === projectState.activeMappingId) ?? null
+            : null);
+
+        if (!mapping) {
+            throw new Error('No mapping to optimize. Please select a mapping and assign all sounds to the grid first.');
+        }
+
+        if (Object.keys(mapping.cells).length === 0) {
+            throw new Error('No sounds assigned to the grid. Please assign sounds first, then optimize.');
+        }
+
+        // Get manual assignments for current layout (keyed by eventKey)
+        const currentLayoutId = projectState.activeLayoutId;
+        const manualAssignments: Record<string, { hand: 'left' | 'right'; finger: FingerType }> | undefined =
+            currentLayoutId && projectState.manualAssignments
+                ? projectState.manualAssignments[currentLayoutId]
+                : undefined;
+
+        try {
+            // Apply Natural Hand Pose 0 to Auto-Arrange so layouts are attracted to pose pads
+            const pose0 = projectState.naturalHandPoses?.[0];
+            const neutralPadOverride = (pose0 && poseHasAssignments(pose0))
+                ? getNeutralPadPositionsFromPose0(pose0, undefined, projectState.instrumentConfig)
+                : null;
+
+            // Create AnnealingSolver (with Pose 0 override when available)
+            const solver = createAnnealingSolver({
+                instrumentConfig: projectState.instrumentConfig,
+                gridMapping: mapping,
+                neutralPadPositionsOverride: neutralPadOverride ?? undefined,
+            });
+
+            // Run the solver (pass string-keyed manualAssignments as-is)
+            const result = await solver.solve(
+                filteredPerformance,
+                projectState.engineConfiguration || DEFAULT_ENGINE_CONFIGURATION,
+                manualAssignments
+            );
+
+            // Get the optimized mapping
+            const optimizedMapping = solver.getBestMapping();
+            if (!optimizedMapping) {
+                throw new Error('Optimization failed: no mapping was generated');
+            }
+
+            // Update the mapping in project state (wrapped in history for undo/redo)
+            setProjectState(prev => ({
+                ...prev,
+                mappings: prev.mappings.map(m =>
+                    m.id === mapping.id
+                        ? {
+                            ...optimizedMapping,
+                            id: m.id, // Preserve the mapping ID
+                            name: m.name, // Preserve the mapping name
+                            notes: m.notes, // Preserve notes
+                            layoutMode: 'optimized' as LayoutMode,
+                            scoreCache: result.score,
+                            version: (m.version || 0) + 1, // Increment version
+                            savedAt: new Date().toISOString(),
+                        }
+                        : m
+                ),
+                // Store the result
+                solverResults: {
+                    ...(prev.solverResults || {}),
+                    'annealing': result,
+                },
+                // Auto-set as active if no active solver is set
+                activeSolverId: prev.activeSolverId || 'annealing',
+            }));
+
+            console.log('[ProjectContext] Layout optimization complete:', {
+                score: result.score,
+                hardCount: result.hardCount,
+                unplayableCount: result.unplayableCount,
+            });
+        } catch (error) {
+            console.error('[ProjectContext] Layout optimization failed:', error);
+            throw error;
+        }
+    };
+
+    /**
+     * Sets initial finger assignments using a greedy heuristic seeded from the neutral hand pose.
+     */
+    const setInitialStateFromNeutralPose = async (activeMapping?: GridMapping | null): Promise<void> => {
+        // Get filtered performance
+        const filteredPerformance = getActivePerformance(projectState);
+        if (!filteredPerformance) {
+            console.warn('[ProjectContext] Cannot set neutral pose: no active performance');
+            throw new Error('No performance data available. Please load a MIDI file first.');
+        }
+
+        // Get active mapping (use provided or find first)
+        const mapping = activeMapping ??
+            (projectState.mappings.length > 0 ? projectState.mappings[0] : null);
+
+        if (!mapping) {
+            throw new Error('No mapping available. Please assign some sounds to the grid first.');
+        }
+
+        if (Object.keys(mapping.cells).length === 0) {
+            throw new Error('No sounds assigned to the grid. Please assign sounds first.');
+        }
+
+        try {
+            // Build greedy initial assignment
+            const assignments = buildNeutralGreedyInitialAssignment({
+                layout: mapping,
+                instrumentConfig: projectState.instrumentConfig,
+                events: filteredPerformance.events,
+            });
+
+            // Convert to string keys for storage (matching ProjectState format)
+            const assignmentsWithStringKeys: Record<string, { hand: 'left' | 'right'; finger: FingerType }> = {};
+            for (const [eventIndex, assignment] of Object.entries(assignments)) {
+                assignmentsWithStringKeys[eventIndex] = assignment;
+            }
+
+            // Get current layout ID
+            const currentLayoutId = projectState.activeLayoutId;
+            if (!currentLayoutId) {
+                throw new Error('No active layout. Please select a layout first.');
+            }
+
+            // Update manual assignments in project state
+            setProjectState(prev => ({
+                ...prev,
+                manualAssignments: {
+                    ...(prev.manualAssignments || {}),
+                    [currentLayoutId]: assignmentsWithStringKeys,
+                },
+            }));
+
+            console.log('[ProjectContext] Neutral pose assignments set:', {
+                eventCount: Object.keys(assignments).length,
+                layoutId: currentLayoutId,
+            });
+
+            // Optionally: re-run the solver to compute costs for visualization
+            // This will use the new manual assignments
+            try {
+                await runSolver('beam', mapping);
+            } catch (solverError) {
+                // Log but don't fail - the assignments are set even if solver fails
+                console.warn('[ProjectContext] Failed to re-run solver after setting neutral pose:', solverError);
+            }
+        } catch (error) {
+            console.error('[ProjectContext] Failed to set neutral pose:', error);
+            throw error;
+        }
+    };
+
+
+
+    return (
+        <ProjectContext.Provider value={{
+            projectState,
+            setProjectState,
+            undo,
+            redo,
+            canUndo,
+            canRedo,
+            engineResult: activeResult,
+            // @ts-ignore: Deprecated but kept to prevent TS errors in unmodified consumers
+            setEngineResult: () => { },
+            runSolver,
+            setActiveSolverId,
+            getSolverResult,
+            optimizeLayout,
+            setInitialStateFromNeutralPose,
+        }}>
+            {children}
+        </ProjectContext.Provider>
+    );
+};
+
+export const useProject = () => {
+    const context = useContext(ProjectContext);
+    if (context === undefined) {
+        throw new Error('useProject must be used within a ProjectProvider');
+    }
+    return context;
+};
