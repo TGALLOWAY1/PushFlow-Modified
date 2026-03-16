@@ -188,6 +188,7 @@ export function useAutoAnalysis() {
         const solverConfig: SolverConfig = {
           instrumentConfig: state.instrumentConfig,
           layout,
+          sourceLayoutRole: layout.role,
         };
         const solver = createBeamSolver(solverConfig);
 

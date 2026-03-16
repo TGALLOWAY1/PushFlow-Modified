@@ -68,6 +68,13 @@ export interface NeutralHandCenters {
 export interface SolverConfig {
   instrumentConfig: InstrumentConfig;
   layout?: Layout | null;
+  /**
+   * Declares which workflow role the source layout occupies.
+   * Carried through to ExecutionPlanResult.metadata for traceability.
+   * Callers should always set this so downstream consumers know whether
+   * the plan was computed against an active, working, or variant layout.
+   */
+  sourceLayoutRole?: import('./layout').LayoutRole;
   engineConstants?: EngineConstants;
   neutralPadPositionsOverride?: NeutralPadPositions | null;
   mappingResolverMode?: 'strict' | 'allow-fallback';

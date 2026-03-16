@@ -21,6 +21,7 @@ import { type Layout } from '../../types/layout';
 import { type PadCoord, padKey } from '../../types/padGrid';
 import {
   type ExecutionPlanResult,
+  type ExecutionPlanLayoutBinding,
   type FingerAssignment,
   type FingerUsageStats,
   type FatigueMap,
@@ -207,12 +208,14 @@ export class BeamSolver implements SolverStrategy {
 
   private instrumentConfig: InstrumentConfig;
   private layout: Layout | null;
+  private sourceLayoutRole: import('../../types/layout').LayoutRole | undefined;
   private neutralPadPositionsOverride: NeutralPadPositions | null;
   private mappingResolverMode: 'strict' | 'allow-fallback';
 
   constructor(config: SolverConfig) {
     this.instrumentConfig = config.instrumentConfig;
     this.layout = config.layout ?? null;
+    this.sourceLayoutRole = config.sourceLayoutRole ?? config.layout?.role;
     this.neutralPadPositionsOverride = config.neutralPadPositionsOverride ?? null;
     this.mappingResolverMode = config.mappingResolverMode ?? 'strict';
   }
@@ -783,6 +786,12 @@ export class BeamSolver implements SolverStrategy {
       fatigueMap,
       averageDrift: driftCount > 0 ? totalDrift / driftCount : 0,
       averageMetrics,
+      // Layout binding: tracks which layout state this plan was computed against
+      layoutBinding: this.layout ? {
+        layoutId: this.layout.id,
+        layoutHash: hashLayout(this.layout),
+        layoutRole: this.sourceLayoutRole ?? this.layout.role ?? 'active',
+      } as ExecutionPlanLayoutBinding : undefined,
       metadata: {
         layoutIdUsed: this.layout?.id,
         layoutHashUsed: this.layout ? hashLayout(this.layout) : undefined,
