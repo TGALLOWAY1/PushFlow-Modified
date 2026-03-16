@@ -10,6 +10,7 @@
  * - DifficultyBreakdown: cost component breakdown (was CostBreakdown)
  */
 
+import { type DiagnosticsPayload } from './diagnostics';
 import { type FingerType } from './fingerModel';
 
 /**
@@ -178,6 +179,9 @@ export interface ExecutionPlanResult {
    * Required for staleness detection and compare-mode correctness.
    */
   layoutBinding?: ExecutionPlanLayoutBinding;
+
+  /** Canonical diagnostics payload (Phase 3). */
+  diagnostics?: DiagnosticsPayload;
 
   /** Run metadata for debugging and telemetry. */
   metadata?: {

@@ -90,6 +90,9 @@ export {
   combineComponents,
   createZeroComponents,
   objectiveToDifficultyBreakdown,
+  objectiveToCanonicalFactors,
+  objectiveToGripDetail,
+  performabilityToCanonicalFactors,
 } from './evaluation/objective';
 
 export {
