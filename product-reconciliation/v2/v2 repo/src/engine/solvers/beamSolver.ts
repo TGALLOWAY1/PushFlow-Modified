@@ -180,41 +180,6 @@ function groupEventsByTimestamp(
 }
 
 // ============================================================================
-// Lookahead Helpers
-// ============================================================================
-
-/** Average centroid of a set of pads (for 1-step lookahead). */
-function averagePadCentroid(pads: PadCoord[]): { x: number; y: number } {
-  if (pads.length === 0) return { x: 3.5, y: 3.5 };
-  let sumX = 0, sumY = 0;
-  for (const pad of pads) {
-    sumX += pad.col;
-    sumY += pad.row;
-  }
-  return { x: sumX / pads.length, y: sumY / pads.length };
-}
-
-/**
- * Lookahead bonus: rewards grips that leave the hand close to the next group's pads.
- * Strengthened from original (10% cap, 3.0 range) to (20% cap, 4.0 range)
- * so the bonus can meaningfully influence beam ranking for phrase-level planning.
- */
-function computeLookaheadBonus(
-  gripCentroid: { x: number; y: number },
-  nextGroup: PerformanceGroup,
-  stepCost: number
-): number {
-  if (stepCost <= 0) return 0;
-  const nextCentroid = averagePadCentroid(nextGroup.activePads);
-  const dx = gripCentroid.x - nextCentroid.x;
-  const dy = gripCentroid.y - nextCentroid.y;
-  const distToNext = Math.sqrt(dx * dx + dy * dy);
-
-  // Bonus proportional to proximity, capped at 20% of step cost
-  const proximityBonus = Math.max(0, 4.0 - distToNext) * 0.6;
-  return Math.min(stepCost * 0.2, proximityBonus);
-}
-
 // ============================================================================
 // BeamSolver Implementation
 // ============================================================================
@@ -259,7 +224,6 @@ export class BeamSolver implements SolverStrategy {
     prevTimestamp: number,
     config: EngineConfiguration,
     neutralHandCenters?: NeutralHandCentersResult | null,
-    nextGroup?: PerformanceGroup | null
   ): BeamNode[] {
     const children: BeamNode[] = [];
     const rawTimeDelta = group.timestamp - prevTimestamp;
@@ -372,12 +336,6 @@ export class BeamSolver implements SolverStrategy {
         // === HAND BALANCE COST (prevents single-hand dominance) ===
         stepCostForBeam += handBalanceCost * HAND_BALANCE_BEAM_WEIGHT;
 
-        // === 1-STEP LOOKAHEAD BONUS ===
-        if (nextGroup && stepCostForBeam > 0) {
-          const bonus = computeLookaheadBonus(grip.centroid, nextGroup, stepCostForBeam);
-          stepCostForBeam -= bonus;
-        }
-
         const newTotalCost = node.totalCost + stepCostForBeam;
 
         // === DISPLAY COMPONENTS (7-component, moment-level — NOT divided per-note) ===
@@ -447,7 +405,6 @@ export class BeamSolver implements SolverStrategy {
     prevTimestamp: number,
     config: EngineConfiguration,
     neutralHandCenters?: NeutralHandCentersResult | null,
-    nextGroup?: PerformanceGroup | null
   ): BeamNode[] {
     const children: BeamNode[] = [];
 
@@ -612,15 +569,6 @@ export class BeamSolver implements SolverStrategy {
 
         stepCostForBeam += alternationCost * ALTERNATION_BEAM_WEIGHT;
         stepCostForBeam += handBalanceCost * HAND_BALANCE_BEAM_WEIGHT;
-
-        if (nextGroup && stepCostForBeam > 0) {
-          const avgCentroid = {
-            x: (leftResult.pose.centroid.x + rightResult.pose.centroid.x) / 2,
-            y: (leftResult.pose.centroid.y + rightResult.pose.centroid.y) / 2,
-          };
-          const bonus = computeLookaheadBonus(avgCentroid, nextGroup, stepCostForBeam);
-          stepCostForBeam -= bonus;
-        }
 
         // === DISPLAY COMPONENTS (7-component, moment-level — NOT divided per-note) ===
         const stepComponents: ObjectiveComponents = {
@@ -1115,10 +1063,9 @@ export class BeamSolver implements SolverStrategy {
     let beam = this.createInitialBeam(effectiveConfig);
     let prevTimestamp = 0;
 
-    // Process each group (index-based for lookahead access)
+    // Process each group
     for (let gi = 0; gi < groups.length; gi++) {
       const group = groups[gi];
-      const nextGroup = gi + 1 < groups.length ? groups[gi + 1] : null;
       const newBeam: BeamNode[] = [];
 
       for (const node of beam) {
@@ -1237,13 +1184,13 @@ export class BeamSolver implements SolverStrategy {
           }
         }
 
-        // Standard expansion (with lookahead)
-        const children = this.expandNodeForGroup(node, group, prevTimestamp, effectiveConfig, neutralHandCenters, nextGroup);
+        // Standard expansion
+        const children = this.expandNodeForGroup(node, group, prevTimestamp, effectiveConfig, neutralHandCenters);
         newBeam.push(...children);
 
-        // Split-hand approach for chords (with lookahead)
+        // Split-hand approach for chords
         if (group.activePads.length >= 2) {
-          const splitChildren = this.expandNodeForSplitChord(node, group, prevTimestamp, config, neutralHandCenters, nextGroup);
+          const splitChildren = this.expandNodeForSplitChord(node, group, prevTimestamp, config, neutralHandCenters);
           newBeam.push(...splitChildren);
         }
       }
