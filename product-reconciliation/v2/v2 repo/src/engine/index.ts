@@ -166,3 +166,24 @@ export {
   explainLowDiversity,
   buildGenerationSummary,
 } from './analysis/diversityMeasurement';
+
+// Baseline-aware compare (Phase 5)
+export {
+  compareWithDiagnostics,
+  compareWorkingVsActive,
+  compareCandidateVsActive,
+  compareCandidateVsCandidate,
+  type CompareMode,
+  type FactorDelta,
+  type BaselineComparison,
+} from './analysis/baselineCompare';
+
+// Event-level diagnostic explanations (Phase 5)
+export {
+  explainEvent,
+  explainTransition,
+  identifyHardMoments,
+  type EventExplanation,
+  type TransitionExplanation,
+  type HardMomentReport,
+} from './analysis/eventExplainer';
