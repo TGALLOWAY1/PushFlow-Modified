@@ -48,6 +48,14 @@ export function DiagnosticsPanel() {
 
   return (
     <div className="space-y-6">
+      {/* Staleness warning */}
+      {state.analysisStale && (
+        <div className="flex items-center gap-2 px-2 py-1.5 rounded border border-amber-500/30 bg-amber-500/10 text-amber-400 text-[11px]">
+          <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          Analysis outdated — layout has changed since last run
+        </div>
+      )}
+
       <div className="space-y-3 border-b border-gray-800 pb-4">
         <h4 className="text-xs text-gray-400 font-medium tracking-wide uppercase">Analysis</h4>
         <DifficultyHeatmap analysis={result.difficultyAnalysis} />
