@@ -86,6 +86,81 @@ export function createEmptyLayout(id: string, name: string, role: LayoutRole = '
   };
 }
 
+// ============================================================================
+// Role Validation
+// ============================================================================
+
+/**
+ * LayoutRoleViolation: describes a layout role invariant violation.
+ */
+export interface LayoutRoleViolation {
+  field: string;
+  expected: string;
+  actual: string;
+}
+
+/**
+ * Validates that a layout's fields are consistent with its declared role.
+ *
+ * Returns an array of violations (empty = valid). This is a defensive
+ * check for data quality — the UI layer should maintain these invariants,
+ * but this function can catch drift or corruption.
+ *
+ * Rules:
+ * - 'working' layouts must have a baselineId
+ * - 'variant' layouts must have a baselineId and savedAt
+ * - 'active' layouts should not have a baselineId
+ */
+export function validateLayoutRole(layout: Layout): LayoutRoleViolation[] {
+  const violations: LayoutRoleViolation[] = [];
+
+  if (layout.role === 'working' && !layout.baselineId) {
+    violations.push({
+      field: 'baselineId',
+      expected: 'non-empty (branched from active)',
+      actual: 'undefined',
+    });
+  }
+
+  if (layout.role === 'variant') {
+    if (!layout.baselineId) {
+      violations.push({
+        field: 'baselineId',
+        expected: 'non-empty (branched from active)',
+        actual: 'undefined',
+      });
+    }
+    if (!layout.savedAt) {
+      violations.push({
+        field: 'savedAt',
+        expected: 'ISO timestamp',
+        actual: 'undefined',
+      });
+    }
+  }
+
+  if (layout.role === 'active' && layout.baselineId) {
+    violations.push({
+      field: 'baselineId',
+      expected: 'undefined (active layouts are the baseline)',
+      actual: layout.baselineId,
+    });
+  }
+
+  return violations;
+}
+
+/**
+ * Returns true if the layout is valid for its declared role.
+ */
+export function isLayoutRoleValid(layout: Layout): boolean {
+  return validateLayoutRole(layout).length === 0;
+}
+
+// ============================================================================
+// Clone
+// ============================================================================
+
 /**
  * Clone a layout with a new id, name, and role.
  * Used when creating a working copy or saving as a variant.

@@ -2,9 +2,10 @@
  * Constraint Explainer.
  *
  * Identifies which constraints bind in a solution and provides
- * human-readable explanations.
+ * human-readable explanations using canonical factor names.
  *
  * NEW in PushFlow rebuild (not ported from Version1).
+ * Updated Phase 6: Normalized to canonical DiagnosticFactor terminology.
  */
 
 import { type ExecutionPlanResult } from '../../types/executionPlan';
@@ -14,8 +15,25 @@ import { type Section } from '../../types/performanceStructure';
 // Types
 // ============================================================================
 
+/**
+ * Canonical constraint types aligned with DiagnosticFactors.
+ *
+ * - unplayable / hard: event-level classifications (not factors)
+ * - transition: movement cost between pads (was 'crossover' for movement checks)
+ * - gripNaturalness: stretch / drift from resting position (was 'drift', 'stretch')
+ * - alternation: same-finger repetition fatigue (was 'fatigue')
+ * - constraintPenalty: fallback grip penalties
+ */
+export type ConstraintType =
+  | 'unplayable'
+  | 'hard'
+  | 'transition'
+  | 'gripNaturalness'
+  | 'alternation'
+  | 'constraintPenalty';
+
 export interface ConstraintExplanation {
-  type: 'unplayable' | 'hard' | 'drift' | 'stretch' | 'crossover' | 'fatigue';
+  type: ConstraintType;
   severity: 'info' | 'warning' | 'critical';
   message: string;
   affectedEvents?: number;
@@ -64,39 +82,47 @@ export function explainConstraints(
     });
   }
 
-  // High average drift
-  if (result.averageDrift > 2.5) {
+  // Grip naturalness: drift from home + stretch combined
+  // Uses canonical DiagnosticFactors when available, falls back to legacy metrics
+  const gripCost = result.diagnostics?.factors.gripNaturalness
+    ?? (result.averageDrift + result.averageMetrics.stretch) / 2;
+  if (gripCost > 2.0) {
     explanations.push({
-      type: 'drift',
-      severity: result.averageDrift > 4.0 ? 'warning' : 'info',
-      message: `Average drift ${result.averageDrift.toFixed(1)} — hands frequently far from home positions`,
+      type: 'gripNaturalness',
+      severity: gripCost > 4.0 ? 'warning' : 'info',
+      message: `Grip naturalness cost ${gripCost.toFixed(1)} — hands frequently stretched or drifted from comfortable positions`,
     });
   }
 
-  // High movement cost
-  if (result.averageMetrics.movement > 3.0) {
+  // Transition: movement cost between pads
+  const transitionCost = result.diagnostics?.factors.transition
+    ?? result.averageMetrics.movement;
+  if (transitionCost > 3.0) {
     explanations.push({
-      type: 'crossover',
-      severity: result.averageMetrics.movement > 6.0 ? 'warning' : 'info',
-      message: `High average movement cost (${result.averageMetrics.movement.toFixed(1)}) — transitions require large hand movements`,
+      type: 'transition',
+      severity: transitionCost > 6.0 ? 'warning' : 'info',
+      message: `High transition cost (${transitionCost.toFixed(1)}) — large hand movements between consecutive events`,
     });
   }
 
-  // High stretch cost
-  if (result.averageMetrics.stretch > 2.0) {
+  // Alternation: same-finger repetition / fatigue
+  const alternationCost = result.diagnostics?.factors.alternation
+    ?? result.averageMetrics.fatigue;
+  if (alternationCost > 1.0) {
     explanations.push({
-      type: 'stretch',
-      severity: result.averageMetrics.stretch > 4.0 ? 'warning' : 'info',
-      message: `High average stretch cost (${result.averageMetrics.stretch.toFixed(1)}) — fingers frequently extended beyond comfortable range`,
+      type: 'alternation',
+      severity: alternationCost > 3.0 ? 'warning' : 'info',
+      message: `Alternation cost ${alternationCost.toFixed(1)} — repeated same-finger usage without sufficient recovery`,
     });
   }
 
-  // High fatigue
-  if (result.averageMetrics.fatigue > 1.0) {
+  // Constraint penalty: fallback grips
+  const constraintCost = result.diagnostics?.factors.constraintPenalty ?? 0;
+  if (constraintCost > 0.5) {
     explanations.push({
-      type: 'fatigue',
-      severity: result.averageMetrics.fatigue > 3.0 ? 'warning' : 'info',
-      message: `Elevated fatigue cost (${result.averageMetrics.fatigue.toFixed(1)}) — repeated finger usage without sufficient recovery`,
+      type: 'constraintPenalty',
+      severity: constraintCost > 2.0 ? 'warning' : 'info',
+      message: `Constraint penalty ${constraintCost.toFixed(1)} — some events require fallback or relaxed grips`,
     });
   }
 
@@ -147,18 +173,18 @@ export function identifyBottlenecks(
       });
     }
 
-    // High movement in section
+    // High transition cost in section (legacy: movement)
     const playable = sectionAssignments.filter(a => a.costBreakdown);
     if (playable.length > 0) {
-      const avgMovement = playable.reduce(
+      const avgTransition = playable.reduce(
         (sum, a) => sum + (a.costBreakdown?.movement ?? 0), 0
       ) / playable.length;
 
-      if (avgMovement > 4.0) {
+      if (avgTransition > 4.0) {
         constraints.push({
-          type: 'crossover',
+          type: 'transition',
           severity: 'warning',
-          message: `High movement cost (${avgMovement.toFixed(1)}) in ${section.name}`,
+          message: `High transition cost (${avgTransition.toFixed(1)}) in ${section.name}`,
           sectionName: section.name,
         });
       }
