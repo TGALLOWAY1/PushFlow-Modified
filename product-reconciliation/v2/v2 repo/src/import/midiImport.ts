@@ -173,8 +173,10 @@ export async function parseMidiProject(
     name: `${performance.name} Layout`,
     padToVoice: {},
     fingerConstraints: {},
+    placementLocks: {},
     scoreCache: null,
     layoutMode: 'none',
+    role: 'active' as const,
   };
 
   return {

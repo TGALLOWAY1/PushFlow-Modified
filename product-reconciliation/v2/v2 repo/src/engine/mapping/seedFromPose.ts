@@ -126,7 +126,9 @@ export function seedLayoutFromPose0(
     name: `${performance.name ?? 'Performance'} Layout`,
     padToVoice,
     fingerConstraints: {},
+    placementLocks: {},
     scoreCache: null,
     layoutMode: 'optimized',
+    role: 'working' as const,
   };
 }

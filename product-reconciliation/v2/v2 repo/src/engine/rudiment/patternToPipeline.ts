@@ -169,8 +169,10 @@ export function patternToLayout(
     name: `Pattern Layout ${pattern.id}`,
     padToVoice,
     fingerConstraints: {},
+    placementLocks: {},
     scoreCache: null,
     layoutMode: 'auto',
+    role: 'working' as const,
   };
 
   return { voices, layout };

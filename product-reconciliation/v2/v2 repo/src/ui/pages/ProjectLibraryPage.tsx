@@ -140,7 +140,6 @@ export function ProjectLibraryPage() {
 
     const now = new Date().toISOString();
     const id = generateId('proj');
-    const layoutId = generateId('layout');
 
     const state: ProjectState = {
       ...createEmptyProjectState(),
@@ -153,15 +152,6 @@ export function ProjectLibraryPage() {
       instrumentConfig: pendingImport.instrumentConfig,
       sections: pendingImport.sections,
       voiceProfiles: pendingImport.voiceProfiles,
-      layouts: [{
-        id: layoutId,
-        name: 'Default',
-        padToVoice: {},
-        fingerConstraints: {},
-        scoreCache: null,
-        layoutMode: 'none',
-      }],
-      activeLayoutId: layoutId,
     };
 
     saveProject(state);
@@ -197,7 +187,6 @@ export function ProjectLibraryPage() {
   const handleNewProject = useCallback(() => {
     const now = new Date().toISOString();
     const id = generateId('proj');
-    const layoutId = generateId('layout');
 
     const state: ProjectState = {
       ...createEmptyProjectState(),
@@ -205,15 +194,6 @@ export function ProjectLibraryPage() {
       name: 'Untitled Project',
       createdAt: now,
       updatedAt: now,
-      layouts: [{
-        id: layoutId,
-        name: 'Default',
-        padToVoice: {},
-        fingerConstraints: {},
-        scoreCache: null,
-        layoutMode: 'none',
-      }],
-      activeLayoutId: layoutId,
     };
 
     saveProject(state);

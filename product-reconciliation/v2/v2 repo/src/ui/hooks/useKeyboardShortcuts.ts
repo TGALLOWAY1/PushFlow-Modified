@@ -10,7 +10,7 @@
 
 import { useEffect } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getActiveLayout } from '../state/projectState';
+import { getDisplayedLayout } from '../state/projectState';
 
 export function useKeyboardShortcuts() {
   const { state, dispatch, undo, redo } = useProject();
@@ -88,7 +88,7 @@ export function useKeyboardShortcuts() {
         if (!assignments) return;
         const a = assignments.find(fa => fa.eventIndex === state.selectedEventIndex);
         if (!a || a.row === undefined || a.col === undefined) return;
-        const layout = getActiveLayout(state);
+        const layout = getDisplayedLayout(state);
         if (!layout) return;
         const padKey = `${a.row},${a.col}`;
         if (layout.padToVoice[padKey]) {

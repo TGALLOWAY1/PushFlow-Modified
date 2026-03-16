@@ -14,7 +14,7 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getActivePerformance, getActiveLayout, getActiveStreams, type SoundStream } from '../state/projectState';
+import { getActivePerformance, getDisplayedLayout, getActiveStreams, type SoundStream } from '../state/projectState';
 import { createBeamSolver } from '../../engine/solvers/beamSolver';
 import { analyzeDifficulty, computeTradeoffProfile, classifyOptimizationDifficulty } from '../../engine/evaluation/difficultyScoring';
 import { generateCandidates } from '../../engine/optimization/multiCandidateGenerator';
@@ -135,7 +135,7 @@ export function useAutoAnalysis() {
     if (state.isProcessing) return;
 
     const activeStreams = getActiveStreams(state);
-    const layout = getActiveLayout(state);
+    const layout = getDisplayedLayout(state);
     if (activeStreams.length === 0 || !layout || Object.keys(layout.padToVoice).length === 0) {
       return;
     }
@@ -194,12 +194,12 @@ export function useAutoAnalysis() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       abortRef.current = true;
     };
-  }, [state.analysisStale, state.isProcessing, state.soundStreams, state.layouts, state.activeLayoutId, state.instrumentConfig, state.sections, state.engineConfig, dispatch]);
+  }, [state.analysisStale, state.isProcessing, state.soundStreams, state.activeLayout, state.workingLayout, state.instrumentConfig, state.sections, state.engineConfig, dispatch]);
 
   // Full multi-candidate generation (manual trigger)
   const generateFull = useCallback(async (mode: GenerationMode = 'fast') => {
     const activeStreams = getActiveStreams(state);
-    const layout = getActiveLayout(state);
+    const layout = getDisplayedLayout(state);
     if (activeStreams.length === 0 || !layout) return;
 
     dispatch({ type: 'SET_ERROR', payload: null });
@@ -255,7 +255,7 @@ export function useAutoAnalysis() {
 
   // Precondition checks for Generate button
   const activeStreams = getActiveStreams(state);
-  const currentLayout = getActiveLayout(state);
+  const currentLayout = getDisplayedLayout(state);
   const canGenerate = activeStreams.length > 0 && currentLayout !== null;
   const generateDisabledReason = !currentLayout
     ? 'No layout available'

@@ -282,13 +282,15 @@ function buildFeasibilityDemo(scenario: FeasibilityDemoScenario): ProjectState {
     };
   }
 
-  const layout: Layout = {
+  const activeLayout: Layout = {
     id: `${projectId}-layout`,
     name: 'Feasibility Test Layout',
     padToVoice,
     fingerConstraints: scenario.fingerConstraints ?? {},
+    placementLocks: {},
     scoreCache: null,
     layoutMode: 'manual',
+    role: 'active',
   };
 
   return {
@@ -298,8 +300,7 @@ function buildFeasibilityDemo(scenario: FeasibilityDemoScenario): ProjectState {
     isDemo: true,
     soundStreams,
     tempo: 120,
-    layouts: [layout],
-    activeLayoutId: layout.id,
+    activeLayout,
   };
 }
 
