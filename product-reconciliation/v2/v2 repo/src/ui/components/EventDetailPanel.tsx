@@ -8,7 +8,7 @@
 
 import { useMemo } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getActiveLayout, getActiveStreams } from '../state/projectState';
+import { getDisplayedLayout, getActiveStreams } from '../state/projectState';
 import { type FingerType, ALL_FINGERS } from '../../types/fingerModel';
 
 /** Parse a constraint string like "L-Ix" into hand + finger. */
@@ -36,7 +36,7 @@ export function EventDetailPanel() {
   const { state, dispatch } = useProject();
 
   const activeStreams = getActiveStreams(state);
-  const layout = getActiveLayout(state);
+  const layout = getDisplayedLayout(state);
   const assignments = state.analysisResult?.executionPlan.fingerAssignments;
 
   // Find selected assignment

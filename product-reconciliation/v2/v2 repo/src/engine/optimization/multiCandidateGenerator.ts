@@ -270,7 +270,9 @@ export async function generateCandidates(
             name: `Generated Layout (${strategy.name})`,
             padToVoice: {},
             fingerConstraints: {},
+            placementLocks: {},
             scoreCache: null,
+            role: 'working' as const,
           };
     } else if (ls.type === 'compact' && config.baseLayout) {
       // Compact: cluster voices in a hand zone
@@ -288,7 +290,9 @@ export async function generateCandidates(
         name: `Generated Layout (${strategy.name})`,
         padToVoice: {},
         fingerConstraints: {},
+        placementLocks: {},
         scoreCache: null,
+        role: 'working' as const,
       };
     }
 

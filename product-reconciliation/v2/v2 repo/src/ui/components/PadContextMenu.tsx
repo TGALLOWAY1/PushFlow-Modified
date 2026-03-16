@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getActiveLayout } from '../state/projectState';
+import { getDisplayedLayout } from '../state/projectState';
 
 interface PadContextMenuProps {
   padKey: string;
@@ -31,7 +31,7 @@ const FINGER_OPTIONS = [
 
 export function PadContextMenu({ padKey, x, y, onClose }: PadContextMenuProps) {
   const { state, dispatch } = useProject();
-  const layout = getActiveLayout(state);
+  const layout = getDisplayedLayout(state);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const voice = layout?.padToVoice[padKey];

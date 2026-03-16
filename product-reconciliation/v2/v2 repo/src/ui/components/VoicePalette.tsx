@@ -8,11 +8,11 @@
 
 import { useMemo } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getActiveLayout, type SoundStream } from '../state/projectState';
+import { getDisplayedLayout, type SoundStream } from '../state/projectState';
 
 export function VoicePalette() {
   const { state, dispatch } = useProject();
-  const layout = getActiveLayout(state);
+  const layout = getDisplayedLayout(state);
 
   // Build a map of which pads each stream occupies
   const streamPadLocations = useMemo(() => {

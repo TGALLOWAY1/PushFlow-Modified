@@ -2,14 +2,21 @@
  * Project State.
  *
  * Central state type for the PushFlow project-based editor.
- * Replaces the old EngineState with project lifecycle, sound streams,
- * undo/redo support, and analysis caching.
+ *
+ * V3 workflow state model:
+ * - activeLayout: the committed baseline (read-mostly, changed only by Promote)
+ * - workingLayout: session-scoped exploratory draft (created on first edit, discardable)
+ * - savedVariants: durable named alternatives (kept for comparison)
+ * - candidates: generated proposals (ephemeral, not persisted)
+ *
+ * Manual edits always target the working layout. If no working layout exists,
+ * one is auto-created by cloning the active layout on first edit.
  */
 
 import { type Performance, type InstrumentConfig } from '../../types/performance';
 import { type EngineConfiguration } from '../../types/engineConfig';
 import { type CandidateSolution } from '../../types/candidateSolution';
-import { type Layout } from '../../types/layout';
+import { type Layout, type LayoutRole, cloneLayout, createEmptyLayout } from '../../types/layout';
 import { type Section, type VoiceProfile } from '../../types/performanceStructure';
 import { type PerformanceLane, type LaneGroup, type SourceFile } from '../../types/performanceLane';
 import { type LaneAction, isLaneAction, lanesReducer } from './lanesReducer';
@@ -46,7 +53,13 @@ export interface SoundStream {
 // Project State
 // ============================================================================
 
+/** Persistence format version for migration support. */
+export const PROJECT_STATE_VERSION = 2;
+
 export interface ProjectState {
+  /** Persistence format version. */
+  version: number;
+
   // Identity
   id: string;
   name: string;
@@ -61,9 +74,26 @@ export interface ProjectState {
   sections: Section[];
   voiceProfiles: VoiceProfile[];
 
-  // Layouts
-  layouts: Layout[];
-  activeLayoutId: string;
+  // === V3 Workflow Layout Model ===
+
+  /** The committed baseline layout. Changed only by explicit Promote. */
+  activeLayout: Layout;
+
+  /**
+   * Session-scoped exploratory draft. Created automatically on first edit.
+   * Null when no edits have been made since last promote/discard.
+   * Stripped on save/load (session-scoped per default).
+   */
+  workingLayout: Layout | null;
+
+  /** Durable named alternative layouts. Persist across sessions. */
+  savedVariants: Layout[];
+
+  // === Legacy compatibility (kept for migration, will be removed) ===
+  /** @deprecated Use activeLayout. Kept only for migration from V1 format. */
+  layouts?: Layout[];
+  /** @deprecated Use activeLayout.id. Kept only for migration from V1 format. */
+  activeLayoutId?: string;
 
   // Analysis cache
   analysisResult: CandidateSolution | null;
@@ -94,7 +124,7 @@ export interface ProjectState {
 }
 
 // ============================================================================
-// Derived Performance
+// Derived State Helpers
 // ============================================================================
 
 /**
@@ -115,9 +145,35 @@ export function getActivePerformance(state: ProjectState): Performance {
   return { events, tempo: state.tempo, name: state.name };
 }
 
-/** Get the active layout from the project state. */
+/**
+ * Get the active layout from the project state.
+ * This always returns the committed baseline.
+ */
 export function getActiveLayout(state: ProjectState): Layout | null {
-  return state.layouts.find(l => l.id === state.activeLayoutId) ?? null;
+  return state.activeLayout ?? null;
+}
+
+/**
+ * Get the currently displayed layout.
+ * Returns the working layout if one exists, otherwise the active layout.
+ * This is the layout the user sees and interacts with.
+ */
+export function getDisplayedLayout(state: ProjectState): Layout | null {
+  return state.workingLayout ?? state.activeLayout ?? null;
+}
+
+/**
+ * Get the role of the currently displayed layout.
+ */
+export function getDisplayedLayoutRole(state: ProjectState): LayoutRole | null {
+  if (state.workingLayout) return 'working';
+  if (state.activeLayout) return 'active';
+  return null;
+}
+
+/** Whether the project has unsaved working changes. */
+export function hasWorkingChanges(state: ProjectState): boolean {
+  return state.workingLayout !== null;
 }
 
 /** Get only unmuted sound streams. */
@@ -140,14 +196,22 @@ export type ProjectAction =
   | { type: 'SET_SOUND_COLOR'; payload: { streamId: string; color: string } }
   | { type: 'SET_VOICE_CONSTRAINT'; payload: { streamId: string; hand?: 'left' | 'right' | null; finger?: string | null } }
 
-  // Layout editing
-  | { type: 'ADD_LAYOUT'; payload: Layout }
-  | { type: 'SET_ACTIVE_LAYOUT'; payload: string }
+  // Layout editing (targets working layout, auto-creates if needed)
   | { type: 'ASSIGN_VOICE_TO_PAD'; payload: { padKey: string; stream: SoundStream } }
   | { type: 'BULK_ASSIGN_PADS'; payload: Layout['padToVoice'] }
   | { type: 'REMOVE_VOICE_FROM_PAD'; payload: { padKey: string } }
   | { type: 'SWAP_PADS'; payload: { padKeyA: string; padKeyB: string } }
   | { type: 'SET_FINGER_CONSTRAINT'; payload: { padKey: string; constraint: string | null } }
+
+  // Placement locks (hard constraints on the displayed layout)
+  | { type: 'TOGGLE_PLACEMENT_LOCK'; payload: { voiceId: string; padKey: string } }
+
+  // V3 Workflow actions
+  | { type: 'CREATE_WORKING_LAYOUT' }
+  | { type: 'DISCARD_WORKING_LAYOUT' }
+  | { type: 'PROMOTE_WORKING_LAYOUT' }
+  | { type: 'PROMOTE_CANDIDATE'; payload: { candidateId: string } }
+  | { type: 'SAVE_AS_VARIANT'; payload: { name: string; source: 'working' | 'candidate'; candidateId?: string } }
 
   // Analysis
   | { type: 'SET_ANALYSIS_RESULT'; payload: CandidateSolution | null }
@@ -192,26 +256,52 @@ export function isEphemeralAction(action: ProjectAction): boolean {
 }
 
 // ============================================================================
-// Reducer
+// Reducer Helpers
 // ============================================================================
 
-/** Helper: update the active layout in the layouts array. */
-function updateActiveLayout(
+let _nextId = 0;
+function generateId(): string {
+  return `layout-${Date.now()}-${_nextId++}`;
+}
+
+/**
+ * Ensure a working layout exists. If not, clone the active layout as a working draft.
+ * Returns the state with a guaranteed non-null workingLayout.
+ */
+function ensureWorkingLayout(state: ProjectState): ProjectState & { workingLayout: Layout } {
+  if (state.workingLayout) {
+    return state as ProjectState & { workingLayout: Layout };
+  }
+  const working = cloneLayout(
+    state.activeLayout,
+    generateId(),
+    `${state.activeLayout.name} (draft)`,
+    'working',
+  );
+  return { ...state, workingLayout: working } as ProjectState & { workingLayout: Layout };
+}
+
+/**
+ * Update the working layout (auto-creating it from active if needed).
+ * All manual edits go through this helper.
+ */
+function updateWorkingLayout(
   state: ProjectState,
   updater: (layout: Layout) => Layout
 ): ProjectState {
+  const withWorking = ensureWorkingLayout(state);
   const now = new Date().toISOString();
   return {
-    ...state,
+    ...withWorking,
     updatedAt: now,
     analysisStale: true,
-    layouts: state.layouts.map(l =>
-      l.id === state.activeLayoutId
-        ? { ...updater(l), scoreCache: null }
-        : l
-    ),
+    workingLayout: { ...updater(withWorking.workingLayout), scoreCache: null },
   };
 }
+
+// ============================================================================
+// Reducer
+// ============================================================================
 
 export function projectReducer(state: ProjectState, action: ProjectAction): ProjectState {
   // Delegate lane/group actions to the dedicated lanes reducer
@@ -224,6 +314,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return {
         ...action.payload,
         // Reset ephemeral state
+        workingLayout: null, // Session-scoped: strip working layout on load
         selectedEventIndex: null,
         compareCandidateId: null,
         isProcessing: false,
@@ -280,27 +371,12 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return { ...state, updatedAt: new Date().toISOString(), voiceConstraints: next, analysisStale: true };
     }
 
-    // -- Layout editing --
-
-    case 'ADD_LAYOUT':
-      return {
-        ...state,
-        updatedAt: new Date().toISOString(),
-        layouts: [...state.layouts, action.payload],
-      };
-
-    case 'SET_ACTIVE_LAYOUT':
-      return {
-        ...state,
-        activeLayoutId: action.payload,
-        analysisStale: true,
-        selectedEventIndex: null,
-      };
+    // -- Layout editing (all target working layout) --
 
     case 'ASSIGN_VOICE_TO_PAD':
-      return updateActiveLayout(state, layout => {
+      return updateWorkingLayout(state, layout => {
         const { padKey, stream } = action.payload;
-        
+
         // Strip out existing assignments of this stream (acts as Move instead of Copy)
         const newPadToVoice = { ...layout.padToVoice };
         for (const [key, v] of Object.entries(newPadToVoice)) {
@@ -308,7 +384,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
             delete newPadToVoice[key];
           }
         }
-        
+
         const voice = {
           id: stream.id,
           name: stream.name,
@@ -326,22 +402,20 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       });
 
     case 'BULK_ASSIGN_PADS':
-      // Atomically replaces the entire padToVoice with the provided mapping.
-      // Used by auto-assign (Generate from scratch) to populate pads in one update.
-      return updateActiveLayout(state, layout => ({
+      return updateWorkingLayout(state, layout => ({
         ...layout,
         padToVoice: action.payload,
         layoutMode: 'auto',
       }));
 
     case 'REMOVE_VOICE_FROM_PAD':
-      return updateActiveLayout(state, layout => {
+      return updateWorkingLayout(state, layout => {
         const { [action.payload.padKey]: _, ...rest } = layout.padToVoice;
         return { ...layout, padToVoice: rest, layoutMode: 'manual' };
       });
 
     case 'SWAP_PADS':
-      return updateActiveLayout(state, layout => {
+      return updateWorkingLayout(state, layout => {
         const { padKeyA, padKeyB } = action.payload;
         const voiceA = layout.padToVoice[padKeyA];
         const voiceB = layout.padToVoice[padKeyB];
@@ -354,13 +428,159 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       });
 
     case 'SET_FINGER_CONSTRAINT':
-      return updateActiveLayout(state, layout => {
+      return updateWorkingLayout(state, layout => {
         const { padKey, constraint } = action.payload;
         const newConstraints = { ...layout.fingerConstraints };
         if (constraint) newConstraints[padKey] = constraint;
         else delete newConstraints[padKey];
         return { ...layout, fingerConstraints: newConstraints };
       });
+
+    // -- Placement locks --
+
+    case 'TOGGLE_PLACEMENT_LOCK': {
+      const { voiceId, padKey } = action.payload;
+      // Locks operate on the displayed layout (working if exists, otherwise active)
+      const targetLayout = state.workingLayout ?? state.activeLayout;
+      const newLocks = { ...targetLayout.placementLocks };
+      if (newLocks[voiceId] === padKey) {
+        // Unlock: remove the lock
+        delete newLocks[voiceId];
+      } else {
+        // Lock: voice is locked to this pad
+        newLocks[voiceId] = padKey;
+      }
+      if (state.workingLayout) {
+        return {
+          ...state,
+          updatedAt: new Date().toISOString(),
+          workingLayout: { ...state.workingLayout, placementLocks: newLocks },
+        };
+      }
+      // No working layout: lock on active layout directly (locks are durable)
+      return {
+        ...state,
+        updatedAt: new Date().toISOString(),
+        activeLayout: { ...state.activeLayout, placementLocks: newLocks },
+      };
+    }
+
+    // -- V3 Workflow actions --
+
+    case 'CREATE_WORKING_LAYOUT': {
+      if (state.workingLayout) return state; // Already exists
+      return ensureWorkingLayout(state);
+    }
+
+    case 'DISCARD_WORKING_LAYOUT':
+      return {
+        ...state,
+        workingLayout: null,
+        analysisStale: true,
+        selectedEventIndex: null,
+        candidates: [],
+        selectedCandidateId: null,
+        compareCandidateId: null,
+      };
+
+    case 'PROMOTE_WORKING_LAYOUT': {
+      if (!state.workingLayout) return state;
+      const now = new Date().toISOString();
+
+      // Auto-save the replaced active layout as a variant (if it has any assignments)
+      const autoSavedVariants = [...state.savedVariants];
+      if (Object.keys(state.activeLayout.padToVoice).length > 0) {
+        const replaced = cloneLayout(
+          state.activeLayout,
+          generateId(),
+          `${state.activeLayout.name} (replaced ${new Date().toLocaleDateString()})`,
+          'variant',
+        );
+        autoSavedVariants.push(replaced);
+      }
+
+      // Promote: working becomes active
+      const promoted: Layout = {
+        ...state.workingLayout,
+        role: 'active',
+        baselineId: undefined,
+        savedAt: now,
+      };
+
+      return {
+        ...state,
+        activeLayout: promoted,
+        workingLayout: null,
+        savedVariants: autoSavedVariants,
+        updatedAt: now,
+        analysisStale: true,
+        candidates: [],
+        selectedCandidateId: null,
+        compareCandidateId: null,
+      };
+    }
+
+    case 'PROMOTE_CANDIDATE': {
+      const candidate = state.candidates.find(c => c.id === action.payload.candidateId);
+      if (!candidate) return state;
+      const now = new Date().toISOString();
+
+      // Auto-save the replaced active layout as a variant
+      const autoSavedVariants = [...state.savedVariants];
+      if (Object.keys(state.activeLayout.padToVoice).length > 0) {
+        const replaced = cloneLayout(
+          state.activeLayout,
+          generateId(),
+          `${state.activeLayout.name} (replaced ${new Date().toLocaleDateString()})`,
+          'variant',
+        );
+        autoSavedVariants.push(replaced);
+      }
+
+      // Promote: candidate's layout becomes active
+      const promoted: Layout = {
+        ...candidate.layout,
+        id: generateId(),
+        role: 'active',
+        baselineId: undefined,
+        placementLocks: state.activeLayout.placementLocks, // Preserve locks from active
+        savedAt: now,
+      };
+
+      return {
+        ...state,
+        activeLayout: promoted,
+        workingLayout: null,
+        savedVariants: autoSavedVariants,
+        updatedAt: now,
+        analysisStale: true,
+        candidates: [],
+        selectedCandidateId: null,
+        compareCandidateId: null,
+      };
+    }
+
+    case 'SAVE_AS_VARIANT': {
+      const { name, source, candidateId } = action.payload;
+      let sourceLayout: Layout | undefined;
+
+      if (source === 'working' && state.workingLayout) {
+        sourceLayout = state.workingLayout;
+      } else if (source === 'candidate' && candidateId) {
+        const candidate = state.candidates.find(c => c.id === candidateId);
+        sourceLayout = candidate?.layout;
+      }
+
+      if (!sourceLayout) return state;
+
+      const variant = cloneLayout(sourceLayout, generateId(), name, 'variant');
+
+      return {
+        ...state,
+        savedVariants: [...state.savedVariants, variant],
+        updatedAt: new Date().toISOString(),
+      };
+    }
 
     // -- Analysis --
 
@@ -420,6 +640,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
 export function createEmptyProjectState(): ProjectState {
   return {
+    version: PROJECT_STATE_VERSION,
     id: '',
     name: '',
     createdAt: new Date().toISOString(),
@@ -437,8 +658,9 @@ export function createEmptyProjectState(): ProjectState {
     },
     sections: [],
     voiceProfiles: [],
-    layouts: [],
-    activeLayoutId: '',
+    activeLayout: createEmptyLayout('default-active', 'Default', 'active'),
+    workingLayout: null,
+    savedVariants: [],
     analysisResult: null,
     candidates: [],
     selectedCandidateId: null,

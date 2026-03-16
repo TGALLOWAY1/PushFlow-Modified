@@ -9,6 +9,7 @@
 import { type ProjectState, createEmptyProjectState, type SoundStream, type SoundEvent } from '../state/projectState';
 import { type Performance, type InstrumentConfig } from '../../types/performance';
 import { type PerformanceEvent } from '../../types/performanceEvent';
+import { createEmptyLayout } from '../../types/layout';
 import { generateId } from '../../utils/idGenerator';
 import { getFeasibilityDemos } from './feasibilityDemos';
 
@@ -97,14 +98,6 @@ function buildDemoProject(
   nameMap: Record<number, string>,
 ): ProjectState {
   const base = createEmptyProjectState();
-  const emptyLayout = {
-    id: `${id}-layout`,
-    name: 'Default',
-    padToVoice: {} as Record<string, import('../../types/voice').Voice>,
-    fingerConstraints: {} as Record<string, string>,
-    scoreCache: null,
-    layoutMode: 'none' as const,
-  };
 
   return {
     ...base,
@@ -114,8 +107,7 @@ function buildDemoProject(
     soundStreams: buildSoundStreams(performance, nameMap),
     tempo: performance.tempo ?? 120,
     instrumentConfig: DEFAULT_INSTRUMENT_CONFIG,
-    layouts: [emptyLayout],
-    activeLayoutId: emptyLayout.id,
+    activeLayout: createEmptyLayout(`${id}-layout`, 'Default', 'active'),
   };
 }
 

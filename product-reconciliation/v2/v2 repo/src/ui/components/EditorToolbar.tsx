@@ -1,16 +1,15 @@
 /**
  * EditorToolbar.
  *
- * Top bar for the project editor: project name, undo/redo, layout selector,
- * save/export, analysis stale indicator.
+ * Top bar for the project editor: project name, layout status indicator,
+ * V3 workflow actions (promote/save/discard), undo/redo, save/export,
+ * generation controls, analysis stale indicator.
  */
 
 import { useState } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { saveProject, exportProjectToFile } from '../persistence/projectStorage';
-import { getActiveLayout } from '../state/projectState';
-import { createEmptyLayout } from '../../types/layout';
-import { generateId } from '../../utils/idGenerator';
+import { getDisplayedLayout, getDisplayedLayoutRole, hasWorkingChanges } from '../state/projectState';
 import { type GenerationMode } from '../hooks/useAutoAnalysis';
 
 interface EditorToolbarProps {
@@ -35,79 +34,68 @@ export function EditorToolbar({
   setShowDiagnostics
 }: EditorToolbarProps = {}) {
   const { state, dispatch, undo, redo, canUndo, canRedo } = useProject();
-  const activeLayout = getActiveLayout(state);
+  const displayedLayout = getDisplayedLayout(state);
+  const layoutRole = getDisplayedLayoutRole(state);
+  const hasChanges = hasWorkingChanges(state);
   const [generationMode, setGenerationMode] = useState<GenerationMode>('fast');
-
-
-  const handleAddLayout = () => {
-    const newLayout = createEmptyLayout(
-      generateId('layout'),
-      `Layout ${state.layouts.length + 1}`
-    );
-    dispatch({ type: 'ADD_LAYOUT', payload: newLayout });
-    dispatch({ type: 'SET_ACTIVE_LAYOUT', payload: newLayout.id });
-  };
-
-  const handleCloneLayout = () => {
-    if (!activeLayout) return;
-    const clone = {
-      ...activeLayout,
-      id: generateId('layout'),
-      name: `${activeLayout.name} (copy)`,
-      padToVoice: { ...activeLayout.padToVoice },
-      fingerConstraints: { ...activeLayout.fingerConstraints },
-      scoreCache: null,
-    };
-    dispatch({ type: 'ADD_LAYOUT', payload: clone });
-    dispatch({ type: 'SET_ACTIVE_LAYOUT', payload: clone.id });
-  };
 
   return (
     <div className="flex items-center gap-3 pb-3 border-b border-gray-800">
       {/* Project name */}
       <h1 className="text-lg font-bold truncate">{state.name}</h1>
 
-      {/* Layout selector */}
-      {state.layouts.length > 1 && (
-        <div className="flex items-center gap-1 text-xs">
-          {state.layouts.map(l => (
-            <button
-              key={l.id}
-              className={`px-2 py-1 rounded transition-colors ${
-                l.id === state.activeLayoutId
-                  ? 'bg-gray-700 text-gray-200'
-                  : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
-              }`}
-              onClick={() => dispatch({ type: 'SET_ACTIVE_LAYOUT', payload: l.id })}
-            >
-              {l.name}
-            </button>
-          ))}
+      {/* Layout status indicator */}
+      {displayedLayout && (
+        <div className="flex items-center gap-1.5">
+          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+            layoutRole === 'working'
+              ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+              : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+          }`}>
+            {layoutRole === 'working' ? 'Working Draft' : 'Active Layout'}
+          </span>
+          <span className="text-[10px] text-gray-500 truncate max-w-[120px]">
+            {displayedLayout.name}
+          </span>
         </div>
       )}
 
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Layout actions */}
-      <div className="flex gap-1">
-        <button
-          className="px-2 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700 text-gray-400"
-          onClick={handleAddLayout}
-          title="Add empty layout"
-        >
-          + Layout
-        </button>
-        {activeLayout && (
+      {/* Workflow actions (visible when working layout exists) */}
+      {hasChanges && (
+        <div className="flex gap-1 border-r border-gray-800 pr-3 mr-1">
           <button
-            className="px-2 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700 text-gray-400"
-            onClick={handleCloneLayout}
-            title="Clone current layout"
+            className="px-2 py-1 text-xs rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+            onClick={() => dispatch({ type: 'PROMOTE_WORKING_LAYOUT' })}
+            title="Make this layout the new Active Layout (auto-saves replaced active as variant)"
           >
-            Clone
+            Promote
           </button>
-        )}
-      </div>
+          <button
+            className="px-2 py-1 text-xs rounded bg-blue-600/80 hover:bg-blue-500 text-white transition-colors"
+            onClick={() => dispatch({ type: 'SAVE_AS_VARIANT', payload: { name: `${state.activeLayout.name} variant`, source: 'working' } })}
+            title="Save current working layout as a named variant"
+          >
+            Save Variant
+          </button>
+          <button
+            className="px-2 py-1 text-xs rounded bg-gray-800 hover:bg-red-900/50 text-gray-400 hover:text-red-300 transition-colors"
+            onClick={() => dispatch({ type: 'DISCARD_WORKING_LAYOUT' })}
+            title="Discard working changes and return to Active Layout"
+          >
+            Discard
+          </button>
+        </div>
+      )}
+
+      {/* Saved variants indicator */}
+      {state.savedVariants.length > 0 && (
+        <span className="text-[10px] text-gray-500" title={`${state.savedVariants.length} saved variant(s)`}>
+          {state.savedVariants.length} variant{state.savedVariants.length !== 1 ? 's' : ''}
+        </span>
+      )}
 
       {/* Undo / Redo */}
       <div className="flex gap-1">

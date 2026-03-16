@@ -12,7 +12,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import chroma from 'chroma-js';
 import { useProject } from '../state/ProjectContext';
-import { getActiveLayout, getActiveStreams, type SoundStream } from '../state/projectState';
+import { getDisplayedLayout, getActiveStreams, type SoundStream } from '../state/projectState';
 import { PadContextMenu } from './PadContextMenu';
 import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
@@ -70,7 +70,7 @@ const IMPOSSIBLE_REACH_THRESHOLD = 5;
 
 export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false }: InteractiveGridProps) {
   const { state, dispatch } = useProject();
-  const layout = layoutOverride ?? getActiveLayout(state);
+  const layout = layoutOverride ?? getDisplayedLayout(state);
   const activeStreams = getActiveStreams(state);
   const [dragOverPad, setDragOverPad] = useState<string | null>(null);
   const [dragSourcePad, setDragSourcePad] = useState<string | null>(null);
