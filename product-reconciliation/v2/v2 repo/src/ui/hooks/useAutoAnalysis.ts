@@ -267,7 +267,7 @@ export function useAutoAnalysis() {
       const modeLabel = resolvedMode === 'deep' ? 'Thorough' : 'Quick';
       setGenerationProgress(`${modeLabel} optimization: generating 3 candidates...`);
 
-      const candidates = await generateCandidates(performance, null, {
+      const generationResult = await generateCandidates(performance, null, {
         count: 3,
         optimizationMode: resolvedMode,
         engineConfig: state.engineConfig,
@@ -275,12 +275,13 @@ export function useAutoAnalysis() {
         sections: state.sections,
         manualAssignments,
         baseLayout: effectiveLayout,
+        activeLayout: effectiveLayout,
       });
 
       setGenerationProgress('Ranking results...');
-      dispatch({ type: 'SET_CANDIDATES', payload: candidates });
-      if (candidates.length > 0) {
-        dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidates[0] });
+      dispatch({ type: 'SET_CANDIDATES', payload: generationResult.candidates });
+      if (generationResult.candidates.length > 0) {
+        dispatch({ type: 'SET_ANALYSIS_RESULT', payload: generationResult.candidates[0] });
       }
       setGenerationProgress(null);
     } catch (err) {
