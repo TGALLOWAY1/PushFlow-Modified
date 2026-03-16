@@ -44,6 +44,8 @@ export type DifficultyLevel = 'Easy' | 'Medium' | 'Hard' | 'Unplayable';
  */
 export interface FingerAssignment {
   noteNumber: number;
+  /** Stable voice identity (from PerformanceEvent.voiceId). */
+  voiceId?: string;
   startTime: number;
   assignedHand: 'left' | 'right' | 'Unplayable';
   finger: FingerType | null;

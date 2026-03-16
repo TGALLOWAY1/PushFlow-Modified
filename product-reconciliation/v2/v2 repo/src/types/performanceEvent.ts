@@ -11,8 +11,15 @@
  * Represents a MIDI note event with timing, dynamics, and identity.
  */
 export interface PerformanceEvent {
-  /** MIDI note number (0-127) identifying the voice/sound. */
+  /** MIDI note number (0-127). Retained as provenance metadata. */
   noteNumber: number;
+  /**
+   * Stable voice identity (SoundStream.id or Voice.id).
+   * This is the canonical solver-facing identity — not pitch.
+   * When present, the solver uses this to look up pad assignments
+   * instead of relying on noteNumber alone.
+   */
+  voiceId?: string;
   /** Absolute start time in seconds. */
   startTime: number;
   /** Duration in seconds (optional). */
