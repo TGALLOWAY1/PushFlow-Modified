@@ -19,7 +19,11 @@
 
 import { type Performance, type InstrumentConfig } from '../../types/performance';
 import { type Layout } from '../../types/layout';
-import { type CandidateSolution, type CandidateMetadata } from '../../types/candidateSolution';
+import {
+  type CandidateSolution,
+  type CandidateMetadata,
+  type CandidateGenerationSummary,
+} from '../../types/candidateSolution';
 import { type NaturalHandPose } from '../../types/ergonomicPrior';
 import { type EngineConfiguration } from '../../types/engineConfig';
 import {
@@ -35,6 +39,11 @@ import { getMaxSafeOffset, poseHasAssignments } from '../prior/naturalHandPose';
 import { createAnnealingSolver } from './annealingSolver';
 import { createBeamSolver } from '../solvers/beamSolver';
 import { analyzeDifficulty, computeTradeoffProfile } from '../evaluation/difficultyScoring';
+import {
+  buildBaselineDiffSummary,
+  filterTrivialDuplicates,
+  buildGenerationSummary,
+} from '../analysis/diversityMeasurement';
 import { generateId } from '../../utils/idGenerator';
 
 // ============================================================================
@@ -73,6 +82,12 @@ export interface CandidateGenerationConfig {
    * creating an empty layout, so candidates reflect the user's current grid.
    */
   baseLayout?: Layout;
+  /**
+   * Phase 4: Active Layout baseline for diversity measurement.
+   * When provided, each candidate gets a baselineDiff summary and
+   * trivial duplicates are filtered out.
+   */
+  activeLayout?: Layout;
 }
 
 // ============================================================================
@@ -245,11 +260,19 @@ function generateStrategies(
  * the solution space. Compact layouts reduce stretch and reachability
  * problems by placing voices on adjacent pads.
  */
+/**
+ * Result of candidate generation including diversity metadata.
+ */
+export interface CandidateGenerationResult {
+  candidates: CandidateSolution[];
+  summary: CandidateGenerationSummary | null;
+}
+
 export async function generateCandidates(
   performance: Performance,
   pose0: NaturalHandPose | null,
   config: CandidateGenerationConfig,
-): Promise<CandidateSolution[]> {
+): Promise<CandidateGenerationResult> {
   const count = config.count ?? 3;
   const strategies = generateStrategies(pose0, count);
   const candidates: CandidateSolution[] = [];
@@ -361,5 +384,37 @@ export async function generateCandidates(
     });
   }
 
-  return candidates;
+  // Phase 4: Baseline-aware diversity processing
+  const activeLayout = config.activeLayout;
+
+  if (!activeLayout) {
+    // No baseline to compare against — return raw candidates
+    return { candidates, summary: null };
+  }
+
+  // Find the baseline candidate's tradeoff profile (first candidate, which uses the baseline strategy)
+  const baselineCandidate = candidates.find(c => c.metadata.strategy === 'baseline');
+  const baselineProfile = baselineCandidate?.tradeoffProfile;
+
+  // Attach baseline diff summaries to each candidate
+  for (const candidate of candidates) {
+    candidate.baselineDiff = buildBaselineDiffSummary(
+      candidate,
+      activeLayout,
+      baselineProfile,
+    );
+  }
+
+  // Filter trivial duplicates
+  const [filtered, duplicatesRemoved] = filterTrivialDuplicates(candidates);
+
+  // Build generation summary (includes low-diversity explanation)
+  const summary = buildGenerationSummary(
+    candidates.length,
+    duplicatesRemoved,
+    filtered,
+    activeLayout,
+  );
+
+  return { candidates: filtered, summary };
 }

@@ -121,7 +121,7 @@ export { BeamSolver, createBeamSolver } from './solvers/beamSolver';
 // Optimization
 export { AnnealingSolver, createAnnealingSolver } from './optimization/annealingSolver';
 export { applyRandomMutation, getEmptyPads } from './optimization/mutationService';
-export { generateCandidates } from './optimization/multiCandidateGenerator';
+export { generateCandidates, type CandidateGenerationResult } from './optimization/multiCandidateGenerator';
 export { rankCandidates, filterPareto, compositeScore, compareDimensions } from './optimization/candidateRanker';
 
 // Pattern generation (rudiment/ostinato candidate generator)
@@ -155,3 +155,14 @@ export {
 export { analyzePassages, getHardestPassages } from './analysis/passageAnalyzer';
 export { compareCandidates, summarizeComparison } from './analysis/candidateComparator';
 export { explainConstraints, identifyBottlenecks } from './analysis/constraintExplainer';
+
+// Diversity measurement (Phase 4: baseline-aware candidates)
+export {
+  computeLayoutDiversity,
+  classifyDiversityLevel,
+  isTrivialDuplicate,
+  filterTrivialDuplicates,
+  buildBaselineDiffSummary,
+  explainLowDiversity,
+  buildGenerationSummary,
+} from './analysis/diversityMeasurement';

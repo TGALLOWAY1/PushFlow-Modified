@@ -210,5 +210,6 @@ export async function generateCandidateSolutions(
     baseLayout: layout,
   };
 
-  return generateCandidates(performance, null, generationConfig);
+  const result = await generateCandidates(performance, null, generationConfig);
+  return result.candidates;
 }
