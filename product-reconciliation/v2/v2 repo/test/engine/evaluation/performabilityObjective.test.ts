@@ -2,15 +2,15 @@
  * Performability Objective Tests.
  *
  * Tests the 3-component scoring model:
- *   1. poseNaturalness: unified grip quality (attractor + perFingerHome + dominance)
+ *   1. poseNaturalness: unified grip quality (handShapeDeviation + fingerPreference)
  *   2. transitionDifficulty: Fitts's Law movement cost
  *   3. constraintPenalty: constraint violation penalty (V1: always 0, no fallback grips)
  *
  * Also tests:
- *   - calculatePoseNaturalness sub-component weighting
+ *   - V1CostBreakdown backward compatibility mappings
  *   - combinePerformabilityComponents
- *   - performabilityToDifficultyBreakdown (backward compatibility mapping)
- *   - Beam solver produces valid results under 3-component scoring
+ *   - v1CostBreakdownToDifficultyBreakdown
+ *   - Beam solver produces valid results under V1 scoring
  */
 
 import { describe, it, expect } from 'vitest';
@@ -27,11 +27,14 @@ import {
   type PerformabilityObjective,
   combinePerformabilityComponents,
   createZeroPerformabilityComponents,
-  performabilityToDifficultyBreakdown,
-  type ObjectiveComponents,
-  combineComponents,
-  objectiveToDifficultyBreakdown,
+  v1CostBreakdownToDifficultyBreakdown,
+  v1CostBreakdownToCanonicalFactors,
+  v1CostBreakdownToV1Factors,
 } from '../../../src/engine/evaluation/objective';
+import {
+  type V1CostBreakdown,
+  createZeroV1CostBreakdown,
+} from '../../../src/types/diagnostics';
 import { type HandPose, type FingerCoordinate } from '../../../src/types/performance';
 import { type NeutralHandCentersResult } from '../../../src/engine/prior/handPose';
 import {
@@ -131,7 +134,7 @@ describe('PerformabilityObjective', () => {
 });
 
 // ============================================================================
-// Tests: calculatePoseNaturalness
+// Tests: calculatePoseNaturalness (legacy, kept for backward compat)
 // ============================================================================
 
 describe('calculatePoseNaturalness', () => {
@@ -159,9 +162,6 @@ describe('calculatePoseNaturalness', () => {
     const score = calculatePoseNaturalness(
       RIGHT_RESTING_POSE, RIGHT_RESTING_POSE, 0.3, 'right', null
     );
-    // Without neutral centers, only attractor and dominance contribute.
-    // Attractor is zero (same pose). Dominance depends on fingers.
-    // Index + middle have cost 0 each.
     expect(score).toBe(0);
   });
 
@@ -172,7 +172,6 @@ describe('calculatePoseNaturalness', () => {
     const indexMiddleScore = calculatePoseNaturalness(
       LOW_DOMINANCE_GRIP, RIGHT_RESTING_POSE, 0.3, 'right', null
     );
-    // Thumb (1.0) + pinky (0.8) dominance >> index (0) + middle (0)
     expect(thumbPinkyScore).toBeGreaterThan(indexMiddleScore);
   });
 
@@ -182,10 +181,8 @@ describe('calculatePoseNaturalness', () => {
       NATURAL_GRIP, RIGHT_RESTING_POSE, stiffness, 'right', null
     );
 
-    // Manual sub-component calculation
     const attractor = calculateAttractorCost(NATURAL_GRIP, RIGHT_RESTING_POSE, stiffness);
     const dominance = calculateFingerDominanceCost(NATURAL_GRIP);
-    // No neutral centers → perFingerHome = 0
     const expected = 0.4 * attractor + 0.4 * 0 + 0.2 * dominance;
 
     expect(combined).toBeCloseTo(expected, 10);
@@ -193,62 +190,78 @@ describe('calculatePoseNaturalness', () => {
 });
 
 // ============================================================================
-// Tests: performabilityToDifficultyBreakdown
+// Tests: V1CostBreakdown backward compatibility mappings
 // ============================================================================
 
-describe('performabilityToDifficultyBreakdown', () => {
-  it('should map transition to movement and penalty to crossover', () => {
-    const perf: PerformabilityObjective = {
-      poseNaturalness: 2.0,
-      transitionDifficulty: 3.0,
+describe('v1CostBreakdownToDifficultyBreakdown', () => {
+  it('should map V1 fields to legacy DifficultyBreakdown format', () => {
+    const v1: V1CostBreakdown = {
+      fingerPreference: 2.0,
+      handShapeDeviation: 3.0,
+      transitionCost: 5.0,
+      handBalance: 1.0,
       constraintPenalty: 100,
+      total: 111.0,
     };
-    const breakdown = performabilityToDifficultyBreakdown(perf);
+    const breakdown = v1CostBreakdownToDifficultyBreakdown(v1);
 
-    expect(breakdown.movement).toBe(3.0);   // transitionDifficulty
-    expect(breakdown.crossover).toBe(100);   // constraintPenalty
-    expect(breakdown.total).toBe(105.0);     // sum of all 3
-    expect(breakdown.bounce).toBe(0);        // no alternation in perf model
+    expect(breakdown.movement).toBe(5.0);     // transitionCost
+    expect(breakdown.stretch).toBe(2.0);       // fingerPreference
+    expect(breakdown.drift).toBe(3.0);         // handShapeDeviation
+    expect(breakdown.bounce).toBe(0);          // always 0 in V1
+    expect(breakdown.fatigue).toBe(0);         // always 0 in V1
+    expect(breakdown.crossover).toBe(100);     // constraintPenalty
+    expect(breakdown.total).toBe(111.0);
   });
 
-  it('should distribute poseNaturalness across stretch/drift/fatigue', () => {
-    const perf: PerformabilityObjective = {
-      poseNaturalness: 10.0,
-      transitionDifficulty: 0,
-      constraintPenalty: 0,
-    };
-    const breakdown = performabilityToDifficultyBreakdown(perf);
-
-    expect(breakdown.stretch).toBeCloseTo(2.0);   // 10 * 0.2
-    expect(breakdown.drift).toBeCloseTo(4.0);     // 10 * 0.4
-    expect(breakdown.fatigue).toBeCloseTo(4.0);   // 10 * 0.4
-    expect(breakdown.total).toBeCloseTo(10.0);
+  it('should handle zero breakdown', () => {
+    const v1 = createZeroV1CostBreakdown();
+    const breakdown = v1CostBreakdownToDifficultyBreakdown(v1);
+    expect(breakdown.total).toBe(0);
+    expect(breakdown.movement).toBe(0);
+    expect(breakdown.stretch).toBe(0);
+    expect(breakdown.drift).toBe(0);
   });
+});
 
-  it('should use diagnostic components when provided', () => {
-    const perf: PerformabilityObjective = {
-      poseNaturalness: 10.0,
-      transitionDifficulty: 3.0,
+describe('v1CostBreakdownToCanonicalFactors', () => {
+  it('should collapse fingerPreference + handShapeDeviation into gripNaturalness', () => {
+    const v1: V1CostBreakdown = {
+      fingerPreference: 5.0,
+      handShapeDeviation: 10.0,
+      transitionCost: 3.0,
+      handBalance: 1.0,
       constraintPenalty: 0,
+      total: 99.0, // beam total may differ due to weighting
     };
-    const diag: ObjectiveComponents = {
-      transition: 3.0,
-      stretch: 1.5,
-      poseAttractor: 2.0,
-      perFingerHome: 3.0,
-      alternation: 0.5,
-      handBalance: 0.2,
-      constraints: 0,
-    };
-    const breakdown = performabilityToDifficultyBreakdown(perf, diag);
+    const factors = v1CostBreakdownToCanonicalFactors(v1);
+    expect(factors.gripNaturalness).toBe(15.0); // 5 + 10
+    expect(factors.transition).toBe(3.0);
+    expect(factors.handBalance).toBe(1.0);
+    expect(factors.alternation).toBe(0);         // always 0 in V1
+    expect(factors.constraintPenalty).toBe(0);
+    // Total = sum of canonical factors, not beam total
+    expect(factors.total).toBe(19.0); // 15 + 3 + 0 + 1 + 0
+  });
+});
 
-    expect(breakdown.movement).toBe(3.0);       // from perf.transitionDifficulty
-    expect(breakdown.stretch).toBe(1.5);          // from diag
-    expect(breakdown.drift).toBe(2.0);            // from diag.poseAttractor
-    expect(breakdown.bounce).toBe(0.5);           // from diag.alternation
-    expect(breakdown.fatigue).toBe(3.0);          // from diag.perFingerHome
-    expect(breakdown.crossover).toBe(0);          // from perf.constraintPenalty
-    expect(breakdown.total).toBeCloseTo(13.0);    // sum of perf components
+describe('v1CostBreakdownToV1Factors', () => {
+  it('should map to V1DiagnosticFactors with correct total', () => {
+    const v1: V1CostBreakdown = {
+      fingerPreference: 2.0,
+      handShapeDeviation: 3.0,
+      transitionCost: 5.0,
+      handBalance: 1.0,
+      constraintPenalty: 0,
+      total: 11.0,
+    };
+    const factors = v1CostBreakdownToV1Factors(v1);
+    expect(factors.fingerPreference).toBe(2.0);
+    expect(factors.handShapeDeviation).toBe(3.0);
+    expect(factors.transitionCost).toBe(5.0);
+    expect(factors.handBalance).toBe(1.0);
+    // V1DiagnosticFactors.total excludes constraintPenalty
+    expect(factors.total).toBe(11.0); // 2 + 3 + 5 + 1
   });
 });
 
@@ -288,40 +301,11 @@ describe('Diagnostic Costs', () => {
 });
 
 // ============================================================================
-// Tests: Legacy Backward Compatibility
+// Tests: Beam Solver with V1 Scoring
 // ============================================================================
 
-describe('Legacy ObjectiveComponents backward compatibility', () => {
-  it('combineComponents should still work for 7-component model', () => {
-    const legacy: ObjectiveComponents = {
-      transition: 1, stretch: 2, poseAttractor: 3,
-      perFingerHome: 4, alternation: 5, handBalance: 6, constraints: 7,
-    };
-    expect(combineComponents(legacy)).toBe(28);
-  });
-
-  it('objectiveToDifficultyBreakdown should still map correctly', () => {
-    const legacy: ObjectiveComponents = {
-      transition: 1, stretch: 2, poseAttractor: 3,
-      perFingerHome: 4, alternation: 5, handBalance: 6, constraints: 7,
-    };
-    const breakdown = objectiveToDifficultyBreakdown(legacy);
-    expect(breakdown.movement).toBe(1);
-    expect(breakdown.stretch).toBe(2);
-    expect(breakdown.drift).toBe(3);
-    expect(breakdown.fatigue).toBe(4);
-    expect(breakdown.bounce).toBe(5);
-    expect(breakdown.crossover).toBe(7);
-    expect(breakdown.total).toBe(28);
-  });
-});
-
-// ============================================================================
-// Tests: Beam Solver with 3-Component Scoring
-// ============================================================================
-
-describe('Beam Solver (3-Component Scoring)', () => {
-  it('should produce valid results with new scoring model', async () => {
+describe('Beam Solver (V1 Scoring)', () => {
+  it('should produce valid results with V1 scoring model', async () => {
     const performance = createTestPerformance([
       { noteNumber: 40, startTime: 0.0 },
       { noteNumber: 41, startTime: 0.5 },
@@ -337,22 +321,18 @@ describe('Beam Solver (3-Component Scoring)', () => {
   });
 
   it('should prefer natural grips near resting pose', async () => {
-    // Notes near the right resting pose center (col 5-6) should score better
-    // than notes far from it (col 0-1)
     const nearRestPerf = createTestPerformance([
-      { noteNumber: 69, startTime: 0.0 },  // Should map near center
+      { noteNumber: 69, startTime: 0.0 },
       { noteNumber: 70, startTime: 0.5 },
     ]);
     const farRestPerf = createTestPerformance([
-      { noteNumber: 36, startTime: 0.0 },  // Bottom-left corner
+      { noteNumber: 36, startTime: 0.0 },
       { noteNumber: 37, startTime: 0.5 },
     ]);
 
     const nearResult = await runSolver(nearRestPerf);
     const farResult = await runSolver(farRestPerf);
 
-    // Near-rest performance should have lower average cost
-    // (both should be valid, but near-rest is more natural)
     assertNoNaNs(nearResult);
     assertNoNaNs(farResult);
   });
@@ -388,12 +368,10 @@ describe('Beam Solver (3-Component Scoring)', () => {
   });
 
   it('should assign higher costs for fast transitions', async () => {
-    // Slow transitions (0.5s apart)
     const slowPerf = createTestPerformance([
       { noteNumber: 40, startTime: 0.0 },
       { noteNumber: 45, startTime: 2.0 },
     ]);
-    // Fast transitions (0.1s apart)
     const fastPerf = createTestPerformance([
       { noteNumber: 40, startTime: 0.0 },
       { noteNumber: 45, startTime: 0.1 },
@@ -405,10 +383,6 @@ describe('Beam Solver (3-Component Scoring)', () => {
     assertNoNaNs(slowResult);
     assertNoNaNs(fastResult);
 
-    // Fast transition should have higher average cost or more hard events
-    const slowTotal = slowResult.averageMetrics.total;
-    const fastTotal = fastResult.averageMetrics.total;
-    // Note: fast might be Infinity/Unplayable; just verify both produce results
     expect(slowResult.fingerAssignments.length).toBe(2);
     expect(fastResult.fingerAssignments.length).toBe(2);
   });

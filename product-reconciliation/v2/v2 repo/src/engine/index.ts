@@ -78,16 +78,11 @@ export {
 } from './evaluation/costFunction';
 export {
   type PerformabilityObjective,
-  type LegacyObjectiveComponents,
   combinePerformabilityComponents,
   createZeroPerformabilityComponents,
-  performabilityToDifficultyBreakdown,
-  combineComponents,
-  createZeroComponents,
-  objectiveToDifficultyBreakdown,
-  objectiveToCanonicalFactors,
-  objectiveToGripDetail,
-  performabilityToCanonicalFactors,
+  v1CostBreakdownToDifficultyBreakdown,
+  v1CostBreakdownToCanonicalFactors,
+  v1CostBreakdownToV1Factors,
 } from './evaluation/objective';
 
 export {

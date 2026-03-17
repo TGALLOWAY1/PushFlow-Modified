@@ -47,14 +47,14 @@ import {
 } from '../evaluation/costFunction';
 import {
   type PerformabilityObjective,
-  type ObjectiveComponents,
   combinePerformabilityComponents,
-  combineComponents,
-  objectiveToDifficultyBreakdown,
-  objectiveToCanonicalFactors,
-  objectiveToGripDetail,
-  createZeroComponents,
+  v1CostBreakdownToDifficultyBreakdown,
+  v1CostBreakdownToCanonicalFactors,
 } from '../evaluation/objective';
+import {
+  type V1CostBreakdown,
+  createZeroV1CostBreakdown,
+} from '../../types/diagnostics';
 import {
   type DiagnosticsPayload,
   type InfeasibilityDiagnostic,
@@ -106,7 +106,7 @@ interface NoteAssignment {
   cost: number;
   row: number;
   col: number;
-  costComponents?: ObjectiveComponents;
+  costComponents?: V1CostBreakdown;
 }
 
 interface BeamNode {
@@ -346,17 +346,15 @@ export class BeamSolver implements SolverStrategy {
 
         const newTotalCost = node.totalCost + stepCostForBeam;
 
-        // === DISPLAY COMPONENTS (7-component, moment-level — NOT divided per-note) ===
-        const stepComponents: ObjectiveComponents = {
-          transition: effectiveTransitionCost,
-          stretch: fingerPreferenceCost,
-          poseAttractor: attractorCost,
-          perFingerHome: perFingerHomeCost,
-          alternation: alternationCost,
+        // === V1 COST BREAKDOWN (moment-level — NOT divided per-note) ===
+        const stepComponents: V1CostBreakdown = {
+          fingerPreference: fingerPreferenceCost,
+          handShapeDeviation: handShapeDeviation,
+          transitionCost: effectiveTransitionCost,
           handBalance: handBalanceCost,
-          constraints: constraintPenalty,
+          constraintPenalty,
+          total: stepCostForBeam,
         };
-        const displayStepCost = combineComponents(stepComponents);
 
         if (gripFingers.length === 0 || gripFingers.length < uniquePads.length) continue;
 
@@ -374,7 +372,7 @@ export class BeamSolver implements SolverStrategy {
             hand,
             finger: resolvedFingers[i],
             grip,
-            cost: displayStepCost,
+            cost: stepComponents.total,
             row: group.positions[i].row,
             col: group.positions[i].col,
             costComponents: stepComponents,
@@ -586,17 +584,15 @@ export class BeamSolver implements SolverStrategy {
         // Note: alternation cost (D-15) removed from beam score in V1.
         stepCostForBeam += handBalanceCost * HAND_BALANCE_BEAM_WEIGHT;
 
-        // === DISPLAY COMPONENTS (7-component, moment-level — NOT divided per-note) ===
-        const stepComponents: ObjectiveComponents = {
-          transition: effectiveLeftTransition + effectiveRightTransition,
-          stretch: leftFingerPref + rightFingerPref,
-          poseAttractor: leftAttractor + rightAttractor,
-          perFingerHome: leftHome + rightHome,
-          alternation: alternationCost,
+        // === V1 COST BREAKDOWN (moment-level — NOT divided per-note) ===
+        const stepComponents: V1CostBreakdown = {
+          fingerPreference: leftFingerPref + rightFingerPref,
+          handShapeDeviation: leftShapeDev + rightShapeDev,
+          transitionCost: effectiveLeftTransition + effectiveRightTransition,
           handBalance: handBalanceCost,
-          constraints: leftConstraintPenalty + rightConstraintPenalty,
+          constraintPenalty: leftConstraintPenalty + rightConstraintPenalty,
+          total: stepCostForBeam,
         };
-        const displayStepCost = combineComponents(stepComponents);
 
         // Build per-note assignments with FULL moment cost (Invariant E)
         const assignments: NoteAssignment[] = [];
@@ -612,7 +608,7 @@ export class BeamSolver implements SolverStrategy {
             hand: 'left',
             finger: resolvedLeftFingers[j],
             grip: leftResult.pose,
-            cost: displayStepCost,
+            cost: stepComponents.total,
             row: group.positions[i].row,
             col: group.positions[i].col,
             costComponents: stepComponents,
@@ -629,7 +625,7 @@ export class BeamSolver implements SolverStrategy {
             hand: 'right',
             finger: resolvedRightFingers[j],
             grip: rightResult.pose,
-            cost: displayStepCost,
+            cost: stepComponents.total,
             row: group.positions[i].row,
             col: group.positions[i].col,
             costComponents: stepComponents,
@@ -711,8 +707,8 @@ export class BeamSolver implements SolverStrategy {
       fatigue: 0, crossover: 0, total: 0,
     };
 
-    // Phase 3: Accumulate canonical ObjectiveComponents for diagnostics
-    const totalObjectiveComponents = createZeroComponents();
+    // V1: Accumulate V1CostBreakdown for diagnostics
+    const totalV1Cost = createZeroV1CostBreakdown();
     let fallbackGripCount = 0;
 
     const assignmentMap = new Map<number, NoteAssignment>();
@@ -777,7 +773,7 @@ export class BeamSolver implements SolverStrategy {
       driftCount++;
 
       const costBreakdown: DifficultyBreakdown = assignment.costComponents
-        ? objectiveToDifficultyBreakdown(assignment.costComponents)
+        ? v1CostBreakdownToDifficultyBreakdown(assignment.costComponents)
         : {
             movement: assignment.cost * 0.4,
             stretch: assignment.cost * 0.2,
@@ -796,16 +792,15 @@ export class BeamSolver implements SolverStrategy {
       totalMetrics.total += costBreakdown.total;
       totalCost += assignment.cost;
 
-      // Phase 3: Accumulate canonical objective components
+      // V1: Accumulate V1CostBreakdown for diagnostics
       if (assignment.costComponents) {
-        totalObjectiveComponents.transition += assignment.costComponents.transition;
-        totalObjectiveComponents.stretch += assignment.costComponents.stretch;
-        totalObjectiveComponents.poseAttractor += assignment.costComponents.poseAttractor;
-        totalObjectiveComponents.perFingerHome += assignment.costComponents.perFingerHome;
-        totalObjectiveComponents.alternation += assignment.costComponents.alternation;
-        totalObjectiveComponents.handBalance += assignment.costComponents.handBalance;
-        totalObjectiveComponents.constraints += assignment.costComponents.constraints;
-        if (assignment.costComponents.constraints > 0) fallbackGripCount++;
+        totalV1Cost.fingerPreference += assignment.costComponents.fingerPreference;
+        totalV1Cost.handShapeDeviation += assignment.costComponents.handShapeDeviation;
+        totalV1Cost.transitionCost += assignment.costComponents.transitionCost;
+        totalV1Cost.handBalance += assignment.costComponents.handBalance;
+        totalV1Cost.constraintPenalty += assignment.costComponents.constraintPenalty;
+        totalV1Cost.total += assignment.costComponents.total;
+        if (assignment.costComponents.constraintPenalty > 0) fallbackGripCount++;
       }
 
       const padId = padKey(assignment.row, assignment.col);
@@ -850,9 +845,8 @@ export class BeamSolver implements SolverStrategy {
     let score = 100 - (5 * hardCount) - (20 * unplayableCount);
     if (score < 0) score = 0;
 
-    // Phase 3: Build canonical diagnostics payload
-    const canonicalFactors = objectiveToCanonicalFactors(totalObjectiveComponents);
-    const gripDetail = objectiveToGripDetail(totalObjectiveComponents);
+    // V1: Build canonical diagnostics payload from V1CostBreakdown
+    const canonicalFactors = v1CostBreakdownToCanonicalFactors(totalV1Cost);
     const feasibility = deriveFeasibilityVerdict(
       unplayableCount,
       hardCount,
@@ -884,7 +878,6 @@ export class BeamSolver implements SolverStrategy {
     const diagnostics: DiagnosticsPayload = {
       feasibility,
       factors: canonicalFactors,
-      gripDetail,
       topContributors: computeTopContributors(canonicalFactors),
       infeasibleSounds,
     };
@@ -1148,17 +1141,15 @@ export class BeamSolver implements SolverStrategy {
                 constraintPenalty: manualConstraintPenalty,
               });
 
-              // Display components (7-component, moment-level — NOT divided per-note)
-              const stepComponents: ObjectiveComponents = {
-                transition: effectiveTransition,
-                stretch: manualFingerPref,
-                poseAttractor: attractorCost,
-                perFingerHome: perFingerHomeCost,
-                alternation: 0,
+              // V1 cost breakdown (moment-level — NOT divided per-note)
+              const stepComponents: V1CostBreakdown = {
+                fingerPreference: manualFingerPref,
+                handShapeDeviation: manualShapeDev,
+                transitionCost: effectiveTransition,
                 handBalance: 0,
-                constraints: manualConstraintPenalty,
+                constraintPenalty: manualConstraintPenalty,
+                total: stepCostForBeam,
               };
-              const displayStepCost = combineComponents(stepComponents);
 
               const assignments: NoteAssignment[] = [];
               const n = group.notes.length;
@@ -1174,7 +1165,7 @@ export class BeamSolver implements SolverStrategy {
                   hand: override.hand,
                   finger: gripFingers[i % gripFingers.length] || override.finger,
                   grip: matchingResult.pose,
-                  cost: displayStepCost,
+                  cost: stepComponents.total,
                   row: group.positions[i].row,
                   col: group.positions[i].col,
                   costComponents: stepComponents,
