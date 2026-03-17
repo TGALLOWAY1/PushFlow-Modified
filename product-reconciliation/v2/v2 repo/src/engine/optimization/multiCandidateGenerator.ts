@@ -328,11 +328,11 @@ export async function generateCandidates(
     let executionPlan;
     let finalLayout = layout;
 
-    // Determine whether to use annealing and which config
-    // optimizationMode takes precedence over legacy useAnnealing flag
-    const shouldAnneal = config.optimizationMode !== undefined
-      ? true  // Both 'fast' and 'deep' modes use annealing
-      : (config.useAnnealing ?? false);
+    // Determine whether to use annealing and which config.
+    // Only 'deep' mode uses annealing (thousands of iterations).
+    // 'fast' mode uses beam search only for near-instant results.
+    const shouldAnneal = config.optimizationMode === 'deep'
+      || (config.optimizationMode === undefined && (config.useAnnealing ?? false));
 
     const annealingConfig = config.optimizationMode === 'deep'
       ? DEEP_ANNEALING_CONFIG
