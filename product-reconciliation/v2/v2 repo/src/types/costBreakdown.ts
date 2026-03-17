@@ -10,7 +10,7 @@
  */
 
 import { type FingerType, type HandSide } from './fingerModel';
-import { type FeasibilityLevel, type FeasibilityVerdict } from './diagnostics';
+import { type FeasibilityVerdict } from './diagnostics';
 import { type HandPose } from './performance';
 import { type PadFingerAssignment } from './executionPlan';
 import { type ConstraintTier } from '../engine/prior/feasibility';

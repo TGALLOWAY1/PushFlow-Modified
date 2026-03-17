@@ -199,7 +199,6 @@ export function useAutoAnalysis() {
           performance,
           { ...state.engineConfig, beamWidth: 15 }, // Fast mode
           manualAssignments,
-          solverConstraints,
         );
 
         if (abortRef.current) return;
