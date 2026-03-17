@@ -121,6 +121,172 @@ export interface InfeasibilityDiagnostic {
 }
 
 // ============================================================================
+// V1 Cost Model Types (Phase 8)
+// ============================================================================
+
+/**
+ * V1 constraint violation at the event level.
+ *
+ * Each violation is a specific reason why an event or grip is infeasible.
+ * Hard constraints are binary — they either pass or produce a violation.
+ */
+export interface ConstraintViolation {
+  /** What kind of constraint was violated. */
+  type:
+    | 'zone_violation'    // Hand is playing outside its valid zone
+    | 'span_exceeded'     // Finger spread exceeds biomechanical limit
+    | 'no_valid_grip'     // No valid grip exists for this chord
+    | 'unmapped_note'     // Note has no pad in the layout
+    | 'speed_exceeded';   // Transition speed exceeds MAX_HAND_SPEED
+  /** Human-readable explanation. */
+  message: string;
+}
+
+/**
+ * V1 event-level feasibility check (binary pass/fail).
+ *
+ * Replaces the old tiered system. An event is either feasible (has a valid
+ * grip and transition) or infeasible (one or more constraint violations).
+ */
+export interface V1FeasibilityCheck {
+  /** Whether this event can be played. */
+  feasible: boolean;
+  /** Specific violations (empty if feasible). */
+  violations: ConstraintViolation[];
+}
+
+/**
+ * V1 event cost: what it costs to play this grip.
+ *
+ * Two factors:
+ * - fingerPreference: anatomical finger preference (weaker fingers cost more)
+ * - handShapeDeviation: translation-invariant grip shape distortion
+ *
+ * Total = fingerPreference + handShapeDeviation.
+ */
+export interface V1EventCost {
+  /** Anatomical finger preference cost. */
+  fingerPreference: number;
+  /** Translation-invariant grip shape deviation from natural hand shape. */
+  handShapeDeviation: number;
+  /** Sum of fingerPreference + handShapeDeviation. */
+  total: number;
+}
+
+/**
+ * V1 transition cost: what it costs to move to this grip.
+ *
+ * Based on Fitts's Law: distance + speed × weight.
+ * Returns Infinity if speed exceeds MAX_HAND_SPEED (hard rejection).
+ */
+export interface V1TransitionCost {
+  /** Fitts's Law movement cost. */
+  movementCost: number;
+  /** Same as movementCost (single-factor). */
+  total: number;
+}
+
+/**
+ * V1 performance cost: aggregate across all events in the performance.
+ *
+ * Provides the summary metrics for layout comparison and ranking.
+ */
+export interface V1PerformanceCost {
+  /** Mean event cost (fingerPreference + handShapeDeviation) across all events. */
+  meanEventCost: number;
+  /** Mean transition cost across all events. */
+  meanTransitionCost: number;
+  /** Hand balance cost (left/right distribution penalty). */
+  handBalance: number;
+  /** Number of infeasible events (binary, not a cost). */
+  infeasibleEventCount: number;
+  /** Weighted total for ranking. */
+  total: number;
+}
+
+/**
+ * V1 diagnostic factors: the canonical cost breakdown for diagnostics.
+ *
+ * Replaces DiagnosticFactors with V1-aligned field names.
+ * Every field maps directly to a single engine computation.
+ * No misleading aliases or collapsed sub-components.
+ */
+export interface V1DiagnosticFactors {
+  /** Anatomical finger preference cost. */
+  fingerPreference: number;
+  /** Translation-invariant grip shape deviation. */
+  handShapeDeviation: number;
+  /** Fitts's Law transition cost. */
+  transitionCost: number;
+  /** Left/right hand distribution penalty. */
+  handBalance: number;
+  /** Weighted total (lower = better). */
+  total: number;
+}
+
+/**
+ * V1 cost breakdown: replaces DifficultyBreakdown with V1-aligned names.
+ *
+ * Used on FingerAssignment, MomentAssignment, and ExecutionPlanResult
+ * for per-event and aggregate cost breakdowns.
+ */
+export interface V1CostBreakdown {
+  /** Anatomical finger preference cost. */
+  fingerPreference: number;
+  /** Translation-invariant grip shape deviation. */
+  handShapeDeviation: number;
+  /** Fitts's Law transition cost. */
+  transitionCost: number;
+  /** Left/right hand distribution penalty. */
+  handBalance: number;
+  /** Hard constraint penalty (always 0 for valid grips; non-zero = infeasible). */
+  constraintPenalty: number;
+  /** Weighted total. */
+  total: number;
+}
+
+/** Creates a zero-valued V1CostBreakdown. */
+export function createZeroV1CostBreakdown(): V1CostBreakdown {
+  return {
+    fingerPreference: 0,
+    handShapeDeviation: 0,
+    transitionCost: 0,
+    handBalance: 0,
+    constraintPenalty: 0,
+    total: 0,
+  };
+}
+
+/** Creates a zero-valued V1DiagnosticFactors. */
+export function createZeroV1DiagnosticFactors(): V1DiagnosticFactors {
+  return {
+    fingerPreference: 0,
+    handShapeDeviation: 0,
+    transitionCost: 0,
+    handBalance: 0,
+    total: 0,
+  };
+}
+
+/**
+ * Compute top contributing factor names from V1DiagnosticFactors.
+ * Returns factor names ordered by descending magnitude.
+ */
+export function computeV1TopContributors(factors: V1DiagnosticFactors): string[] {
+  const entries: Array<[string, number]> = [
+    ['fingerPreference', factors.fingerPreference],
+    ['handShapeDeviation', factors.handShapeDeviation],
+    ['transitionCost', factors.transitionCost],
+    ['handBalance', factors.handBalance],
+  ];
+
+  return entries
+    .filter(([_, value]) => value > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name]) => name);
+}
+
+// ============================================================================
 // Unified Diagnostics Payload
 // ============================================================================
 
