@@ -223,6 +223,35 @@ export function UnifiedTimeline() {
   const timelineWidth = totalDuration * zoom + 100;
   const totalHeight = visibleStreams.length * TRACK_HEIGHT;
 
+  // ─── Auto-scroll to selected event ────────────────────────────────────
+  const prevSelectedRef = useRef(state.selectedEventIndex);
+  useEffect(() => {
+    if (
+      state.selectedEventIndex === null ||
+      state.selectedEventIndex === prevSelectedRef.current ||
+      !scrollContainerRef.current
+    ) {
+      prevSelectedRef.current = state.selectedEventIndex;
+      return;
+    }
+    prevSelectedRef.current = state.selectedEventIndex;
+
+    // Find the startTime of the selected event from assignments
+    const allAssignments = Array.from(streamAssignments.values()).flat();
+    const selected = allAssignments.find(a => a.eventIndex === state.selectedEventIndex);
+    if (!selected) return;
+
+    const x = (selected.startTime - minTime) * zoom;
+    const container = scrollContainerRef.current;
+    const viewWidth = container.clientWidth;
+
+    // Only scroll if the event is outside the visible area
+    const scrollLeft = container.scrollLeft;
+    if (x < scrollLeft || x > scrollLeft + viewWidth - 40) {
+      container.scrollTo({ left: Math.max(0, x - viewWidth / 3), behavior: 'smooth' });
+    }
+  }, [state.selectedEventIndex, streamAssignments, minTime, zoom]);
+
   // ─── Handlers ────────────────────────────────────────────────────────────
 
   const handleImportClick = useCallback(() => {

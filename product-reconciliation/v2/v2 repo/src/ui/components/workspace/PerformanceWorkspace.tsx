@@ -4,6 +4,7 @@ import { useProject } from '../../state/ProjectContext';
 import { saveProject } from '../../persistence/projectStorage';
 import { EditorToolbar } from '../EditorToolbar';
 import { VoicePalette } from '../VoicePalette';
+import { EventsPanel } from '../EventsPanel';
 import { InteractiveGrid } from '../InteractiveGrid';
 import { CompareGridView } from '../CompareGridView';
 import { AnalysisSidePanel } from '../AnalysisSidePanel';
@@ -13,6 +14,8 @@ import { TransitionDetailPanel } from './TransitionDetailPanel';
 import { UnifiedTimeline } from '../UnifiedTimeline';
 import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
+
+type LeftPanelTab = 'sounds' | 'events';
 
 export function PerformanceWorkspace() {
   const { state, dispatch } = useProject();
@@ -25,6 +28,7 @@ export function PerformanceWorkspace() {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [onionSkin, setOnionSkin] = useState(false);
+  const [leftTab, setLeftTab] = useState<LeftPanelTab>('sounds');
 
   const assignments = state.analysisResult?.executionPlan.fingerAssignments;
   const selectedCandidate = state.candidates.find(candidate => candidate.id === state.selectedCandidateId) ?? null;
@@ -88,38 +92,62 @@ export function PerformanceWorkspace() {
         className="grid gap-4 items-start"
         style={{ gridTemplateColumns: gridExpanded ? '1fr' : `${leftCollapsed ? '48px' : '260px'} minmax(0, 1fr)` }}
       >
-        {/* Left Column: Collapsible Sidebar */}
+        {/* Left Column: Collapsible Sidebar with Sounds/Events tabs */}
         {!gridExpanded && (
-        <div className="space-y-3 min-w-0">
+        <div className="min-w-0">
           {leftCollapsed ? (
             <button
               className="flex flex-col items-center gap-3 py-3 w-full cursor-pointer hover:bg-gray-800/30 rounded transition-colors"
               onClick={() => setLeftCollapsed(false)}
               title="Expand sidebar"
             >
-              <span className="text-[10px] text-gray-500" style={{ writingMode: 'vertical-lr' }}>Sounds</span>
+              <span className="text-[10px] text-gray-500" style={{ writingMode: 'vertical-lr' }}>
+                {leftTab === 'sounds' ? 'Sounds' : 'Events'}
+              </span>
               <span className="text-[10px] text-gray-600">▸</span>
             </button>
           ) : (
-            <>
-              <div className="p-3 rounded-lg glass-panel space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Workspace Flow</div>
-                  <button
-                    className="w-5 h-5 flex items-center justify-center rounded text-gray-600 hover:text-gray-300 hover:bg-gray-700/50 transition-colors text-[10px]"
-                    onClick={() => setLeftCollapsed(true)}
-                    title="Collapse sidebar"
-                  >
-                    ◂
-                  </button>
-                </div>
-                <div className="text-sm text-gray-200">Edit the performance timeline below and watch the Push grid update on the right.</div>
+            <div className="rounded-lg glass-panel overflow-hidden">
+              {/* Tab header */}
+              <div className="flex items-center border-b border-gray-800">
+                <button
+                  className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                    leftTab === 'sounds'
+                      ? 'text-gray-200 bg-gray-800/50 border-b-2 border-blue-500'
+                      : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/30'
+                  }`}
+                  onClick={() => setLeftTab('sounds')}
+                >
+                  Sounds
+                </button>
+                <button
+                  className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                    leftTab === 'events'
+                      ? 'text-gray-200 bg-gray-800/50 border-b-2 border-blue-500'
+                      : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/30'
+                  }`}
+                  onClick={() => setLeftTab('events')}
+                >
+                  Events
+                </button>
+                <button
+                  className="w-7 h-7 flex items-center justify-center text-gray-600 hover:text-gray-300 hover:bg-gray-700/50 transition-colors text-[10px] flex-shrink-0"
+                  onClick={() => setLeftCollapsed(true)}
+                  title="Collapse sidebar"
+                >
+                  ◂
+                </button>
               </div>
 
-              <div className="p-3 rounded-lg glass-panel">
-                <VoicePalette />
+              {/* Tab content */}
+              <div className="p-3">
+                {leftTab === 'sounds' ? (
+                  <VoicePalette />
+                ) : (
+                  <EventsPanel />
+                )}
               </div>
-            </>
+            </div>
           )}
         </div>
         )}
@@ -178,11 +206,6 @@ export function PerformanceWorkspace() {
 
       {/* ─── Bottom Drawer: Unified Timeline ─────────────────────────────── */}
       <div className="rounded-lg glass-panel overflow-hidden">
-        <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-800 bg-gray-900/40">
-          <span className="px-2 py-1 text-xs rounded bg-gray-700 text-gray-200">Timeline</span>
-          <div className="flex-1" />
-          <span className="text-[10px] text-gray-600">Performance timeline with execution analysis</span>
-        </div>
         <UnifiedTimeline />
       </div>
 
