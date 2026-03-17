@@ -4,6 +4,10 @@
  * Top bar for the project editor: project name, layout status indicator,
  * V3 workflow actions (promote/save/discard), undo/redo, save/export,
  * generation controls, analysis stale indicator.
+ *
+ * The "Promote" action for candidates is now in the candidate preview
+ * cards within the PerformanceAnalysisPanel. The toolbar still has
+ * Promote for the working layout (separate workflow action).
  */
 
 import { useState } from 'react';
@@ -17,10 +21,8 @@ interface EditorToolbarProps {
   generationProgress?: string | null;
   canGenerate?: boolean;
   generateDisabledReason?: string | null;
-  showAnalysis?: boolean;
-  setShowAnalysis?: (show: boolean) => void;
-  showDiagnostics?: boolean;
-  setShowDiagnostics?: (show: boolean) => void;
+  showAnalysisPanel?: boolean;
+  setShowAnalysisPanel?: (show: boolean) => void;
 }
 
 export function EditorToolbar({
@@ -28,10 +30,8 @@ export function EditorToolbar({
   generationProgress,
   canGenerate = true,
   generateDisabledReason,
-  showAnalysis,
-  setShowAnalysis,
-  showDiagnostics,
-  setShowDiagnostics
+  showAnalysisPanel,
+  setShowAnalysisPanel,
 }: EditorToolbarProps = {}) {
   const { state, dispatch, undo, redo, canUndo, canRedo } = useProject();
   const displayedLayout = getDisplayedLayout(state);
@@ -135,25 +135,18 @@ export function EditorToolbar({
         Export
       </button>
 
-      {/* Toggles */}
-      {(setShowAnalysis || setShowDiagnostics) && (
+      {/* Unified Analysis Panel toggle */}
+      {setShowAnalysisPanel && (
         <div className="flex items-center gap-1 border-l border-gray-800 pl-3 ml-1">
-          {setShowAnalysis && (
-            <button
-              className={`px-2 py-1 text-xs rounded transition-colors ${showAnalysis ? 'bg-gray-700 text-gray-200' : 'text-gray-500 hover:bg-gray-800'}`}
-              onClick={() => setShowAnalysis(!showAnalysis)}
-            >
-              Analysis
-            </button>
-          )}
-          {setShowDiagnostics && (
-            <button
-              className={`px-2 py-1 text-xs rounded transition-colors ${showDiagnostics ? 'bg-gray-700 text-gray-200' : 'text-gray-500 hover:bg-gray-800'}`}
-              onClick={() => setShowDiagnostics(!showDiagnostics)}
-            >
-              Diagnostics
-            </button>
-          )}
+          <button
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              showAnalysisPanel ? 'bg-gray-700 text-gray-200' : 'text-gray-500 hover:bg-gray-800'
+            }`}
+            onClick={() => setShowAnalysisPanel(!showAnalysisPanel)}
+            title="Open Performance Analysis panel"
+          >
+            Analysis
+          </button>
         </div>
       )}
 

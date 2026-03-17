@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProject } from '../../state/ProjectContext';
+import { useViewSettings } from '../../state/viewSettings';
 import { saveProject } from '../../persistence/projectStorage';
 import { EditorToolbar } from '../EditorToolbar';
 import { VoicePalette } from '../VoicePalette';
 import { EventsPanel } from '../EventsPanel';
 import { InteractiveGrid } from '../InteractiveGrid';
 import { CompareGridView } from '../CompareGridView';
-import { AnalysisSidePanel } from '../AnalysisSidePanel';
-import { DiagnosticsPanel } from '../DiagnosticsPanel';
+import { PerformanceAnalysisPanel } from '../panels/PerformanceAnalysisPanel';
 import { EventDetailPanel } from '../EventDetailPanel';
 import { TransitionDetailPanel } from './TransitionDetailPanel';
 import { UnifiedTimeline } from '../UnifiedTimeline';
@@ -22,10 +22,10 @@ export function PerformanceWorkspace() {
   const navigate = useNavigate();
   const { generateFull, generationProgress, canGenerate, generateDisabledReason } = useAutoAnalysis();
   useKeyboardShortcuts();
+  const { settings: viewSettings, toggleGridLabel } = useViewSettings();
 
   const [gridExpanded, setGridExpanded] = useState(false);
-  const [showAnalysis, setShowAnalysis] = useState(false);
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showAnalysisPanel, setShowAnalysisPanel] = useState(false);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [onionSkin, setOnionSkin] = useState(false);
   const [leftTab, setLeftTab] = useState<LeftPanelTab>('sounds');
@@ -81,10 +81,8 @@ export function PerformanceWorkspace() {
         generationProgress={generationProgress}
         canGenerate={canGenerate}
         generateDisabledReason={generateDisabledReason}
-        showAnalysis={showAnalysis}
-        setShowAnalysis={setShowAnalysis}
-        showDiagnostics={showDiagnostics}
-        setShowDiagnostics={setShowDiagnostics}
+        showAnalysisPanel={showAnalysisPanel}
+        setShowAnalysisPanel={setShowAnalysisPanel}
       />
 
       {/* ─── Main Grid: Left Sidebar + Center Content ───────────────────── */}
@@ -104,7 +102,7 @@ export function PerformanceWorkspace() {
               <span className="text-[10px] text-gray-500" style={{ writingMode: 'vertical-lr' }}>
                 {leftTab === 'sounds' ? 'Sounds' : 'Events'}
               </span>
-              <span className="text-[10px] text-gray-600">▸</span>
+              <span className="text-[10px] text-gray-600">&#9656;</span>
             </button>
           ) : (
             <div className="rounded-lg glass-panel overflow-hidden">
@@ -135,7 +133,7 @@ export function PerformanceWorkspace() {
                   onClick={() => setLeftCollapsed(true)}
                   title="Collapse sidebar"
                 >
-                  ◂
+                  &#9666;
                 </button>
               </div>
 
@@ -175,7 +173,7 @@ export function PerformanceWorkspace() {
                   onClick={() => setGridExpanded(!gridExpanded)}
                   title={gridExpanded ? 'Exit full view' : 'Expand grid'}
                 >
-                  {gridExpanded ? '⊖ Collapse' : '⊕ Expand'}
+                  {gridExpanded ? '\u2296 Collapse' : '\u2295 Expand'}
                 </button>
               </div>
             </div>
@@ -209,32 +207,22 @@ export function PerformanceWorkspace() {
         <UnifiedTimeline />
       </div>
 
-      {/* ─── Analysis & Diagnostics Slide-out Panel ─────────────────────── */}
-      {(showAnalysis || showDiagnostics) && (
+      {/* ─── Unified Performance Analysis Panel (Right Slide-out) ─────── */}
+      {showAnalysisPanel && (
         <>
           <div
             className="fixed inset-0 z-40 bg-black/20"
-            onClick={() => { setShowAnalysis(false); setShowDiagnostics(false); }}
+            onClick={() => setShowAnalysisPanel(false)}
           />
-          <div className="fixed top-0 right-0 h-full w-[380px] z-50 glass-panel-strong border-l border-gray-700 shadow-2xl overflow-y-auto">
-            <div className="p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-gray-300">Analysis & Diagnostics</h3>
-                <button
-                  className="text-gray-500 hover:text-gray-300 transition-colors text-sm"
-                  onClick={() => { setShowAnalysis(false); setShowDiagnostics(false); }}
-                >
-                  ×
-                </button>
-              </div>
-              {showAnalysis && <AnalysisSidePanel />}
-              {showDiagnostics && state.analysisResult && <DiagnosticsPanel />}
-            </div>
+          <div className="fixed top-0 right-0 h-full w-[400px] z-50 glass-panel-strong border-l border-gray-700 shadow-2xl">
+            <PerformanceAnalysisPanel
+              onClose={() => setShowAnalysisPanel(false)}
+              viewSettings={viewSettings}
+              onToggleGridLabel={toggleGridLabel}
+            />
           </div>
         </>
       )}
     </div>
   );
 }
-
-
