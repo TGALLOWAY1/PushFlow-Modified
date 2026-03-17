@@ -110,8 +110,6 @@ function makeCandidate(
       compactness: 0.7,
       handBalance: 0.6,
       transitionEfficiency: 0.7,
-      learnability: 0.8,
-      robustness: 0.7,
     },
     metadata: { strategy, seed: 42 },
   };

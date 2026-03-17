@@ -93,7 +93,7 @@ export {
 } from './evaluation/eventMetrics';
 export { analyzeTransition, analyzeAllTransitions } from './evaluation/transitionAnalyzer';
 export { scorePassage, scorePassagesFromSections, scorePassagesFixedWindow } from './evaluation/passageDifficulty';
-export { analyzeDifficulty, classifyDifficulty, computeTradeoffProfile, roleWeightedScore } from './evaluation/difficultyScoring';
+export { analyzeDifficulty, classifyDifficulty, computeTradeoffProfile } from './evaluation/difficultyScoring';
 export { checkPlanFreshness, getEffectiveLayoutBinding, type FreshnessCheck } from './evaluation/executionPlanValidation';
 
 // Structure analysis

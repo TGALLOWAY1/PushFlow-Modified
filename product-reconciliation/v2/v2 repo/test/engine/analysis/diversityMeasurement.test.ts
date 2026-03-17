@@ -80,8 +80,6 @@ function makeCandidate(layout: Layout, strategy: string = 'test'): CandidateSolu
       compactness: 0.5,
       handBalance: 0.6,
       transitionEfficiency: 0.8,
-      learnability: 0.6,
-      robustness: 0.7,
     },
     metadata: {
       strategy,
@@ -374,8 +372,6 @@ describe('buildBaselineDiffSummary', () => {
       compactness: 0.5,
       handBalance: 0.6,
       transitionEfficiency: 0.8,
-      learnability: 0.6,
-      robustness: 0.7,
     };
 
     const diff = buildBaselineDiffSummary(candidate, baseline, baselineProfile);
@@ -393,8 +389,6 @@ describe('buildBaselineDiffSummary', () => {
       compactness: 0.5,
       handBalance: 0.6,
       transitionEfficiency: 0.8,
-      learnability: 0.6,
-      robustness: 0.7,
     };
 
     const diff = buildBaselineDiffSummary(candidate, layout, baselineProfile);

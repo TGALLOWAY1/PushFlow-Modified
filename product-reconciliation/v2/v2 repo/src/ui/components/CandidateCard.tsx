@@ -18,8 +18,6 @@ const PROFILE_KEYS: Array<{ key: keyof CandidateSolution['tradeoffProfile']; lab
   { key: 'compactness', label: 'Compact' },
   { key: 'handBalance', label: 'Balance' },
   { key: 'transitionEfficiency', label: 'Trans' },
-  { key: 'learnability', label: 'Learn' },
-  { key: 'robustness', label: 'Robust' },
 ];
 
 function difficultyLabel(score: number): string {

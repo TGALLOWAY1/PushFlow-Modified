@@ -265,7 +265,7 @@ function computeTradeoffDeltas(
   const deltas: Partial<Record<keyof TradeoffProfile, number>> = {};
   const dimensions: (keyof TradeoffProfile)[] = [
     'playability', 'compactness', 'handBalance',
-    'transitionEfficiency', 'learnability', 'robustness',
+    'transitionEfficiency',
   ];
 
   for (const dim of dimensions) {
