@@ -308,10 +308,12 @@ function buildFeasibilityDemo(scenario: FeasibilityDemoScenario): ProjectState {
 // Public API
 // ============================================================================
 
-/** All feasibility demo project generators. */
-const FEASIBILITY_DEMOS = SCENARIOS.map(s => () => buildFeasibilityDemo(s));
+/** Temporal-only feasibility demo project generators (A1-A8 replaced by Constraint Validator). */
+const FEASIBILITY_DEMOS = SCENARIOS
+  .filter(s => !s.id.startsWith('A'))
+  .map(s => () => buildFeasibilityDemo(s));
 
-/** Get all feasibility demo projects. Regenerated fresh on each call. */
+/** Get temporal feasibility demo projects. Regenerated fresh on each call. */
 export function getFeasibilityDemos(): ProjectState[] {
   return FEASIBILITY_DEMOS.map(gen => gen());
 }
