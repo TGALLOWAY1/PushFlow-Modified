@@ -11,7 +11,6 @@ import { type Performance, type InstrumentConfig } from '../../types/performance
 import { type PerformanceEvent } from '../../types/performanceEvent';
 import { createEmptyLayout } from '../../types/layout';
 import { generateId } from '../../utils/idGenerator';
-import { getFeasibilityDemos } from './feasibilityDemos';
 
 // ============================================================================
 // Helpers
@@ -249,12 +248,9 @@ const DEMO_GENERATORS: Array<() => ProjectState> = [
   createDrumGroove,
 ];
 
-/** Get all demo projects (including feasibility demos). Regenerated fresh on each call. */
+/** Get all demo projects. Regenerated fresh on each call. */
 export function getDemoProjects(): ProjectState[] {
-  return [
-    ...DEMO_GENERATORS.map(gen => gen()),
-    ...getFeasibilityDemos(),
-  ];
+  return DEMO_GENERATORS.map(gen => gen());
 }
 
 /** Create a working copy of a demo project with a unique ID. */
