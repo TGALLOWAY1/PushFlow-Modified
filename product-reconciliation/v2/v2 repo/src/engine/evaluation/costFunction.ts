@@ -185,8 +185,10 @@ export function calculatePoseNaturalness(
 
 /**
  * Alternation penalty: penalizes same-finger repetition on short dt.
- * Included in beam score (weighted by ALTERNATION_BEAM_WEIGHT) to prevent
- * irrational same-finger rapid repetition on fast passages.
+ *
+ * @deprecated V1 (D-15): No longer included in beam score. Kept for
+ * display components and backward compatibility. The solver does not
+ * use this to influence beam ranking.
  */
 export function calculateAlternationCost(
   prevAssignments: Array<{ hand: 'left' | 'right'; finger: FingerType }>,

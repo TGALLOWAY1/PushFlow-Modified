@@ -76,12 +76,11 @@ import { type SolverConfig, type NeutralPadPositions } from '../../types/engineC
 // ============================================================================
 
 /**
- * Weight for alternation cost in beam score.
- * Penalizes same-finger rapid repetition — critical for percussion playability.
- * Value 0.8: strong enough to influence finger choice on fast passages,
- * mild enough not to override transition/pose costs on slow passages.
+ * @deprecated V1 (D-15): Alternation cost removed from beam score.
+ * Kept as zero constant for reference. calculateAlternationCost() is still
+ * computed for display components but no longer influences beam ranking.
  */
-const ALTERNATION_BEAM_WEIGHT = 0.8;
+const ALTERNATION_BEAM_WEIGHT = 0; // V1: was 0.8, now disabled
 
 /**
  * Weight for hand balance cost in beam score.
@@ -340,11 +339,10 @@ export class BeamSolver implements SolverStrategy {
         };
         let stepCostForBeam = combinePerformabilityComponents(perfComponents);
 
-        // === ALTERNATION COST (promotes finger variety on rapid passages) ===
-        stepCostForBeam += alternationCost * ALTERNATION_BEAM_WEIGHT;
-
         // === HAND BALANCE COST (prevents single-hand dominance) ===
         stepCostForBeam += handBalanceCost * HAND_BALANCE_BEAM_WEIGHT;
+        // Note: alternation cost (D-15) removed from beam score in V1.
+        // Still computed for display components below.
 
         const newTotalCost = node.totalCost + stepCostForBeam;
 
@@ -585,7 +583,7 @@ export class BeamSolver implements SolverStrategy {
         };
         let stepCostForBeam = combinePerformabilityComponents(perfComponents);
 
-        stepCostForBeam += alternationCost * ALTERNATION_BEAM_WEIGHT;
+        // Note: alternation cost (D-15) removed from beam score in V1.
         stepCostForBeam += handBalanceCost * HAND_BALANCE_BEAM_WEIGHT;
 
         // === DISPLAY COMPONENTS (7-component, moment-level — NOT divided per-note) ===
