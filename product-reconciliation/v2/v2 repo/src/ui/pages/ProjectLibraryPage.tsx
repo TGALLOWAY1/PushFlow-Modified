@@ -48,22 +48,7 @@ export function ProjectLibraryPage() {
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['generic']));
-
   const demoProjects = useMemo(() => getDemoProjects(), []);
-
-  const demoGroups = useMemo(() => {
-    const generic: ProjectState[] = [];
-    const temporalTests: ProjectState[] = [];
-    for (const demo of demoProjects) {
-      if (demo.id.startsWith('feasibility-f')) temporalTests.push(demo);
-      else generic.push(demo);
-    }
-    return [
-      { key: 'generic', label: 'Basic Demos', demos: generic },
-      { key: 'temporal', label: 'F1–F6: Temporal Sequences', demos: temporalTests },
-    ];
-  }, [demoProjects]);
 
   // ---- MIDI Import ----
 
@@ -217,15 +202,6 @@ export function ProjectLibraryPage() {
     setSavedProjects(listProjects());
   }, []);
 
-  const toggleGroup = useCallback((key: string) => {
-    setExpandedGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
-
   const handleRemoveFromHistory = useCallback((id: string) => {
     removeFromIndex(id);
     setSavedProjects(listProjects());
@@ -359,6 +335,12 @@ export function ProjectLibraryPage() {
         >
           Constraint Validator
         </button>
+        <button
+          className="px-3 py-1.5 bg-cyan-600/80 hover:bg-cyan-500/80 rounded text-sm font-medium text-white transition-colors"
+          onClick={() => navigate('/temporal-evaluator')}
+        >
+          Temporal Evaluator
+        </button>
       </div>
 
       {error && (
@@ -368,41 +350,27 @@ export function ProjectLibraryPage() {
       )}
 
       {/* Demo Projects */}
-      <div className="space-y-4">
+      <div className="space-y-2">
         <h2 className="text-sm font-medium text-gray-400">Demo Projects</h2>
-        {demoGroups.map(group => (
-          <div key={group.key} className="space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          {demoProjects.map(demo => (
             <button
-              className="flex items-center gap-2 w-full text-left text-sm text-gray-400 hover:text-gray-300 transition-colors"
-              onClick={() => toggleGroup(group.key)}
+              key={demo.id}
+              className="p-3 rounded-lg bg-gray-800/50 border border-gray-700 hover:border-gray-500 text-left transition-colors"
+              onClick={() => handleOpenDemo(demo)}
             >
-              <span className="text-[10px] w-3">{expandedGroups.has(group.key) ? '\u25BC' : '\u25B6'}</span>
-              <span className="font-medium">{group.label}</span>
-              <span className="text-[10px] text-gray-600">({group.demos.length})</span>
-            </button>
-            {expandedGroups.has(group.key) && (
-              <div className="grid grid-cols-2 gap-2">
-                {group.demos.map(demo => (
-                  <button
-                    key={demo.id}
-                    className="p-3 rounded-lg bg-gray-800/50 border border-gray-700 hover:border-gray-500 text-left transition-colors"
-                    onClick={() => handleOpenDemo(demo)}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-gray-200">{demo.name}</span>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-medium">
-                        DEMO
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-gray-500">
-                      {demo.soundStreams.length} sounds — {demo.soundStreams.map(s => s.name).join(', ')}
-                    </div>
-                  </button>
-                ))}
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-sm font-medium text-gray-200">{demo.name}</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-medium">
+                  DEMO
+                </span>
               </div>
-            )}
-          </div>
-        ))}
+              <div className="text-[11px] text-gray-500">
+                {demo.soundStreams.length} sounds — {demo.soundStreams.map(s => s.name).join(', ')}
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Saved Projects */}
