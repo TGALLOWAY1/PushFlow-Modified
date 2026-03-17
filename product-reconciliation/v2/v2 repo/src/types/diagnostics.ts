@@ -22,13 +22,11 @@
  * Five top-level factors with stable names. All values are raw costs
  * (lower = better, 0 = no cost). The engine computes exactly these
  * factors; no information is hidden or remapped.
- *
- * For grip sub-breakdown, see GripNaturalnessDetail.
  */
 export interface DiagnosticFactors {
   /** Fitts's Law movement cost between consecutive pads. */
   transition: number;
-  /** Combined grip quality: attractor + per-finger home + finger dominance. */
+  /** Combined grip quality: fingerPreference + handShapeDeviation. */
   gripNaturalness: number;
   /** Same-finger rapid repetition penalty. */
   alternation: number;
@@ -38,21 +36,6 @@ export interface DiagnosticFactors {
   constraintPenalty: number;
   /** Weighted total (lower = better). */
   total: number;
-}
-
-/**
- * GripNaturalnessDetail: Sub-breakdown of the gripNaturalness factor.
- *
- * Optional — only provided when the solver tracks individual components.
- * Maps directly to the three sub-costs inside PerformabilityObjective.poseNaturalness.
- */
-export interface GripNaturalnessDetail {
-  /** Spring force pulling hands toward resting pose centroid. */
-  attractor: number;
-  /** Per-finger distance from neutral home positions. */
-  perFingerHome: number;
-  /** Anatomical finger preference cost (weaker fingers cost more). */
-  fingerDominance: number;
 }
 
 // ============================================================================
@@ -298,7 +281,6 @@ export function computeV1TopContributors(factors: V1DiagnosticFactors): string[]
  *
  * - feasibility: Is this layout viable?
  * - factors: What are the cost components?
- * - gripDetail: Where does grip difficulty come from?
  * - topContributors: Which factors dominate?
  * - bindingConstraints: What limits further optimization?
  */
@@ -307,8 +289,6 @@ export interface DiagnosticsPayload {
   feasibility: FeasibilityVerdict;
   /** Canonical cost factor breakdown (aggregate across all events). */
   factors: DiagnosticFactors;
-  /** Optional sub-breakdown of gripNaturalness. */
-  gripDetail?: GripNaturalnessDetail;
   /** Top contributing factor names, ordered by magnitude (most impactful first). */
   topContributors: string[];
   /** Binding constraints — human-readable reasons this layout is hard to optimize further. */

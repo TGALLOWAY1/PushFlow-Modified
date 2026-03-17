@@ -12,7 +12,7 @@
 
 import { type ExecutionPlanResult, type FingerAssignment } from '../../types/executionPlan';
 import { gridDistance } from '../../types/padGrid';
-import { FINGER_DOMINANCE_COST } from '../prior/biomechanicalModel';
+import { FINGER_PREFERENCE_COST } from '../prior/biomechanicalModel';
 import { zoneViolationScore } from '../surface/handZone';
 import { type OptimizationEvaluationRecord, type EventCostBreakdown } from './types';
 
@@ -110,9 +110,9 @@ function reconstructCostBreakdown(
     );
   }
 
-  // Finger dominance penalty
+  // Finger preference penalty
   const fingerPenalty = assignment.finger
-    ? (FINGER_DOMINANCE_COST[assignment.finger] ?? 0)
+    ? (FINGER_PREFERENCE_COST[assignment.finger] ?? 0)
     : 0;
 
   // Repetition penalty (same-finger rapid repetition)

@@ -55,8 +55,8 @@ export interface HandModel {
   thumbDelta: number;
   /** Finger ordering for constraint checking (pinky → thumb). */
   fingerOrder: FingerType[];
-  /** Per-finger dominance cost (discourages weak fingers). */
-  fingerDominanceCost: Record<FingerType, number>;
+  /** Per-finger preference cost (discourages weak fingers). */
+  fingerPreferenceCost: Record<FingerType, number>;
   /** Fallback span limit for unlisted finger pairs. */
   fallbackPairSpan: number;
 }
@@ -145,7 +145,7 @@ export const FINGER_ORDER: FingerType[] = ['pinky', 'ring', 'middle', 'index', '
  * Higher values discourage the solver from choosing that finger.
  * Index and middle are preferred for percussion; thumb and pinky are discouraged.
  */
-export const FINGER_DOMINANCE_COST: Record<FingerType, number> = {
+export const FINGER_PREFERENCE_COST: Record<FingerType, number> = {
   index:  0.0,   // Preferred — no penalty
   middle: 0.0,   // Preferred — no penalty
   ring:   1.0,   // Slightly suboptimal
@@ -238,6 +238,6 @@ export const DEFAULT_HAND_MODEL: HandModel = {
   pairSpanStrict: FINGER_PAIR_MAX_SPAN_STRICT,
   thumbDelta: THUMB_DELTA,
   fingerOrder: FINGER_ORDER,
-  fingerDominanceCost: FINGER_DOMINANCE_COST,
+  fingerPreferenceCost: FINGER_PREFERENCE_COST,
   fallbackPairSpan: MAX_FINGER_SPAN_STRICT,
 };

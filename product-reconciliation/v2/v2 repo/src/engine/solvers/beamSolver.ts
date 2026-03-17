@@ -40,7 +40,7 @@ import {
   calculatePoseNaturalness,
   calculateAttractorCost,
   calculateTransitionCost,
-  calculateFingerDominanceCost,
+  calculateFingerPreferenceCost,
   calculatePerFingerHomeCost,
   calculateAlternationCost,
   calculateHandBalanceCost,
@@ -282,7 +282,7 @@ export class BeamSolver implements SolverStrategy {
           ? (hand === 'left' ? naturalDistances.left : naturalDistances.right)
           : new Map<string, number>();
         const handShapeDeviation = calculateHandShapeDeviation(grip, handNaturalDist);
-        const fingerPreferenceCost = calculateFingerDominanceCost(grip);
+        const fingerPreferenceCost = calculateFingerPreferenceCost(grip);
 
         // Legacy sub-components (computed for display backward compat)
         const attractorCost = calculateAttractorCost(grip, restPose, stiffness);
@@ -503,8 +503,8 @@ export class BeamSolver implements SolverStrategy {
           rightResult.pose,
           naturalDistances ? naturalDistances.right : new Map<string, number>()
         );
-        const leftFingerPref = calculateFingerDominanceCost(leftResult.pose);
-        const rightFingerPref = calculateFingerDominanceCost(rightResult.pose);
+        const leftFingerPref = calculateFingerPreferenceCost(leftResult.pose);
+        const rightFingerPref = calculateFingerPreferenceCost(rightResult.pose);
 
         // Legacy sub-components (for display backward compat)
         const leftAttractor = calculateAttractorCost(leftResult.pose, restingPose.left, stiffness);
@@ -1122,7 +1122,7 @@ export class BeamSolver implements SolverStrategy {
               // V1 (D-05, D-20): Translation-invariant hand shape deviation
               const manualNaturalDist = override.hand === 'left' ? leftNaturalDistances : rightNaturalDistances;
               const manualShapeDev = calculateHandShapeDeviation(matchingResult.pose, manualNaturalDist);
-              const manualFingerPref = calculateFingerDominanceCost(matchingResult.pose);
+              const manualFingerPref = calculateFingerPreferenceCost(matchingResult.pose);
 
               // Legacy sub-components (for display)
               const attractorCost = calculateAttractorCost(matchingResult.pose, restPose, effectiveConfig.stiffness);

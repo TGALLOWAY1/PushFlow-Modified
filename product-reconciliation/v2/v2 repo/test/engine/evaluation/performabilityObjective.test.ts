@@ -18,7 +18,7 @@ import {
   calculatePoseNaturalness,
   calculateAttractorCost,
   calculatePerFingerHomeCost,
-  calculateFingerDominanceCost,
+  calculateFingerPreferenceCost,
   calculateTransitionCost,
   calculateAlternationCost,
   calculateHandBalanceCost,
@@ -182,7 +182,7 @@ describe('calculatePoseNaturalness', () => {
     );
 
     const attractor = calculateAttractorCost(NATURAL_GRIP, RIGHT_RESTING_POSE, stiffness);
-    const dominance = calculateFingerDominanceCost(NATURAL_GRIP);
+    const dominance = calculateFingerPreferenceCost(NATURAL_GRIP);
     const expected = 0.4 * attractor + 0.4 * 0 + 0.2 * dominance;
 
     expect(combined).toBeCloseTo(expected, 10);

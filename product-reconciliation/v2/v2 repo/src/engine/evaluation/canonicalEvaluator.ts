@@ -48,7 +48,7 @@ import {
   calculateTransitionCost,
   calculateAttractorCost,
   calculatePerFingerHomeCost,
-  calculateFingerDominanceCost,
+  calculateFingerPreferenceCost,
   calculateAlternationCost,
   calculateHandBalanceCost,
 } from './costFunction';
@@ -654,7 +654,7 @@ function computePoseDetail(
     if (config.neutralHandCenters) {
       perFingerHome += calculatePerFingerHomeCost(poseResult.left, 'left', config.neutralHandCenters, 0.8);
     }
-    fingerDominance += calculateFingerDominanceCost(poseResult.left);
+    fingerDominance += calculateFingerPreferenceCost(poseResult.left);
   }
 
   if (poseResult.right) {
@@ -662,7 +662,7 @@ function computePoseDetail(
     if (config.neutralHandCenters) {
       perFingerHome += calculatePerFingerHomeCost(poseResult.right, 'right', config.neutralHandCenters, 0.8);
     }
-    fingerDominance += calculateFingerDominanceCost(poseResult.right);
+    fingerDominance += calculateFingerPreferenceCost(poseResult.right);
   }
 
   // Apply the same weighting as calculatePoseNaturalness

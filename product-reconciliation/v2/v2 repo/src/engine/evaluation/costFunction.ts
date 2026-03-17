@@ -3,7 +3,7 @@
  *
  * Primary scoring model (V1 PerformabilityObjective):
  *   - calculateHandShapeDeviation: translation-invariant grip quality (D-05, D-20)
- *   - calculateFingerDominanceCost: anatomical finger preference
+ *   - calculateFingerPreferenceCost: anatomical finger preference
  *   - calculateTransitionCost: Fitts's Law movement difficulty
  *
  * Active scoring costs (included in beam score with configurable weights):
@@ -27,7 +27,7 @@ import {
   HAND_BALANCE_TARGET_LEFT,
   HAND_BALANCE_WEIGHT,
   HAND_BALANCE_MIN_NOTES,
-  FINGER_DOMINANCE_COST,
+  FINGER_PREFERENCE_COST,
 } from '../prior/biomechanicalModel';
 
 // Re-export constants for backward compatibility (consumers import from costFunction)
@@ -145,13 +145,13 @@ export function calculateHandShapeDeviation(
 // ============================================================================
 
 /**
- * @deprecated V1 (D-05): Replaced by calculateHandShapeDeviation + calculateFingerDominanceCost.
+ * @deprecated V1 (D-05): Replaced by calculateHandShapeDeviation + calculateFingerPreferenceCost.
  * Kept for backward compatibility with legacy ObjectiveComponents consumers.
  *
  * Unified pose naturalness score (3 sub-components):
  *   1. Centroid distance from resting pose (weight 0.4) — via calculateAttractorCost
  *   2. Per-finger distance from neutral pads (weight 0.4) — via calculatePerFingerHomeCost
- *   3. Finger dominance penalty (weight 0.2) — via calculateFingerDominanceCost
+ *   3. Finger preference penalty (weight 0.2) — via calculateFingerPreferenceCost
  */
 export function calculatePoseNaturalness(
   grip: HandPose,
@@ -169,7 +169,7 @@ export function calculatePoseNaturalness(
     : 0;
 
   // Sub-component 3: Finger dominance cost
-  const dominanceCost = calculateFingerDominanceCost(grip);
+  const dominanceCost = calculateFingerPreferenceCost(grip);
 
   // Weighted combination
   return (
@@ -235,13 +235,13 @@ export function calculateHandBalanceCost(
  * Penalises use of anatomically suboptimal fingers (thumb, pinky).
  * Sums per-finger cost for all fingers assigned in this grip.
  *
- * Sub-component of calculatePoseNaturalness (weight 0.2).
- * Also available individually for legacy ObjectiveComponents display.
+ * Sub-component of poseNaturalness in legacy calculatePoseNaturalness (weight 0.2).
+ * In V1, this is tracked as V1CostBreakdown.fingerPreference.
  */
-export function calculateFingerDominanceCost(grip: HandPose): number {
+export function calculateFingerPreferenceCost(grip: HandPose): number {
   let cost = 0;
   for (const finger of Object.keys(grip.fingers) as FingerType[]) {
-    cost += FINGER_DOMINANCE_COST[finger] ?? 0;
+    cost += FINGER_PREFERENCE_COST[finger] ?? 0;
   }
   return cost;
 }

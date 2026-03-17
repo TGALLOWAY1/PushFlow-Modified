@@ -38,7 +38,7 @@ export const DRIFT_PENALTY_MULTIPLIER = 0.5;
 
 /**
  * Finger weights indexed by numeric finger ID (1-5).
- * @deprecated Use FINGER_DOMINANCE_COST from biomechanicalModel.ts instead.
+ * @deprecated Use FINGER_PREFERENCE_COST from biomechanicalModel.ts instead.
  */
 export const FINGER_WEIGHTS: Record<number, number> = {
   1: 1.2, // Thumb - slightly heavier (less agile)
