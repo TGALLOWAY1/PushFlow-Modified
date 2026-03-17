@@ -22,7 +22,7 @@ export function PerformanceWorkspace() {
   const navigate = useNavigate();
   const { generateFull, generationProgress, canGenerate, generateDisabledReason } = useAutoAnalysis();
   useKeyboardShortcuts();
-  const { settings: viewSettings, toggleGridLabel } = useViewSettings();
+  const { settings: viewSettings, toggleGridLabel, toggleLayoutDisplay } = useViewSettings();
 
   const [gridExpanded, setGridExpanded] = useState(false);
   const [showAnalysisPanel, setShowAnalysisPanel] = useState(false);
@@ -219,6 +219,17 @@ export function PerformanceWorkspace() {
               onClose={() => setShowAnalysisPanel(false)}
               viewSettings={viewSettings}
               onToggleGridLabel={toggleGridLabel}
+              onToggleLayoutDisplay={toggleLayoutDisplay}
+              onDuplicateLayout={() => {
+                if (state.workingLayout) {
+                  dispatch({ type: 'SAVE_AS_VARIANT', payload: { name: `${state.workingLayout.name} copy`, source: 'working' } });
+                } else {
+                  // Create a working copy of active, save it as variant, then discard
+                  dispatch({ type: 'CREATE_WORKING_LAYOUT' });
+                  dispatch({ type: 'SAVE_AS_VARIANT', payload: { name: `${state.activeLayout.name} copy`, source: 'working' } });
+                  dispatch({ type: 'DISCARD_WORKING_LAYOUT' });
+                }
+              }}
             />
           </div>
         </>

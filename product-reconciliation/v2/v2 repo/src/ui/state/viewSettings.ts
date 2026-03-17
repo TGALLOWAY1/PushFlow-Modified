@@ -2,24 +2,35 @@
  * View Settings State.
  *
  * Centralized UI display options for grid labeling, view modes,
- * and analysis display preferences. Reusable across analysis,
+ * and layout display preferences. Reusable across analysis,
  * candidate preview, compare mode, and event/onion views.
  */
 
 import { useState, useCallback } from 'react';
 
 /**
- * GridLabelMode: What labels to show on each pad in the grid.
+ * GridLabelSettings: What labels to show on each pad in the grid.
+ *
+ * Three toggles matching the Push-style settings panel:
+ * - Note labels (e.g. "C1")
+ * - Position labels (e.g. "(2,3)")
+ * - Finger assignment (e.g. "L-Ix")
  */
 export interface GridLabelSettings {
   /** Show MIDI note labels (e.g. "C1") */
   showNoteLabels: boolean;
-  /** Show grid position labels (e.g. "(0,0)") */
+  /** Show grid position labels (e.g. "(2,3)") */
   showPositionLabels: boolean;
   /** Show finger assignment labels (e.g. "L-Ix") */
   showFingerAssignment: boolean;
-  /** Show sound/voice name on pad */
-  showSoundName: boolean;
+}
+
+/**
+ * LayoutDisplaySettings: Layout-level display and organization options.
+ */
+export interface LayoutDisplaySettings {
+  /** Organize the 8x8 grid into 4x4 quadrant banks */
+  organize4x4Banks: boolean;
 }
 
 /**
@@ -27,31 +38,30 @@ export interface GridLabelSettings {
  */
 export interface ViewSettings {
   gridLabels: GridLabelSettings;
+  layoutDisplay: LayoutDisplaySettings;
 }
 
 export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   gridLabels: {
     showNoteLabels: false,
     showPositionLabels: false,
-    showFingerAssignment: true,
-    showSoundName: true,
+    showFingerAssignment: false,
+  },
+  layoutDisplay: {
+    organize4x4Banks: false,
   },
 };
 
 /**
  * Label rendering priority (highest first):
- * 1. Sound name (always shown when enabled, most important for identification)
- * 2. Finger assignment (critical for performance-oriented views)
- * 3. Note label (useful for musicians, secondary)
- * 4. Position label (useful for debugging/reference, lowest priority)
+ * 1. Finger assignment (critical for performance-oriented views)
+ * 2. Note label (useful for musicians)
+ * 3. Position label (useful for debugging/reference)
  *
- * When multiple labels are enabled, the grid renderer should:
- * - Show sound name as the primary label
- * - Show finger assignment below it
- * - Show note/position as smaller secondary text if space allows
+ * Sound name is always shown as the primary label on occupied pads.
+ * These toggles control additional overlay labels.
  */
 export const LABEL_PRIORITY: Array<keyof GridLabelSettings> = [
-  'showSoundName',
   'showFingerAssignment',
   'showNoteLabels',
   'showPositionLabels',
@@ -77,5 +87,12 @@ export function useViewSettings() {
     }));
   }, []);
 
-  return { settings, setSettings, updateGridLabels, toggleGridLabel };
+  const toggleLayoutDisplay = useCallback((key: keyof LayoutDisplaySettings) => {
+    setSettings(prev => ({
+      ...prev,
+      layoutDisplay: { ...prev.layoutDisplay, [key]: !prev.layoutDisplay[key] },
+    }));
+  }, []);
+
+  return { settings, setSettings, updateGridLabels, toggleGridLabel, toggleLayoutDisplay };
 }
