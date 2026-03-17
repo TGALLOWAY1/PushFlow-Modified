@@ -99,10 +99,10 @@ export function scorePassage(
   let withBreakdown = 0;
   for (const a of assignments) {
     if (a.costBreakdown) {
-      totalMovement += a.costBreakdown.movement;
-      totalStretch += a.costBreakdown.stretch;
-      totalBounce += a.costBreakdown.bounce;
-      totalCrossover += a.costBreakdown.crossover;
+      totalMovement += a.costBreakdown.transitionCost;
+      totalStretch += a.costBreakdown.fingerPreference;
+      totalBounce += a.costBreakdown.handBalance;
+      totalCrossover += a.costBreakdown.constraintPenalty;
       withBreakdown++;
     }
     if (a.cost !== Infinity) totalCost += a.cost;

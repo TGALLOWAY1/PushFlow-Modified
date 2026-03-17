@@ -7,7 +7,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { type FingerAssignment, type DifficultyBreakdown, type ExecutionPlanResult } from '../../../src/types/executionPlan';
+import { type FingerAssignment, type ExecutionPlanResult } from '../../../src/types/executionPlan';
+import { type V1CostBreakdown } from '../../../src/types/diagnostics';
 import { type Transition, type TransitionMetrics } from '../../../src/engine/evaluation/transitionAnalyzer';
 import { type AnalyzedMoment } from '../../../src/engine/evaluation/eventMetrics';
 import {
@@ -34,14 +35,13 @@ function makeAssignment(overrides: Partial<FingerAssignment>): FingerAssignment 
   };
 }
 
-function makeBreakdown(overrides?: Partial<DifficultyBreakdown>): DifficultyBreakdown {
+function makeBreakdown(overrides?: Partial<V1CostBreakdown>): V1CostBreakdown {
   return {
-    movement: 0,
-    stretch: 0,
-    drift: 0,
-    bounce: 0,
-    fatigue: 0,
-    crossover: 0,
+    fingerPreference: 0,
+    handShapeDeviation: 0,
+    transitionCost: 0,
+    handBalance: 0,
+    constraintPenalty: 0,
     total: 0,
     ...overrides,
   };
@@ -95,8 +95,8 @@ function makeTransition(
 }
 
 function makePlan(assignments: FingerAssignment[]): ExecutionPlanResult {
-  const avgMetrics: DifficultyBreakdown = {
-    movement: 1.0, stretch: 0.5, drift: 0.2, bounce: 0.1, fatigue: 0.05, crossover: 0.1, total: 2.0,
+  const avgMetrics: V1CostBreakdown = {
+    fingerPreference: 0.5, handShapeDeviation: 0.2, transitionCost: 1.0, handBalance: 0.1, constraintPenalty: 0.1, total: 2.0,
   };
 
   return {
@@ -116,14 +116,14 @@ function makePlan(assignments: FingerAssignment[]): ExecutionPlanResult {
 // ============================================================================
 
 describe('explainEvent', () => {
-  it('should map legacy breakdown fields to canonical factors', () => {
+  it('should map V1CostBreakdown fields to canonical factors', () => {
     const assignment = makeAssignment({
       cost: 2.5,
       difficulty: 'Hard',
       costBreakdown: makeBreakdown({
-        movement: 1.5,
-        stretch: 0.8,
-        drift: 0.2,
+        transitionCost: 1.5,
+        fingerPreference: 0.8,
+        handShapeDeviation: 0.2,
         total: 2.5,
       }),
     });
@@ -134,15 +134,15 @@ describe('explainEvent', () => {
     expect(explanation.noteNumber).toBe(36);
     expect(explanation.canonicalFactors.length).toBeGreaterThan(0);
 
-    // movement -> transition
+    // transitionCost -> transition
     const transitionFactor = explanation.canonicalFactors.find(f => f.factor === 'transition');
     expect(transitionFactor).toBeDefined();
     expect(transitionFactor!.value).toBeCloseTo(1.5);
 
-    // stretch -> gripNaturalness
-    const gripFactor = explanation.canonicalFactors.find(f => f.factor === 'gripNaturalness');
-    expect(gripFactor).toBeDefined();
-    expect(gripFactor!.value).toBeGreaterThan(0);
+    // fingerPreference -> fingerPreference
+    const fingerPrefFactor = explanation.canonicalFactors.find(f => f.factor === 'fingerPreference');
+    expect(fingerPrefFactor).toBeDefined();
+    expect(fingerPrefFactor!.value).toBeCloseTo(0.8);
   });
 
   it('should identify dominant factor as highest-value canonical factor', () => {
@@ -150,16 +150,16 @@ describe('explainEvent', () => {
       cost: 3.0,
       difficulty: 'Hard',
       costBreakdown: makeBreakdown({
-        movement: 0.5,
-        stretch: 2.0,
+        transitionCost: 0.5,
+        fingerPreference: 2.0,
         total: 3.0,
       }),
     });
 
     const explanation = explainEvent(assignment, 0);
 
-    // stretch (2.0) maps to gripNaturalness and is highest
-    expect(explanation.dominantFactor).toBe('gripNaturalness');
+    // fingerPreference (2.0) is highest
+    expect(explanation.dominantFactor).toBe('fingerPreference');
   });
 
   it('should handle unplayable events', () => {
@@ -206,9 +206,9 @@ describe('explainEvent', () => {
       cost: 3.0,
       difficulty: 'Hard',
       costBreakdown: makeBreakdown({
-        movement: 0.5,
-        stretch: 2.0,
-        bounce: 1.0,
+        transitionCost: 0.5,
+        fingerPreference: 2.0,
+        handBalance: 1.0,
         total: 3.5,
       }),
     });
@@ -222,31 +222,13 @@ describe('explainEvent', () => {
     }
   });
 
-  it('should map bounce to alternation factor', () => {
+  it('should map handBalance factor correctly', () => {
     const assignment = makeAssignment({
       cost: 1.5,
       difficulty: 'Medium',
       costBreakdown: makeBreakdown({
-        bounce: 1.2,
+        handBalance: 1.2,
         total: 1.5,
-      }),
-    });
-
-    const explanation = explainEvent(assignment, 0);
-
-    const alternation = explanation.canonicalFactors.find(f => f.factor === 'alternation');
-    expect(alternation).toBeDefined();
-    expect(alternation!.value).toBeCloseTo(1.2);
-    expect(alternation!.label).toContain('alternation');
-  });
-
-  it('should map crossover to handBalance factor', () => {
-    const assignment = makeAssignment({
-      cost: 0.8,
-      difficulty: 'Medium',
-      costBreakdown: makeBreakdown({
-        crossover: 0.7,
-        total: 0.8,
       }),
     });
 
@@ -254,7 +236,25 @@ describe('explainEvent', () => {
 
     const handBalance = explanation.canonicalFactors.find(f => f.factor === 'handBalance');
     expect(handBalance).toBeDefined();
-    expect(handBalance!.value).toBeCloseTo(0.7);
+    expect(handBalance!.value).toBeCloseTo(1.2);
+    expect(handBalance!.label).toContain('balance');
+  });
+
+  it('should map constraintPenalty factor correctly', () => {
+    const assignment = makeAssignment({
+      cost: 0.8,
+      difficulty: 'Medium',
+      costBreakdown: makeBreakdown({
+        constraintPenalty: 0.7,
+        total: 0.8,
+      }),
+    });
+
+    const explanation = explainEvent(assignment, 0);
+
+    const constraint = explanation.canonicalFactors.find(f => f.factor === 'constraintPenalty');
+    expect(constraint).toBeDefined();
+    expect(constraint!.value).toBeCloseTo(0.7);
   });
 });
 
@@ -344,15 +344,15 @@ describe('identifyHardMoments', () => {
     const assignments: FingerAssignment[] = [
       makeAssignment({
         noteNumber: 36, startTime: 0.0, cost: 0.2, difficulty: 'Easy',
-        costBreakdown: makeBreakdown({ movement: 0.1, total: 0.2 }),
+        costBreakdown: makeBreakdown({ transitionCost: 0.1, total: 0.2 }),
       }),
       makeAssignment({
         noteNumber: 38, startTime: 0.5, cost: 3.0, difficulty: 'Hard',
-        costBreakdown: makeBreakdown({ movement: 2.0, stretch: 1.0, total: 3.0 }),
+        costBreakdown: makeBreakdown({ transitionCost: 2.0, fingerPreference: 1.0, total: 3.0 }),
       }),
       makeAssignment({
         noteNumber: 42, startTime: 1.0, cost: 1.0, difficulty: 'Medium',
-        costBreakdown: makeBreakdown({ movement: 0.5, bounce: 0.5, total: 1.0 }),
+        costBreakdown: makeBreakdown({ transitionCost: 0.5, handBalance: 0.5, total: 1.0 }),
       }),
     ];
 
@@ -371,7 +371,7 @@ describe('identifyHardMoments', () => {
     const assignments: FingerAssignment[] = [
       makeAssignment({
         noteNumber: 36, startTime: 0.0, cost: 2.5, difficulty: 'Hard',
-        costBreakdown: makeBreakdown({ movement: 1.5, stretch: 1.0, total: 2.5 }),
+        costBreakdown: makeBreakdown({ transitionCost: 1.5, fingerPreference: 1.0, total: 2.5 }),
       }),
     ];
 
@@ -388,11 +388,11 @@ describe('identifyHardMoments', () => {
     const assignments: FingerAssignment[] = [
       makeAssignment({
         noteNumber: 36, startTime: 0.0, cost: 3.0, difficulty: 'Hard',
-        costBreakdown: makeBreakdown({ movement: 2.0, total: 3.0 }),
+        costBreakdown: makeBreakdown({ transitionCost: 2.0, total: 3.0 }),
       }),
       makeAssignment({
         noteNumber: 38, startTime: 0.5, cost: 0.2, difficulty: 'Easy',
-        costBreakdown: makeBreakdown({ movement: 0.1, total: 0.2 }),
+        costBreakdown: makeBreakdown({ transitionCost: 0.1, total: 0.2 }),
       }),
     ];
 
@@ -413,7 +413,7 @@ describe('identifyHardMoments', () => {
         startTime: i * 0.5,
         cost: Math.random() * 3,
         difficulty: 'Medium',
-        costBreakdown: makeBreakdown({ movement: Math.random(), total: Math.random() * 3 }),
+        costBreakdown: makeBreakdown({ transitionCost: Math.random(), total: Math.random() * 3 }),
       }));
     }
 
@@ -428,12 +428,12 @@ describe('identifyHardMoments', () => {
       makeAssignment({
         noteNumber: 36, startTime: 0.0, cost: 1.5, difficulty: 'Medium',
         row: 0, col: 0,
-        costBreakdown: makeBreakdown({ stretch: 1.0, total: 1.5 }),
+        costBreakdown: makeBreakdown({ fingerPreference: 1.0, total: 1.5 }),
       }),
       makeAssignment({
         noteNumber: 38, startTime: 0.0, cost: 2.0, difficulty: 'Hard',
         row: 2, col: 4,
-        costBreakdown: makeBreakdown({ stretch: 1.5, total: 2.0 }),
+        costBreakdown: makeBreakdown({ fingerPreference: 1.5, total: 2.0 }),
       }),
     ];
 
@@ -453,7 +453,7 @@ describe('identifyHardMoments', () => {
         startTime: i * 0.5,
         cost: 1.0 + Math.random(),
         difficulty: 'Medium',
-        costBreakdown: makeBreakdown({ movement: 0.5, total: 1.0 }),
+        costBreakdown: makeBreakdown({ transitionCost: 0.5, total: 1.0 }),
       }));
     }
 

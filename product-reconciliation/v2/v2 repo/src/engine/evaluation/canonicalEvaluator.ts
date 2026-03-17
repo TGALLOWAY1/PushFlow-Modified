@@ -46,11 +46,9 @@ import {
   calculateTransitionCost,
   calculateAttractorCost,
   calculatePerFingerHomeCost,
-  calculateFingerDominanceCost,
+  calculateFingerPreferenceCost,
   calculateAlternationCost,
   calculateHandBalanceCost,
-  FALLBACK_GRIP_PENALTY,
-  RELAXED_GRIP_PENALTY,
 } from './costFunction';
 
 import {
@@ -322,11 +320,6 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
   if (moments.length === 0) {
     return emptyPerformanceBreakdown(padFingerAssignment);
   }
-
-  // Pre-build indexes once for the whole performance
-  // TODO: use these indexes for moment-level pad resolution
-  void buildVoiceIdToPadIndex(layout.padToVoice);
-  void buildNoteToPadIndex(layout.padToVoice);
 
   const eventCosts: EventCostBreakdown[] = [];
   const transitionCosts: TransitionCostBreakdown[] = [];
@@ -655,7 +648,7 @@ function computePoseDetail(
     if (config.neutralHandCenters) {
       perFingerHome += calculatePerFingerHomeCost(poseResult.left, 'left', config.neutralHandCenters, 0.8);
     }
-    fingerDominance += calculateFingerDominanceCost(poseResult.left);
+    fingerDominance += calculateFingerPreferenceCost(poseResult.left);
   }
 
   if (poseResult.right) {
@@ -663,7 +656,7 @@ function computePoseDetail(
     if (config.neutralHandCenters) {
       perFingerHome += calculatePerFingerHomeCost(poseResult.right, 'right', config.neutralHandCenters, 0.8);
     }
-    fingerDominance += calculateFingerDominanceCost(poseResult.right);
+    fingerDominance += calculateFingerPreferenceCost(poseResult.right);
   }
 
   // Apply the same weighting as calculatePoseNaturalness
@@ -674,12 +667,12 @@ function computePoseDetail(
   };
 }
 
-function tierToPenalty(tier: ConstraintTier): number {
-  switch (tier) {
-    case 'strict': return 0;
-    case 'relaxed': return RELAXED_GRIP_PENALTY;
-    case 'fallback': return FALLBACK_GRIP_PENALTY;
-  }
+/**
+ * V1 Cost Model (D-01): Tier penalty removed. All grips are strict tier.
+ * Returns 0 for backward compatibility with costBreakdown consumers.
+ */
+function tierToPenalty(_tier: ConstraintTier): number {
+  return 0;
 }
 
 function resolveMomentPadKeys(

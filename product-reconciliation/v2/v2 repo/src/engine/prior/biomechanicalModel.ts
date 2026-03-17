@@ -49,18 +49,14 @@ export interface HandModel {
   maxReach: number;
   /** Maximum hand movement speed (grid units per second). */
   maxSpeed: number;
-  /** Per-finger-pair maximum span (strict tier). */
+  /** Per-finger-pair maximum span. */
   pairSpanStrict: Record<string, number>;
-  /** Per-finger-pair maximum span (relaxed tier, 1.5× strict). */
-  pairSpanRelaxed: Record<string, number>;
-  /** Thumb delta — max vertical offset from index (strict). */
+  /** Thumb delta — max vertical offset from index. */
   thumbDelta: number;
-  /** Thumb delta — relaxed tier. */
-  thumbDeltaRelaxed: number;
   /** Finger ordering for constraint checking (pinky → thumb). */
   fingerOrder: FingerType[];
-  /** Per-finger dominance cost (discourages weak fingers). */
-  fingerDominanceCost: Record<FingerType, number>;
+  /** Per-finger preference cost (discourages weak fingers). */
+  fingerPreferenceCost: Record<FingerType, number>;
   /** Fallback span limit for unlisted finger pairs. */
   fallbackPairSpan: number;
 }
@@ -106,24 +102,6 @@ export const FINGER_PAIR_MAX_SPAN_STRICT: Record<string, number> = {
   'pinky,thumb':   5.5,  // Matches MAX_HAND_SPAN; previous 7.0 allowed anatomically impossible vertical spans
 };
 
-/**
- * Per-pair maximum Euclidean span — Tier 2 (Relaxed).
- * Scales Tier 1 values by 1.15×. Used only if Tier 1 produces zero valid grips.
- *
- * 1.15× represents the edge of comfortable reach — physically possible but
- * strained. Grips at this tier receive RELAXED_GRIP_PENALTY to discourage
- * the solver from choosing extreme stretches over split-hand alternatives.
- *
- * Previous value (1.5×) was far too generous: e.g., ring-thumb relaxed was
- * 8.25 grid units (~206mm), allowing anatomically impossible one-hand spans
- * across the full Push 3 grid with no scoring penalty.
- */
-export const RELAXED_SPAN_MULTIPLIER = 1.15;
-
-export const FINGER_PAIR_MAX_SPAN_RELAXED: Record<string, number> = Object.fromEntries(
-  Object.entries(FINGER_PAIR_MAX_SPAN_STRICT).map(([k, v]) => [k, v * RELAXED_SPAN_MULTIPLIER])
-);
-
 // -- Thumb Constraints --
 
 /**
@@ -131,9 +109,6 @@ export const FINGER_PAIR_MAX_SPAN_RELAXED: Record<string, number> = Object.fromE
  * Enforces "thumbs below other fingers" — natural vertical arrangement.
  */
 export const THUMB_DELTA = 1.0;
-
-/** Relaxed thumb delta for Tier 2 constraints. */
-export const THUMB_DELTA_RELAXED = 2.0;
 
 // -- Physical Envelope --
 
@@ -170,7 +145,7 @@ export const FINGER_ORDER: FingerType[] = ['pinky', 'ring', 'middle', 'index', '
  * Higher values discourage the solver from choosing that finger.
  * Index and middle are preferred for percussion; thumb and pinky are discouraged.
  */
-export const FINGER_DOMINANCE_COST: Record<FingerType, number> = {
+export const FINGER_PREFERENCE_COST: Record<FingerType, number> = {
   index:  0.0,   // Preferred — no penalty
   middle: 0.0,   // Preferred — no penalty
   ring:   1.0,   // Slightly suboptimal
@@ -184,15 +159,8 @@ export const MAX_HAND_SPEED = 12.0;
 /** Weight factor for speed component in transition cost (Fitts's Law). */
 export const SPEED_COST_WEIGHT = 0.5;
 
-/**
- * Penalty applied to relaxed (Tier 2) grips that exceed strict span limits.
- * Discourages extreme stretches — the solver should prefer split-hand
- * alternatives over anatomically strained one-hand grips.
- */
-export const RELAXED_GRIP_PENALTY = 200;
-
-/** Penalty applied to fallback (Tier 3) grips that ignore constraints. */
-export const FALLBACK_GRIP_PENALTY = 1000;
+// V1 Cost Model (D-01): RELAXED_GRIP_PENALTY and FALLBACK_GRIP_PENALTY removed.
+// Grips are either feasible (strict tier) or rejected outright.
 
 /** If a chord spread is wider than this, it gets a penalty. */
 export const CHORD_PENALTY_THRESHOLD = 3.0;
@@ -268,10 +236,8 @@ export const DEFAULT_HAND_MODEL: HandModel = {
   maxReach: MAX_REACH_GRID_UNITS,
   maxSpeed: MAX_SPEED_UNITS_PER_SEC,
   pairSpanStrict: FINGER_PAIR_MAX_SPAN_STRICT,
-  pairSpanRelaxed: FINGER_PAIR_MAX_SPAN_RELAXED,
   thumbDelta: THUMB_DELTA,
-  thumbDeltaRelaxed: THUMB_DELTA_RELAXED,
   fingerOrder: FINGER_ORDER,
-  fingerDominanceCost: FINGER_DOMINANCE_COST,
+  fingerPreferenceCost: FINGER_PREFERENCE_COST,
   fallbackPairSpan: MAX_FINGER_SPAN_STRICT,
 };

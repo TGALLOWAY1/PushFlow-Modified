@@ -6,7 +6,7 @@
 
 // Surface model
 export { ALL_PADS, adjacentPads, manhattanDistance, padRegion, samePad } from './surface/padGrid';
-export { getDefaultHandZones, getPreferredHand, zoneViolationScore } from './surface/handZone';
+export { getDefaultHandZones, getPreferredHand, isZoneValid, allPadsInZone, zoneViolationScore } from './surface/handZone';
 
 // Biomechanical model (canonical source of truth)
 export {
@@ -15,14 +15,9 @@ export {
   MAX_SPEED_UNITS_PER_SEC,
   MAX_HAND_SPEED,
   FINGER_PAIR_MAX_SPAN_STRICT,
-  FINGER_PAIR_MAX_SPAN_RELAXED,
   THUMB_DELTA,
-  THUMB_DELTA_RELAXED,
   FINGER_ORDER,
-  FINGER_DOMINANCE_COST,
-  FALLBACK_GRIP_PENALTY as BIOMECHANICAL_FALLBACK_PENALTY,
-  RELAXED_GRIP_PENALTY as BIOMECHANICAL_RELAXED_PENALTY,
-  RELAXED_SPAN_MULTIPLIER,
+  FINGER_PREFERENCE_COST,
   ACTIVATION_COST,
   CHORD_PENALTY_THRESHOLD,
   MAX_FINGER_SPAN_STRICT,
@@ -71,28 +66,22 @@ export { seedLayoutFromPose0 } from './mapping/seedFromPose';
 
 // Evaluation (primary scoring model)
 export {
+  calculateHandShapeDeviation,
+  buildNaturalPairwiseDistances,
   calculatePoseNaturalness,
   calculateTransitionCost,
   calculateAttractorCost,
-  calculateFingerDominanceCost,
+  calculateFingerPreferenceCost,
   calculatePerFingerHomeCost,
   calculateAlternationCost,
   calculateHandBalanceCost,
-  FALLBACK_GRIP_PENALTY,
-  RELAXED_GRIP_PENALTY,
 } from './evaluation/costFunction';
 export {
   type PerformabilityObjective,
-  type LegacyObjectiveComponents,
   combinePerformabilityComponents,
   createZeroPerformabilityComponents,
-  performabilityToDifficultyBreakdown,
-  combineComponents,
-  createZeroComponents,
-  objectiveToDifficultyBreakdown,
-  objectiveToCanonicalFactors,
-  objectiveToGripDetail,
-  performabilityToCanonicalFactors,
+  v1CostBreakdownToCanonicalFactors,
+  v1CostBreakdownToV1Factors,
 } from './evaluation/objective';
 
 export {
@@ -103,7 +92,7 @@ export {
 } from './evaluation/eventMetrics';
 export { analyzeTransition, analyzeAllTransitions } from './evaluation/transitionAnalyzer';
 export { scorePassage, scorePassagesFromSections, scorePassagesFixedWindow } from './evaluation/passageDifficulty';
-export { analyzeDifficulty, classifyDifficulty, computeTradeoffProfile, roleWeightedScore } from './evaluation/difficultyScoring';
+export { analyzeDifficulty, classifyDifficulty, computeTradeoffProfile } from './evaluation/difficultyScoring';
 export { checkPlanFreshness, getEffectiveLayoutBinding, type FreshnessCheck } from './evaluation/executionPlanValidation';
 
 // Structure analysis

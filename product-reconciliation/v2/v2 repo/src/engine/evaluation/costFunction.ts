@@ -1,45 +1,39 @@
 /**
  * Cost calculators for the Performability Engine.
  *
- * Primary scoring model (3-component PerformabilityObjective):
- *   - calculatePoseNaturalness: unified grip quality score
+ * Primary scoring model (V1 PerformabilityObjective):
+ *   - calculateHandShapeDeviation: translation-invariant grip quality (D-05, D-20)
+ *   - calculateFingerPreferenceCost: anatomical finger preference
  *   - calculateTransitionCost: Fitts's Law movement difficulty
- *   - FALLBACK_GRIP_PENALTY: hard constraint penalty for Tier 3 grips
  *
  * Active scoring costs (included in beam score with configurable weights):
  *   - calculateAlternationCost: same-finger repetition penalty
  *   - calculateHandBalanceCost: left/right distribution penalty
  *
- * Sub-components of poseNaturalness (available individually):
- *   - calculateAttractorCost: centroid distance from resting
+ * Deprecated (kept for backward compat but not used in V1 beam scoring):
+ *   - calculatePoseNaturalness: legacy 3-component unified score
+ *   - calculateAttractorCost: centroid distance from resting position
  *   - calculatePerFingerHomeCost: per-finger neutral pad distance
- *   - calculateFingerDominanceCost: anatomical finger preference
- *
- * Legacy functions moved to diagnostics/legacyCosts.ts (re-exported here).
  */
 
 import { type FingerType } from '../../types/fingerModel';
 import { type FingerCoordinate, type HandPose } from '../../types/performance';
-import { type NeutralHandCentersResult } from '../prior/handPose';
+import { type NeutralHandCentersResult, type NeutralPadPositions } from '../prior/handPose';
 import {
   MAX_HAND_SPEED,
   SPEED_COST_WEIGHT,
-  FALLBACK_GRIP_PENALTY,
-  RELAXED_GRIP_PENALTY,
   ALTERNATION_DT_THRESHOLD,
   ALTERNATION_PENALTY,
   HAND_BALANCE_TARGET_LEFT,
   HAND_BALANCE_WEIGHT,
   HAND_BALANCE_MIN_NOTES,
-  FINGER_DOMINANCE_COST,
+  FINGER_PREFERENCE_COST,
 } from '../prior/biomechanicalModel';
 
 // Re-export constants for backward compatibility (consumers import from costFunction)
 export {
   MAX_HAND_SPEED,
   SPEED_COST_WEIGHT,
-  FALLBACK_GRIP_PENALTY,
-  RELAXED_GRIP_PENALTY,
   ALTERNATION_DT_THRESHOLD,
   ALTERNATION_PENALTY,
   HAND_BALANCE_TARGET_LEFT,
@@ -63,18 +57,101 @@ function fingerCoordinateDistance(a: FingerCoordinate, b: FingerCoordinate): num
 }
 
 // ============================================================================
-// Pose Naturalness (Primary — 3-Component Model)
+// Hand Shape Deviation (V1 Primary — Translation-Invariant, D-05, D-20)
+// ============================================================================
+
+/** Finger keys for left and right hands. */
+const LEFT_FINGER_KEYS: FingerType[] = ['thumb', 'index', 'middle', 'ring', 'pinky'];
+const FINGER_KEY_MAP: Record<FingerType, number> = { thumb: 1, index: 2, middle: 3, ring: 4, pinky: 5 };
+
+/**
+ * Compute pairwise finger distances from a grip's finger coordinates.
+ * Returns a Map keyed by "fingerA-fingerB" (sorted alphabetically) → distance.
+ */
+function computePairwiseDistances(
+  fingers: Partial<Record<FingerType, FingerCoordinate>>
+): Map<string, number> {
+  const result = new Map<string, number>();
+  const entries = Object.entries(fingers) as [FingerType, FingerCoordinate][];
+  for (let i = 0; i < entries.length; i++) {
+    for (let j = i + 1; j < entries.length; j++) {
+      const [fA, cA] = entries[i];
+      const [fB, cB] = entries[j];
+      const key = fA < fB ? `${fA}-${fB}` : `${fB}-${fA}`;
+      result.set(key, fingerCoordinateDistance(cA, cB));
+    }
+  }
+  return result;
+}
+
+/**
+ * Build natural pairwise finger distances from NeutralPadPositions for a given hand.
+ * Returns a Map keyed by "fingerA-fingerB" → distance.
+ */
+export function buildNaturalPairwiseDistances(
+  neutralPads: NeutralPadPositions,
+  hand: 'left' | 'right'
+): Map<string, number> {
+  const prefix = hand === 'left' ? 'L' : 'R';
+  const coords: Partial<Record<FingerType, FingerCoordinate>> = {};
+  for (const finger of LEFT_FINGER_KEYS) {
+    const key = `${prefix}${FINGER_KEY_MAP[finger]}`;
+    const pad = neutralPads[key];
+    if (pad) {
+      coords[finger] = { x: pad.col, y: pad.row };
+    }
+  }
+  return computePairwiseDistances(coords);
+}
+
+/**
+ * Translation-invariant hand shape deviation (D-05, D-20).
+ *
+ * Compares the pairwise finger distances in the current grip against
+ * the natural hand shape's pairwise distances. Cost = sum of squared
+ * differences for all finger pairs present in the grip.
+ *
+ * This is translation-invariant: the same grip shape at different grid
+ * positions produces the same cost. Only shape distortion is penalized.
+ *
+ * @param grip - Current hand pose
+ * @param naturalDistances - Precomputed natural pairwise distances (from buildNaturalPairwiseDistances)
+ * @returns Non-negative cost (0 = natural shape)
+ */
+export function calculateHandShapeDeviation(
+  grip: HandPose,
+  naturalDistances: Map<string, number>
+): number {
+  const gripDistances = computePairwiseDistances(grip.fingers);
+  let cost = 0;
+
+  for (const [pairKey, gripDist] of gripDistances) {
+    const naturalDist = naturalDistances.get(pairKey);
+    if (naturalDist !== undefined) {
+      const diff = gripDist - naturalDist;
+      cost += diff * diff;
+    } else {
+      // No natural reference for this pair — penalize by squared grip distance
+      // (any shape is worse than no data)
+      cost += gripDist * gripDist;
+    }
+  }
+
+  return cost;
+}
+
+// ============================================================================
+// Pose Naturalness (Legacy — 3-Component Model, kept for backward compat)
 // ============================================================================
 
 /**
- * Unified pose naturalness score.
+ * @deprecated V1 (D-05): Replaced by calculateHandShapeDeviation + calculateFingerPreferenceCost.
+ * Kept for backward compatibility with legacy ObjectiveComponents consumers.
  *
- * Merges three sub-components into a single "how natural is this grip?" score:
+ * Unified pose naturalness score (3 sub-components):
  *   1. Centroid distance from resting pose (weight 0.4) — via calculateAttractorCost
  *   2. Per-finger distance from neutral pads (weight 0.4) — via calculatePerFingerHomeCost
- *   3. Finger dominance penalty (weight 0.2) — via calculateFingerDominanceCost
- *
- * This is the primary pose quality term in the PerformabilityObjective.
+ *   3. Finger preference penalty (weight 0.2) — via calculateFingerPreferenceCost
  */
 export function calculatePoseNaturalness(
   grip: HandPose,
@@ -92,7 +169,7 @@ export function calculatePoseNaturalness(
     : 0;
 
   // Sub-component 3: Finger dominance cost
-  const dominanceCost = calculateFingerDominanceCost(grip);
+  const dominanceCost = calculateFingerPreferenceCost(grip);
 
   // Weighted combination
   return (
@@ -108,8 +185,10 @@ export function calculatePoseNaturalness(
 
 /**
  * Alternation penalty: penalizes same-finger repetition on short dt.
- * Included in beam score (weighted by ALTERNATION_BEAM_WEIGHT) to prevent
- * irrational same-finger rapid repetition on fast passages.
+ *
+ * @deprecated V1 (D-15): No longer included in beam score. Kept for
+ * display components and backward compatibility. The solver does not
+ * use this to influence beam ranking.
  */
 export function calculateAlternationCost(
   prevAssignments: Array<{ hand: 'left' | 'right'; finger: FingerType }>,
@@ -156,13 +235,13 @@ export function calculateHandBalanceCost(
  * Penalises use of anatomically suboptimal fingers (thumb, pinky).
  * Sums per-finger cost for all fingers assigned in this grip.
  *
- * Sub-component of calculatePoseNaturalness (weight 0.2).
- * Also available individually for legacy ObjectiveComponents display.
+ * Sub-component of poseNaturalness in legacy calculatePoseNaturalness (weight 0.2).
+ * In V1, this is tracked as V1CostBreakdown.fingerPreference.
  */
-export function calculateFingerDominanceCost(grip: HandPose): number {
+export function calculateFingerPreferenceCost(grip: HandPose): number {
   let cost = 0;
   for (const finger of Object.keys(grip.fingers) as FingerType[]) {
-    cost += FINGER_DOMINANCE_COST[finger] ?? 0;
+    cost += FINGER_PREFERENCE_COST[finger] ?? 0;
   }
   return cost;
 }

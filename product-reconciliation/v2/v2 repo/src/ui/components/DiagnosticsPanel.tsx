@@ -134,12 +134,11 @@ export function DiagnosticsPanel() {
       <div className="space-y-1">
         <span className="text-[10px] text-gray-500 cursor-help" title="Average cost per event, broken down by factor. Lower is better for each.">Avg Cost Breakdown</span>
         <div className="grid grid-cols-3 gap-1 text-[10px]">
-          <MetricBar label="Move" value={executionPlan.averageMetrics.movement} tooltip="Distance fingers travel between events" />
-          <MetricBar label="Stretch" value={executionPlan.averageMetrics.stretch} tooltip="How far fingers spread within a single grip" />
-          <MetricBar label="Drift" value={executionPlan.averageMetrics.drift} tooltip="Hand center displacement from resting position" />
-          <MetricBar label="Bounce" value={executionPlan.averageMetrics.bounce} tooltip="Same-finger repeated use without alternation" />
-          <MetricBar label="Fatigue" value={executionPlan.averageMetrics.fatigue} tooltip="Accumulated finger workload over time" />
-          <MetricBar label="Cross" value={executionPlan.averageMetrics.crossover} tooltip="Hands crossing over each other's zone" />
+          <MetricBar label="Transition" value={executionPlan.averageMetrics.transitionCost} tooltip="Fitts's Law movement cost between events" />
+          <MetricBar label="Finger Pref" value={executionPlan.averageMetrics.fingerPreference} tooltip="Anatomical finger preference cost" />
+          <MetricBar label="Shape Dev" value={executionPlan.averageMetrics.handShapeDeviation} tooltip="Hand shape deviation from natural resting shape" />
+          <MetricBar label="Balance" value={executionPlan.averageMetrics.handBalance} tooltip="Left/right hand distribution imbalance" />
+          <MetricBar label="Constraint" value={executionPlan.averageMetrics.constraintPenalty} tooltip="Hard constraint violation penalty" />
         </div>
       </div>
 
@@ -180,7 +179,7 @@ export function DiagnosticsPanel() {
 }
 
 function ActionableSuggestions({ metrics, balanceRatio, topFatigue, unplayableCount, hardCount }: {
-  metrics: { movement: number; stretch: number; drift: number; bounce: number; fatigue: number; crossover: number };
+  metrics: { transitionCost: number; fingerPreference: number; handShapeDeviation: number; handBalance: number; constraintPenalty: number };
   balanceRatio: number;
   topFatigue: [string, number][];
   unplayableCount: number;
@@ -191,24 +190,21 @@ function ActionableSuggestions({ metrics, balanceRatio, topFatigue, unplayableCo
   if (unplayableCount > 0) {
     suggestions.push({ text: `${unplayableCount} event${unplayableCount > 1 ? 's' : ''} cannot be played. Move sounds closer together or split across hands.`, severity: 'error' });
   }
-  if (metrics.movement > 1.0) {
-    suggestions.push({ text: 'High movement cost — sounds that play in sequence are too far apart. Group frequently alternating sounds on adjacent pads.', severity: 'warn' });
+  if (metrics.transitionCost > 1.0) {
+    suggestions.push({ text: 'High transition cost — sounds that play in sequence are too far apart. Group frequently alternating sounds on adjacent pads.', severity: 'warn' });
   }
-  if (metrics.stretch > 0.8) {
-    suggestions.push({ text: 'High stretch — simultaneous sounds require a wide finger spread. Move chords closer together.', severity: 'warn' });
+  if (metrics.handShapeDeviation > 0.8) {
+    suggestions.push({ text: 'High hand shape deviation — grip shapes deviate from natural hand. Move chords closer together.', severity: 'warn' });
   }
-  if (metrics.crossover > 0.5) {
-    suggestions.push({ text: 'Frequent hand crossover — sounds are not well-separated by hand zone. Move left-hand sounds to columns 0-3 and right-hand sounds to columns 4-7.', severity: 'warn' });
+  if (metrics.constraintPenalty > 0.5) {
+    suggestions.push({ text: 'Constraint violations — some grips required constraint relaxation. Adjust layout to avoid impossible finger spreads.', severity: 'warn' });
   }
   if (balanceRatio < 0.2 || balanceRatio > 0.8) {
     const heavy = balanceRatio < 0.2 ? 'right' : 'left';
     suggestions.push({ text: `${heavy} hand is doing most of the work. Redistribute some sounds to the other hand zone.`, severity: 'warn' });
   }
-  if (metrics.bounce > 0.6) {
-    suggestions.push({ text: 'Same finger used repeatedly — consider spreading hits across multiple fingers by adjusting pad positions.', severity: 'info' });
-  }
-  if (metrics.drift > 0.8) {
-    suggestions.push({ text: 'High drift — hand center moves a lot. Cluster frequently-used sounds closer to each hand\'s resting position.', severity: 'info' });
+  if (metrics.fingerPreference > 0.8) {
+    suggestions.push({ text: 'High finger preference cost — weaker fingers are being used heavily. Consider redistributing to stronger fingers.', severity: 'info' });
   }
   const overworkedFingers = topFatigue.filter(([, f]) => f > 1.0);
   if (overworkedFingers.length > 0) {

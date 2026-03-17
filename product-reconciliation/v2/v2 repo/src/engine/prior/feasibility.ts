@@ -3,8 +3,11 @@
  *
  * Implements hard physical constraints that must be satisfied, plus
  * Constraint Logic Programming (CLP) based grip generation for the
- * Beam Search solver. Uses a tiered approach:
- *   Tier 1 (Strict) → Tier 2 (Relaxed) → Tier 3 (Fallback).
+ * Beam Search solver. Uses strict-only constraints: a grip is either
+ * feasible (passes all checks) or infeasible (rejected outright).
+ *
+ * V1 Cost Model (D-01): Tiered feasibility removed. No relaxed or
+ * fallback grips. An empty result means the event is infeasible.
  *
  * Ported from Version1/src/engine/feasibility.ts with canonical terminology.
  */
@@ -19,9 +22,7 @@ import {
   MAX_REACH_GRID_UNITS,
   MAX_FINGER_SPAN_STRICT,
   FINGER_PAIR_MAX_SPAN_STRICT,
-  FINGER_PAIR_MAX_SPAN_RELAXED,
   THUMB_DELTA,
-  THUMB_DELTA_RELAXED,
   FINGER_ORDER,
   pairKey,
   type GripRejection,
@@ -31,16 +32,20 @@ import {
 // Core Types
 // ============================================================================
 
-/** Constraint tier for grip generation. */
+/**
+ * Constraint tier for grip generation.
+ * V1 Cost Model (D-01): Only 'strict' is used. Kept as a type for backward
+ * compatibility during the transition; will be collapsed to boolean in C2.
+ */
 export type ConstraintTier = 'strict' | 'relaxed' | 'fallback';
 
-/** Grip result with metadata about which constraint tier was used. */
+/** Grip result with metadata. */
 export interface GripResult {
   /** The hand pose/grip. */
   pose: HandPose;
-  /** Which constraint tier was used to generate this grip. */
+  /** Always 'strict' in V1 — relaxed/fallback tiers removed. */
   tier: ConstraintTier;
-  /** True if this is a fallback grip that ignores constraints. */
+  /** Always false in V1 — fallback grips removed. */
   isFallback: boolean;
 }
 
@@ -427,7 +432,7 @@ function calculateCentroid(
 }
 
 // ============================================================================
-// CLP Grip Generation (Tiered)
+// CLP Grip Generation (Strict Only)
 // ============================================================================
 
 /** Options for diagnostic mode in grip generation. */
@@ -611,46 +616,14 @@ function collectTopologyRejections(
 }
 
 /**
- * Creates a fallback grip by assigning fingers in anatomical order.
- * Ignores biomechanical span/topology constraints but respects
- * the natural left-to-right finger arrangement on each hand.
- *
- * Anatomy (L→R on the grid):
- *   Left hand:  pinky, ring, middle, index, thumb
- *   Right hand: thumb, index, middle, ring, pinky
- */
-function createFallbackGrip(
-  activePads: PadCoord[],
-  hand: HandSide
-): HandPose {
-  // Always sort pads left-to-right (ascending col), break ties by row
-  const sortedPads = [...activePads].sort((a, b) => a.col - b.col || a.row - b.row);
-
-  // Anatomical finger order left-to-right on the grid
-  const fingerOrder: FingerType[] = hand === 'left'
-    ? ['pinky', 'ring', 'middle', 'index', 'thumb']
-    : ['thumb', 'index', 'middle', 'ring', 'pinky'];
-
-  const fingers: Partial<Record<FingerType, FingerCoordinate>> = {};
-
-  for (let i = 0; i < sortedPads.length && i < fingerOrder.length; i++) {
-    fingers[fingerOrder[i]] = padToFingerCoordinate(sortedPads[i]);
-  }
-
-  return { centroid: calculateCentroid(fingers), fingers };
-}
-
-/**
  * Generates all valid hand grips for a given set of active pads.
- * Uses a tiered constraint system to ALWAYS return at least one grip.
  *
- * Tier 1 (Strict): span < 5.5, strict topology
- * Tier 2 (Relaxed): span < 7.5, allow slight topology overlap
- * Tier 3 (Fallback): ignore constraints, assign by proximity
+ * V1 Cost Model (D-01): Strict-only constraints. Returns empty array when
+ * no valid grip exists (= infeasible event). No relaxed or fallback tiers.
  *
  * @param activePads - Pads that need to be pressed
  * @param hand - Which hand
- * @returns Array of valid HandPose objects (NEVER empty unless no pads given)
+ * @returns Array of valid HandPose objects (empty = infeasible)
  */
 export function generateValidGrips(
   activePads: PadCoord[],
@@ -659,28 +632,16 @@ export function generateValidGrips(
 ): HandPose[] {
   if (activePads.length === 0) return [];
 
-  // Tier 1: Strict per-pair constraints
-  const tier1 = generateGripsWithConstraints(
+  return generateGripsWithConstraints(
     activePads, hand, FINGER_PAIR_MAX_SPAN_STRICT, THUMB_DELTA, false, diagnostics
   );
-  if (tier1.length > 0) return tier1;
-
-  // Tier 2: Relaxed per-pair constraints (1.5× strict values)
-  const tier2 = generateGripsWithConstraints(
-    activePads, hand, FINGER_PAIR_MAX_SPAN_RELAXED, THUMB_DELTA_RELAXED, true, diagnostics
-  );
-  if (tier2.length > 0) return tier2;
-
-  // Tier 3: Fallback (ignore constraints, assign by proximity)
-  return [createFallbackGrip(activePads, hand)];
 }
 
 /**
- * Generates valid grips with GripResult metadata indicating which tier was used.
- * Useful for applying penalties to relaxed/fallback grips.
+ * Generates valid grips with GripResult metadata.
  *
- * When diagnostics is provided, rejection reasons are collected across all tiers
- * for the feasibility inspector UI.
+ * V1 Cost Model (D-01): All returned grips are strict tier.
+ * Returns empty array when no valid grip exists (= infeasible event).
  */
 export function generateValidGripsWithTier(
   activePads: PadCoord[],
@@ -689,21 +650,10 @@ export function generateValidGripsWithTier(
 ): GripResult[] {
   if (activePads.length === 0) return [];
 
-  const tier1 = generateGripsWithConstraints(
+  const grips = generateGripsWithConstraints(
     activePads, hand, FINGER_PAIR_MAX_SPAN_STRICT, THUMB_DELTA, false, diagnostics
   );
-  if (tier1.length > 0) {
-    return tier1.map(pose => ({ pose, tier: 'strict' as ConstraintTier, isFallback: false }));
-  }
-
-  const tier2 = generateGripsWithConstraints(
-    activePads, hand, FINGER_PAIR_MAX_SPAN_RELAXED, THUMB_DELTA_RELAXED, true, diagnostics
-  );
-  if (tier2.length > 0) {
-    return tier2.map(pose => ({ pose, tier: 'relaxed' as ConstraintTier, isFallback: false }));
-  }
-
-  return [{ pose: createFallbackGrip(activePads, hand), tier: 'fallback', isFallback: true }];
+  return grips.map(pose => ({ pose, tier: 'strict' as ConstraintTier, isFallback: false }));
 }
 
 /**

@@ -285,7 +285,7 @@ describe('Phase 2: Staleness Detection', () => {
     fingerUsageStats: {},
     fatigueMap: {},
     averageDrift: 0,
-    averageMetrics: { movement: 0, stretch: 0, drift: 0, bounce: 0, fatigue: 0, crossover: 0, total: 0 },
+    averageMetrics: { fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0, handBalance: 0, constraintPenalty: 0, total: 0 },
     layoutBinding: {
       layoutId: 'test-layout-001',
       layoutHash,
@@ -376,7 +376,7 @@ describe('Phase 2: getEffectiveLayoutBinding', () => {
       fingerUsageStats: {},
       fatigueMap: {},
       averageDrift: 0,
-      averageMetrics: { movement: 0, stretch: 0, drift: 0, bounce: 0, fatigue: 0, crossover: 0, total: 0 },
+      averageMetrics: { fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0, handBalance: 0, constraintPenalty: 0, total: 0 },
       layoutBinding: binding,
     };
 
@@ -393,7 +393,7 @@ describe('Phase 2: getEffectiveLayoutBinding', () => {
       fingerUsageStats: {},
       fatigueMap: {},
       averageDrift: 0,
-      averageMetrics: { movement: 0, stretch: 0, drift: 0, bounce: 0, fatigue: 0, crossover: 0, total: 0 },
+      averageMetrics: { fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0, handBalance: 0, constraintPenalty: 0, total: 0 },
       metadata: {
         layoutIdUsed: 'legacy-id',
         layoutHashUsed: 'legacy-hash',
@@ -416,7 +416,7 @@ describe('Phase 2: getEffectiveLayoutBinding', () => {
       fingerUsageStats: {},
       fatigueMap: {},
       averageDrift: 0,
-      averageMetrics: { movement: 0, stretch: 0, drift: 0, bounce: 0, fatigue: 0, crossover: 0, total: 0 },
+      averageMetrics: { fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0, handBalance: 0, constraintPenalty: 0, total: 0 },
     };
 
     const result = getEffectiveLayoutBinding(plan);

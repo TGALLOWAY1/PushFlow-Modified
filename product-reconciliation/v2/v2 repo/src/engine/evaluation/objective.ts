@@ -1,77 +1,48 @@
 /**
- * Canonical Objective Function.
+ * V1 Objective Function.
  *
- * Two objective models:
+ * Single scoring model — the 3-component PerformabilityObjective:
+ *   poseNaturalness (= handShapeDeviation + fingerPreference)
+ *   transitionDifficulty (Fitts's Law)
+ *   constraintPenalty (always 0 in V1 — constraints are binary)
  *
- *   1. PerformabilityObjective (primary, 3-component):
- *      poseNaturalness | transitionDifficulty | constraintPenalty
+ * V1 changes (Phase 8):
+ * - Removed ObjectiveComponents (7-term legacy diagnostic model)
+ * - Removed LegacyObjectiveComponents type alias
+ * - Removed ObjectiveResult interface
+ * - Removed all objectiveTo* and performabilityTo* conversion functions
+ * - Beam solver now tracks V1CostBreakdown directly on assignments
  *
- *   2. ObjectiveComponents (legacy, 7-component, for diagnostic display):
- *      transition | stretch | poseAttractor | perFingerHome | alternation | handBalance | constraints
- *
- * The beam search scores by PerformabilityObjective (3 terms).
- * The UI displays ObjectiveComponents (7 terms) for rich diagnostic breakdown.
- *
- * Phase 3 adds canonical mapping to DiagnosticFactors (stable naming contract).
- *
- * Ported from Version1/src/engine/objective.ts.
+ * Ported from Version1/src/engine/objective.ts, then simplified.
  */
 
 import {
+  type V1CostBreakdown,
+  type V1DiagnosticFactors,
   type DiagnosticFactors,
-  type GripNaturalnessDetail,
 } from '../../types/diagnostics';
 
 // ============================================================================
-// Performability Objective (3-Component Primary Model)
+// Performability Objective (3-Component Beam Scoring Model)
 // ============================================================================
 
 /**
  * 3-component performability scoring model.
  *
- * Answers three questions for each assignment:
- *   1. How natural is this grip?    → poseNaturalness
- *   2. How hard is the transition?  → transitionDifficulty
- *   3. Is this a fallback grip?     → constraintPenalty
+ * Used for beam search step cost computation:
+ *   1. How natural is this grip?    → poseNaturalness (= handShapeDeviation + fingerPreference)
+ *   2. How hard is the transition?  → transitionDifficulty (Fitts's Law)
+ *   3. Constraint penalty            → constraintPenalty (always 0 in V1)
  *
- * Used for beam search scoring and candidate comparison.
- * Legacy ObjectiveComponents is still computed alongside for diagnostic display.
+ * Used for beam search scoring. V1CostBreakdown is used for diagnostics.
  */
 export interface PerformabilityObjective {
-  /** Combined pose quality: attractor (0.4) + per-finger home (0.4) + dominance (0.2). */
+  /** Combined grip quality: handShapeDeviation + fingerPreference. */
   poseNaturalness: number;
   /** Fitts's Law transition cost: distance + speed penalty. Infinity if too fast. */
   transitionDifficulty: number;
-  /** Hard penalty for Tier 3 fallback grips (1000). Zero for strict/relaxed grips. */
+  /** Always 0 in V1 (constraints are binary pass/fail, not penalized). */
   constraintPenalty: number;
-}
-
-// ============================================================================
-// Legacy Objective Components (7-Component Diagnostic Model)
-// ============================================================================
-
-/**
- * 7-component objective for diagnostic display.
- * @deprecated For primary scoring, use PerformabilityObjective.
- */
-export interface ObjectiveComponents {
-  transition: number;
-  stretch: number;
-  poseAttractor: number;
-  perFingerHome: number;
-  alternation: number;
-  handBalance: number;
-  constraints: number;
-}
-
-/** @deprecated Use PerformabilityObjective for primary scoring. */
-export type LegacyObjectiveComponents = ObjectiveComponents;
-
-export interface ObjectiveResult {
-  valid: boolean;
-  total: number;
-  components: ObjectiveComponents;
-  invalidReason?: string;
 }
 
 // ============================================================================
@@ -99,47 +70,25 @@ export function combinePerformabilityComponents(components: PerformabilityObject
 }
 
 // ============================================================================
-// Legacy Factory + Combination
-// ============================================================================
-
-export function createZeroComponents(): ObjectiveComponents {
-  return {
-    transition: 0,
-    stretch: 0,
-    poseAttractor: 0,
-    perFingerHome: 0,
-    alternation: 0,
-    handBalance: 0,
-    constraints: 0,
-  };
-}
-
-/**
- * Combines legacy component values into a single scalar total.
- * @deprecated For primary scoring, use combinePerformabilityComponents.
- */
-export function combineComponents(components: ObjectiveComponents): number {
-  return (
-    components.transition +
-    components.stretch +
-    components.poseAttractor +
-    components.perFingerHome +
-    components.alternation +
-    components.handBalance +
-    components.constraints
-  );
-}
-
-// ============================================================================
-// Mapping to DifficultyBreakdown (for ExecutionPlanResult compatibility)
+// V1 Cost Breakdown Utilities
 // ============================================================================
 
 /**
- * Maps legacy ObjectiveComponents to DifficultyBreakdown format.
- *   movement ← transition, stretch ← stretch, drift ← poseAttractor,
- *   bounce ← alternation, fatigue ← perFingerHome, crossover ← constraints.
+ * Maps a V1CostBreakdown to legacy DifficultyBreakdown format.
+ *
+ * Provides backward compatibility for ExecutionPlanResult.averageMetrics
+ * and FingerAssignment.costBreakdown which still use the DifficultyBreakdown
+ * shape (movement/stretch/drift/bounce/fatigue/crossover).
+ *
+ * Field mapping:
+ *   movement   ← transitionCost
+ *   stretch    ← fingerPreference
+ *   drift      ← handShapeDeviation
+ *   bounce     ← 0 (alternation removed from V1)
+ *   fatigue    ← 0 (no per-finger home tracking in V1)
+ *   crossover  ← constraintPenalty
  */
-export function objectiveToDifficultyBreakdown(components: ObjectiveComponents): {
+export function v1CostBreakdownToDifficultyBreakdown(v1: V1CostBreakdown): {
   movement: number;
   stretch: number;
   drift: number;
@@ -148,127 +97,54 @@ export function objectiveToDifficultyBreakdown(components: ObjectiveComponents):
   crossover: number;
   total: number;
 } {
-  const total = combineComponents(components);
   return {
-    movement: components.transition,
-    stretch: components.stretch,
-    drift: components.poseAttractor,
-    bounce: components.alternation,
-    fatigue: components.perFingerHome,
-    crossover: components.constraints,
-    total,
+    movement: v1.transitionCost,
+    stretch: v1.fingerPreference,
+    drift: v1.handShapeDeviation,
+    bounce: 0,
+    fatigue: 0,
+    crossover: v1.constraintPenalty,
+    total: v1.total,
   };
 }
 
 /**
- * Maps PerformabilityObjective to DifficultyBreakdown for UI backward compatibility.
+ * Maps a V1CostBreakdown to legacy DiagnosticFactors.
  *
- * When diagnosticComponents are available, uses them for the richer sub-breakdown.
- * Otherwise, distributes poseNaturalness proportionally across legacy fields.
- */
-export function performabilityToDifficultyBreakdown(
-  components: PerformabilityObjective,
-  diagnosticComponents?: ObjectiveComponents
-): {
-  movement: number;
-  stretch: number;
-  drift: number;
-  bounce: number;
-  fatigue: number;
-  crossover: number;
-  total: number;
-} {
-  const total = combinePerformabilityComponents(components);
-
-  if (diagnosticComponents) {
-    // Use diagnostic data for richer sub-breakdown
-    return {
-      movement: components.transitionDifficulty,
-      stretch: diagnosticComponents.stretch,
-      drift: diagnosticComponents.poseAttractor,
-      bounce: diagnosticComponents.alternation,
-      fatigue: diagnosticComponents.perFingerHome,
-      crossover: components.constraintPenalty,
-      total,
-    };
-  }
-
-  // Approximate: distribute poseNaturalness across legacy fields
-  const pose = components.poseNaturalness;
-  return {
-    movement: components.transitionDifficulty,
-    stretch: pose * 0.2,   // finger dominance portion
-    drift: pose * 0.4,     // centroid attractor portion
-    bounce: 0,             // alternation (diagnostic only)
-    fatigue: pose * 0.4,   // per-finger home portion
-    crossover: components.constraintPenalty,
-    total,
-  };
-}
-
-// ============================================================================
-// Phase 3: Canonical DiagnosticFactors Mapping
-// ============================================================================
-
-/**
- * Maps ObjectiveComponents to canonical DiagnosticFactors.
+ * Provides backward compatibility for DiagnosticsPayload.factors.
+ * Maps V1 fields to the existing 5-factor schema.
  *
- * Collapses the legacy 7-component model into the 5 canonical factors:
- *   transition ← transition
- *   gripNaturalness ← stretch + poseAttractor + perFingerHome
- *   alternation ← alternation
- *   handBalance ← handBalance
- *   constraintPenalty ← constraints
+ * Field mapping:
+ *   transition       ← transitionCost
+ *   gripNaturalness  ← fingerPreference + handShapeDeviation
+ *   alternation      ← 0 (removed from V1)
+ *   handBalance      ← handBalance
+ *   constraintPenalty ← constraintPenalty
  */
-export function objectiveToCanonicalFactors(
-  components: ObjectiveComponents,
-): DiagnosticFactors {
-  const total = combineComponents(components);
+export function v1CostBreakdownToCanonicalFactors(v1: V1CostBreakdown): DiagnosticFactors {
+  const transition = v1.transitionCost;
+  const gripNaturalness = v1.fingerPreference + v1.handShapeDeviation;
+  const handBalance = v1.handBalance;
+  const constraintPenalty = v1.constraintPenalty;
   return {
-    transition: components.transition,
-    gripNaturalness: components.stretch + components.poseAttractor + components.perFingerHome,
-    alternation: components.alternation,
-    handBalance: components.handBalance,
-    constraintPenalty: components.constraints,
-    total,
-  };
-}
-
-/**
- * Maps ObjectiveComponents to GripNaturalnessDetail sub-breakdown.
- */
-export function objectiveToGripDetail(
-  components: ObjectiveComponents,
-): GripNaturalnessDetail {
-  return {
-    attractor: components.poseAttractor,
-    perFingerHome: components.perFingerHome,
-    fingerDominance: components.stretch,
-  };
-}
-
-/**
- * Maps PerformabilityObjective to canonical DiagnosticFactors.
- *
- * When diagnosticComponents are available, uses them for richer breakdown.
- * Otherwise uses the 3-component approximation (alternation and handBalance
- * are zero since they're not tracked in PerformabilityObjective directly).
- */
-export function performabilityToCanonicalFactors(
-  components: PerformabilityObjective,
-  diagnosticComponents?: ObjectiveComponents,
-): DiagnosticFactors {
-  if (diagnosticComponents) {
-    return objectiveToCanonicalFactors(diagnosticComponents);
-  }
-
-  const total = combinePerformabilityComponents(components);
-  return {
-    transition: components.transitionDifficulty,
-    gripNaturalness: components.poseNaturalness,
+    transition,
+    gripNaturalness,
     alternation: 0,
-    handBalance: 0,
-    constraintPenalty: components.constraintPenalty,
-    total,
+    handBalance,
+    constraintPenalty,
+    total: transition + gripNaturalness + handBalance + constraintPenalty,
+  };
+}
+
+/**
+ * Maps a V1CostBreakdown to V1DiagnosticFactors.
+ */
+export function v1CostBreakdownToV1Factors(v1: V1CostBreakdown): V1DiagnosticFactors {
+  return {
+    fingerPreference: v1.fingerPreference,
+    handShapeDeviation: v1.handShapeDeviation,
+    transitionCost: v1.transitionCost,
+    handBalance: v1.handBalance,
+    total: v1.fingerPreference + v1.handShapeDeviation + v1.transitionCost + v1.handBalance,
   };
 }

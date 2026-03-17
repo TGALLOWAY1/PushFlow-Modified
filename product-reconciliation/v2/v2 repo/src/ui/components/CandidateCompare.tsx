@@ -17,8 +17,6 @@ const DIMENSION_LABELS: Record<string, string> = {
   compactness: 'Compactness',
   handBalance: 'Hand Balance',
   transitionEfficiency: 'Transitions',
-  learnability: 'Learnability',
-  robustness: 'Robustness',
 };
 
 export function CandidateCompare({ candidateA, candidateB }: CandidateCompareProps) {

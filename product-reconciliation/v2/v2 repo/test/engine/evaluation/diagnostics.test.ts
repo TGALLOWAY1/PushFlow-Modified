@@ -1,30 +1,36 @@
 /**
- * Phase 3: Diagnostics Integration Tests.
+ * Phase 3 / Phase 8: Diagnostics Integration Tests.
  *
- * Tests the canonical diagnostic types, factor mappings, feasibility verdicts,
+ * Tests the canonical diagnostic types, V1 factor mappings, feasibility verdicts,
  * and end-to-end diagnostics population in solver output.
+ *
+ * V1 changes (Phase 8):
+ * - Replaced ObjectiveComponents tests with V1CostBreakdown mapping tests
+ * - Removed objectiveToCanonicalFactors, objectiveToGripDetail, performabilityToCanonicalFactors tests
+ * - Added v1CostBreakdownToCanonicalFactors, v1CostBreakdownToV1Factors tests
+ * - Removed gripDetail assertions (no longer populated in V1)
  */
 
 import { describe, it, expect } from 'vitest';
 import {
   type DiagnosticFactors,
-  type GripNaturalnessDetail,
   type FeasibilityVerdict,
   type DiagnosticsPayload,
+  type V1CostBreakdown,
+  type V1DiagnosticFactors,
   createZeroDiagnosticFactors,
+  createZeroV1CostBreakdown,
+  createZeroV1DiagnosticFactors,
   computeTopContributors,
+  computeV1TopContributors,
   deriveFeasibilityVerdict,
 } from '../../../src/types/diagnostics';
 import {
-  type ObjectiveComponents,
   type PerformabilityObjective,
-  createZeroComponents,
   createZeroPerformabilityComponents,
-  objectiveToCanonicalFactors,
-  objectiveToGripDetail,
-  performabilityToCanonicalFactors,
-  combineComponents,
   combinePerformabilityComponents,
+  v1CostBreakdownToCanonicalFactors,
+  v1CostBreakdownToV1Factors,
 } from '../../../src/engine/evaluation/objective';
 import {
   runSolver,
@@ -46,6 +52,29 @@ describe('createZeroDiagnosticFactors', () => {
     expect(factors.alternation).toBe(0);
     expect(factors.handBalance).toBe(0);
     expect(factors.constraintPenalty).toBe(0);
+    expect(factors.total).toBe(0);
+  });
+});
+
+describe('createZeroV1CostBreakdown', () => {
+  it('should return all-zero V1 cost breakdown', () => {
+    const breakdown = createZeroV1CostBreakdown();
+    expect(breakdown.fingerPreference).toBe(0);
+    expect(breakdown.handShapeDeviation).toBe(0);
+    expect(breakdown.transitionCost).toBe(0);
+    expect(breakdown.handBalance).toBe(0);
+    expect(breakdown.constraintPenalty).toBe(0);
+    expect(breakdown.total).toBe(0);
+  });
+});
+
+describe('createZeroV1DiagnosticFactors', () => {
+  it('should return all-zero V1 diagnostic factors', () => {
+    const factors = createZeroV1DiagnosticFactors();
+    expect(factors.fingerPreference).toBe(0);
+    expect(factors.handShapeDeviation).toBe(0);
+    expect(factors.transitionCost).toBe(0);
+    expect(factors.handBalance).toBe(0);
     expect(factors.total).toBe(0);
   });
 });
@@ -91,6 +120,29 @@ describe('computeTopContributors', () => {
 });
 
 // ============================================================================
+// computeV1TopContributors
+// ============================================================================
+
+describe('computeV1TopContributors', () => {
+  it('should return empty array for zero factors', () => {
+    const factors = createZeroV1DiagnosticFactors();
+    expect(computeV1TopContributors(factors)).toEqual([]);
+  });
+
+  it('should return V1 factor names ordered by descending magnitude', () => {
+    const factors: V1DiagnosticFactors = {
+      fingerPreference: 5,
+      handShapeDeviation: 20,
+      transitionCost: 10,
+      handBalance: 2,
+      total: 37,
+    };
+    const result = computeV1TopContributors(factors);
+    expect(result).toEqual(['handShapeDeviation', 'transitionCost', 'fingerPreference', 'handBalance']);
+  });
+});
+
+// ============================================================================
 // deriveFeasibilityVerdict
 // ============================================================================
 
@@ -130,7 +182,6 @@ describe('deriveFeasibilityVerdict', () => {
   it('should prioritize infeasible over degraded', () => {
     const verdict = deriveFeasibilityVerdict(1, 5, 0, 2, 16);
     expect(verdict.level).toBe('infeasible');
-    // All reason types should be present
     expect(verdict.reasons.some(r => r.type === 'unplayable_event')).toBe(true);
     expect(verdict.reasons.some(r => r.type === 'hard_event')).toBe(true);
     expect(verdict.reasons.some(r => r.type === 'fallback_grip')).toBe(true);
@@ -138,13 +189,13 @@ describe('deriveFeasibilityVerdict', () => {
 });
 
 // ============================================================================
-// objectiveToCanonicalFactors
+// v1CostBreakdownToCanonicalFactors
 // ============================================================================
 
-describe('objectiveToCanonicalFactors', () => {
-  it('should map zero components to zero factors', () => {
-    const components = createZeroComponents();
-    const factors = objectiveToCanonicalFactors(components);
+describe('v1CostBreakdownToCanonicalFactors', () => {
+  it('should map zero breakdown to zero factors', () => {
+    const v1 = createZeroV1CostBreakdown();
+    const factors = v1CostBreakdownToCanonicalFactors(v1);
     expect(factors.transition).toBe(0);
     expect(factors.gripNaturalness).toBe(0);
     expect(factors.alternation).toBe(0);
@@ -153,114 +204,83 @@ describe('objectiveToCanonicalFactors', () => {
     expect(factors.total).toBe(0);
   });
 
-  it('should collapse stretch + poseAttractor + perFingerHome into gripNaturalness', () => {
-    const components: ObjectiveComponents = {
-      transition: 0,
-      stretch: 5,
-      poseAttractor: 10,
-      perFingerHome: 3,
-      alternation: 0,
+  it('should collapse fingerPreference + handShapeDeviation into gripNaturalness', () => {
+    const v1: V1CostBreakdown = {
+      fingerPreference: 5,
+      handShapeDeviation: 10,
+      transitionCost: 0,
       handBalance: 0,
-      constraints: 0,
+      constraintPenalty: 0,
+      total: 15,
     };
-    const factors = objectiveToCanonicalFactors(components);
-    expect(factors.gripNaturalness).toBe(18); // 5 + 10 + 3
+    const factors = v1CostBreakdownToCanonicalFactors(v1);
+    expect(factors.gripNaturalness).toBe(15); // 5 + 10
   });
 
-  it('should preserve transition, alternation, handBalance, constraintPenalty', () => {
-    const components: ObjectiveComponents = {
-      transition: 12,
-      stretch: 0,
-      poseAttractor: 0,
-      perFingerHome: 0,
-      alternation: 7,
+  it('should preserve transition, handBalance, constraintPenalty', () => {
+    const v1: V1CostBreakdown = {
+      fingerPreference: 0,
+      handShapeDeviation: 0,
+      transitionCost: 12,
       handBalance: 3,
-      constraints: 1000,
+      constraintPenalty: 1000,
+      total: 1015,
     };
-    const factors = objectiveToCanonicalFactors(components);
+    const factors = v1CostBreakdownToCanonicalFactors(v1);
     expect(factors.transition).toBe(12);
-    expect(factors.alternation).toBe(7);
     expect(factors.handBalance).toBe(3);
     expect(factors.constraintPenalty).toBe(1000);
   });
 
-  it('should compute correct total', () => {
-    const components: ObjectiveComponents = {
-      transition: 10,
-      stretch: 5,
-      poseAttractor: 8,
-      perFingerHome: 3,
-      alternation: 2,
+  it('should always set alternation to 0', () => {
+    const v1: V1CostBreakdown = {
+      fingerPreference: 5,
+      handShapeDeviation: 3,
+      transitionCost: 10,
       handBalance: 1,
-      constraints: 0,
-    };
-    const factors = objectiveToCanonicalFactors(components);
-    expect(factors.total).toBe(combineComponents(components));
-  });
-});
-
-// ============================================================================
-// objectiveToGripDetail
-// ============================================================================
-
-describe('objectiveToGripDetail', () => {
-  it('should extract correct sub-breakdown', () => {
-    const components: ObjectiveComponents = {
-      transition: 99,
-      stretch: 5,
-      poseAttractor: 10,
-      perFingerHome: 3,
-      alternation: 99,
-      handBalance: 99,
-      constraints: 99,
-    };
-    const detail = objectiveToGripDetail(components);
-    expect(detail.attractor).toBe(10);
-    expect(detail.perFingerHome).toBe(3);
-    expect(detail.fingerDominance).toBe(5);
-  });
-});
-
-// ============================================================================
-// performabilityToCanonicalFactors
-// ============================================================================
-
-describe('performabilityToCanonicalFactors', () => {
-  it('should map without diagnostic components (3-component approximation)', () => {
-    const perf: PerformabilityObjective = {
-      poseNaturalness: 15,
-      transitionDifficulty: 8,
       constraintPenalty: 0,
+      total: 19,
     };
-    const factors = performabilityToCanonicalFactors(perf);
-    expect(factors.transition).toBe(8);
-    expect(factors.gripNaturalness).toBe(15);
+    const factors = v1CostBreakdownToCanonicalFactors(v1);
     expect(factors.alternation).toBe(0);
-    expect(factors.handBalance).toBe(0);
-    expect(factors.constraintPenalty).toBe(0);
-    expect(factors.total).toBe(combinePerformabilityComponents(perf));
   });
 
-  it('should use diagnostic components when provided for richer breakdown', () => {
-    const perf: PerformabilityObjective = {
-      poseNaturalness: 15,
-      transitionDifficulty: 8,
-      constraintPenalty: 0,
-    };
-    const diag: ObjectiveComponents = {
-      transition: 8,
-      stretch: 5,
-      poseAttractor: 6,
-      perFingerHome: 4,
-      alternation: 2,
+  it('should compute total as sum of canonical factors', () => {
+    const v1: V1CostBreakdown = {
+      fingerPreference: 5,
+      handShapeDeviation: 8,
+      transitionCost: 3,
       handBalance: 1,
-      constraints: 0,
+      constraintPenalty: 0,
+      total: 99, // beam total may differ due to weighting
     };
-    const factors = performabilityToCanonicalFactors(perf, diag);
-    // Should use the full 7-component mapping via objectiveToCanonicalFactors
-    expect(factors.alternation).toBe(2);
+    const factors = v1CostBreakdownToCanonicalFactors(v1);
+    // Total = transition + gripNaturalness + alternation + handBalance + constraintPenalty
+    expect(factors.total).toBe(3 + 13 + 0 + 1 + 0); // = 17
+  });
+});
+
+// ============================================================================
+// v1CostBreakdownToV1Factors
+// ============================================================================
+
+describe('v1CostBreakdownToV1Factors', () => {
+  it('should extract V1 factor fields', () => {
+    const v1: V1CostBreakdown = {
+      fingerPreference: 2,
+      handShapeDeviation: 3,
+      transitionCost: 5,
+      handBalance: 1,
+      constraintPenalty: 0,
+      total: 11,
+    };
+    const factors = v1CostBreakdownToV1Factors(v1);
+    expect(factors.fingerPreference).toBe(2);
+    expect(factors.handShapeDeviation).toBe(3);
+    expect(factors.transitionCost).toBe(5);
     expect(factors.handBalance).toBe(1);
-    expect(factors.gripNaturalness).toBe(15); // 5 + 6 + 4
+    // V1DiagnosticFactors.total = sum of 4 factors (no constraintPenalty)
+    expect(factors.total).toBe(11);
   });
 });
 
@@ -295,11 +315,8 @@ describe('Solver diagnostics population', () => {
     expect(typeof diag.factors.constraintPenalty).toBe('number');
     expect(typeof diag.factors.total).toBe('number');
 
-    // Grip detail should be present
-    expect(diag.gripDetail).toBeDefined();
-    expect(typeof diag.gripDetail!.attractor).toBe('number');
-    expect(typeof diag.gripDetail!.perFingerHome).toBe('number');
-    expect(typeof diag.gripDetail!.fingerDominance).toBe('number');
+    // V1: gripDetail is no longer populated (single handShapeDeviation metric)
+    // gripNaturalness = fingerPreference + handShapeDeviation
 
     // Top contributors should be an array of canonical factor names
     expect(Array.isArray(diag.topContributors)).toBe(true);
@@ -332,9 +349,7 @@ describe('Solver diagnostics population', () => {
     const result = await runSolver(perf);
 
     const diag = result.diagnostics!;
-    // A 16-note sequence across different pads should have some transition cost
     expect(diag.factors.total).toBeGreaterThan(0);
-    // topContributors should list at least one factor
     expect(diag.topContributors.length).toBeGreaterThan(0);
   });
 
@@ -354,22 +369,6 @@ describe('Solver diagnostics population', () => {
     expect(f.total).toBeCloseTo(expectedTotal, 6);
   });
 
-  it('should have gripDetail that sums to gripNaturalness', async () => {
-    const perf = createTestPerformance([
-      { noteNumber: 36, startTime: 0.0 },
-      { noteNumber: 38, startTime: 0.5 },
-      { noteNumber: 40, startTime: 1.0 },
-    ]);
-
-    const result = await runSolver(perf);
-    const diag = result.diagnostics!;
-
-    if (diag.gripDetail) {
-      const gripSum = diag.gripDetail.attractor + diag.gripDetail.perFingerHome + diag.gripDetail.fingerDominance;
-      expect(diag.factors.gripNaturalness).toBeCloseTo(gripSum, 6);
-    }
-  });
-
   it('should attach diagnostics to empty performance', async () => {
     const perf = createTestPerformance([]);
     const result = await runSolver(perf);
@@ -386,7 +385,6 @@ describe('Solver diagnostics population', () => {
 
     expect(result.diagnostics).toBeDefined();
     expect(result.diagnostics!.feasibility.level).toBe('feasible');
-    // An alternating pattern should have transition costs
     expect(result.diagnostics!.factors.transition).toBeGreaterThanOrEqual(0);
   });
 
@@ -404,7 +402,6 @@ describe('Solver diagnostics population', () => {
     const diag = result.diagnostics!;
     const f = diag.factors;
 
-    // Verify ordering: each contributor should have value >= next contributor
     for (let i = 0; i < diag.topContributors.length - 1; i++) {
       const current = f[diag.topContributors[i] as keyof DiagnosticFactors] as number;
       const next = f[diag.topContributors[i + 1] as keyof DiagnosticFactors] as number;

@@ -105,9 +105,9 @@ export function EventDetailPanel() {
         <InfoField label="Difficulty" value={assignment.difficulty} />
         {assignment.costBreakdown && (
           <>
-            <InfoField label="Movement" value={assignment.costBreakdown.movement.toFixed(2)} />
-            <InfoField label="Stretch" value={assignment.costBreakdown.stretch.toFixed(2)} />
-            <InfoField label="Drift" value={assignment.costBreakdown.drift.toFixed(2)} />
+            <InfoField label="Transition" value={assignment.costBreakdown.transitionCost.toFixed(2)} />
+            <InfoField label="Finger Pref" value={assignment.costBreakdown.fingerPreference.toFixed(2)} />
+            <InfoField label="Shape Dev" value={assignment.costBreakdown.handShapeDeviation.toFixed(2)} />
           </>
         )}
       </div>

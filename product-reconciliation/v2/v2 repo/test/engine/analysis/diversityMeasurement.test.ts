@@ -68,7 +68,7 @@ function makeCandidate(layout: Layout, strategy: string = 'test'): CandidateSolu
       fingerUsageStats: {},
       fatigueMap: {},
       averageDrift: 0,
-      averageMetrics: { movement: 0, stretch: 0, drift: 0, bounce: 0, fatigue: 0, crossover: 0, total: 0 },
+      averageMetrics: { fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0, handBalance: 0, constraintPenalty: 0, total: 0 },
     },
     difficultyAnalysis: {
       overallScore: 0.5,
@@ -80,8 +80,6 @@ function makeCandidate(layout: Layout, strategy: string = 'test'): CandidateSolu
       compactness: 0.5,
       handBalance: 0.6,
       transitionEfficiency: 0.8,
-      learnability: 0.6,
-      robustness: 0.7,
     },
     metadata: {
       strategy,
@@ -374,8 +372,6 @@ describe('buildBaselineDiffSummary', () => {
       compactness: 0.5,
       handBalance: 0.6,
       transitionEfficiency: 0.8,
-      learnability: 0.6,
-      robustness: 0.7,
     };
 
     const diff = buildBaselineDiffSummary(candidate, baseline, baselineProfile);
@@ -393,8 +389,6 @@ describe('buildBaselineDiffSummary', () => {
       compactness: 0.5,
       handBalance: 0.6,
       transitionEfficiency: 0.8,
-      learnability: 0.6,
-      robustness: 0.7,
     };
 
     const diff = buildBaselineDiffSummary(candidate, layout, baselineProfile);

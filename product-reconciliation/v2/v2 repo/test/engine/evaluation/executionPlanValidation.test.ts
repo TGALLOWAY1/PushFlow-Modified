@@ -8,7 +8,8 @@
 import { describe, it, expect } from 'vitest';
 import { type Layout } from '../../../src/types/layout';
 import { type Voice } from '../../../src/types/voice';
-import { type ExecutionPlanResult, type DifficultyBreakdown } from '../../../src/types/executionPlan';
+import { type ExecutionPlanResult } from '../../../src/types/executionPlan';
+import { type V1CostBreakdown } from '../../../src/types/diagnostics';
 import { hashLayout } from '../../../src/engine/mapping/mappingResolver';
 import {
   checkPlanFreshness,
@@ -42,8 +43,8 @@ function makeLayout(id: string, padToVoice: Record<string, Voice>): Layout {
   };
 }
 
-const emptyMetrics: DifficultyBreakdown = {
-  movement: 0, stretch: 0, drift: 0, bounce: 0, fatigue: 0, crossover: 0, total: 0,
+const emptyMetrics: V1CostBreakdown = {
+  fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0, handBalance: 0, constraintPenalty: 0, total: 0,
 };
 
 function makePlan(overrides?: Partial<ExecutionPlanResult>): ExecutionPlanResult {

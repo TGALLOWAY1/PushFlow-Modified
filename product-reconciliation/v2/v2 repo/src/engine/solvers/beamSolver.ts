@@ -25,37 +25,33 @@ import {
   type FingerAssignment,
   type FingerUsageStats,
   type FatigueMap,
-  type DifficultyBreakdown,
   type PadFingerAssignment,
   type MomentAssignment,
   type NoteAssignmentInfo,
 } from '../../types/executionPlan';
 import { MOMENT_EPSILON } from '../../types/performanceEvent';
 import { buildNoteToPadIndex, buildVoiceIdToPadIndex, resolveEventToPad, hashLayout } from '../mapping/mappingResolver';
+import { allPadsInZone } from '../surface/handZone';
 import { generateValidGripsWithTier } from '../prior/feasibility';
 import {
-  calculatePoseNaturalness,
-  calculateAttractorCost,
+  calculateHandShapeDeviation,
+  buildNaturalPairwiseDistances,
   calculateTransitionCost,
-  calculateFingerDominanceCost,
-  calculatePerFingerHomeCost,
-  calculateAlternationCost,
+  calculateFingerPreferenceCost,
   calculateHandBalanceCost,
-  FALLBACK_GRIP_PENALTY,
-  RELAXED_GRIP_PENALTY,
 } from '../evaluation/costFunction';
 import {
   type PerformabilityObjective,
-  type ObjectiveComponents,
   combinePerformabilityComponents,
-  combineComponents,
-  objectiveToDifficultyBreakdown,
-  objectiveToCanonicalFactors,
-  objectiveToGripDetail,
-  createZeroComponents,
+  v1CostBreakdownToCanonicalFactors,
 } from '../evaluation/objective';
 import {
+  type V1CostBreakdown,
+  createZeroV1CostBreakdown,
+} from '../../types/diagnostics';
+import {
   type DiagnosticsPayload,
+  type InfeasibilityDiagnostic,
   computeTopContributors,
   deriveFeasibilityVerdict,
 } from '../../types/diagnostics';
@@ -73,13 +69,8 @@ import { type SolverConfig, type NeutralPadPositions } from '../../types/engineC
 // Beam Score Weights for Previously Diagnostic-Only Costs
 // ============================================================================
 
-/**
- * Weight for alternation cost in beam score.
- * Penalizes same-finger rapid repetition — critical for percussion playability.
- * Value 0.8: strong enough to influence finger choice on fast passages,
- * mild enough not to override transition/pose costs on slow passages.
- */
-const ALTERNATION_BEAM_WEIGHT = 0.8;
+// V1 (D-15): Alternation cost removed from V1 beam score entirely.
+// See costFunction.ts for the retained (but unused) alternation logic.
 
 /**
  * Weight for hand balance cost in beam score.
@@ -105,7 +96,7 @@ interface NoteAssignment {
   cost: number;
   row: number;
   col: number;
-  costComponents?: ObjectiveComponents;
+  costComponents?: V1CostBreakdown;
 }
 
 interface BeamNode {
@@ -180,41 +171,6 @@ function groupEventsByTimestamp(
 }
 
 // ============================================================================
-// Lookahead Helpers
-// ============================================================================
-
-/** Average centroid of a set of pads (for 1-step lookahead). */
-function averagePadCentroid(pads: PadCoord[]): { x: number; y: number } {
-  if (pads.length === 0) return { x: 3.5, y: 3.5 };
-  let sumX = 0, sumY = 0;
-  for (const pad of pads) {
-    sumX += pad.col;
-    sumY += pad.row;
-  }
-  return { x: sumX / pads.length, y: sumY / pads.length };
-}
-
-/**
- * Lookahead bonus: rewards grips that leave the hand close to the next group's pads.
- * Strengthened from original (10% cap, 3.0 range) to (20% cap, 4.0 range)
- * so the bonus can meaningfully influence beam ranking for phrase-level planning.
- */
-function computeLookaheadBonus(
-  gripCentroid: { x: number; y: number },
-  nextGroup: PerformanceGroup,
-  stepCost: number
-): number {
-  if (stepCost <= 0) return 0;
-  const nextCentroid = averagePadCentroid(nextGroup.activePads);
-  const dx = gripCentroid.x - nextCentroid.x;
-  const dy = gripCentroid.y - nextCentroid.y;
-  const distToNext = Math.sqrt(dx * dx + dy * dy);
-
-  // Bonus proportional to proximity, capped at 20% of step cost
-  const proximityBonus = Math.max(0, 4.0 - distToNext) * 0.6;
-  return Math.min(stepCost * 0.2, proximityBonus);
-}
-
 // ============================================================================
 // BeamSolver Implementation
 // ============================================================================
@@ -257,15 +213,14 @@ export class BeamSolver implements SolverStrategy {
     node: BeamNode,
     group: PerformanceGroup,
     prevTimestamp: number,
-    config: EngineConfiguration,
-    neutralHandCenters?: NeutralHandCentersResult | null,
-    nextGroup?: PerformanceGroup | null
+    _config: EngineConfiguration,
+    _neutralHandCenters?: NeutralHandCentersResult | null,
+    naturalDistances?: { left: Map<string, number>; right: Map<string, number> },
   ): BeamNode[] {
     const children: BeamNode[] = [];
     const rawTimeDelta = group.timestamp - prevTimestamp;
     const isFirstGroup = node.depth === 0 || prevTimestamp === 0;
     const timeDelta = isFirstGroup ? Math.max(rawTimeDelta, 1.0) : rawTimeDelta;
-    const { stiffness, restingPose } = config;
 
     for (const hand of ['left', 'right'] as const) {
       // Deduplicate pads to prevent multiple fingers on the same pad
@@ -294,33 +249,32 @@ export class BeamSolver implements SolverStrategy {
       }
       if (handConflict) continue;
 
+      // V1 (D-02): Hard zone constraint — skip hand if any pad is outside its zone
+      if (!allPadsInZone(uniquePads, hand)) continue;
+
       const prevPose = hand === 'left' ? node.leftPose : node.rightPose;
-      const restPose = hand === 'left' ? restingPose.left : restingPose.right;
 
       const gripResults = generateValidGripsWithTier(uniquePads, hand);
 
       for (const gripResult of gripResults) {
-        const { pose: grip, isFallback, tier } = gripResult;
+        const { pose: grip } = gripResult;
         const transitionCost = calculateTransitionCost(prevPose, grip, timeDelta);
 
-        if (transitionCost === Infinity && !isFirstGroup && !isFallback) continue;
+        // V1 (D-01): All grips are strict — reject impossible transitions
+        if (transitionCost === Infinity && !isFirstGroup) continue;
 
         const effectiveTransitionCost = transitionCost === Infinity ? 0 : transitionCost;
-        const attractorCost = calculateAttractorCost(grip, restPose, stiffness);
-        const staticCost = calculateFingerDominanceCost(grip);
-        const perFingerHomeCost = neutralHandCenters
-          ? calculatePerFingerHomeCost(grip, hand, neutralHandCenters, 0.8)
-          : 0;
-        // Tier-based penalty: Tier 2 (relaxed) gets moderate penalty,
-        // Tier 3 (fallback) gets severe penalty, Tier 1 (strict) gets none.
-        const constraintPenalty = isFallback
-          ? FALLBACK_GRIP_PENALTY
-          : tier === 'relaxed'
-            ? RELAXED_GRIP_PENALTY
-            : 0;
 
-        // Diagnostic-only costs (computed for display, not in beam score)
-        const prevAssignments = node.assignments.map(a => ({ hand: a.hand, finger: a.finger }));
+        // V1 (D-05, D-20): Translation-invariant hand shape deviation + finger preference
+        const handNaturalDist = naturalDistances
+          ? (hand === 'left' ? naturalDistances.left : naturalDistances.right)
+          : new Map<string, number>();
+        const handShapeDeviation = calculateHandShapeDeviation(grip, handNaturalDist);
+        const fingerPreferenceCost = calculateFingerPreferenceCost(grip);
+
+        // V1 (D-01): No tier penalties — all grips are strict tier
+        const constraintPenalty = 0;
+
         const gripFingers = Object.keys(grip.fingers) as FingerType[];
 
         // Map notes to the exact finger assigned to their target pad
@@ -349,17 +303,12 @@ export class BeamSolver implements SolverStrategy {
         }
         if (ownershipViolation) continue;
 
-        const currentAssignments = resolvedFingers.map(finger => ({ hand, finger }));
-        const alternationCost = calculateAlternationCost(prevAssignments, currentAssignments, rawTimeDelta);
-
         const newLeftCount = node.leftCount + (hand === 'left' ? group.notes.length : 0);
         const newRightCount = node.rightCount + (hand === 'right' ? group.notes.length : 0);
         const handBalanceCost = calculateHandBalanceCost(newLeftCount, newRightCount);
 
-        // === PRIMARY SCORE (3-component PerformabilityObjective) ===
-        const poseNaturalness = calculatePoseNaturalness(
-          grip, restPose, stiffness, hand, neutralHandCenters ?? null
-        );
+        // === PRIMARY SCORE (V1: hand shape deviation + finger preference + transition) ===
+        const poseNaturalness = handShapeDeviation + fingerPreferenceCost;
         const perfComponents: PerformabilityObjective = {
           poseNaturalness,
           transitionDifficulty: effectiveTransitionCost,
@@ -367,31 +316,21 @@ export class BeamSolver implements SolverStrategy {
         };
         let stepCostForBeam = combinePerformabilityComponents(perfComponents);
 
-        // === ALTERNATION COST (promotes finger variety on rapid passages) ===
-        stepCostForBeam += alternationCost * ALTERNATION_BEAM_WEIGHT;
-
         // === HAND BALANCE COST (prevents single-hand dominance) ===
         stepCostForBeam += handBalanceCost * HAND_BALANCE_BEAM_WEIGHT;
-
-        // === 1-STEP LOOKAHEAD BONUS ===
-        if (nextGroup && stepCostForBeam > 0) {
-          const bonus = computeLookaheadBonus(grip.centroid, nextGroup, stepCostForBeam);
-          stepCostForBeam -= bonus;
-        }
+        // Note: alternation cost (D-15) removed from V1 beam score entirely.
 
         const newTotalCost = node.totalCost + stepCostForBeam;
 
-        // === DISPLAY COMPONENTS (7-component, moment-level — NOT divided per-note) ===
-        const stepComponents: ObjectiveComponents = {
-          transition: effectiveTransitionCost,
-          stretch: staticCost,
-          poseAttractor: attractorCost,
-          perFingerHome: perFingerHomeCost,
-          alternation: alternationCost,
+        // === V1 COST BREAKDOWN (moment-level — NOT divided per-note) ===
+        const stepComponents: V1CostBreakdown = {
+          fingerPreference: fingerPreferenceCost,
+          handShapeDeviation: handShapeDeviation,
+          transitionCost: effectiveTransitionCost,
           handBalance: handBalanceCost,
-          constraints: constraintPenalty,
+          constraintPenalty,
+          total: stepCostForBeam,
         };
-        const displayStepCost = combineComponents(stepComponents);
 
         if (gripFingers.length === 0 || gripFingers.length < uniquePads.length) continue;
 
@@ -409,7 +348,7 @@ export class BeamSolver implements SolverStrategy {
             hand,
             finger: resolvedFingers[i],
             grip,
-            cost: displayStepCost,
+            cost: stepComponents.total,
             row: group.positions[i].row,
             col: group.positions[i].col,
             costComponents: stepComponents,
@@ -446,9 +385,9 @@ export class BeamSolver implements SolverStrategy {
     node: BeamNode,
     group: PerformanceGroup,
     prevTimestamp: number,
-    config: EngineConfiguration,
-    neutralHandCenters?: NeutralHandCentersResult | null,
-    nextGroup?: PerformanceGroup | null
+    _config: EngineConfiguration,
+    _neutralHandCenters?: NeutralHandCentersResult | null,
+    naturalDistances?: { left: Map<string, number>; right: Map<string, number> },
   ): BeamNode[] {
     const children: BeamNode[] = [];
 
@@ -468,7 +407,6 @@ export class BeamSolver implements SolverStrategy {
     const rawTimeDelta = group.timestamp - prevTimestamp;
     const isFirstGroup = node.depth === 0 || prevTimestamp === 0;
     const timeDelta = isFirstGroup ? Math.max(rawTimeDelta, 1.0) : rawTimeDelta;
-    const { stiffness, restingPose } = config;
 
     // === Invariant B: Determine hand split respecting prior ownership ===
     // If prior ownership constrains a pad to a specific hand, honor that.
@@ -500,6 +438,9 @@ export class BeamSolver implements SolverStrategy {
 
     if (leftPads.length === 0 || rightPads.length === 0) return children;
 
+    // V1 (D-02): Hard zone constraint — skip if pads violate hand zones
+    if (!allPadsInZone(leftPads, 'left') || !allPadsInZone(rightPads, 'right')) return children;
+
     const leftPadKeys = new Set(leftPads.map(p => `${p.row},${p.col}`));
     const leftNoteIndices: number[] = [];
     const rightNoteIndices: number[] = [];
@@ -527,22 +468,22 @@ export class BeamSolver implements SolverStrategy {
 
         const effectiveLeftTransition = leftTransition === Infinity ? 0 : leftTransition;
         const effectiveRightTransition = rightTransition === Infinity ? 0 : rightTransition;
-        const leftAttractor = calculateAttractorCost(leftResult.pose, restingPose.left, stiffness);
-        const rightAttractor = calculateAttractorCost(rightResult.pose, restingPose.right, stiffness);
-        const leftStatic = calculateFingerDominanceCost(leftResult.pose);
-        const rightStatic = calculateFingerDominanceCost(rightResult.pose);
-        const leftHome = neutralHandCenters ? calculatePerFingerHomeCost(leftResult.pose, 'left', neutralHandCenters, 0.8) : 0;
-        const rightHome = neutralHandCenters ? calculatePerFingerHomeCost(rightResult.pose, 'right', neutralHandCenters, 0.8) : 0;
-        const leftConstraintPenalty = leftResult.isFallback
-          ? FALLBACK_GRIP_PENALTY
-          : leftResult.tier === 'relaxed'
-            ? RELAXED_GRIP_PENALTY
-            : 0;
-        const rightConstraintPenalty = rightResult.isFallback
-          ? FALLBACK_GRIP_PENALTY
-          : rightResult.tier === 'relaxed'
-            ? RELAXED_GRIP_PENALTY
-            : 0;
+
+        // V1 (D-05, D-20): Translation-invariant hand shape deviation
+        const leftShapeDev = calculateHandShapeDeviation(
+          leftResult.pose,
+          naturalDistances ? naturalDistances.left : new Map<string, number>()
+        );
+        const rightShapeDev = calculateHandShapeDeviation(
+          rightResult.pose,
+          naturalDistances ? naturalDistances.right : new Map<string, number>()
+        );
+        const leftFingerPref = calculateFingerPreferenceCost(leftResult.pose);
+        const rightFingerPref = calculateFingerPreferenceCost(rightResult.pose);
+
+        // V1 (D-01): No tier penalties — all grips are strict tier
+        const leftConstraintPenalty = 0;
+        const rightConstraintPenalty = 0;
 
         // Map notes to exact fingers based on their target pad coordinates
         const resolvedLeftFingers: FingerType[] = [];
@@ -589,55 +530,31 @@ export class BeamSolver implements SolverStrategy {
         }
         if (ownershipViolation) continue;
 
-        // Diagnostic-only costs
-        const prevAssignments = node.assignments.map(a => ({ hand: a.hand, finger: a.finger }));
-        const currentAssignments: Array<{ hand: 'left' | 'right'; finger: FingerType }> = [
-          ...resolvedLeftFingers.map(finger => ({ hand: 'left' as const, finger })),
-          ...resolvedRightFingers.map(finger => ({ hand: 'right' as const, finger })),
-        ];
-        const alternationCost = calculateAlternationCost(prevAssignments, currentAssignments, rawTimeDelta);
-
         const newLeftCount = node.leftCount + leftNoteIndices.length;
         const newRightCount = node.rightCount + rightNoteIndices.length;
         const handBalanceCost = calculateHandBalanceCost(newLeftCount, newRightCount);
 
-        // === PRIMARY SCORE (3-component PerformabilityObjective) ===
-        const leftPoseNat = calculatePoseNaturalness(
-          leftResult.pose, restingPose.left, stiffness, 'left', neutralHandCenters ?? null
-        );
-        const rightPoseNat = calculatePoseNaturalness(
-          rightResult.pose, restingPose.right, stiffness, 'right', neutralHandCenters ?? null
-        );
+        // === PRIMARY SCORE (V1: hand shape deviation + finger preference + transition) ===
+        const totalPoseNat = (leftShapeDev + leftFingerPref) + (rightShapeDev + rightFingerPref);
         const perfComponents: PerformabilityObjective = {
-          poseNaturalness: leftPoseNat + rightPoseNat,
+          poseNaturalness: totalPoseNat,
           transitionDifficulty: effectiveLeftTransition + effectiveRightTransition,
           constraintPenalty: leftConstraintPenalty + rightConstraintPenalty,
         };
         let stepCostForBeam = combinePerformabilityComponents(perfComponents);
 
-        stepCostForBeam += alternationCost * ALTERNATION_BEAM_WEIGHT;
+        // Note: alternation cost (D-15) removed from beam score in V1.
         stepCostForBeam += handBalanceCost * HAND_BALANCE_BEAM_WEIGHT;
 
-        if (nextGroup && stepCostForBeam > 0) {
-          const avgCentroid = {
-            x: (leftResult.pose.centroid.x + rightResult.pose.centroid.x) / 2,
-            y: (leftResult.pose.centroid.y + rightResult.pose.centroid.y) / 2,
-          };
-          const bonus = computeLookaheadBonus(avgCentroid, nextGroup, stepCostForBeam);
-          stepCostForBeam -= bonus;
-        }
-
-        // === DISPLAY COMPONENTS (7-component, moment-level — NOT divided per-note) ===
-        const stepComponents: ObjectiveComponents = {
-          transition: effectiveLeftTransition + effectiveRightTransition,
-          stretch: leftStatic + rightStatic,
-          poseAttractor: leftAttractor + rightAttractor,
-          perFingerHome: leftHome + rightHome,
-          alternation: alternationCost,
+        // === V1 COST BREAKDOWN (moment-level — NOT divided per-note) ===
+        const stepComponents: V1CostBreakdown = {
+          fingerPreference: leftFingerPref + rightFingerPref,
+          handShapeDeviation: leftShapeDev + rightShapeDev,
+          transitionCost: effectiveLeftTransition + effectiveRightTransition,
           handBalance: handBalanceCost,
-          constraints: leftConstraintPenalty + rightConstraintPenalty,
+          constraintPenalty: leftConstraintPenalty + rightConstraintPenalty,
+          total: stepCostForBeam,
         };
-        const displayStepCost = combineComponents(stepComponents);
 
         // Build per-note assignments with FULL moment cost (Invariant E)
         const assignments: NoteAssignment[] = [];
@@ -653,7 +570,7 @@ export class BeamSolver implements SolverStrategy {
             hand: 'left',
             finger: resolvedLeftFingers[j],
             grip: leftResult.pose,
-            cost: displayStepCost,
+            cost: stepComponents.total,
             row: group.positions[i].row,
             col: group.positions[i].col,
             costComponents: stepComponents,
@@ -670,7 +587,7 @@ export class BeamSolver implements SolverStrategy {
             hand: 'right',
             finger: resolvedRightFingers[j],
             grip: rightResult.pose,
-            cost: displayStepCost,
+            cost: stepComponents.total,
             row: group.positions[i].row,
             col: group.positions[i].col,
             costComponents: stepComponents,
@@ -747,13 +664,8 @@ export class BeamSolver implements SolverStrategy {
     let totalDrift = 0;
     let driftCount = 0;
 
-    const totalMetrics: DifficultyBreakdown = {
-      movement: 0, stretch: 0, drift: 0, bounce: 0,
-      fatigue: 0, crossover: 0, total: 0,
-    };
-
-    // Phase 3: Accumulate canonical ObjectiveComponents for diagnostics
-    const totalObjectiveComponents = createZeroComponents();
+    // V1: Accumulate V1CostBreakdown for averageMetrics and diagnostics
+    const totalV1Cost = createZeroV1CostBreakdown();
     let fallbackGripCount = 0;
 
     const assignmentMap = new Map<number, NoteAssignment>();
@@ -773,10 +685,7 @@ export class BeamSolver implements SolverStrategy {
           assignedHand: 'Unplayable',
           finger: null,
           cost: Infinity,
-          costBreakdown: {
-            movement: 0, stretch: 0, drift: 0, bounce: 0,
-            fatigue: 0, crossover: 0, total: Infinity,
-          },
+          costBreakdown: { ...createZeroV1CostBreakdown(), total: Infinity },
           difficulty: 'Unplayable',
           eventIndex: i,
           eventKey: ev?.eventKey,
@@ -790,10 +699,7 @@ export class BeamSolver implements SolverStrategy {
           noteNumber: 0, startTime: 0,
           assignedHand: 'Unplayable', finger: null,
           cost: Infinity,
-          costBreakdown: {
-            movement: 0, stretch: 0, drift: 0, bounce: 0,
-            fatigue: 0, crossover: 0, total: Infinity,
-          },
+          costBreakdown: { ...createZeroV1CostBreakdown(), total: Infinity },
           difficulty: 'Unplayable',
           eventIndex: i,
         });
@@ -817,37 +723,19 @@ export class BeamSolver implements SolverStrategy {
       totalDrift += drift;
       driftCount++;
 
-      const costBreakdown: DifficultyBreakdown = assignment.costComponents
-        ? objectiveToDifficultyBreakdown(assignment.costComponents)
-        : {
-            movement: assignment.cost * 0.4,
-            stretch: assignment.cost * 0.2,
-            drift: assignment.cost * 0.2,
-            bounce: 0,
-            fatigue: assignment.cost * 0.1,
-            crossover: assignment.cost * 0.1,
-            total: assignment.cost,
-          };
+      // V1: Use V1CostBreakdown directly on FingerAssignment
+      const costBreakdown: V1CostBreakdown = assignment.costComponents
+        ?? { ...createZeroV1CostBreakdown(), total: assignment.cost };
 
-      totalMetrics.movement += costBreakdown.movement;
-      totalMetrics.stretch += costBreakdown.stretch;
-      totalMetrics.drift += costBreakdown.drift;
-      totalMetrics.fatigue += costBreakdown.fatigue;
-      totalMetrics.crossover += costBreakdown.crossover;
-      totalMetrics.total += costBreakdown.total;
+      // Accumulate V1CostBreakdown for averageMetrics and diagnostics
+      totalV1Cost.fingerPreference += costBreakdown.fingerPreference;
+      totalV1Cost.handShapeDeviation += costBreakdown.handShapeDeviation;
+      totalV1Cost.transitionCost += costBreakdown.transitionCost;
+      totalV1Cost.handBalance += costBreakdown.handBalance;
+      totalV1Cost.constraintPenalty += costBreakdown.constraintPenalty;
+      totalV1Cost.total += costBreakdown.total;
+      if (costBreakdown.constraintPenalty > 0) fallbackGripCount++;
       totalCost += assignment.cost;
-
-      // Phase 3: Accumulate canonical objective components
-      if (assignment.costComponents) {
-        totalObjectiveComponents.transition += assignment.costComponents.transition;
-        totalObjectiveComponents.stretch += assignment.costComponents.stretch;
-        totalObjectiveComponents.poseAttractor += assignment.costComponents.poseAttractor;
-        totalObjectiveComponents.perFingerHome += assignment.costComponents.perFingerHome;
-        totalObjectiveComponents.alternation += assignment.costComponents.alternation;
-        totalObjectiveComponents.handBalance += assignment.costComponents.handBalance;
-        totalObjectiveComponents.constraints += assignment.costComponents.constraints;
-        if (assignment.costComponents.constraints > 0) fallbackGripCount++;
-      }
 
       const padId = padKey(assignment.row, assignment.col);
 
@@ -869,18 +757,14 @@ export class BeamSolver implements SolverStrategy {
     }
 
     const eventCount = fingerAssignments.length - unplayableCount;
-    const averageMetrics: DifficultyBreakdown = eventCount > 0 ? {
-      movement: totalMetrics.movement / eventCount,
-      stretch: totalMetrics.stretch / eventCount,
-      drift: totalMetrics.drift / eventCount,
-      bounce: 0,
-      fatigue: totalMetrics.fatigue / eventCount,
-      crossover: totalMetrics.crossover / eventCount,
-      total: totalMetrics.total / eventCount,
-    } : {
-      movement: 0, stretch: 0, drift: 0, bounce: 0,
-      fatigue: 0, crossover: 0, total: 0,
-    };
+    const averageMetrics: V1CostBreakdown = eventCount > 0 ? {
+      fingerPreference: totalV1Cost.fingerPreference / eventCount,
+      handShapeDeviation: totalV1Cost.handShapeDeviation / eventCount,
+      transitionCost: totalV1Cost.transitionCost / eventCount,
+      handBalance: totalV1Cost.handBalance / eventCount,
+      constraintPenalty: totalV1Cost.constraintPenalty / eventCount,
+      total: totalV1Cost.total / eventCount,
+    } : createZeroV1CostBreakdown();
 
     const fingerTypes: FingerType[] = ['thumb', 'index', 'middle', 'ring', 'pinky'];
     for (const finger of fingerTypes) {
@@ -891,9 +775,8 @@ export class BeamSolver implements SolverStrategy {
     let score = 100 - (5 * hardCount) - (20 * unplayableCount);
     if (score < 0) score = 0;
 
-    // Phase 3: Build canonical diagnostics payload
-    const canonicalFactors = objectiveToCanonicalFactors(totalObjectiveComponents);
-    const gripDetail = objectiveToGripDetail(totalObjectiveComponents);
+    // V1: Build canonical diagnostics payload from V1CostBreakdown
+    const canonicalFactors = v1CostBreakdownToCanonicalFactors(totalV1Cost);
     const feasibility = deriveFeasibilityVerdict(
       unplayableCount,
       hardCount,
@@ -901,11 +784,32 @@ export class BeamSolver implements SolverStrategy {
       fallbackGripCount,
       totalEvents,
     );
+    // V1 (D-03): Aggregate infeasible events by sound/voiceId
+    let infeasibleSounds: InfeasibilityDiagnostic[] | undefined;
+    if (unplayableCount > 0) {
+      const soundCounts = new Map<string, { infeasible: number; total: number }>();
+      for (const fa of fingerAssignments) {
+        const soundId = fa.voiceId ?? String(fa.noteNumber);
+        const entry = soundCounts.get(soundId) ?? { infeasible: 0, total: 0 };
+        entry.total++;
+        if (fa.assignedHand === 'Unplayable') entry.infeasible++;
+        soundCounts.set(soundId, entry);
+      }
+      infeasibleSounds = [...soundCounts.entries()]
+        .filter(([_, v]) => v.infeasible > 0)
+        .map(([soundId, v]) => ({
+          soundId,
+          violationCount: v.infeasible,
+          totalEvents: v.total,
+        }))
+        .sort((a, b) => b.violationCount - a.violationCount);
+    }
+
     const diagnostics: DiagnosticsPayload = {
       feasibility,
       factors: canonicalFactors,
-      gripDetail,
       topContributors: computeTopContributors(canonicalFactors),
+      infeasibleSounds,
     };
 
     // === Build pad-to-finger ownership map (Invariant B) ===
@@ -941,8 +845,7 @@ export class BeamSolver implements SolverStrategy {
       const momentCost = playableAssignment?.cost ?? Infinity;
       const momentDifficulty = getDifficulty(momentCost);
       const momentBreakdown = playableAssignment?.costBreakdown ?? {
-        movement: 0, stretch: 0, drift: 0, bounce: 0,
-        fatigue: 0, crossover: 0, total: Infinity,
+        ...createZeroV1CostBreakdown(), total: Infinity,
       };
 
       if (momentDifficulty === 'Unplayable') unplayableMomentCount++;
@@ -996,13 +899,11 @@ export class BeamSolver implements SolverStrategy {
         beamWidthUsed: config.beamWidth,
         objectiveTotal: averageMetrics.total,
         objectiveComponentsSummary: {
-          transition: totalMetrics.movement,
-          stretch: totalMetrics.stretch,
-          poseAttractor: totalMetrics.drift,
-          perFingerHome: totalMetrics.fatigue,
-          alternation: totalMetrics.bounce,
-          handBalance: 0,
-          constraints: totalMetrics.crossover,
+          transition: totalV1Cost.transitionCost,
+          fingerPreference: totalV1Cost.fingerPreference,
+          handShapeDeviation: totalV1Cost.handShapeDeviation,
+          handBalance: totalV1Cost.handBalance,
+          constraintPenalty: totalV1Cost.constraintPenalty,
         },
       },
     };
@@ -1041,19 +942,22 @@ export class BeamSolver implements SolverStrategy {
       }
     }
 
+    // V1 (D-05, D-20): Precompute natural pairwise distances for hand shape deviation
+    const naturalPads = neutralHandCenters?.neutralPads;
+    const leftNaturalDistances = naturalPads
+      ? buildNaturalPairwiseDistances(naturalPads, 'left')
+      : new Map<string, number>();
+    const rightNaturalDistances = naturalPads
+      ? buildNaturalPairwiseDistances(naturalPads, 'right')
+      : new Map<string, number>();
+
     // When Pose 0 override is present, use it as the resting pose.
-    // Stiffness is no longer doubled — the original 2× multiplier over-constrained
-    // the solver when Pose0 was defined, making it reluctant to deviate from rest
-    // even when the music demanded it. The attractor + per-finger-home costs
-    // already provide adequate pull toward the resting pose.
     const effectiveRestingPose = this.neutralPadPositionsOverride
       ? (restingPoseFromNeutralPadPositions(this.neutralPadPositionsOverride as RichNeutralPadPositions) ?? config.restingPose)
       : config.restingPose;
-    const effectiveStiffness = config.stiffness;
     const effectiveConfig: EngineConfiguration = {
       ...config,
       restingPose: effectiveRestingPose,
-      stiffness: effectiveStiffness,
     };
 
     // Sort events by time
@@ -1098,10 +1002,9 @@ export class BeamSolver implements SolverStrategy {
     let beam = this.createInitialBeam(effectiveConfig);
     let prevTimestamp = 0;
 
-    // Process each group (index-based for lookahead access)
+    // Process each group
     for (let gi = 0; gi < groups.length; gi++) {
       const group = groups[gi];
-      const nextGroup = gi + 1 < groups.length ? groups[gi + 1] : null;
       const newBeam: BeamNode[] = [];
 
       for (const node of beam) {
@@ -1131,45 +1034,34 @@ export class BeamSolver implements SolverStrategy {
             if (matchingResult) {
               const timeDelta = group.timestamp - prevTimestamp;
               const prevPose = override.hand === 'left' ? node.leftPose : node.rightPose;
-              const restPose = override.hand === 'left'
-                ? effectiveConfig.restingPose.left
-                : effectiveConfig.restingPose.right;
-
               const transitionCost = calculateTransitionCost(prevPose, matchingResult.pose, timeDelta);
-              const attractorCost = calculateAttractorCost(matchingResult.pose, restPose, effectiveConfig.stiffness);
-              const staticCost = calculateFingerDominanceCost(matchingResult.pose);
-              const perFingerHomeCost = neutralHandCenters
-                ? calculatePerFingerHomeCost(matchingResult.pose, override.hand, neutralHandCenters, 0.8)
-                : 0;
-              const manualConstraintPenalty = matchingResult.isFallback
-                ? FALLBACK_GRIP_PENALTY
-                : matchingResult.tier === 'relaxed'
-                  ? RELAXED_GRIP_PENALTY
-                  : 0;
+
+              // V1 (D-05, D-20): Translation-invariant hand shape deviation
+              const manualNaturalDist = override.hand === 'left' ? leftNaturalDistances : rightNaturalDistances;
+              const manualShapeDev = calculateHandShapeDeviation(matchingResult.pose, manualNaturalDist);
+              const manualFingerPref = calculateFingerPreferenceCost(matchingResult.pose);
+
+              // V1 (D-01): No tier penalties — all grips are strict tier
+              const manualConstraintPenalty = 0;
               const effectiveTransition = transitionCost === Infinity ? 100 : transitionCost;
 
-              // Primary score (3-component) for beam
-              const poseNat = calculatePoseNaturalness(
-                matchingResult.pose, restPose, effectiveConfig.stiffness,
-                override.hand, neutralHandCenters ?? null
-              );
+              // Primary score (V1: shape deviation + finger preference + transition)
+              const poseNat = manualShapeDev + manualFingerPref;
               const stepCostForBeam = combinePerformabilityComponents({
                 poseNaturalness: poseNat,
                 transitionDifficulty: effectiveTransition,
                 constraintPenalty: manualConstraintPenalty,
               });
 
-              // Display components (7-component, moment-level — NOT divided per-note)
-              const stepComponents: ObjectiveComponents = {
-                transition: effectiveTransition,
-                stretch: staticCost,
-                poseAttractor: attractorCost,
-                perFingerHome: perFingerHomeCost,
-                alternation: 0,
+              // V1 cost breakdown (moment-level — NOT divided per-note)
+              const stepComponents: V1CostBreakdown = {
+                fingerPreference: manualFingerPref,
+                handShapeDeviation: manualShapeDev,
+                transitionCost: effectiveTransition,
                 handBalance: 0,
-                constraints: manualConstraintPenalty,
+                constraintPenalty: manualConstraintPenalty,
+                total: stepCostForBeam,
               };
-              const displayStepCost = combineComponents(stepComponents);
 
               const assignments: NoteAssignment[] = [];
               const n = group.notes.length;
@@ -1185,7 +1077,7 @@ export class BeamSolver implements SolverStrategy {
                   hand: override.hand,
                   finger: gripFingers[i % gripFingers.length] || override.finger,
                   grip: matchingResult.pose,
-                  cost: displayStepCost,
+                  cost: stepComponents.total,
                   row: group.positions[i].row,
                   col: group.positions[i].col,
                   costComponents: stepComponents,
@@ -1223,119 +1115,25 @@ export class BeamSolver implements SolverStrategy {
           }
         }
 
-        // Standard expansion (with lookahead)
-        const children = this.expandNodeForGroup(node, group, prevTimestamp, effectiveConfig, neutralHandCenters, nextGroup);
+        // Standard expansion
+        const natDist = { left: leftNaturalDistances, right: rightNaturalDistances };
+        const children = this.expandNodeForGroup(node, group, prevTimestamp, effectiveConfig, neutralHandCenters, natDist);
         newBeam.push(...children);
 
-        // Split-hand approach for chords (with lookahead)
+        // Split-hand approach for chords
         if (group.activePads.length >= 2) {
-          const splitChildren = this.expandNodeForSplitChord(node, group, prevTimestamp, config, neutralHandCenters, nextGroup);
+          const splitChildren = this.expandNodeForSplitChord(node, group, prevTimestamp, config, neutralHandCenters, natDist);
           newBeam.push(...splitChildren);
         }
       }
 
-      // Safety net: emergency fallback
-      if (newBeam.length === 0) {
-        const fallbackFingers: FingerType[] = ['index', 'middle', 'ring', 'thumb', 'pinky'];
-        // Emergency fallback: full moment cost (Invariant E), not divided per-note
-        const emergencyComponents: ObjectiveComponents = {
-          transition: 0, stretch: 0, poseAttractor: 0,
-          perFingerHome: 0, alternation: 0, handBalance: 0,
-          constraints: FALLBACK_GRIP_PENALTY,
-        };
-
-        for (const node of beam) {
-          const assignments: NoteAssignment[] = [];
-
-          const leftIndices: number[] = [];
-          const rightIndices: number[] = [];
-          for (let i = 0; i < group.notes.length; i++) {
-            if (Math.abs(group.positions[i].col - 2) <= Math.abs(group.positions[i].col - 5)) {
-              leftIndices.push(i);
-            } else {
-              rightIndices.push(i);
-            }
-          }
-
-          const newPadOwnership = new Map(node.padOwnership);
-
-          for (let j = 0; j < Math.min(leftIndices.length, fallbackFingers.length); j++) {
-            const i = leftIndices[j];
-            const pKey = `${group.positions[i].row},${group.positions[i].col}`;
-            // Respect prior ownership if exists
-            const existing = node.padOwnership.get(pKey);
-            const finger = existing ? existing.finger : fallbackFingers[j];
-            const hand = existing ? existing.hand : 'left' as const;
-            const fallbackGrip: HandPose = {
-              centroid: { x: group.positions[i].col, y: group.positions[i].row },
-              fingers: { [finger]: { x: group.positions[i].col, y: group.positions[i].row } },
-            };
-            assignments.push({
-              eventIndex: group.eventIndices[i],
-              eventKey: group.eventKeys[i],
-              noteNumber: group.notes[i].noteNumber,
-              voiceId: group.notes[i].voiceId,
-              startTime: group.notes[i].startTime,
-              hand, finger,
-              grip: fallbackGrip,
-              cost: FALLBACK_GRIP_PENALTY,
-              row: group.positions[i].row,
-              col: group.positions[i].col,
-              costComponents: emergencyComponents,
-            });
-            if (!newPadOwnership.has(pKey)) {
-              newPadOwnership.set(pKey, { hand, finger });
-            }
-          }
-          for (let j = 0; j < Math.min(rightIndices.length, fallbackFingers.length); j++) {
-            const i = rightIndices[j];
-            const pKey = `${group.positions[i].row},${group.positions[i].col}`;
-            const existing = node.padOwnership.get(pKey);
-            const finger = existing ? existing.finger : fallbackFingers[j];
-            const hand = existing ? existing.hand : 'right' as const;
-            const fallbackGrip: HandPose = {
-              centroid: { x: group.positions[i].col, y: group.positions[i].row },
-              fingers: { [finger]: { x: group.positions[i].col, y: group.positions[i].row } },
-            };
-            assignments.push({
-              eventIndex: group.eventIndices[i],
-              eventKey: group.eventKeys[i],
-              noteNumber: group.notes[i].noteNumber,
-              voiceId: group.notes[i].voiceId,
-              startTime: group.notes[i].startTime,
-              hand, finger,
-              grip: fallbackGrip,
-              cost: FALLBACK_GRIP_PENALTY,
-              row: group.positions[i].row,
-              col: group.positions[i].col,
-              costComponents: emergencyComponents,
-            });
-            if (!newPadOwnership.has(pKey)) {
-              newPadOwnership.set(pKey, { hand, finger });
-            }
-          }
-
-          const firstFallbackGrip: HandPose = {
-            centroid: { x: group.positions[0].col, y: group.positions[0].row },
-            fingers: { index: { x: group.positions[0].col, y: group.positions[0].row } },
-          };
-          const primaryHand = Math.abs(group.positions[0].col - 2) <= Math.abs(group.positions[0].col - 5) ? 'left' : 'right';
-
-          newBeam.push({
-            leftPose: primaryHand === 'left' ? firstFallbackGrip : node.leftPose,
-            rightPose: primaryHand === 'right' ? firstFallbackGrip : node.rightPose,
-            totalCost: node.totalCost + FALLBACK_GRIP_PENALTY,
-            parent: node,
-            assignments,
-            depth: node.depth + 1,
-            leftCount: node.leftCount + leftIndices.length,
-            rightCount: node.rightCount + rightIndices.length,
-            padOwnership: newPadOwnership,
-          });
-        }
+      // V1 (D-03): No emergency fallback. If beam expansion produces no valid
+      // children for this group, carry the previous beam forward unchanged.
+      // Events in this group become infeasible (no assignment in backtrack).
+      if (newBeam.length > 0) {
+        beam = this.pruneBeam(newBeam, effectiveConfig.beamWidth);
       }
-
-      beam = this.pruneBeam(newBeam, effectiveConfig.beamWidth);
+      // else: beam stays unchanged — previous nodes carry forward
       prevTimestamp = group.timestamp;
     }
 

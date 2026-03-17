@@ -11,7 +11,8 @@
  * - Identification of hardest moments against a specific layout state
  */
 
-import { type FingerAssignment, type DifficultyBreakdown, type ExecutionPlanResult } from '../../types/executionPlan';
+import { type FingerAssignment, type ExecutionPlanResult } from '../../types/executionPlan';
+import { type V1CostBreakdown } from '../../types/diagnostics';
 import { type AnalyzedMoment } from '../evaluation/eventMetrics';
 import { groupAssignmentsIntoMoments } from '../evaluation/eventMetrics';
 import { analyzeTransition, type Transition } from '../evaluation/transitionAnalyzer';
@@ -91,36 +92,28 @@ export interface HardMomentReport {
 // ============================================================================
 
 /**
- * Maps legacy DifficultyBreakdown fields to canonical factor names.
- *
- * Legacy fields: movement, stretch, drift, bounce, fatigue, crossover
- * Canonical factors: transition, gripNaturalness, alternation, handBalance, constraintPenalty
+ * Maps V1CostBreakdown fields to canonical factor names.
  */
-const LEGACY_TO_CANONICAL: Record<string, { factor: string; label: string }> = {
-  movement: { factor: 'transition', label: 'Transition difficulty' },
-  stretch: { factor: 'gripNaturalness', label: 'Grip naturalness (stretch)' },
-  drift: { factor: 'gripNaturalness', label: 'Grip naturalness (drift)' },
-  bounce: { factor: 'alternation', label: 'Same-finger alternation' },
-  fatigue: { factor: 'alternation', label: 'Finger fatigue (alternation)' },
-  crossover: { factor: 'handBalance', label: 'Hand balance / crossover' },
-};
+const V1_FACTOR_MAP: Array<{ key: keyof V1CostBreakdown; factor: string; label: string }> = [
+  { key: 'transitionCost', factor: 'transition', label: 'Transition difficulty (Fitts\'s Law)' },
+  { key: 'fingerPreference', factor: 'fingerPreference', label: 'Finger preference cost' },
+  { key: 'handShapeDeviation', factor: 'handShapeDeviation', label: 'Hand shape deviation' },
+  { key: 'handBalance', factor: 'handBalance', label: 'Hand balance' },
+  { key: 'constraintPenalty', factor: 'constraintPenalty', label: 'Constraint penalty' },
+];
 
 /**
- * Maps a per-event DifficultyBreakdown into canonical factor contributions.
+ * Maps a V1CostBreakdown into canonical factor contributions.
  */
 function mapToCanonicalFactors(
-  breakdown: DifficultyBreakdown,
+  breakdown: V1CostBreakdown,
 ): { factor: string; label: string; value: number }[] {
   const factors: { factor: string; label: string; value: number }[] = [];
 
-  for (const [legacyKey, mapping] of Object.entries(LEGACY_TO_CANONICAL)) {
-    const value = (breakdown as unknown as Record<string, number>)[legacyKey] ?? 0;
-    if (value > 0.001) {
-      factors.push({
-        factor: mapping.factor,
-        label: mapping.label,
-        value,
-      });
+  for (const { key, factor, label } of V1_FACTOR_MAP) {
+    const value = breakdown[key];
+    if (typeof value === 'number' && value > 0.001) {
+      factors.push({ factor, label, value });
     }
   }
 

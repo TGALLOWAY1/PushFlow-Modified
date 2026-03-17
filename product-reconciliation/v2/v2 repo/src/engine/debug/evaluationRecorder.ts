@@ -12,7 +12,7 @@
 
 import { type ExecutionPlanResult, type FingerAssignment } from '../../types/executionPlan';
 import { gridDistance } from '../../types/padGrid';
-import { FINGER_DOMINANCE_COST } from '../prior/biomechanicalModel';
+import { FINGER_PREFERENCE_COST } from '../prior/biomechanicalModel';
 import { zoneViolationScore } from '../surface/handZone';
 import { type OptimizationEvaluationRecord, type EventCostBreakdown } from './types';
 
@@ -48,7 +48,7 @@ export function extractEvaluationRecords(
         )
       : 0;
 
-    // Reconstruct cost breakdown from existing DifficultyBreakdown + model constants
+    // Reconstruct cost breakdown from existing V1CostBreakdown + model constants
     const costs = reconstructCostBreakdown(a, prev, timeDelta, movementDistance);
     const totalCost = a.cost !== Infinity ? a.cost : 9999;
 
@@ -89,13 +89,13 @@ function reconstructCostBreakdown(
   const breakdown = assignment.costBreakdown;
 
   // Travel cost from the existing breakdown
-  const travel = breakdown?.movement ?? 0;
+  const travel = breakdown?.transitionCost ?? 0;
 
   // Speed component: approximate from movement and time
   const transitionSpeed = timeDelta > 0.001 ? movementDistance / timeDelta : 0;
 
-  // Pose cost from the existing breakdown (drift + fatigue combined)
-  const pose = (breakdown?.drift ?? 0) + (breakdown?.fatigue ?? 0);
+  // Pose cost from the existing breakdown (hand shape deviation)
+  const pose = breakdown?.handShapeDeviation ?? 0;
 
   // Zone violation: compute from pad position and assigned hand
   let zoneViolation = 0;
@@ -110,19 +110,19 @@ function reconstructCostBreakdown(
     );
   }
 
-  // Finger dominance penalty
+  // Finger preference penalty
   const fingerPenalty = assignment.finger
-    ? (FINGER_DOMINANCE_COST[assignment.finger] ?? 0)
+    ? (FINGER_PREFERENCE_COST[assignment.finger] ?? 0)
     : 0;
 
-  // Repetition penalty (same-finger rapid repetition)
-  const repetitionPenalty = breakdown?.bounce ?? 0;
+  // Repetition penalty (hand balance in V1)
+  const repetitionPenalty = breakdown?.handBalance ?? 0;
 
   // Collision penalty: not tracked separately in current breakdown, default 0
   const collisionPenalty = 0;
 
   // Feasibility penalty from constraint violations
-  const feasibilityPenalty = breakdown?.crossover ?? 0;
+  const feasibilityPenalty = breakdown?.constraintPenalty ?? 0;
 
   return {
     travel,

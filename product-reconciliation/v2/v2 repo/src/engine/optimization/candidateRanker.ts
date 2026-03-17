@@ -15,12 +15,10 @@ import { type CandidateSolution, type TradeoffProfile } from '../../types/candid
 
 /** Default weights for composite ranking. */
 const DEFAULT_WEIGHTS: Record<keyof TradeoffProfile, number> = {
-  playability: 0.3,
-  compactness: 0.15,
-  handBalance: 0.1,
-  transitionEfficiency: 0.2,
-  learnability: 0.15,
-  robustness: 0.1,
+  playability: 0.4,
+  compactness: 0.2,
+  handBalance: 0.15,
+  transitionEfficiency: 0.25,
 };
 
 /**
@@ -36,9 +34,7 @@ export function compositeScore(
     profile.playability * w.playability +
     profile.compactness * w.compactness +
     profile.handBalance * w.handBalance +
-    profile.transitionEfficiency * w.transitionEfficiency +
-    profile.learnability * w.learnability +
-    profile.robustness * w.robustness
+    profile.transitionEfficiency * w.transitionEfficiency
   );
 }
 
@@ -117,7 +113,7 @@ export function compareDimensions(
 ): Record<keyof TradeoffProfile, 'A' | 'B' | 'tie'> {
   const dimensions: (keyof TradeoffProfile)[] = [
     'playability', 'compactness', 'handBalance',
-    'transitionEfficiency', 'learnability', 'robustness',
+    'transitionEfficiency',
   ];
 
   const result: Record<string, 'A' | 'B' | 'tie'> = {};

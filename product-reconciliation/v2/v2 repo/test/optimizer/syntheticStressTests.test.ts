@@ -48,10 +48,12 @@ describe('Fast Alternation (kick-snare)', () => {
     assertValidGridPositions(result);
     assertEventCount(result, 16);
 
-    // Expect both hands to be used (alternation pattern)
+    // V1 (D-03): Without emergency fallback, fast transitions may render
+    // some events infeasible. Verify the solver produces some valid assignments.
     const handUsage = countHandUsage(result);
     expect(handUsage.left + handUsage.right).toBeGreaterThan(0);
-    expect(handUsage.unplayable).toBe(0);
+    // Some events may be infeasible under strict constraints
+    expect(handUsage.left + handUsage.right + handUsage.unplayable).toBe(16);
 
     // Sanity checks should run without crashing
     const sanity = runSanityChecks(result);
@@ -127,8 +129,8 @@ describe('Wide Leap', () => {
 
     assertNoNaNs(result);
 
-    // Average movement cost should be non-trivial
-    expect(result.averageMetrics.movement).toBeGreaterThan(0);
+    // Average transition cost should be non-trivial
+    expect(result.averageMetrics.transitionCost).toBeGreaterThan(0);
 
     // Constraint validation should detect long jumps if on same hand
     const violations = validateExecutionPlan(result);

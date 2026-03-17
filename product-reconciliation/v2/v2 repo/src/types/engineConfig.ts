@@ -24,8 +24,8 @@ export interface EngineConfiguration {
 /**
  * Engine constants for biomechanical calculations.
  *
- * Note: finger-preference/dominance is modelled separately in costFunction.ts
- * via FINGER_DOMINANCE_COST — not here.
+ * Note: finger preference is modelled separately in costFunction.ts
+ * via FINGER_PREFERENCE_COST — not here.
  */
 export interface EngineConstants {
   maxSpan: number;

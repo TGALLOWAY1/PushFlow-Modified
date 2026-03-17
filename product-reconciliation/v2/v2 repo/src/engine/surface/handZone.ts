@@ -1,9 +1,9 @@
 /**
- * Hand zone definitions and violation scoring.
+ * Hand zone definitions and validation.
  *
  * Defines the canonical left/right hand zones on the 8x8 Push 3 grid.
- * These are soft constraints: playing outside your zone is penalized,
- * not forbidden.
+ * V1 Cost Model (D-02): Zones are hard constraints — a hand cannot play
+ * outside its valid zone. The shared zone (cols 3-4) is valid for either hand.
  */
 
 import { type PadCoord } from '../../types/padGrid';
@@ -39,30 +39,41 @@ export function getPreferredHand(
 }
 
 /**
+ * V1 Hard zone constraint (D-02).
+ *
+ * Left hand: columns 0–4 valid.
+ * Right hand: columns 3–7 valid.
+ * Columns 3–4 are the shared zone (valid for either hand).
+ *
+ * @returns true if the hand can play at this pad position
+ */
+export function isZoneValid(
+  pad: PadCoord,
+  hand: 'left' | 'right'
+): boolean {
+  if (hand === 'left') return pad.col <= 4;
+  return pad.col >= 3; // right hand
+}
+
+/**
+ * Check if all pads in a group are valid for the given hand.
+ */
+export function allPadsInZone(
+  pads: PadCoord[],
+  hand: 'left' | 'right'
+): boolean {
+  return pads.every(pad => isZoneValid(pad, hand));
+}
+
+/**
  * Compute a zone violation penalty for using a specific hand at a pad position.
  *
- * Returns 0 if the pad is within the hand's preferred zone.
- * Returns a penalty proportional to how far outside the zone the pad is.
- *
- * @param pad - The pad position
- * @param hand - Which hand is being used
- * @returns Penalty value (0 = no violation, higher = worse violation)
+ * @deprecated V1 (D-02): Zones are now hard constraints — use isZoneValid() instead.
+ * Kept for backward compatibility during transition.
  */
 export function zoneViolationScore(
   pad: PadCoord,
   hand: 'left' | 'right'
 ): number {
-  const zones = getDefaultHandZones();
-  const zone = hand === 'left' ? zones.left : zones.right;
-
-  if (pad.col >= zone.colStart && pad.col <= zone.colEnd) {
-    return 0; // Within zone
-  }
-
-  // Distance from nearest zone boundary
-  const distanceFromZone = pad.col < zone.colStart
-    ? zone.colStart - pad.col
-    : pad.col - zone.colEnd;
-
-  return distanceFromZone;
+  return isZoneValid(pad, hand) ? 0 : 1;
 }

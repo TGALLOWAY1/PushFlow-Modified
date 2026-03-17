@@ -25,10 +25,6 @@ export interface TradeoffProfile {
   handBalance: number;
   /** How smooth transitions are between events. */
   transitionEfficiency: number;
-  /** How easy to learn and memorize the layout. */
-  learnability: number;
-  /** How well the layout works across all sections. */
-  robustness: number;
 }
 
 /**

@@ -10,9 +10,8 @@
 
 import { type ExecutionPlanResult } from '../../types/executionPlan';
 import { type Section } from '../../types/performanceStructure';
-import { type VoiceProfile, type MusicalRole } from '../../types/performanceStructure';
 import { type DifficultyAnalysis, type PassageDifficulty, type TradeoffProfile } from '../../types/candidateSolution';
-import { type PassageDifficultyResult, scorePassagesFromSections, scorePassagesFixedWindow } from './passageDifficulty';
+import { scorePassagesFromSections, scorePassagesFixedWindow } from './passageDifficulty';
 import { type Performance } from '../../types/performance';
 import { type OptimizationMode } from '../../types/engineConfig';
 
@@ -43,49 +42,6 @@ function classifyScore(score: number): DifficultyClass {
 }
 
 // ============================================================================
-// Role-Weighted Scoring
-// ============================================================================
-
-/** Weight multipliers for voice roles — backbone/lead passages matter more. */
-const ROLE_WEIGHTS: Record<MusicalRole, number> = {
-  backbone: 1.5,
-  lead: 1.3,
-  fill: 0.8,
-  texture: 0.7,
-  accent: 0.6,
-};
-
-/**
- * Computes a role-weighted difficulty score for a passage result.
- *
- * If voice profiles are available, events in backbone/lead voices
- * contribute more to the passage's effective difficulty score.
- */
-export function roleWeightedScore(
-  passageResult: PassageDifficultyResult,
-  voiceProfiles: VoiceProfile[]
-): number {
-  if (voiceProfiles.length === 0) return passageResult.difficultyScore;
-
-  // Build a role lookup by noteNumber
-  const roleMap = new Map<number, MusicalRole>();
-  for (const vp of voiceProfiles) {
-    roleMap.set(vp.noteNumber, vp.role);
-  }
-
-  // If we don't have per-event note info, use unweighted
-  // PassageDifficultyResult doesn't carry per-event noteNumbers,
-  // so we scale by the dominant role present in the passage context.
-  // Use the average role weight from voice profiles as a rough multiplier.
-  const avgWeight = voiceProfiles.reduce(
-    (sum, vp) => sum + ROLE_WEIGHTS[vp.role] * vp.eventCount,
-    0
-  ) / Math.max(voiceProfiles.reduce((sum, vp) => sum + vp.eventCount, 0), 1);
-
-  return Math.min(passageResult.difficultyScore * avgWeight, 1.0);
-}
-
-// ============================================================================
 // Composite Difficulty Analysis
 // ============================================================================
 
@@ -94,14 +50,12 @@ export function roleWeightedScore(
  *
  * This is the primary entry point for difficulty scoring. It:
  * 1. Scores each passage using passageDifficulty
- * 2. Applies role-weighted scoring if voice profiles available
- * 3. Identifies binding constraints
- * 4. Classifies overall difficulty
+ * 2. Identifies binding constraints
+ * 3. Classifies overall difficulty
  */
 export function analyzeDifficulty(
   result: ExecutionPlanResult,
   sections: Section[],
-  voiceProfiles?: VoiceProfile[]
 ): DifficultyAnalysis {
   const passageResults = sections.length > 0
     ? scorePassagesFromSections(result.fingerAssignments, sections)
@@ -132,9 +86,7 @@ export function analyzeDifficulty(
 
     return {
       section,
-      score: voiceProfiles
-        ? roleWeightedScore(pr, voiceProfiles)
-        : pr.difficultyScore,
+      score: pr.difficultyScore,
       dominantFactors,
       hardestTransitions,
     };
@@ -159,9 +111,8 @@ export function analyzeDifficulty(
 export function classifyDifficulty(
   result: ExecutionPlanResult,
   sections: Section[],
-  voiceProfiles?: VoiceProfile[]
 ): DifficultyClassification {
-  const analysis = analyzeDifficulty(result, sections, voiceProfiles);
+  const analysis = analyzeDifficulty(result, sections);
 
   return {
     overallClass: classifyScore(analysis.overallScore),
@@ -205,30 +156,14 @@ export function computeTradeoffProfile(
   const handBalance = Math.max(0, 1 - Math.abs(leftFraction - 0.5) * 2);
 
   // Transition efficiency: inverse of avg movement cost
-  const avgMovement = result.averageMetrics?.movement ?? 0;
+  const avgMovement = result.averageMetrics?.transitionCost ?? 0;
   const transitionEfficiency = Math.max(0, 1 - Math.min(avgMovement / 10, 1));
-
-  // Learnability: fewer unique pad positions + compact = easier to learn
-  const uniquePads = new Set(
-    assignments
-      .filter(a => a.row !== undefined && a.col !== undefined)
-      .map(a => `${a.row},${a.col}`)
-  );
-  const learnability = Math.max(0, 1 - Math.min(uniquePads.size / 20, 1));
-
-  // Robustness: 1 - variance of passage difficulties
-  const passageScores = analysis.passages.map(p => p.score);
-  const robustness = passageScores.length > 1
-    ? Math.max(0, 1 - computeVariance(passageScores) * 4)
-    : 0.8; // Default for single-passage
 
   return {
     playability,
     compactness,
     handBalance,
     transitionEfficiency,
-    learnability,
-    robustness,
   };
 }
 
@@ -346,12 +281,6 @@ function computeOverallScore(passages: PassageDifficulty[]): number {
   return weightSum > 0 ? weightedSum / weightSum : 0;
 }
 
-function computeVariance(values: number[]): number {
-  if (values.length < 2) return 0;
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  return values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
-}
-
 function findHardestTransitions(
   assignments: import('../../types/executionPlan').FingerAssignment[],
   topK: number
@@ -369,7 +298,7 @@ function findHardestTransitions(
     const reasons: string[] = [];
 
     // Movement cost
-    const movement = curr.costBreakdown?.movement ?? 0;
+    const movement = curr.costBreakdown?.transitionCost ?? 0;
     if (movement > 3) {
       difficulty += movement / 10;
       reasons.push(`large movement (${movement.toFixed(1)})`);

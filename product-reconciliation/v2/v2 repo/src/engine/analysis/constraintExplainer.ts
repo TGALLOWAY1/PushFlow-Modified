@@ -85,7 +85,7 @@ export function explainConstraints(
   // Grip naturalness: drift from home + stretch combined
   // Uses canonical DiagnosticFactors when available, falls back to legacy metrics
   const gripCost = result.diagnostics?.factors.gripNaturalness
-    ?? (result.averageDrift + result.averageMetrics.stretch) / 2;
+    ?? (result.averageDrift + result.averageMetrics.fingerPreference) / 2;
   if (gripCost > 2.0) {
     explanations.push({
       type: 'gripNaturalness',
@@ -96,7 +96,7 @@ export function explainConstraints(
 
   // Transition: movement cost between pads
   const transitionCost = result.diagnostics?.factors.transition
-    ?? result.averageMetrics.movement;
+    ?? result.averageMetrics.transitionCost;
   if (transitionCost > 3.0) {
     explanations.push({
       type: 'transition',
@@ -107,7 +107,7 @@ export function explainConstraints(
 
   // Alternation: same-finger repetition / fatigue
   const alternationCost = result.diagnostics?.factors.alternation
-    ?? result.averageMetrics.fatigue;
+    ?? result.averageMetrics.handBalance;
   if (alternationCost > 1.0) {
     explanations.push({
       type: 'alternation',
@@ -177,7 +177,7 @@ export function identifyBottlenecks(
     const playable = sectionAssignments.filter(a => a.costBreakdown);
     if (playable.length > 0) {
       const avgTransition = playable.reduce(
-        (sum, a) => sum + (a.costBreakdown?.movement ?? 0), 0
+        (sum, a) => sum + (a.costBreakdown?.transitionCost ?? 0), 0
       ) / playable.length;
 
       if (avgTransition > 4.0) {

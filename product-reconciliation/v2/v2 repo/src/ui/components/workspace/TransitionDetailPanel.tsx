@@ -67,12 +67,11 @@ export function TransitionDetailPanel() {
         <div className="pt-2 border-t border-gray-700/50 space-y-1">
           <span className="text-[10px] text-gray-500">Next-event pressure</span>
           <div className="grid grid-cols-3 gap-1 text-[10px] text-gray-400">
-            <TransitionMetric label="Move" value={nextMetrics.movement} />
-            <TransitionMetric label="Stretch" value={nextMetrics.stretch} />
-            <TransitionMetric label="Drift" value={nextMetrics.drift} />
-            <TransitionMetric label="Bounce" value={nextMetrics.bounce} />
-            <TransitionMetric label="Fatigue" value={nextMetrics.fatigue} />
-            <TransitionMetric label="Cross" value={nextMetrics.crossover} />
+            <TransitionMetric label="Transition" value={nextMetrics.transitionCost} />
+            <TransitionMetric label="Finger Pref" value={nextMetrics.fingerPreference} />
+            <TransitionMetric label="Shape Dev" value={nextMetrics.handShapeDeviation} />
+            <TransitionMetric label="Balance" value={nextMetrics.handBalance} />
+            <TransitionMetric label="Constraint" value={nextMetrics.constraintPenalty} />
           </div>
         </div>
       )}
