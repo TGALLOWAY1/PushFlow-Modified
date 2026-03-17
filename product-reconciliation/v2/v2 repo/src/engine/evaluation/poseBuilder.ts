@@ -8,7 +8,7 @@
 
 import { type FingerType, type HandSide } from '../../types/fingerModel';
 import { type FingerCoordinate, type HandPose } from '../../types/performance';
-import { type PadCoord, parsePadKey } from '../../types/padGrid';
+import { parsePadKey } from '../../types/padGrid';
 import { type PadFingerAssignment } from '../../types/executionPlan';
 import { type ConstraintTier } from '../prior/feasibility';
 import {
