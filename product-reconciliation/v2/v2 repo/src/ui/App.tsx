@@ -9,6 +9,7 @@ import { ProjectLibraryPage } from './pages/ProjectLibraryPage';
 import { ProjectEditorPage } from './pages/ProjectEditorPage';
 import { OptimizerDebugPage } from './pages/OptimizerDebugPage';
 import { ConstraintValidatorPage } from './pages/ConstraintValidatorPage';
+import { TemporalEvaluatorPage } from './pages/TemporalEvaluatorPage';
 
 export function App() {
   return (
@@ -19,6 +20,7 @@ export function App() {
           <Route path="/project/:id" element={<ProjectEditorPage />} />
           <Route path="/optimizer-debug" element={<OptimizerDebugPage />} />
           <Route path="/validator" element={<ConstraintValidatorPage />} />
+          <Route path="/temporal-evaluator" element={<TemporalEvaluatorPage />} />
         </Routes>
       </div>
     </BrowserRouter>

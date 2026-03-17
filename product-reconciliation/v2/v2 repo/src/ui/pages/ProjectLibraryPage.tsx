@@ -359,6 +359,12 @@ export function ProjectLibraryPage() {
         >
           Constraint Validator
         </button>
+        <button
+          className="px-3 py-1.5 bg-cyan-600/80 hover:bg-cyan-500/80 rounded text-sm font-medium text-white transition-colors"
+          onClick={() => navigate('/temporal-evaluator')}
+        >
+          Temporal Evaluator
+        </button>
       </div>
 
       {error && (
