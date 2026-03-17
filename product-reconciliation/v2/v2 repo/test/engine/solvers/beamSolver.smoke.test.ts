@@ -115,8 +115,8 @@ describe('BeamSolver Smoke Tests', () => {
     for (const fa of result.fingerAssignments) {
       if (fa.assignedHand !== 'Unplayable' && fa.costBreakdown) {
         expect(fa.costBreakdown.total).toBeGreaterThanOrEqual(0);
-        expect(fa.costBreakdown.movement).toBeGreaterThanOrEqual(0);
-        expect(fa.costBreakdown.stretch).toBeGreaterThanOrEqual(0);
+        expect(fa.costBreakdown.transitionCost).toBeGreaterThanOrEqual(0);
+        expect(fa.costBreakdown.fingerPreference).toBeGreaterThanOrEqual(0);
       }
     }
   });

@@ -9,7 +9,8 @@
 import { describe, it, expect } from 'vitest';
 import { type Layout } from '../../../src/types/layout';
 import { type Voice } from '../../../src/types/voice';
-import { type ExecutionPlanResult, type DifficultyBreakdown } from '../../../src/types/executionPlan';
+import { type ExecutionPlanResult } from '../../../src/types/executionPlan';
+import { type V1CostBreakdown } from '../../../src/types/diagnostics';
 import { type DiagnosticsPayload, type DiagnosticFactors } from '../../../src/types/diagnostics';
 import { type CandidateSolution } from '../../../src/types/candidateSolution';
 import {
@@ -73,8 +74,8 @@ function makeDiagnostics(overrides?: Partial<DiagnosticFactors>): DiagnosticsPay
 }
 
 function makePlan(score: number, diagnostics?: DiagnosticsPayload): ExecutionPlanResult {
-  const avgMetrics: DifficultyBreakdown = {
-    movement: 1.0, stretch: 0.5, drift: 0.2, bounce: 0.1, fatigue: 0.05, crossover: 0.1, total: score,
+  const avgMetrics: V1CostBreakdown = {
+    fingerPreference: 0.5, handShapeDeviation: 0.2, transitionCost: 1.0, handBalance: 0.1, constraintPenalty: 0.1, total: score,
   };
 
   return {

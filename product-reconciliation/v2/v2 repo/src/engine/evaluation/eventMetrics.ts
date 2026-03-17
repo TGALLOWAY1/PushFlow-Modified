@@ -75,8 +75,8 @@ export function computeEventAnatomicalStretchScore(assignment: FingerAssignment)
     return 1.0;
   }
 
-  if (assignment.costBreakdown?.stretch !== undefined) {
-    return Math.min(assignment.costBreakdown.stretch / 10.0, 1.0);
+  if (assignment.costBreakdown?.fingerPreference !== undefined) {
+    return Math.min(assignment.costBreakdown.fingerPreference / 10.0, 1.0);
   }
 
   const homePos = getHomePosition(assignment.assignedHand);
@@ -112,9 +112,9 @@ export function computeCompositeDifficultyScore(
   if (assignment.costBreakdown) {
     const bd = assignment.costBreakdown;
     breakdownContribution =
-      Math.min(bd.movement / 10.0, 1.0) * 0.05 +
-      Math.min(bd.fatigue / 5.0, 1.0) * 0.03 +
-      Math.min(bd.crossover / 20.0, 1.0) * 0.02;
+      Math.min(bd.transitionCost / 10.0, 1.0) * 0.05 +
+      Math.min(bd.handBalance / 5.0, 1.0) * 0.03 +
+      Math.min(bd.constraintPenalty / 20.0, 1.0) * 0.02;
   }
 
   return Math.min(Math.max(baseScore + costContribution + stretchContribution + breakdownContribution, 0), 1);

@@ -129,8 +129,8 @@ describe('Wide Leap', () => {
 
     assertNoNaNs(result);
 
-    // Average movement cost should be non-trivial
-    expect(result.averageMetrics.movement).toBeGreaterThan(0);
+    // Average transition cost should be non-trivial
+    expect(result.averageMetrics.transitionCost).toBeGreaterThan(0);
 
     // Constraint validation should detect long jumps if on same hand
     const violations = validateExecutionPlan(result);

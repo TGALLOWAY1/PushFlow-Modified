@@ -156,7 +156,7 @@ export function computeTradeoffProfile(
   const handBalance = Math.max(0, 1 - Math.abs(leftFraction - 0.5) * 2);
 
   // Transition efficiency: inverse of avg movement cost
-  const avgMovement = result.averageMetrics?.movement ?? 0;
+  const avgMovement = result.averageMetrics?.transitionCost ?? 0;
   const transitionEfficiency = Math.max(0, 1 - Math.min(avgMovement / 10, 1));
 
   return {
@@ -298,7 +298,7 @@ function findHardestTransitions(
     const reasons: string[] = [];
 
     // Movement cost
-    const movement = curr.costBreakdown?.movement ?? 0;
+    const movement = curr.costBreakdown?.transitionCost ?? 0;
     if (movement > 3) {
       difficulty += movement / 10;
       reasons.push(`large movement (${movement.toFixed(1)})`);

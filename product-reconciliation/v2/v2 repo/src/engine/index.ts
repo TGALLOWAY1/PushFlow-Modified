@@ -80,7 +80,6 @@ export {
   type PerformabilityObjective,
   combinePerformabilityComponents,
   createZeroPerformabilityComponents,
-  v1CostBreakdownToDifficultyBreakdown,
   v1CostBreakdownToCanonicalFactors,
   v1CostBreakdownToV1Factors,
 } from './evaluation/objective';

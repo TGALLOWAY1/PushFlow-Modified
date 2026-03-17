@@ -92,8 +92,8 @@ export class AnnealingSolver implements SolverStrategy {
         fatigueMap: {},
         averageDrift: 0,
         averageMetrics: {
-          movement: 0, stretch: 0, drift: 0, bounce: 0,
-          fatigue: 0, crossover: 0, total: Number.POSITIVE_INFINITY,
+          fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0,
+          handBalance: 0, constraintPenalty: 0, total: Number.POSITIVE_INFINITY,
         },
         metadata: {
           layoutCoverage: {
@@ -284,17 +284,16 @@ export class AnnealingSolver implements SolverStrategy {
           e => e.assignedHand !== 'Unplayable' && e.costBreakdown
         );
 
-        let movementSum = 0, stretchSum = 0, driftSum = 0;
-        let bounceSum = 0, fatigueSum = 0, crossoverSum = 0;
+        let transitionSum = 0, fingerPrefSum = 0, shapeDevSum = 0;
+        let handBalanceSum = 0, constraintPenaltySum = 0;
 
         for (const event of playableEvents) {
           if (event.costBreakdown) {
-            movementSum += event.costBreakdown.movement;
-            stretchSum += event.costBreakdown.stretch;
-            driftSum += event.costBreakdown.drift;
-            bounceSum += event.costBreakdown.bounce;
-            fatigueSum += event.costBreakdown.fatigue;
-            crossoverSum += event.costBreakdown.crossover;
+            transitionSum += event.costBreakdown.transitionCost;
+            fingerPrefSum += event.costBreakdown.fingerPreference;
+            shapeDevSum += event.costBreakdown.handShapeDeviation;
+            handBalanceSum += event.costBreakdown.handBalance;
+            constraintPenaltySum += event.costBreakdown.constraintPenalty;
           }
         }
 
@@ -308,12 +307,11 @@ export class AnnealingSolver implements SolverStrategy {
           accepted,
           deltaCost,
           acceptanceProbability,
-          movementSum,
-          stretchSum,
-          driftSum,
-          bounceSum,
-          fatigueSum,
-          crossoverSum,
+          transitionSum,
+          fingerPreferenceSum: fingerPrefSum,
+          handShapeDeviationSum: shapeDevSum,
+          handBalanceSum,
+          constraintPenaltySum,
           restartIndex: restart,
         });
 

@@ -57,7 +57,7 @@ export function TimelinePanel() {
           finger: 'unassigned' as any,
           cost: 0,
           difficulty: 'Easy',
-          costBreakdown: { movement: 0, stretch: 0, drift: 0, bounce: 0, fatigue: 0, crossover: 0, total: 0 } as any,
+          costBreakdown: { fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0, handBalance: 0, constraintPenalty: 0, total: 0 },
         });
       }
     }

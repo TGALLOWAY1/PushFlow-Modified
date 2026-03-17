@@ -10,7 +10,7 @@
  * - DifficultyBreakdown: cost component breakdown (was CostBreakdown)
  */
 
-import { type DiagnosticsPayload } from './diagnostics';
+import { type DiagnosticsPayload, type V1CostBreakdown } from './diagnostics';
 import { type FingerType } from './fingerModel';
 
 // ============================================================================
@@ -65,21 +65,21 @@ export interface MomentAssignment {
   cost: number;
   /** Difficulty classification for this moment. */
   difficulty: DifficultyLevel;
-  /** Full cost breakdown for this moment. */
-  costBreakdown: DifficultyBreakdown;
+  /** Full cost breakdown for this moment (V1 schema). */
+  costBreakdown: V1CostBreakdown;
 }
 
 /**
- * DifficultyBreakdown: Per-event or aggregate breakdown of difficulty by factor.
+ * @deprecated Use V1CostBreakdown from diagnostics.ts instead.
  *
- * Uses the canonical 7-component model:
- * - transition: Fitts's law movement cost
- * - stretch: finger spread difficulty
- * - poseAttractor: spring to resting position
- * - perFingerHome: per-finger neutral position bias
- * - alternation: same-finger repetition penalty
- * - handBalance: left/right distribution
- * - constraints: fallback grip penalty
+ * Legacy 7-component breakdown retained for backward compatibility.
+ * Field mapping to V1CostBreakdown:
+ *   movement   ← transitionCost
+ *   stretch    ← fingerPreference
+ *   drift      ← handShapeDeviation
+ *   bounce     ← 0 (alternation removed)
+ *   fatigue    ← 0 (no per-finger home tracking)
+ *   crossover  ← constraintPenalty
  */
 export interface DifficultyBreakdown {
   movement: number;
@@ -107,7 +107,8 @@ export interface FingerAssignment {
   assignedHand: 'left' | 'right' | 'Unplayable';
   finger: FingerType | null;
   cost: number;
-  costBreakdown?: DifficultyBreakdown;
+  /** V1 cost breakdown (replaces legacy DifficultyBreakdown). */
+  costBreakdown?: V1CostBreakdown;
   difficulty: DifficultyLevel;
   row?: number;
   col?: number;
@@ -141,12 +142,11 @@ export interface AnnealingIterationSnapshot {
   accepted: boolean;
   deltaCost: number;
   acceptanceProbability?: number;
-  movementSum: number;
-  stretchSum: number;
-  driftSum: number;
-  bounceSum: number;
-  fatigueSum: number;
-  crossoverSum: number;
+  transitionSum: number;
+  fingerPreferenceSum: number;
+  handShapeDeviationSum: number;
+  handBalanceSum: number;
+  constraintPenaltySum: number;
   /** Which restart this snapshot belongs to (0 = initial run). */
   restartIndex?: number;
 }
@@ -243,8 +243,8 @@ export interface ExecutionPlanResult {
   fatigueMap: FatigueMap;
   /** Average drift from home positions. */
   averageDrift: number;
-  /** Average difficulty breakdown across all events. */
-  averageMetrics: DifficultyBreakdown;
+  /** Average cost breakdown across all events (V1 schema). */
+  averageMetrics: V1CostBreakdown;
   /** Annealing trace (only for AnnealingSolver). */
   annealingTrace?: AnnealingIterationSnapshot[];
 

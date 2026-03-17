@@ -19,8 +19,8 @@
 
 import { type Layout } from '../../types/layout';
 import { type FingerType, type HandSide } from '../../types/fingerModel';
-import { type HandPose, type InstrumentConfig } from '../../types/performance';
-import { type PerformanceMoment, type NoteInstance } from '../../types/performanceEvent';
+import { type InstrumentConfig } from '../../types/performance';
+import { type PerformanceMoment } from '../../types/performanceEvent';
 import { type PadFingerAssignment } from '../../types/executionPlan';
 import { type EvaluationConfig } from '../../types/evaluationConfig';
 import {
@@ -37,14 +37,12 @@ import {
   createZeroCostDimensions,
   sumCostDimensions,
   averageCostDimensions,
-  computeTotal,
 } from '../../types/costBreakdown';
-import { type FeasibilityVerdict, deriveFeasibilityVerdict } from '../../types/diagnostics';
+import { deriveFeasibilityVerdict } from '../../types/diagnostics';
 import { type ConstraintTier } from '../prior/feasibility';
-import { padKey, parsePadKey } from '../../types/padGrid';
+import { padKey } from '../../types/padGrid';
 
 import {
-  calculatePoseNaturalness,
   calculateTransitionCost,
   calculateAttractorCost,
   calculatePerFingerHomeCost,
@@ -322,10 +320,6 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
   if (moments.length === 0) {
     return emptyPerformanceBreakdown(padFingerAssignment);
   }
-
-  // Pre-build indexes once for the whole performance
-  const voiceIdIndex = buildVoiceIdToPadIndex(layout.padToVoice);
-  const noteIndex = buildNoteToPadIndex(layout.padToVoice);
 
   const eventCosts: EventCostBreakdown[] = [];
   const transitionCosts: TransitionCostBreakdown[] = [];

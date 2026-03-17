@@ -349,7 +349,7 @@ describe('Beam Solver (V1 Scoring)', () => {
     expect(result.fingerAssignments.length).toBe(3);
   });
 
-  it('should produce DifficultyBreakdown in results', async () => {
+  it('should produce V1CostBreakdown in results', async () => {
     const performance = createTestPerformance([
       { noteNumber: 40, startTime: 0.0 },
       { noteNumber: 41, startTime: 0.5 },
@@ -360,9 +360,9 @@ describe('Beam Solver (V1 Scoring)', () => {
       if (fa.assignedHand !== 'Unplayable') {
         expect(fa.costBreakdown).toBeDefined();
         expect(fa.costBreakdown.total).toBeGreaterThanOrEqual(0);
-        expect(fa.costBreakdown.movement).toBeDefined();
-        expect(fa.costBreakdown.stretch).toBeDefined();
-        expect(fa.costBreakdown.drift).toBeDefined();
+        expect(fa.costBreakdown.transitionCost).toBeDefined();
+        expect(fa.costBreakdown.fingerPreference).toBeDefined();
+        expect(fa.costBreakdown.handShapeDeviation).toBeDefined();
       }
     }
   });
