@@ -9,7 +9,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { type ProjectState, type SoundStream, type SoundEvent, createEmptyProjectState } from '../state/projectState';
-import { listProjects, saveProject, deleteProject, removeFromIndex, clearProjectIndex, importProjectFromFile, type ProjectLibraryEntry } from '../persistence/projectStorage';
+import { listProjects, saveProject, deleteProject, removeFromIndex, clearProjectIndex, type ProjectLibraryEntry } from '../persistence/projectStorage';
 import { getDemoProjects, createDemoCopy } from '../fixtures/demoProjects';
 import { parseMidiFileToProject } from '../../import/midiImport';
 import { analyzePerformance } from '../../engine/structure/performanceAnalyzer';
@@ -54,16 +54,13 @@ export function ProjectLibraryPage() {
 
   const demoGroups = useMemo(() => {
     const generic: ProjectState[] = [];
-    const atomicTests: ProjectState[] = [];
     const temporalTests: ProjectState[] = [];
     for (const demo of demoProjects) {
-      if (demo.id.startsWith('feasibility-a')) atomicTests.push(demo);
-      else if (demo.id.startsWith('feasibility-f')) temporalTests.push(demo);
+      if (demo.id.startsWith('feasibility-f')) temporalTests.push(demo);
       else generic.push(demo);
     }
     return [
       { key: 'generic', label: 'Basic Demos', demos: generic },
-      { key: 'atomic', label: 'A1–A8: Atomic Constraints', demos: atomicTests },
       { key: 'temporal', label: 'F1–F6: Temporal Sequences', demos: temporalTests },
     ];
   }, [demoProjects]);
@@ -239,19 +236,6 @@ export function ProjectLibraryPage() {
     setSavedProjects([]);
   }, []);
 
-  const handleImportJSON = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const result = await importProjectFromFile(file);
-    if (result.ok) {
-      saveProject(result.state);
-      setSavedProjects(listProjects());
-      navigate(`/project/${result.state.id}`);
-    } else {
-      setError(result.error);
-    }
-  }, [navigate]);
-
   // ---- Render ----
 
   if (step === 'naming' && pendingImport) {
@@ -369,15 +353,12 @@ export function ProjectLibraryPage() {
         >
           + New Project
         </button>
-        <label className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded text-sm text-gray-400 cursor-pointer border border-gray-700">
-          Import Project JSON
-          <input
-            type="file"
-            accept=".json,.pushflow.json"
-            className="hidden"
-            onChange={handleImportJSON}
-          />
-        </label>
+        <button
+          className="px-3 py-1.5 bg-purple-600/80 hover:bg-purple-500/80 rounded text-sm font-medium text-white transition-colors"
+          onClick={() => navigate('/validator')}
+        >
+          Constraint Validator
+        </button>
       </div>
 
       {error && (
