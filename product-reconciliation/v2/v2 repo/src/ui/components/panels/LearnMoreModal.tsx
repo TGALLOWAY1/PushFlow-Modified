@@ -7,13 +7,14 @@
  */
 
 import { useState } from 'react';
+import { useProject } from '../../state/ProjectContext';
 
 interface LearnMoreModalProps {
   open: boolean;
   onClose: () => void;
 }
 
-type LearnMoreTab = 'overview' | 'workflow' | 'costs';
+type LearnMoreTab = 'overview' | 'workflow' | 'costs' | 'constraints';
 
 const COST_DEFINITIONS = [
   {
@@ -56,7 +57,7 @@ export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
   return (
     <>
       <div className="fixed inset-0 z-[60] bg-black/50" onClick={onClose} />
-      <div className="fixed inset-3 md:inset-x-auto md:inset-y-4 md:max-w-3xl md:mx-auto z-[61] rounded-xl border border-gray-700 bg-[#0f1724] shadow-2xl flex flex-col overflow-hidden">
+      <div className="fixed inset-6 z-[61] max-w-3xl mx-auto rounded-xl border border-gray-700 bg-[#0f1724] shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800">
           <h2 className="text-sm font-semibold text-gray-200">Learn More</h2>
@@ -74,6 +75,7 @@ export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
             { id: 'overview' as const, label: 'Overview' },
             { id: 'workflow' as const, label: 'App Flow' },
             { id: 'costs' as const, label: 'Cost Factors' },
+            { id: 'constraints' as const, label: 'Constraints' },
           ]).map(t => (
             <button
               key={t.id}
@@ -94,6 +96,7 @@ export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
           {tab === 'overview' && <OverviewInfographic />}
           {tab === 'workflow' && <WorkflowSection />}
           {tab === 'costs' && <CostFactorsSection />}
+          {tab === 'constraints' && <ConstraintsSection />}
         </div>
       </div>
     </>
@@ -432,6 +435,119 @@ function CostFactorsSection() {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Constraints Section — active voice constraints, placement locks, finger constraints
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+function ConstraintsSection() {
+  const { state } = useProject();
+  const voiceConstraints = state.voiceConstraints;
+  const layout = state.workingLayout ?? state.activeLayout;
+  const placementLocks = layout.placementLocks;
+  const fingerConstraints = layout.fingerConstraints;
+
+  const voiceEntries = Object.entries(voiceConstraints);
+  const lockEntries = Object.entries(placementLocks);
+  const fingerEntries = Object.entries(fingerConstraints);
+
+  const hasAny = voiceEntries.length > 0 || lockEntries.length > 0 || fingerEntries.length > 0;
+
+  // Helper: find stream name by ID
+  const streamName = (id: string) => {
+    const s = state.soundStreams.find(s => s.id === id);
+    return s?.name ?? id;
+  };
+
+  // Helper: find voice name at a pad key
+  const voiceAtPad = (padKey: string) => {
+    const voice = layout.padToVoice[padKey];
+    return voice?.name ?? padKey;
+  };
+
+  return (
+    <div className="space-y-5">
+      <p className="text-xs text-gray-500">
+        Constraints guide the solver during candidate generation. Voice constraints are per-sound preferences.
+        Placement locks pin a sound to a specific pad. Finger constraints assign a preferred finger to a pad.
+      </p>
+
+      {!hasAny && (
+        <div className="text-xs text-gray-600 py-6 text-center">
+          No constraints set. Use the grid context menu or voice palette to add constraints.
+        </div>
+      )}
+
+      {/* Voice Constraints */}
+      {voiceEntries.length > 0 && (
+        <div>
+          <h4 className="text-[11px] text-gray-400 font-medium uppercase tracking-wider mb-2">
+            Voice Constraints ({voiceEntries.length})
+          </h4>
+          <div className="space-y-1.5">
+            {voiceEntries.map(([streamId, constraint]) => (
+              <div key={streamId} className="flex items-center gap-2 px-2 py-1.5 rounded bg-gray-800/40 border border-gray-700/30">
+                <span className="text-xs text-gray-300 truncate flex-1">{streamName(streamId)}</span>
+                {constraint.hand && (
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                    constraint.hand === 'left' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20' : 'bg-orange-500/15 text-orange-400 border border-orange-500/20'
+                  }`}>
+                    {constraint.hand === 'left' ? 'Left hand' : 'Right hand'}
+                  </span>
+                )}
+                {constraint.finger && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400 border border-purple-500/20">
+                    {constraint.finger}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Placement Locks */}
+      {lockEntries.length > 0 && (
+        <div>
+          <h4 className="text-[11px] text-gray-400 font-medium uppercase tracking-wider mb-2">
+            Placement Locks ({lockEntries.length})
+          </h4>
+          <div className="space-y-1.5">
+            {lockEntries.map(([voiceId, padKey]) => (
+              <div key={voiceId} className="flex items-center gap-2 px-2 py-1.5 rounded bg-gray-800/40 border border-gray-700/30">
+                <span className="text-xs text-gray-300 truncate flex-1">{streamName(voiceId)}</span>
+                <span className="text-[10px] text-gray-500">locked to</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 font-mono">
+                  pad {padKey}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Finger Constraints */}
+      {fingerEntries.length > 0 && (
+        <div>
+          <h4 className="text-[11px] text-gray-400 font-medium uppercase tracking-wider mb-2">
+            Finger Constraints ({fingerEntries.length})
+          </h4>
+          <div className="space-y-1.5">
+            {fingerEntries.map(([padKey, finger]) => (
+              <div key={padKey} className="flex items-center gap-2 px-2 py-1.5 rounded bg-gray-800/40 border border-gray-700/30">
+                <span className="text-xs text-gray-300 truncate flex-1">{voiceAtPad(padKey)}</span>
+                <span className="text-[10px] text-gray-500">pad {padKey}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/15 text-green-400 border border-green-500/20">
+                  {finger}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

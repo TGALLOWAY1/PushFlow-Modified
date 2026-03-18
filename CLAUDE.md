@@ -314,6 +314,20 @@ When implementing:
 - do not silently convert analysis-only state into persistent truth
 - preserve explainability and debuggability
 
+## Product Invariants
+
+These rules are non-negotiable and must be preserved across all changes:
+
+1. **Desktop-only application.** Do not add mobile-specific styles, responsive breakpoints, or touch-event handling unless explicitly requested.
+
+2. **Learn More sync.** Any changes to cost factors, constraints, or analysis metrics MUST be reflected in the Learn More modal (`LearnMoreModal.tsx`). The Constraints tab must accurately display the current active constraints.
+
+3. **Pattern Composer preservation.** The Pattern Composer (`WorkspacePatternStudio.tsx`) MUST always be accessible from the main workspace via a tab in the bottom drawer. Never remove or disconnect it from `PerformanceWorkspace.tsx` without explicit user confirmation.
+
+4. **Timeline completeness.** The timeline MUST show ALL sound streams, even those marked unplayable by the solver. Unplayable/unassigned events should be rendered with a distinct visual style, never hidden.
+
+5. **MIDI pitch independence.** A sound's MIDI pitch (`originalMidiNote`) is metadata only — it must NEVER determine grid placement. `bottomLeftNote` must remain at the default (36/C1) and must not be auto-adjusted during MIDI import.
+
 ## Default Decision Handling
 
 If a still-open question blocks progress, use these defaults unless the user says otherwise:

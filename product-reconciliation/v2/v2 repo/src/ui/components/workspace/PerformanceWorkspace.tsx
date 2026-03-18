@@ -12,12 +12,14 @@ import { PerformanceAnalysisPanel } from '../panels/PerformanceAnalysisPanel';
 import { EventDetailPanel } from '../EventDetailPanel';
 import { TransitionDetailPanel } from './TransitionDetailPanel';
 import { UnifiedTimeline } from '../UnifiedTimeline';
+import { WorkspacePatternStudio } from './WorkspacePatternStudio';
 
 import { SettingsGear } from '../panels/SettingsGear';
 import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 
 type LeftPanelTab = 'sounds' | 'events';
+type BottomTab = 'timeline' | 'composer';
 
 export function PerformanceWorkspace() {
   const { state, dispatch } = useProject();
@@ -30,11 +32,18 @@ export function PerformanceWorkspace() {
   const [rightCollapsed, setRightCollapsed] = useState(true);
   const [onionSkin, setOnionSkin] = useState(false);
   const [leftTab, setLeftTab] = useState<LeftPanelTab>('sounds');
+  const [bottomTab, setBottomTab] = useState<BottomTab>('timeline');
+  const [leftWidth, setLeftWidth] = useState(260);
+  const isResizing = useRef(false);
 
   // Editable project name
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const nameInputRef = useRef<HTMLInputElement>(null);
+
+  // Editable BPM
+  const [editingBpm, setEditingBpm] = useState(false);
+  const [bpmDraft, setBpmDraft] = useState('');
 
   const assignments = state.analysisResult?.executionPlan.fingerAssignments;
   const selectedCandidate = state.candidates.find(candidate => candidate.id === state.selectedCandidateId) ?? null;
@@ -57,8 +66,43 @@ export function PerformanceWorkspace() {
     setEditingName(false);
   };
 
+  const commitBpm = () => {
+    const val = parseInt(bpmDraft, 10);
+    if (!isNaN(val) && val !== state.tempo) {
+      dispatch({ type: 'SET_TEMPO', payload: val });
+    }
+    setEditingBpm(false);
+  };
+
+  // Sidebar resize via drag handle
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    const startX = e.clientX;
+    const startWidth = leftWidth;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isResizing.current) return;
+      const newWidth = Math.max(200, Math.min(450, startWidth + (ev.clientX - startX)));
+      setLeftWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      isResizing.current = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [leftWidth]);
+
   // Build grid template columns for the 3-column layout
-  const leftCol = leftCollapsed ? '48px' : '260px';
+  const leftCol = leftCollapsed ? '48px' : `${leftWidth}px`;
   const rightCol = rightCollapsed ? '48px' : '340px';
   const gridCols = `${leftCol} minmax(0, 1fr) ${rightCol}`;
 
@@ -103,11 +147,35 @@ export function PerformanceWorkspace() {
               {state.name || 'Untitled'}
             </div>
           )}
-          <div className="text-[10px] text-gray-500 uppercase tracking-[0.2em]">
+          <div className="text-[10px] text-gray-500 uppercase tracking-[0.2em] flex items-center gap-1">
             Performance Workspace
-            <span className="ml-2 normal-case tracking-normal text-gray-600">
-              {state.tempo} BPM
-            </span>
+            {editingBpm ? (
+              <input
+                className="ml-2 w-14 text-[10px] normal-case tracking-normal text-gray-200 bg-gray-800 border border-gray-600 rounded px-1 py-0.5 outline-none focus:border-blue-500"
+                type="number"
+                min={20}
+                max={999}
+                value={bpmDraft}
+                onChange={e => setBpmDraft(e.target.value)}
+                onBlur={commitBpm}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') commitBpm();
+                  if (e.key === 'Escape') setEditingBpm(false);
+                }}
+                autoFocus
+              />
+            ) : (
+              <span
+                className="ml-2 normal-case tracking-normal text-gray-600 cursor-pointer hover:text-gray-400 transition-colors"
+                onDoubleClick={() => {
+                  setBpmDraft(String(state.tempo));
+                  setEditingBpm(true);
+                }}
+                title="Double-click to change BPM"
+              >
+                {state.tempo} BPM
+              </span>
+            )}
           </div>
         </div>
 
@@ -141,7 +209,7 @@ export function PerformanceWorkspace() {
         style={{ gridTemplateColumns: gridCols }}
       >
         {/* Left Column: Collapsible Sidebar with Sounds/Events tabs */}
-        <div className="min-w-0">
+        <div className="min-w-0 relative flex">
           {leftCollapsed ? (
             <button
               className="flex flex-col items-center gap-3 py-3 w-full cursor-pointer hover:bg-gray-800/30 rounded transition-colors"
@@ -195,6 +263,13 @@ export function PerformanceWorkspace() {
                 )}
               </div>
             </div>
+          )}
+          {/* Drag handle for resizing */}
+          {!leftCollapsed && (
+            <div
+              className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-500/40 transition-colors z-10"
+              onMouseDown={handleResizeStart}
+            />
           )}
         </div>
 
@@ -271,19 +346,38 @@ export function PerformanceWorkspace() {
         </div>
       </div>
 
-      {/* ─── Bottom Drawer: Unified Timeline ─────────────────────────────── */}
+      {/* ─── Bottom Drawer: Timeline / Pattern Composer ─────────────────── */}
       <div className="rounded-lg glass-panel overflow-hidden">
         <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-800 bg-gray-900/40">
-          <span className="px-2 py-1 text-xs text-gray-200">
+          <button
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              bottomTab === 'timeline'
+                ? 'text-gray-200 bg-gray-800/60'
+                : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/30'
+            }`}
+            onClick={() => setBottomTab('timeline')}
+          >
             Timeline
-          </span>
+          </button>
+          <button
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              bottomTab === 'composer'
+                ? 'text-gray-200 bg-gray-800/60'
+                : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/30'
+            }`}
+            onClick={() => setBottomTab('composer')}
+          >
+            Pattern Composer
+          </button>
           <div className="flex-1" />
           <span className="text-[10px] text-gray-600">
-            Performance timeline with execution analysis
+            {bottomTab === 'timeline'
+              ? 'Performance timeline with execution analysis'
+              : 'Create and edit rhythmic patterns'}
           </span>
         </div>
         <div>
-          <UnifiedTimeline />
+          {bottomTab === 'timeline' ? <UnifiedTimeline /> : <WorkspacePatternStudio />}
         </div>
       </div>
     </div>

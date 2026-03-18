@@ -136,7 +136,8 @@ export async function parseMidiProject(
 
   const instrumentConfig: InstrumentConfig = {
     ...baseConfig,
-    bottomLeftNote: minNote !== null ? minNote : baseConfig.bottomLeftNote,
+    // Always use the default bottomLeftNote (36/C1). A sound's MIDI pitch is
+    // metadata only — it must never determine grid placement.
   };
 
   // Count unmapped notes

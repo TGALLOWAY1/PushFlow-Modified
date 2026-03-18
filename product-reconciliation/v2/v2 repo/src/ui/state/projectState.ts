@@ -197,6 +197,7 @@ export type ProjectAction =
   | { type: 'LOAD_PROJECT'; payload: ProjectState }
   | { type: 'RESET' }
   | { type: 'RENAME_PROJECT'; payload: string }
+  | { type: 'SET_TEMPO'; payload: number }
 
   // Sound streams
   | { type: 'RENAME_SOUND'; payload: { streamId: string; name: string } }
@@ -349,6 +350,23 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         instrumentConfig: { ...state.instrumentConfig, ...action.payload },
         analysisStale: true,
       };
+
+    case 'RENAME_PROJECT':
+      return {
+        ...state,
+        updatedAt: new Date().toISOString(),
+        name: action.payload,
+      };
+
+    case 'SET_TEMPO': {
+      const bpm = Math.max(20, Math.min(999, Math.round(action.payload)));
+      return {
+        ...state,
+        updatedAt: new Date().toISOString(),
+        tempo: bpm,
+        analysisStale: true,
+      };
+    }
 
     // -- Sound streams --
 

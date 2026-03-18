@@ -161,6 +161,26 @@ export function UnifiedTimeline() {
           map.set(streamId, list);
         }
       }
+
+      // Render unassigned streams: streams with events but no solver assignments
+      // get grey "unassigned" pills so they remain visible in the timeline
+      for (const s of activeStreams) {
+        if (!map.has(s.id) && s.events.length > 0) {
+          const constraint = state.voiceConstraints[s.id];
+          const unassigned: FingerAssignment[] = s.events.map((e, i) => ({
+            eventKey: e.eventKey,
+            eventIndex: i,
+            noteNumber: s.originalMidiNote,
+            startTime: e.startTime,
+            assignedHand: (constraint?.hand ?? 'raw') as any,
+            finger: (constraint?.finger ?? 'unassigned') as any,
+            cost: 0,
+            difficulty: 'Easy',
+            costBreakdown: { fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0, handBalance: 0, constraintPenalty: 0, total: 0 },
+          }));
+          map.set(s.id, unassigned);
+        }
+      }
     } else {
       // Dummy assignments for pre-analysis rendering — apply constraints if set
       for (const s of activeStreams) {
@@ -468,6 +488,7 @@ export function UnifiedTimeline() {
                     const isSelected = a.eventIndex === state.selectedEventIndex;
                     const handPrefix = a.assignedHand === 'left' ? 'L' : a.assignedHand === 'right' ? 'R' : '';
 
+                    const isUnplayable = hand === 'Unplayable';
                     const pillBg = isRaw ? stream.color : style.bg;
                     const pillText = isRaw ? '#ffffff' : style.text;
 
@@ -482,7 +503,8 @@ export function UnifiedTimeline() {
                           width: w,
                           height: TRACK_HEIGHT - 8,
                           backgroundColor: pillBg,
-                          opacity: isSelected ? 1 : isRaw ? 0.5 : 0.85,
+                          opacity: isSelected ? 1 : isRaw ? 0.5 : isUnplayable ? 0.6 : 0.85,
+                          border: isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined,
                         }}
                         onClick={() => handleEventClick(a.eventIndex ?? ai)}
                         title={`${a.startTime.toFixed(3)}s${fingerLabel ? ` | ${handPrefix}-${fingerLabel}` : ''}${a.cost ? ` | cost: ${a.cost.toFixed(1)} | ${a.difficulty}` : ''}`}
