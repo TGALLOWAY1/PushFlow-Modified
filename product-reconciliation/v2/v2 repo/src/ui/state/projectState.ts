@@ -71,8 +71,6 @@ export interface ProjectState {
   name: string;
   createdAt: string;
   updatedAt: string;
-  isDemo: boolean;
-
   // Sound Streams (canonical performance data)
   soundStreams: SoundStream[];
   tempo: number;
@@ -718,7 +716,6 @@ export function createEmptyProjectState(): ProjectState {
     name: '',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    isDemo: false,
     soundStreams: [],
     tempo: 120,
     instrumentConfig: {

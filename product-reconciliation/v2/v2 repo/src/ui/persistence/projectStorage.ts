@@ -26,7 +26,6 @@ export interface ProjectLibraryEntry {
   soundCount: number;
   eventCount: number;
   difficulty: string | null;
-  isDemo: boolean;
 }
 
 export function listProjects(): ProjectLibraryEntry[] {
@@ -57,7 +56,6 @@ function entryFromState(state: ProjectState): ProjectLibraryEntry {
     soundCount: state.soundStreams.length,
     eventCount: totalEvents,
     difficulty,
-    isDemo: state.isDemo,
   };
 }
 
@@ -286,7 +284,6 @@ function validateAndMigrateProjectState(parsed: unknown): ProjectState {
     name: typeof p.name === 'string' ? p.name : 'Unnamed Project',
     createdAt: typeof p.createdAt === 'string' ? p.createdAt : base.createdAt,
     updatedAt: typeof p.updatedAt === 'string' ? p.updatedAt : base.updatedAt,
-    isDemo: typeof p.isDemo === 'boolean' ? p.isDemo : false,
     soundStreams,
     tempo: typeof p.tempo === 'number' ? p.tempo : 120,
     instrumentConfig: (p.instrumentConfig && typeof p.instrumentConfig === 'object')
