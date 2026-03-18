@@ -31,7 +31,7 @@ interface PadGridProps {
 
 /** Abbreviated finger names for display */
 const FINGER_ABBREV: Record<string, string> = {
-  thumb: 'Th', index: 'Ix', middle: 'Md', ring: 'Rg', pinky: 'Pk',
+  thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
 };
 
 const HAND_COLORS = {
@@ -94,7 +94,7 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
           map.set(key, summary);
         }
         summary.hands.add(a.assignedHand);
-        if (a.finger) summary.fingers.add(`${a.assignedHand[0].toUpperCase()}-${FINGER_ABBREV[a.finger] ?? a.finger}`);
+        if (a.finger) summary.fingers.add(`${a.assignedHand[0].toUpperCase()}${FINGER_ABBREV[a.finger] ?? a.finger}`);
         summary.hitCount++;
         summary.assignments.push(a);
       }

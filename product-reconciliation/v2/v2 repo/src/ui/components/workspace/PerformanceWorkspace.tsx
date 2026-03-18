@@ -12,13 +12,12 @@ import { PerformanceAnalysisPanel } from '../panels/PerformanceAnalysisPanel';
 import { EventDetailPanel } from '../EventDetailPanel';
 import { TransitionDetailPanel } from './TransitionDetailPanel';
 import { UnifiedTimeline } from '../UnifiedTimeline';
-import { WorkspacePatternStudio } from './WorkspacePatternStudio';
+
 import { SettingsGear } from '../panels/SettingsGear';
 import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 
 type LeftPanelTab = 'sounds' | 'events';
-type DrawerTab = 'execution' | 'composer';
 
 export function PerformanceWorkspace() {
   const { state, dispatch } = useProject();
@@ -27,7 +26,6 @@ export function PerformanceWorkspace() {
   useKeyboardShortcuts();
   const { settings: viewSettings, toggleGridLabel, toggleLayoutDisplay } = useViewSettings();
 
-  const [drawerTab, setDrawerTab] = useState<DrawerTab>('execution');
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(true);
   const [onionSkin, setOnionSkin] = useState(false);
@@ -156,9 +154,9 @@ export function PerformanceWorkspace() {
               <span className="text-[10px] text-gray-600">&#9656;</span>
             </button>
           ) : (
-            <div className="rounded-lg glass-panel overflow-hidden">
+            <div className="rounded-lg glass-panel overflow-hidden flex flex-col" style={{ maxHeight: 560 }}>
               {/* Tab header */}
-              <div className="flex items-center border-b border-gray-800">
+              <div className="flex items-center border-b border-gray-800 flex-shrink-0">
                 <button
                   className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
                     leftTab === 'sounds'
@@ -188,8 +186,8 @@ export function PerformanceWorkspace() {
                 </button>
               </div>
 
-              {/* Tab content */}
-              <div className="p-3">
+              {/* Tab content — scrollable */}
+              <div className="p-3 overflow-y-auto flex-1">
                 {leftTab === 'sounds' ? (
                   <VoicePalette />
                 ) : (
@@ -241,6 +239,7 @@ export function PerformanceWorkspace() {
                 onEventClick={idx => dispatch({ type: 'SELECT_EVENT', payload: idx })}
                 onionSkin={onionSkin}
                 voiceConstraints={state.voiceConstraints}
+                gridLabels={viewSettings.gridLabels}
               />
             )}
           </div>
@@ -263,7 +262,7 @@ export function PerformanceWorkspace() {
               <span className="text-[10px] text-gray-600">&#9666;</span>
             </button>
           ) : (
-            <div className="rounded-lg glass-panel overflow-hidden" style={{ maxHeight: 'calc(100vh - 160px)' }}>
+            <div className="rounded-lg glass-panel overflow-hidden" style={{ maxHeight: 560 }}>
               <PerformanceAnalysisPanel
                 onClose={() => setRightCollapsed(true)}
               />
@@ -272,34 +271,19 @@ export function PerformanceWorkspace() {
         </div>
       </div>
 
-      {/* ─── Bottom Drawer: Unified Timeline / Pattern Composer ─────────── */}
+      {/* ─── Bottom Drawer: Unified Timeline ─────────────────────────────── */}
       <div className="rounded-lg glass-panel overflow-hidden">
         <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-800 bg-gray-900/40">
-          <button
-            className={`px-2 py-1 text-xs rounded transition-colors ${
-              drawerTab === 'execution' ? 'bg-gray-700 text-gray-200' : 'text-gray-500 hover:text-gray-300'
-            }`}
-            onClick={() => setDrawerTab('execution')}
-          >
+          <span className="px-2 py-1 text-xs text-gray-200">
             Timeline
-          </button>
-          <button
-            className={`px-2 py-1 text-xs rounded transition-colors ${
-              drawerTab === 'composer' ? 'bg-gray-700 text-gray-200' : 'text-gray-500 hover:text-gray-300'
-            }`}
-            onClick={() => setDrawerTab('composer')}
-          >
-            Pattern Composer
-          </button>
+          </span>
           <div className="flex-1" />
           <span className="text-[10px] text-gray-600">
-            {drawerTab === 'execution'
-              ? 'Performance timeline with execution analysis'
-              : 'Generate or sketch new material into the same timeline'}
+            Performance timeline with execution analysis
           </span>
         </div>
-        <div className={drawerTab === 'execution' ? '' : 'p-3'}>
-          {drawerTab === 'execution' ? <UnifiedTimeline /> : <WorkspacePatternStudio />}
+        <div>
+          <UnifiedTimeline />
         </div>
       </div>
     </div>

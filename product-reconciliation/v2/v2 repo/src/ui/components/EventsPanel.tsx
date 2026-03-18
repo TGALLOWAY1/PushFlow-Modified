@@ -270,27 +270,9 @@ function MomentRow({
         </span>
 
         {/* Beat position */}
-        <span className="text-[10px] font-mono w-6 flex-shrink-0 text-gray-400">
+        <span className="text-[10px] font-mono flex-1 text-gray-400">
           {moment.beatPosition}
         </span>
-
-        {/* Sound badges */}
-        <div className="flex-1 flex flex-wrap gap-0.5 min-w-0">
-          {moment.sounds.map((sound) => (
-            <span
-              key={sound.streamId}
-              className="px-1 py-0 rounded text-[9px] font-medium truncate max-w-[60px]"
-              style={{
-                backgroundColor: sound.color + '30',
-                color: sound.color,
-                border: `1px solid ${sound.color}50`,
-              }}
-              title={sound.name}
-            >
-              {sound.name}
-            </span>
-          ))}
-        </div>
 
         {/* Note count badge */}
         <span className={`text-[10px] flex-shrink-0 ${

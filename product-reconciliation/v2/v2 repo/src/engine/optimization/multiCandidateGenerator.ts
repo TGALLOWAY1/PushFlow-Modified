@@ -408,13 +408,33 @@ export async function generateCandidates(
   // Filter trivial duplicates
   const [filtered, duplicatesRemoved] = filterTrivialDuplicates(candidates);
 
+  // Filter out candidates that violate hard constraints (Unplayable assignments)
+  const valid = filtered.filter(c => {
+    if (c.executionPlan.unplayableCount > 0) return false;
+    // Check zone violations: left hand should not be on right-only pads and vice versa
+    for (const a of c.executionPlan.fingerAssignments) {
+      if (a.assignedHand === 'Unplayable') return false;
+      if (a.col === undefined) continue;
+      // Left hand valid: cols 0-4, Right hand valid: cols 3-7
+      if (a.assignedHand === 'left' && a.col > 4) return false;
+      if (a.assignedHand === 'right' && a.col < 3) return false;
+      // Thumb topology: for left hand thumb should be on lower row than other fingers
+      // For right hand same — but this is hard to check post-hoc without full grip context
+      // so we only filter the obvious zone violations here
+    }
+    return true;
+  });
+
+  // If all candidates were filtered, keep the best one anyway (least violations)
+  const finalCandidates = valid.length > 0 ? valid : filtered.slice(0, 1);
+
   // Build generation summary (includes low-diversity explanation)
   const summary = buildGenerationSummary(
     candidates.length,
     duplicatesRemoved,
-    filtered,
+    finalCandidates,
     activeLayout,
   );
 
-  return { candidates: filtered, summary };
+  return { candidates: finalCandidates, summary };
 }

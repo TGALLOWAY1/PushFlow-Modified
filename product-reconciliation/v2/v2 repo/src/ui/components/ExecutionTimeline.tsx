@@ -25,7 +25,7 @@ interface ExecutionTimelineProps {
 }
 
 const FINGER_ABBREV: Record<string, string> = {
-  thumb: 'Th', index: 'Ix', middle: 'Md', ring: 'Rg', pinky: 'Pk',
+  thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
 };
 
 const HAND_STYLES: Record<string, { bg: string, text: string }> = {
