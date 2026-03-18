@@ -296,10 +296,12 @@ export function useAutoAnalysis() {
         dispatch({ type: 'SET_ANALYSIS_RESULT', payload: generationResult.candidates[0] });
       }
       setGenerationProgress(null);
+      return generationResult.candidates.length;
     } catch (err) {
       setGenerationProgress(null);
       dispatch({ type: 'SET_PROCESSING', payload: false });
       dispatch({ type: 'SET_ERROR', payload: err instanceof Error ? err.message : 'Generation failed' });
+      return 0;
     }
   }, [state, dispatch]);
 

@@ -3,12 +3,21 @@
  *
  * Lists all SoundStreams with: color swatch, name, event count, mute toggle,
  * pad location (if assigned), and drag handle for placing on grid.
- * Streams are grouped into "On Grid" and "Unassigned".
+ * Streams are organized by lane groups and by grid assignment status.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { getDisplayedLayout, type SoundStream } from '../state/projectState';
+import type { LaneGroup } from '../../types/performanceLane';
+import { generateId } from '../../utils/idGenerator';
+
+const COLOR_PALETTE = [
+  '#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6',
+  '#3b82f6', '#8b5cf6', '#ec4899', '#f43f5e', '#6366f1',
+  '#06b6d4', '#84cc16', '#a855f7', '#d946ef', '#f59e0b',
+  '#10b981',
+];
 
 export function VoicePalette() {
   const { state, dispatch } = useProject();
@@ -32,13 +41,11 @@ export function VoicePalette() {
     const fa = state.analysisResult?.executionPlan.fingerAssignments;
     if (!fa || fa.length === 0) return map;
 
-    // Map noteNumber → stream id
     const noteToStreamId = new Map<number, string>();
     for (const s of state.soundStreams) {
       noteToStreamId.set(s.originalMidiNote, s.id);
     }
 
-    // Aggregate hand/finger counts per stream
     const counts = new Map<string, Map<string, number>>();
     for (const a of fa) {
       const streamId = noteToStreamId.get(a.noteNumber);
@@ -55,7 +62,6 @@ export function VoicePalette() {
       counts.set(streamId, streamCounts);
     }
 
-    // Pick dominant assignment per stream
     for (const [streamId, streamCounts] of counts) {
       let best = '';
       let bestCount = 0;
@@ -69,19 +75,41 @@ export function VoicePalette() {
     return map;
   }, [state.analysisResult, state.soundStreams]);
 
-  // Split into assigned vs unassigned
-  const { assigned, unassigned } = useMemo(() => {
-    const a: SoundStream[] = [];
-    const u: SoundStream[] = [];
+  // Build streamId → groupId map from performanceLanes
+  const streamGroupMap = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const lane of state.performanceLanes) {
+      map.set(lane.id, lane.groupId);
+    }
+    return map;
+  }, [state.performanceLanes]);
+
+  // Organize streams by group, then by grid assignment
+  const { groupedStreams, ungroupedAssigned, ungroupedUnassigned } = useMemo(() => {
+    const grouped = new Map<string, SoundStream[]>();
+    const uAssigned: SoundStream[] = [];
+    const uUnassigned: SoundStream[] = [];
+
     for (const stream of state.soundStreams) {
-      if (streamPadLocations.has(stream.id)) {
-        a.push(stream);
+      const groupId = streamGroupMap.get(stream.id);
+      if (groupId) {
+        const list = grouped.get(groupId) ?? [];
+        list.push(stream);
+        grouped.set(groupId, list);
+      } else if (streamPadLocations.has(stream.id)) {
+        uAssigned.push(stream);
       } else {
-        u.push(stream);
+        uUnassigned.push(stream);
       }
     }
-    return { assigned: a, unassigned: u };
-  }, [state.soundStreams, streamPadLocations]);
+    return { groupedStreams: grouped, ungroupedAssigned: uAssigned, ungroupedUnassigned: uUnassigned };
+  }, [state.soundStreams, streamGroupMap, streamPadLocations]);
+
+  // Sort groups by orderIndex
+  const sortedGroups = useMemo(() =>
+    [...state.laneGroups].sort((a, b) => a.orderIndex - b.orderIndex),
+    [state.laneGroups]
+  );
 
   const handleDragStart = (e: React.DragEvent, stream: SoundStream) => {
     e.dataTransfer.setData('application/pushflow-stream', JSON.stringify({
@@ -94,62 +122,109 @@ export function VoicePalette() {
     e.dataTransfer.effectAllowed = 'copyMove';
   };
 
+  const handleCreateGroup = useCallback(() => {
+    const group: LaneGroup = {
+      groupId: generateId('grp'),
+      name: `Group ${state.laneGroups.length + 1}`,
+      color: COLOR_PALETTE[state.laneGroups.length % COLOR_PALETTE.length],
+      orderIndex: state.laneGroups.length,
+      isCollapsed: false,
+    };
+    dispatch({ type: 'CREATE_LANE_GROUP', payload: group });
+  }, [dispatch, state.laneGroups.length]);
+
+  const renderStreamRow = (stream: SoundStream) => (
+    <StreamRow
+      key={stream.id}
+      stream={stream}
+      padKeys={streamPadLocations.get(stream.id) ?? []}
+      voiceConstraint={state.voiceConstraints[stream.id]}
+      solverAssignment={solverSummary.get(stream.id)}
+      analysisStale={state.analysisStale}
+      groups={state.laneGroups}
+      currentGroupId={streamGroupMap.get(stream.id) ?? null}
+      onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: stream.id })}
+      onSolo={() => dispatch({ type: 'SOLO_STREAM', payload: stream.id })}
+      onDragStart={handleDragStart}
+      onSetConstraint={(hand, finger) => dispatch({
+        type: 'SET_VOICE_CONSTRAINT',
+        payload: { streamId: stream.id, hand, finger },
+      })}
+      onChangeColor={(color) => dispatch({
+        type: 'SET_SOUND_COLOR',
+        payload: { streamId: stream.id, color },
+      })}
+      onSetGroup={(groupId) => dispatch({
+        type: 'SET_LANE_GROUP',
+        payload: { laneId: stream.id, groupId },
+      })}
+    />
+  );
+
   return (
     <div className="space-y-3">
-      <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-        Sounds
-      </h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+          Sounds
+        </h3>
+        <button
+          className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors px-1.5 py-0.5 rounded hover:bg-gray-800"
+          onClick={handleCreateGroup}
+          title="Create new group"
+        >
+          + Group
+        </button>
+      </div>
 
       {/* Column headers for constraint dropdowns */}
       <ConstraintColumnHeaders />
 
-      {/* Unassigned streams */}
-      {unassigned.length > 0 && (
+      {/* Grouped streams */}
+      {sortedGroups.map(group => {
+        const streams = groupedStreams.get(group.groupId) ?? [];
+        if (streams.length === 0) return (
+          <GroupHeader
+            key={group.groupId}
+            group={group}
+            count={0}
+            onToggleCollapse={() => dispatch({ type: 'TOGGLE_LANE_GROUP_COLLAPSE', payload: group.groupId })}
+            onRename={(name) => dispatch({ type: 'RENAME_LANE_GROUP', payload: { groupId: group.groupId, name } })}
+            onChangeColor={(color) => dispatch({ type: 'SET_LANE_GROUP_COLOR', payload: { groupId: group.groupId, color } })}
+            onDelete={() => dispatch({ type: 'DELETE_LANE_GROUP', payload: group.groupId })}
+          />
+        );
+        return (
+          <div key={group.groupId} className="space-y-0.5">
+            <GroupHeader
+              group={group}
+              count={streams.length}
+              onToggleCollapse={() => dispatch({ type: 'TOGGLE_LANE_GROUP_COLLAPSE', payload: group.groupId })}
+              onRename={(name) => dispatch({ type: 'RENAME_LANE_GROUP', payload: { groupId: group.groupId, name } })}
+              onChangeColor={(color) => dispatch({ type: 'SET_LANE_GROUP_COLOR', payload: { groupId: group.groupId, color } })}
+              onDelete={() => dispatch({ type: 'DELETE_LANE_GROUP', payload: group.groupId })}
+            />
+            {!group.isCollapsed && streams.map(renderStreamRow)}
+          </div>
+        );
+      })}
+
+      {/* Ungrouped unassigned streams */}
+      {ungroupedUnassigned.length > 0 && (
         <div className="space-y-1">
           <span className="text-[10px] text-gray-500">
-            Unassigned ({unassigned.length})
+            Unassigned ({ungroupedUnassigned.length})
           </span>
-          {unassigned.map(stream => (
-            <StreamRow
-              key={stream.id}
-              stream={stream}
-              padKeys={[]}
-              voiceConstraint={state.voiceConstraints[stream.id]}
-              solverAssignment={solverSummary.get(stream.id)}
-              analysisStale={state.analysisStale}
-              onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: stream.id })}
-              onDragStart={handleDragStart}
-              onSetConstraint={(hand, finger) => dispatch({
-                type: 'SET_VOICE_CONSTRAINT',
-                payload: { streamId: stream.id, hand, finger },
-              })}
-            />
-          ))}
+          {ungroupedUnassigned.map(renderStreamRow)}
         </div>
       )}
 
-      {/* Assigned streams */}
-      {assigned.length > 0 && (
+      {/* Ungrouped assigned streams */}
+      {ungroupedAssigned.length > 0 && (
         <div className="space-y-1">
           <span className="text-[10px] text-gray-500">
-            On Grid ({assigned.length})
+            On Grid ({ungroupedAssigned.length})
           </span>
-          {assigned.map(stream => (
-            <StreamRow
-              key={stream.id}
-              stream={stream}
-              padKeys={streamPadLocations.get(stream.id) ?? []}
-              voiceConstraint={state.voiceConstraints[stream.id]}
-              solverAssignment={solverSummary.get(stream.id)}
-              analysisStale={state.analysisStale}
-              onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: stream.id })}
-              onDragStart={handleDragStart}
-              onSetConstraint={(hand, finger) => dispatch({
-                type: 'SET_VOICE_CONSTRAINT',
-                payload: { streamId: stream.id, hand, finger },
-              })}
-            />
-          ))}
+          {ungroupedAssigned.map(renderStreamRow)}
         </div>
       )}
 
@@ -160,25 +235,153 @@ export function VoicePalette() {
   );
 }
 
+function GroupHeader({
+  group,
+  count,
+  onToggleCollapse,
+  onRename,
+  onChangeColor,
+  onDelete,
+}: {
+  group: LaneGroup;
+  count: number;
+  onToggleCollapse: () => void;
+  onRename: (name: string) => void;
+  onChangeColor: (color: string) => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(group.name);
+  const [showGroupColor, setShowGroupColor] = useState(false);
+  const colorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showGroupColor) return;
+    const handler = (e: MouseEvent) => {
+      if (colorRef.current && !colorRef.current.contains(e.target as Node)) {
+        setShowGroupColor(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showGroupColor]);
+
+  const commitName = () => {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== group.name) onRename(trimmed);
+    setEditing(false);
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-gray-800/40 transition-colors">
+      {/* Collapse toggle */}
+      <button
+        className="text-[10px] text-gray-500 hover:text-gray-300 w-3 flex-shrink-0"
+        onClick={onToggleCollapse}
+      >
+        {group.isCollapsed ? '\u25B8' : '\u25BE'}
+      </button>
+
+      {/* Group color swatch */}
+      <div className="relative flex-shrink-0" ref={colorRef}>
+        <button
+          className="w-2.5 h-2.5 rounded-sm cursor-pointer hover:ring-1 hover:ring-gray-400 transition-all"
+          style={{ backgroundColor: group.color }}
+          onClick={e => { e.stopPropagation(); setShowGroupColor(!showGroupColor); }}
+          title="Change group color"
+        />
+        {showGroupColor && (
+          <div className="absolute left-0 top-full mt-1 p-1.5 rounded-lg border border-gray-700 bg-gray-900 shadow-xl z-50 grid grid-cols-4 gap-1" style={{ width: 88 }}>
+            {COLOR_PALETTE.map(c => (
+              <button
+                key={c}
+                className={`w-4 h-4 rounded-sm cursor-pointer hover:scale-125 transition-transform ${c === group.color ? 'ring-1 ring-white' : ''}`}
+                style={{ backgroundColor: c }}
+                onClick={e => { e.stopPropagation(); onChangeColor(c); setShowGroupColor(false); }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Group name (double-click to edit) */}
+      {editing ? (
+        <input
+          className="flex-1 text-[10px] font-medium text-gray-200 bg-gray-800 border border-gray-600 rounded px-1 py-0.5 outline-none focus:border-blue-500 min-w-0"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commitName}
+          onKeyDown={e => { if (e.key === 'Enter') commitName(); if (e.key === 'Escape') setEditing(false); }}
+          autoFocus
+        />
+      ) : (
+        <span
+          className="flex-1 text-[10px] font-medium text-gray-400 truncate cursor-pointer hover:text-gray-200"
+          onDoubleClick={() => { setDraft(group.name); setEditing(true); }}
+          title="Double-click to rename"
+        >
+          {group.name}
+        </span>
+      )}
+
+      {/* Count */}
+      <span className="text-[9px] text-gray-600 flex-shrink-0">{count}</span>
+
+      {/* Delete group */}
+      <button
+        className="text-[10px] text-gray-600 hover:text-red-400 flex-shrink-0 transition-colors"
+        onClick={e => { e.stopPropagation(); onDelete(); }}
+        title="Delete group (sounds will be ungrouped)"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 function StreamRow({
   stream,
   padKeys,
   voiceConstraint,
   solverAssignment,
   analysisStale,
+  groups,
+  currentGroupId,
   onToggleMute,
+  onSolo,
   onDragStart,
   onSetConstraint,
+  onChangeColor,
+  onSetGroup,
 }: {
   stream: SoundStream;
   padKeys: string[];
   voiceConstraint?: { hand?: 'left' | 'right'; finger?: string };
   solverAssignment?: { label: string; hand: string };
   analysisStale: boolean;
+  groups: LaneGroup[];
+  currentGroupId: string | null;
   onToggleMute: () => void;
+  onSolo: () => void;
   onDragStart: (e: React.DragEvent, stream: SoundStream) => void;
   onSetConstraint: (hand?: 'left' | 'right' | null, finger?: string | null) => void;
+  onChangeColor: (color: string) => void;
+  onSetGroup: (groupId: string | null) => void;
 }) {
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const colorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showColorPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (colorRef.current && !colorRef.current.contains(e.target as Node)) {
+        setShowColorPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showColorPicker]);
+
   return (
     <div
       className={`
@@ -190,11 +393,58 @@ function StreamRow({
       draggable
       onDragStart={e => onDragStart(e, stream)}
     >
-      {/* Color swatch */}
-      <span
-        className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
-        style={{ backgroundColor: stream.color }}
-      />
+      {/* Color swatch (click to open color + group popover) */}
+      <div className="relative flex-shrink-0" ref={colorRef}>
+        <button
+          className="w-2.5 h-2.5 rounded-sm flex-shrink-0 cursor-pointer hover:ring-1 hover:ring-gray-400 transition-all"
+          style={{ backgroundColor: stream.color }}
+          onClick={e => { e.stopPropagation(); setShowColorPicker(!showColorPicker); }}
+          onMouseDown={e => e.stopPropagation()}
+          title="Color & group"
+        />
+        {showColorPicker && (
+          <div className="absolute left-0 top-full mt-1 rounded-lg border border-gray-700 bg-gray-900 shadow-xl z-50" style={{ width: 120 }}>
+            {/* Colors */}
+            <div className="p-1.5 grid grid-cols-4 gap-1">
+              {COLOR_PALETTE.map(c => (
+                <button
+                  key={c}
+                  className={`w-4 h-4 rounded-sm cursor-pointer hover:scale-125 transition-transform ${c === stream.color ? 'ring-1 ring-white' : ''}`}
+                  style={{ backgroundColor: c }}
+                  onClick={e => {
+                    e.stopPropagation();
+                    onChangeColor(c);
+                    setShowColorPicker(false);
+                  }}
+                  onMouseDown={e => e.stopPropagation()}
+                />
+              ))}
+            </div>
+            {/* Group assignment */}
+            {groups.length > 0 && (
+              <div className="border-t border-gray-700 px-1.5 py-1.5">
+                <div className="text-[8px] text-gray-500 uppercase tracking-wider mb-1">Group</div>
+                <select
+                  className="w-full bg-gray-800 border border-gray-700 text-[10px] text-gray-300 rounded px-1 py-1"
+                  value={currentGroupId ?? ''}
+                  onChange={e => {
+                    e.stopPropagation();
+                    onSetGroup(e.target.value === '' ? null : e.target.value);
+                    setShowColorPicker(false);
+                  }}
+                  onClick={e => e.stopPropagation()}
+                  onMouseDown={e => e.stopPropagation()}
+                >
+                  <option value="">None</option>
+                  {groups.map(g => (
+                    <option key={g.groupId} value={g.groupId}>{g.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Name */}
       <span className="flex-1 truncate text-gray-200 font-medium">
@@ -263,6 +513,18 @@ function StreamRow({
         <option value="pinky">Pk</option>
       </select>
 
+      {/* Solo */}
+      <button
+        className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-[10px] transition-colors bg-gray-800 text-gray-400 hover:bg-amber-500/20 hover:text-amber-400"
+        onClick={e => {
+          e.stopPropagation();
+          onSolo();
+        }}
+        title="Solo"
+      >
+        S
+      </button>
+
       {/* Mute toggle */}
       <button
         className={`
@@ -278,8 +540,9 @@ function StreamRow({
         }}
         title={stream.muted ? 'Unmute' : 'Mute'}
       >
-        {stream.muted ? 'M' : 'S'}
+        M
       </button>
+
     </div>
   );
 }

@@ -21,8 +21,6 @@ interface EditorToolbarProps {
   generationProgress?: string | null;
   canGenerate?: boolean;
   generateDisabledReason?: string | null;
-  showAnalysisPanel?: boolean;
-  setShowAnalysisPanel?: (show: boolean) => void;
 }
 
 export function EditorToolbar({
@@ -30,8 +28,6 @@ export function EditorToolbar({
   generationProgress,
   canGenerate = true,
   generateDisabledReason,
-  showAnalysisPanel,
-  setShowAnalysisPanel,
 }: EditorToolbarProps = {}) {
   const { state, dispatch, undo, redo, canUndo, canRedo } = useProject();
   const displayedLayout = getDisplayedLayout(state);
@@ -134,21 +130,6 @@ export function EditorToolbar({
       >
         Export
       </button>
-
-      {/* Unified Analysis Panel toggle */}
-      {setShowAnalysisPanel && (
-        <div className="flex items-center gap-1 border-l border-gray-800 pl-3 ml-1">
-          <button
-            className={`px-2 py-1 text-xs rounded transition-colors ${
-              showAnalysisPanel ? 'bg-gray-700 text-gray-200' : 'text-gray-500 hover:bg-gray-800'
-            }`}
-            onClick={() => setShowAnalysisPanel(!showAnalysisPanel)}
-            title="Open Performance Analysis panel"
-          >
-            Analysis
-          </button>
-        </div>
-      )}
 
       {/* Generate */}
       {generateFull && (
