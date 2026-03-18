@@ -169,7 +169,7 @@ export function useAutoAnalysis() {
 
     const activeStreams = getActiveStreams(state);
     const layout = getDisplayedLayout(state);
-    if (activeStreams.length === 0 || !layout || Object.keys(layout.padToVoice).length === 0) {
+    if (activeStreams.length === 0 || !layout) {
       return;
     }
 
@@ -185,15 +185,28 @@ export function useAutoAnalysis() {
 
         dispatch({ type: 'SET_PROCESSING', payload: true });
 
+        // If the layout has no pad assignments, auto-build from streams
+        // so that importing MIDI immediately produces analysis results.
+        let effectiveLayout = layout;
+        if (Object.keys(layout.padToVoice).length === 0) {
+          effectiveLayout = buildAutoLayout(activeStreams, state.instrumentConfig, layout);
+          if (Object.keys(effectiveLayout.padToVoice).length === 0) {
+            // Still empty after auto-build (all notes out of range) — bail
+            dispatch({ type: 'SET_PROCESSING', payload: false });
+            return;
+          }
+          dispatch({ type: 'BULK_ASSIGN_PADS', payload: effectiveLayout.padToVoice });
+        }
+
         const solverConfig: SolverConfig = {
           instrumentConfig: state.instrumentConfig,
-          layout,
-          sourceLayoutRole: layout.role,
+          layout: effectiveLayout,
+          sourceLayoutRole: effectiveLayout.role,
         };
         const solver = createBeamSolver(solverConfig);
 
         // Build solver constraints — finger constraints are soft preferences
-        const solverConstraints = buildSolverConstraints(performance, layout);
+        const solverConstraints = buildSolverConstraints(performance, effectiveLayout);
         const manualAssignments = constraintsToManualAssignments(solverConstraints);
         const executionPlan = await solver.solve(
           performance,
@@ -208,7 +221,7 @@ export function useAutoAnalysis() {
 
         const candidate = {
           id: generateId('auto'),
-          layout,
+          layout: effectiveLayout,
           executionPlan,
           difficultyAnalysis,
           tradeoffProfile,
