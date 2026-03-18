@@ -198,10 +198,12 @@ export type ProjectAction =
   // Project lifecycle
   | { type: 'LOAD_PROJECT'; payload: ProjectState }
   | { type: 'RESET' }
+  | { type: 'RENAME_PROJECT'; payload: string }
 
   // Sound streams
   | { type: 'RENAME_SOUND'; payload: { streamId: string; name: string } }
   | { type: 'TOGGLE_MUTE'; payload: string }
+  | { type: 'SOLO_STREAM'; payload: string }
   | { type: 'SET_SOUND_COLOR'; payload: { streamId: string; color: string } }
   | { type: 'SET_VOICE_CONSTRAINT'; payload: { streamId: string; hand?: 'left' | 'right' | null; finger?: string | null } }
 
@@ -339,6 +341,9 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'RESET':
       return createEmptyProjectState();
 
+    case 'RENAME_PROJECT':
+      return { ...state, name: action.payload, updatedAt: new Date().toISOString() };
+
     // -- Sound streams --
 
     case 'RENAME_SOUND':
@@ -348,17 +353,49 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         soundStreams: state.soundStreams.map(s =>
           s.id === action.payload.streamId ? { ...s, name: action.payload.name } : s
         ),
+        // Keep lane names in sync so SYNC_STREAMS_FROM_LANES doesn't overwrite renames
+        performanceLanes: state.performanceLanes.map(l =>
+          l.id === action.payload.streamId ? { ...l, name: action.payload.name } : l
+        ),
       };
 
-    case 'TOGGLE_MUTE':
+    case 'TOGGLE_MUTE': {
+      const stream = state.soundStreams.find(s => s.id === action.payload);
+      const newMuted = stream ? !stream.muted : true;
       return {
         ...state,
         updatedAt: new Date().toISOString(),
         analysisStale: true,
         soundStreams: state.soundStreams.map(s =>
-          s.id === action.payload ? { ...s, muted: !s.muted } : s
+          s.id === action.payload ? { ...s, muted: newMuted } : s
+        ),
+        // Keep lane mute in sync
+        performanceLanes: state.performanceLanes.map(l =>
+          l.id === action.payload ? { ...l, isMuted: newMuted } : l
         ),
       };
+    }
+
+    case 'SOLO_STREAM': {
+      const targetId = action.payload;
+      const unmutedStreams = state.soundStreams.filter(s => !s.muted);
+      const isAlreadySoloed = unmutedStreams.length === 1 && unmutedStreams[0].id === targetId;
+      return {
+        ...state,
+        updatedAt: new Date().toISOString(),
+        analysisStale: true,
+        soundStreams: state.soundStreams.map(s =>
+          isAlreadySoloed
+            ? { ...s, muted: false }
+            : { ...s, muted: s.id !== targetId }
+        ),
+        performanceLanes: state.performanceLanes.map(l =>
+          isAlreadySoloed
+            ? { ...l, isMuted: false, isSolo: false }
+            : { ...l, isMuted: l.id !== targetId, isSolo: l.id === targetId }
+        ),
+      };
+    }
 
     case 'SET_SOUND_COLOR':
       return {
@@ -366,6 +403,10 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         updatedAt: new Date().toISOString(),
         soundStreams: state.soundStreams.map(s =>
           s.id === action.payload.streamId ? { ...s, color: action.payload.color } : s
+        ),
+        // Keep lane colors in sync so SYNC_STREAMS_FROM_LANES doesn't overwrite
+        performanceLanes: state.performanceLanes.map(l =>
+          l.id === action.payload.streamId ? { ...l, color: action.payload.color } : l
         ),
       };
 

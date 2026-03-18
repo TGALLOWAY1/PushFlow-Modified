@@ -43,7 +43,6 @@ export function UnifiedTimeline() {
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
 
   const [zoomOverride, setZoomOverride] = useState<number | null>(null); // null = auto-fit
-  const [searchQuery, setSearchQuery] = useState('');
 
   // ─── Lane ↔ Stream Sync ──────────────────────────────────────────────────
 
@@ -64,12 +63,7 @@ export function UnifiedTimeline() {
   const activeStreams = getActiveStreams(state);
   const assignments = state.analysisResult?.executionPlan.fingerAssignments;
 
-  // Filter streams by search
-  const visibleStreams = useMemo(() => {
-    if (!searchQuery) return activeStreams;
-    const q = searchQuery.toLowerCase();
-    return activeStreams.filter(s => s.name.toLowerCase().includes(q));
-  }, [activeStreams, searchQuery]);
+  const visibleStreams = activeStreams;
 
   // Beat duration (used for bar-quantization and grid lines)
   const beatDurationRaw = 60 / (state.tempo || 120);
@@ -325,19 +319,10 @@ export function UnifiedTimeline() {
 
         {/* Info */}
         <span className="text-[11px] text-gray-500">
-          {visibleStreams.length} voices, {visibleStreams.reduce((n, s) => n + s.events.length, 0)} events
+          {visibleStreams.length} voices
         </span>
 
         <div className="flex-1" />
-
-        {/* Search */}
-        <input
-          type="text"
-          placeholder="Filter voices..."
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          className="w-28 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
-        />
 
         {/* Zoom */}
         <div className="flex items-center gap-1.5">
@@ -378,15 +363,6 @@ export function UnifiedTimeline() {
           </button>
         </div>
 
-        {/* Legend */}
-        <div className="flex items-center gap-2 pl-2 border-l border-gray-700">
-          <span className="flex items-center gap-1 text-[10px] text-gray-400">
-            <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: HAND_COLORS.left.bg }} /> L
-          </span>
-          <span className="flex items-center gap-1 text-[10px] text-gray-400">
-            <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: HAND_COLORS.right.bg }} /> R
-          </span>
-        </div>
       </div>
 
       {/* ─── Timeline Body ────────────────────────────────────────────────── */}
@@ -403,6 +379,8 @@ export function UnifiedTimeline() {
               stream={stream}
               isEven={i % 2 === 0}
               onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: stream.id })}
+              onSolo={() => dispatch({ type: 'SOLO_STREAM', payload: stream.id })}
+              onRename={(name) => dispatch({ type: 'RENAME_SOUND', payload: { streamId: stream.id, name } })}
             />
           ))}
         </div>
@@ -533,11 +511,34 @@ function VoiceRow({
   stream,
   isEven,
   onToggleMute,
+  onSolo,
+  onRename,
 }: {
   stream: SoundStream;
   isEven: boolean;
   onToggleMute: () => void;
+  onSolo: () => void;
+  onRename: (name: string) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(stream.name);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const commitRename = () => {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== stream.name) {
+      onRename(trimmed);
+    }
+    setEditing(false);
+  };
+
+  useEffect(() => {
+    if (editing) {
+      setDraft(stream.name);
+      requestAnimationFrame(() => inputRef.current?.select());
+    }
+  }, [editing, stream.name]);
+
   return (
     <div
       className={`flex items-center gap-1.5 px-2 text-xs border-b border-gray-800/30 transition-colors
@@ -551,15 +552,37 @@ function VoiceRow({
         style={{ backgroundColor: stream.color }}
       />
 
-      {/* Name */}
-      <span className="flex-1 truncate text-gray-300 text-[11px]" title={stream.name}>
-        {stream.name}
-      </span>
+      {/* Name (double-click to rename) */}
+      {editing ? (
+        <input
+          ref={inputRef}
+          className="flex-1 min-w-0 bg-gray-800 border border-blue-500 rounded px-1 py-0 text-[11px] text-gray-200 outline-none"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commitRename}
+          onKeyDown={e => {
+            if (e.key === 'Enter') commitRename();
+            if (e.key === 'Escape') setEditing(false);
+          }}
+        />
+      ) : (
+        <span
+          className="flex-1 truncate text-gray-300 text-[11px] cursor-text"
+          title={`${stream.name} (double-click to rename)`}
+          onDoubleClick={() => setEditing(true)}
+        >
+          {stream.name}
+        </span>
+      )}
 
-      {/* Event count */}
-      <span className="text-[9px] text-gray-600 flex-shrink-0">
-        {stream.events.length}
-      </span>
+      {/* Solo */}
+      <button
+        className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-[10px] transition-colors bg-gray-800 text-gray-500 hover:bg-amber-500/20 hover:text-amber-400"
+        onClick={e => { e.stopPropagation(); onSolo(); }}
+        title="Solo"
+      >
+        S
+      </button>
 
       {/* Mute toggle */}
       <button
@@ -570,7 +593,7 @@ function VoiceRow({
         onClick={e => { e.stopPropagation(); onToggleMute(); }}
         title={stream.muted ? 'Unmute' : 'Mute'}
       >
-        {stream.muted ? 'M' : 'M'}
+        M
       </button>
     </div>
   );

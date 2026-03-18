@@ -11,8 +11,7 @@
 
 import { useState, useMemo } from 'react';
 import { useProject } from '../../state/ProjectContext';
-import { type ViewSettings, type GridLabelSettings, type LayoutDisplaySettings } from '../../state/viewSettings';
-import { SettingsGear } from './SettingsGear';
+
 import { LearnMoreModal } from './LearnMoreModal';
 import { EventCostChart } from './EventCostChart';
 import { CostBreakdownBars } from './CostBreakdownBars';
@@ -21,18 +20,10 @@ import { CandidateCompare } from '../CandidateCompare';
 
 interface PerformanceAnalysisPanelProps {
   onClose: () => void;
-  viewSettings: ViewSettings;
-  onToggleGridLabel: (key: keyof GridLabelSettings) => void;
-  onToggleLayoutDisplay: (key: keyof LayoutDisplaySettings) => void;
-  onDuplicateLayout?: () => void;
 }
 
 export function PerformanceAnalysisPanel({
   onClose,
-  viewSettings,
-  onToggleGridLabel,
-  onToggleLayoutDisplay,
-  onDuplicateLayout,
 }: PerformanceAnalysisPanelProps) {
   const { state, dispatch } = useProject();
   const [learnMoreOpen, setLearnMoreOpen] = useState(false);
@@ -76,14 +67,6 @@ export function PerformanceAnalysisPanel({
             >
               Learn more
             </button>
-            <div className="w-px h-4 bg-gray-800 mx-0.5" />
-            <SettingsGear
-              gridLabels={viewSettings.gridLabels}
-              layoutDisplay={viewSettings.layoutDisplay}
-              onToggleGridLabel={onToggleGridLabel}
-              onToggleLayoutDisplay={onToggleLayoutDisplay}
-              onDuplicateLayout={onDuplicateLayout}
-            />
             <button
               className="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors text-sm"
               onClick={onClose}
