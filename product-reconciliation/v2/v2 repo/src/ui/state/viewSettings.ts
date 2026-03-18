@@ -21,8 +21,10 @@ export interface GridLabelSettings {
   showNoteLabels: boolean;
   /** Show grid position labels (e.g. "(2,3)") */
   showPositionLabels: boolean;
-  /** Show finger assignment labels (e.g. "L-Ix") */
+  /** Show finger assignment labels (e.g. "L1") */
   showFingerAssignment: boolean;
+  /** Show sound names on pads */
+  showSoundNames: boolean;
 }
 
 /**
@@ -46,6 +48,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
     showNoteLabels: false,
     showPositionLabels: false,
     showFingerAssignment: false,
+    showSoundNames: true,
   },
   layoutDisplay: {
     organize4x4Banks: false,

@@ -40,11 +40,11 @@ interface CompareGridViewProps {
 
 /**
  * Build a map of padKey → Set<fingerLabel> from finger assignments.
- * fingerLabel format: "L-Ix", "R-Th", etc.
+ * fingerLabel format: "L2", "R1", etc.
  */
 function buildFingerMap(assignments: FingerAssignment[]): Map<string, Set<string>> {
   const ABBREV: Record<string, string> = {
-    thumb: 'Th', index: 'Ix', middle: 'Md', ring: 'Rg', pinky: 'Pk',
+    thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
   };
   const map = new Map<string, Set<string>>();
   for (const a of assignments) {
@@ -56,7 +56,7 @@ function buildFingerMap(assignments: FingerAssignment[]): Map<string, Set<string
       map.set(key, set);
     }
     if (a.finger) {
-      set.add(`${a.assignedHand[0].toUpperCase()}-${ABBREV[a.finger] ?? a.finger}`);
+      set.add(`${a.assignedHand[0].toUpperCase()}${ABBREV[a.finger] ?? a.finger}`);
     }
   }
   return map;

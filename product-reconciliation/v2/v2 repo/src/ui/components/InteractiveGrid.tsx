@@ -16,7 +16,9 @@ import { getDisplayedLayout, getActiveStreams, type SoundStream } from '../state
 import { PadContextMenu } from './PadContextMenu';
 import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
+import { type GridLabelSettings } from '../state/viewSettings';
 import { buildSelectedTransitionModel } from '../analysis/selectionModel';
+import { midiNoteToName } from '../../utils/midiNotes';
 
 interface InteractiveGridProps {
   assignments?: FingerAssignment[];
@@ -29,11 +31,13 @@ interface InteractiveGridProps {
   onionSkin?: boolean;
   /** Voice-level hand/finger constraints from SOUNDS panel (keyed by stream ID). */
   voiceConstraints?: Record<string, { hand?: 'left' | 'right'; finger?: string }>;
+  /** Grid label settings controlling what info is shown on pads. */
+  gridLabels?: GridLabelSettings;
 }
 
-/** Abbreviated finger names for display */
+/** Abbreviated finger names for display (numbered: thumb=1 through pinky=5) */
 const FINGER_ABBREV: Record<string, string> = {
-  thumb: 'Th', index: 'Ix', middle: 'Md', ring: 'Rg', pinky: 'Pk',
+  thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
 };
 
 const HAND_COLORS = {
@@ -70,7 +74,7 @@ function safeColorAlpha(color: string | null | undefined, alpha: number, fallbac
 /** Physical reach threshold: pads farther apart than this are flagged as impossible. */
 const IMPOSSIBLE_REACH_THRESHOLD = 5;
 
-export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false, voiceConstraints = {} }: InteractiveGridProps) {
+export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels }: InteractiveGridProps) {
   const { state, dispatch } = useProject();
   const layout = layoutOverride ?? getDisplayedLayout(state);
   const activeStreams = getActiveStreams(state);
@@ -113,25 +117,34 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const effectiveHand = constraint?.hand ?? a.assignedHand;
       const effectiveFinger = constraint?.finger ?? a.finger;
       summary.hands.add(effectiveHand);
-      if (effectiveFinger) summary.fingers.add(`${effectiveHand[0].toUpperCase()}-${FINGER_ABBREV[effectiveFinger] ?? effectiveFinger}`);
+      if (effectiveFinger) summary.fingers.add(`${effectiveHand[0].toUpperCase()}${FINGER_ABBREV[effectiveFinger] ?? effectiveFinger}`);
       summary.hitCount++;
     }
     return map;
   }, [assignments, voiceByNote, voiceConstraints]);
 
   // Selected pads: all assignments at the same start time as the selected event
-  const selectedPadKeys = useMemo(() => {
+  // Also builds a map of padKey → finger label for the selected event
+  const { selectedPadKeys, selectedPadFingers } = useMemo(() => {
     const keys = new Set<string>();
-    if (selectedEventIndex === null || !assignments) return keys;
+    const fingers = new Map<string, { label: string; hand: string; color: string }>();
+    if (selectedEventIndex === null || !assignments) return { selectedPadKeys: keys, selectedPadFingers: fingers };
     const selectedAssignment = assignments.find(a => a.eventIndex === selectedEventIndex);
-    if (!selectedAssignment) return keys;
+    if (!selectedAssignment) return { selectedPadKeys: keys, selectedPadFingers: fingers };
     const targetTime = selectedAssignment.startTime;
     for (const a of assignments) {
       if (a.startTime === targetTime && a.row !== undefined && a.col !== undefined) {
-        keys.add(`${a.row},${a.col}`);
+        const key = `${a.row},${a.col}`;
+        keys.add(key);
+        const handChar = a.assignedHand === 'Unplayable' ? '?' : a.assignedHand[0].toUpperCase();
+        const fingerNum = a.finger ? (FINGER_ABBREV[a.finger] ?? a.finger) : '';
+        const handColor = a.assignedHand === 'left' ? HAND_COLORS.left
+          : a.assignedHand === 'right' ? HAND_COLORS.right
+          : HAND_COLORS.Unplayable;
+        fingers.set(key, { label: `${handChar}${fingerNum}`, hand: a.assignedHand, color: handColor });
       }
     }
-    return keys;
+    return { selectedPadKeys: keys, selectedPadFingers: fingers };
   }, [assignments, selectedEventIndex]);
 
   const selectedTransition = useMemo(
@@ -174,7 +187,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
         return {
           id: `${move.hand}-${move.finger}-${move.fromPad}-${move.toPad}`,
           color: HAND_COLORS[move.hand],
-          label: `${move.hand[0].toUpperCase()}-${FINGER_ABBREV[move.finger] ?? move.finger}`,
+          label: `${move.hand[0].toUpperCase()}${FINGER_ABBREV[move.finger] ?? move.finger}`,
           d: `M ${startX} ${startY} Q ${controlX} ${controlY} ${endX} ${endY}`,
           endX,
           endY,
@@ -316,6 +329,8 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     dispatch({ type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey } });
   }, [dispatch]);
 
+  const hasEventSelected = selectedEventIndex !== null && selectedPadKeys.size > 0;
+
   // Render grid rows (row 7 at top, row 0 at bottom — Push 3 orientation)
   const rows = [];
   for (let row = 7; row >= 0; row--) {
@@ -334,6 +349,8 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const isDragOver = padKey === dragOverPad;
       const isDragSource = padKey === dragSourcePad;
       const constraint = layout?.fingerConstraints[padKey];
+      const isGreyedOut = hasEventSelected && !isSelected;
+      const selectedFingerInfo = selectedPadFingers.get(padKey);
 
       // Determine colors
       let bgColor = 'var(--bg-panel)';
@@ -404,19 +421,26 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             ${isDragOver ? 'ring-2 ring-blue-400/60 scale-105 bg-[var(--bg-card)]' : ''}
             ${isDragSource ? 'opacity-30' : ''}
             ${isMuted ? 'opacity-30 pointer-events-none' : ''}
+            ${isGreyedOut ? 'opacity-20 saturate-0' : ''}
             ${!voice ? 'hover:brightness-110' : 'hover:scale-[1.02]'}
             ${isMuted ? 'cursor-default' : 'cursor-pointer active:scale-95'}
           `}
           style={{
-            backgroundColor: isSelected || isActivePlaying
-              ? 'var(--bg-card)'
-              : isNext && !voice
-                ? 'rgba(59, 130, 246, 0.08)'
-                : bgColor,
-            borderColor: isDragOver ? '#3b82f6' : isNext && !isSelected ? '#60a5fa' : borderColor,
-            color: textColor,
-            boxShadow: boxGlow,
-            opacity: isNext && !isSelected && !isActivePlaying ? 0.92 : undefined,
+            backgroundColor: isSelected && selectedFingerInfo
+              ? selectedFingerInfo.color
+              : isSelected || isActivePlaying
+                ? 'var(--bg-card)'
+                : isNext && !voice
+                  ? 'rgba(59, 130, 246, 0.08)'
+                  : bgColor,
+            borderColor: isSelected && selectedFingerInfo
+              ? selectedFingerInfo.color
+              : isDragOver ? '#3b82f6' : isNext && !isSelected ? '#60a5fa' : borderColor,
+            color: isSelected && selectedFingerInfo ? '#ffffff' : textColor,
+            boxShadow: isSelected && selectedFingerInfo
+              ? `0 0 12px ${selectedFingerInfo.color}, inset 0 0 8px rgba(255,255,255,0.15)`
+              : boxGlow,
+            opacity: isGreyedOut ? 0.2 : isNext && !isSelected && !isActivePlaying ? 0.92 : undefined,
           }}
           onClick={() => !isMuted && handlePadClick(row, col)}
           onContextMenu={e => {
@@ -441,38 +465,59 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             />
           )}
           {voice ? (
-            <>
-              {/* Voice name */}
-              <span className="block truncate w-full px-0.5 text-center text-[11px] font-semibold text-white/95 leading-tight">
-                {voice.name}
+            isSelected && selectedFingerInfo ? (
+              /* Event-selected pad: solid color + prominent finger label only */
+              <span className="text-[16px] font-bold text-white drop-shadow-md">
+                {selectedFingerInfo.label}
               </span>
-              {/* Fingers (from analysis) */}
-              {fingerList.length > 0 && (
-                <span className="block text-[10px] font-medium leading-none mt-0.5" style={{ color: textColor }}>
-                  {fingerList.join(' ')}
-                </span>
-              )}
-              {/* Hit count badge */}
-              {summary && summary.hitCount > 0 && (
-                <span className="absolute bottom-0.5 right-0.5 text-[7px] font-bold bg-black/40 rounded px-0.5 text-gray-400 pointer-events-none">
-                  {summary.hitCount}
-                </span>
-              )}
-              
-              {/* Remove button (visible on hover via parent group) */}
-              <button
-                className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center
-                           text-[9px] text-red-300 bg-red-500/30 rounded-bl opacity-0
-                           group-hover:opacity-100 transition-opacity"
-                onClick={e => {
-                  e.stopPropagation();
-                  handleRemovePad(padKey);
-                }}
-                title="Remove from pad"
-              >
-                ×
-              </button>
-            </>
+            ) : (
+              <>
+                {/* Voice name (togglable) */}
+                {(gridLabels?.showSoundNames ?? true) && (
+                  <span className="block truncate w-full px-0.5 text-center text-[11px] font-semibold text-white/95 leading-tight">
+                    {voice.name}
+                  </span>
+                )}
+                {/* Note label (e.g. C1, C#1) */}
+                {gridLabels?.showNoteLabels && voice.originalMidiNote != null && (
+                  <span className="block text-[10px] font-mono text-cyan-300/80 leading-none mt-0.5">
+                    {midiNoteToName(voice.originalMidiNote)}
+                  </span>
+                )}
+                {/* Position label */}
+                {gridLabels?.showPositionLabels && (
+                  <span className="block text-[8px] text-gray-500 leading-none mt-0.5">
+                    ({row},{col})
+                  </span>
+                )}
+                {/* Fingers (from analysis) */}
+                {(gridLabels?.showFingerAssignment ?? true) && fingerList.length > 0 && (
+                  <span className="block text-[10px] font-medium leading-none mt-0.5" style={{ color: textColor }}>
+                    {fingerList.join(' ')}
+                  </span>
+                )}
+                {/* Hit count badge */}
+                {summary && summary.hitCount > 0 && (
+                  <span className="absolute bottom-0.5 right-0.5 text-[7px] font-bold bg-black/40 rounded px-0.5 text-gray-400 pointer-events-none">
+                    {summary.hitCount}
+                  </span>
+                )}
+
+                {/* Remove button (visible on hover via parent group) */}
+                <button
+                  className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center
+                             text-[9px] text-red-300 bg-red-500/30 rounded-bl opacity-0
+                             group-hover:opacity-100 transition-opacity"
+                  onClick={e => {
+                    e.stopPropagation();
+                    handleRemovePad(padKey);
+                  }}
+                  title="Remove from pad"
+                >
+                  ×
+                </button>
+              </>
+            )
           ) : (
             <span className="text-[8px] text-gray-600">{row},{col}</span>
           )}

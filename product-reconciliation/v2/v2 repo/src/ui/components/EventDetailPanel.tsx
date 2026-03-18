@@ -27,9 +27,9 @@ function parseConstraint(constraint: string): { hand: 'left' | 'right'; finger: 
 /** Build a constraint string from hand + finger. */
 function buildConstraint(hand: 'left' | 'right', finger: FingerType): string {
   const FINGER_ABBREV: Record<FingerType, string> = {
-    thumb: 'Th', index: 'Ix', middle: 'Md', ring: 'Rg', pinky: 'Pk',
+    thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
   };
-  return `${hand === 'left' ? 'L' : 'R'}-${FINGER_ABBREV[finger]}`;
+  return `${hand === 'left' ? 'L' : 'R'}${FINGER_ABBREV[finger]}`;
 }
 
 export function EventDetailPanel() {

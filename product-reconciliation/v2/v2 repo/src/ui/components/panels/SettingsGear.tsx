@@ -19,6 +19,7 @@ interface SettingsGearProps {
 }
 
 const VIEW_OPTIONS: Array<{ key: keyof GridLabelSettings; label: string }> = [
+  { key: 'showSoundNames', label: 'Show Sound Names' },
   { key: 'showNoteLabels', label: 'Show Note Labels' },
   { key: 'showPositionLabels', label: 'Show Position Labels' },
   { key: 'showFingerAssignment', label: 'Show Finger Assignment' },

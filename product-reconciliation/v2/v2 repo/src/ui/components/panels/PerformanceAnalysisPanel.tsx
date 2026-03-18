@@ -9,7 +9,7 @@
  * 4. Candidate layout previews with actions
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
 import { useProject } from '../../state/ProjectContext';
 
 import { LearnMoreModal } from './LearnMoreModal';
@@ -104,17 +104,17 @@ export function PerformanceAnalysisPanel({
 
           {/* ─── Section 1: Event-Level Difficulty Chart ───────── */}
           {currentPlan && currentPlan.fingerAssignments.length > 0 && (
-            <div className="border-b border-gray-800 pb-4">
+            <CollapsibleSection title="Event Difficulty" defaultOpen>
               <EventCostChart
                 fingerAssignments={currentPlan.fingerAssignments}
                 candidateLabel={selectedCandidateLabel}
               />
-            </div>
+            </CollapsibleSection>
           )}
 
           {/* ─── Section 2: Aggregate Cost Breakdown ──────────── */}
           {currentPlan && (
-            <div className="border-b border-gray-800 pb-4">
+            <CollapsibleSection title="Cost Breakdown" defaultOpen>
               <CostBreakdownBars metrics={currentPlan.averageMetrics} />
 
               {/* Quick stats row */}
@@ -141,7 +141,7 @@ export function PerformanceAnalysisPanel({
                   />
                 )}
               </div>
-            </div>
+            </CollapsibleSection>
           )}
 
           {/* ─── Section 3: Compare Mode ──────────────────────── */}
@@ -200,20 +200,12 @@ export function PerformanceAnalysisPanel({
 
           {/* ─── Section 4: Candidate Layout Previews ─────────── */}
           {hasCandidates && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-[11px] text-gray-400 font-medium uppercase tracking-wider">
-                  Candidate Layout Comparison
-                </h4>
-                <button
-                  className="text-[10px] text-cyan-400 hover:text-cyan-300 transition-colors"
-                  onClick={() => setViewAllOpen(true)}
-                >
-                  View All
-                </button>
-              </div>
-
-              {/* Candidate grid - show up to 3 cards */}
+            <CollapsibleSection
+              title="Candidates"
+              defaultOpen
+              onEnlarge={() => setViewAllOpen(true)}
+            >
+              {/* Candidate grid - show up to 4 cards */}
               <div className="grid grid-cols-2 gap-2">
                 {state.candidates.slice(0, 4).map((candidate, idx) => (
                   <CandidatePreviewCard
@@ -239,7 +231,7 @@ export function PerformanceAnalysisPanel({
                   />
                 ))}
               </div>
-            </div>
+            </CollapsibleSection>
           )}
 
           {/* Saved variants */}
@@ -291,6 +283,48 @@ function QuickStat({ label, value, quality }: {
     <div className={`px-2 py-1 rounded border text-[10px] ${style}`}>
       <span className="text-[9px] text-gray-500 uppercase mr-1">{label}</span>
       <span className="font-mono">{value}</span>
+    </div>
+  );
+}
+
+function CollapsibleSection({
+  title,
+  children,
+  defaultOpen = true,
+  onEnlarge,
+}: {
+  title: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+  onEnlarge?: () => void;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border-b border-gray-800 pb-4">
+      <div className="flex items-center justify-between mb-2">
+        <button
+          className="flex items-center gap-1.5 text-[11px] text-gray-400 font-medium uppercase tracking-wider hover:text-gray-200 transition-colors"
+          onClick={() => setOpen(!open)}
+        >
+          <span className="text-[10px]">{open ? '\u25BE' : '\u25B8'}</span>
+          {title}
+        </button>
+        {onEnlarge && (
+          <button
+            className="w-5 h-5 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors rounded hover:bg-gray-800"
+            onClick={onEnlarge}
+            title="Expand"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 3 21 3 21 9" />
+              <polyline points="9 21 3 21 3 15" />
+              <line x1="21" y1="3" x2="14" y2="10" />
+              <line x1="3" y1="21" x2="10" y2="14" />
+            </svg>
+          </button>
+        )}
+      </div>
+      {open && children}
     </div>
   );
 }

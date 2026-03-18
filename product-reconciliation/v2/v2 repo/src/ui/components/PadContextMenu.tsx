@@ -17,16 +17,16 @@ interface PadContextMenuProps {
 }
 
 const FINGER_OPTIONS = [
-  { label: 'Left Thumb', value: 'L-Th' },
-  { label: 'Left Index', value: 'L-Ix' },
-  { label: 'Left Middle', value: 'L-Md' },
-  { label: 'Left Ring', value: 'L-Rg' },
-  { label: 'Left Pinky', value: 'L-Pk' },
-  { label: 'Right Thumb', value: 'R-Th' },
-  { label: 'Right Index', value: 'R-Ix' },
-  { label: 'Right Middle', value: 'R-Md' },
-  { label: 'Right Ring', value: 'R-Rg' },
-  { label: 'Right Pinky', value: 'R-Pk' },
+  { label: 'L1 (Thumb)', value: 'L-Th' },
+  { label: 'L2 (Index)', value: 'L-Ix' },
+  { label: 'L3 (Middle)', value: 'L-Md' },
+  { label: 'L4 (Ring)', value: 'L-Rg' },
+  { label: 'L5 (Pinky)', value: 'L-Pk' },
+  { label: 'R1 (Thumb)', value: 'R-Th' },
+  { label: 'R2 (Index)', value: 'R-Ix' },
+  { label: 'R3 (Middle)', value: 'R-Md' },
+  { label: 'R4 (Ring)', value: 'R-Rg' },
+  { label: 'R5 (Pinky)', value: 'R-Pk' },
 ];
 
 export function PadContextMenu({ padKey, x, y, onClose }: PadContextMenuProps) {

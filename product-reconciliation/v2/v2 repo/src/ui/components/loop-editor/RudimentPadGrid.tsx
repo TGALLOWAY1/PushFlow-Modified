@@ -14,7 +14,7 @@ import { type LanePadAssignment, type RudimentFingerAssignment } from '../../../
 // ============================================================================
 
 const FINGER_ABBREV: Record<string, string> = {
-  thumb: 'Th', index: 'Ix', middle: 'Md', ring: 'Rg', pinky: 'Pk',
+  thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
 };
 
 const HAND_COLORS = {
@@ -152,7 +152,7 @@ export function RudimentPadGrid({
           }}
           title={
             assignment
-              ? `[${row},${col}] ${assignment.laneName} | ${fingerInfo ? `${fingerInfo.hand[0].toUpperCase()}-${FINGER_ABBREV[fingerInfo.finger]}` : ''}`
+              ? `[${row},${col}] ${assignment.laneName} | ${fingerInfo ? `${fingerInfo.hand[0].toUpperCase()}${FINGER_ABBREV[fingerInfo.finger]}` : ''}`
               : `[${row},${col}] empty`
           }
         >
@@ -165,9 +165,9 @@ export function RudimentPadGrid({
               {/* Finger assignment */}
               <span className="block text-[6px] leading-none mt-0.5" style={{ color: textColor }}>
                 {activeFinger
-                  ? `${activeFinger.hand[0].toUpperCase()}-${FINGER_ABBREV[activeFinger.finger]}`
+                  ? `${activeFinger.hand[0].toUpperCase()}${FINGER_ABBREV[activeFinger.finger]}`
                   : fingerInfo
-                    ? `${fingerInfo.hand[0].toUpperCase()}-${FINGER_ABBREV[fingerInfo.finger]}`
+                    ? `${fingerInfo.hand[0].toUpperCase()}${FINGER_ABBREV[fingerInfo.finger]}`
                     : ''
                 }
               </span>

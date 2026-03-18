@@ -23,7 +23,7 @@ const MIN_ZOOM = 30;  // px per second minimum
 const MAX_ZOOM = 500; // px per second maximum
 
 const FINGER_ABBREV: Record<string, string> = {
-  thumb: 'Th', index: 'Ix', middle: 'Md', ring: 'Rg', pinky: 'Pk',
+  thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
 };
 
 const HAND_COLORS: Record<string, { bg: string; text: string }> = {

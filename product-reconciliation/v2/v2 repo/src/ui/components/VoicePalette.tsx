@@ -22,6 +22,53 @@ const COLOR_PALETTE = [
 export function VoicePalette() {
   const { state, dispatch } = useProject();
   const layout = getDisplayedLayout(state);
+  const [selectedStreamIds, setSelectedStreamIds] = useState<Set<string>>(new Set());
+
+  // Cmd+G to group selected streams
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'g' && selectedStreamIds.size > 0) {
+        e.preventDefault();
+        const group: LaneGroup = {
+          groupId: generateId('grp'),
+          name: `Group ${state.laneGroups.length + 1}`,
+          color: COLOR_PALETTE[state.laneGroups.length % COLOR_PALETTE.length],
+          orderIndex: state.laneGroups.length,
+          isCollapsed: false,
+        };
+        dispatch({ type: 'CREATE_LANE_GROUP', payload: group });
+        for (const streamId of selectedStreamIds) {
+          dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: streamId, groupId: group.groupId } });
+        }
+        setSelectedStreamIds(new Set());
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedStreamIds, state.laneGroups.length, dispatch]);
+
+  const handleStreamSelect = useCallback((streamId: string, e: React.MouseEvent) => {
+    if (e.metaKey || e.ctrlKey) {
+      setSelectedStreamIds(prev => {
+        const next = new Set(prev);
+        if (next.has(streamId)) next.delete(streamId);
+        else next.add(streamId);
+        return next;
+      });
+    } else if (e.shiftKey && selectedStreamIds.size > 0) {
+      // Shift-click: select range
+      const allIds = state.soundStreams.map(s => s.id);
+      const lastSelected = [...selectedStreamIds].pop()!;
+      const lastIdx = allIds.indexOf(lastSelected);
+      const currentIdx = allIds.indexOf(streamId);
+      const [start, end] = lastIdx < currentIdx ? [lastIdx, currentIdx] : [currentIdx, lastIdx];
+      const next = new Set(selectedStreamIds);
+      for (let i = start; i <= end; i++) next.add(allIds[i]);
+      setSelectedStreamIds(next);
+    } else {
+      setSelectedStreamIds(prev => prev.has(streamId) && prev.size === 1 ? new Set() : new Set([streamId]));
+    }
+  }, [selectedStreamIds, state.soundStreams]);
 
   // Build a map of which pads each stream occupies
   const streamPadLocations = useMemo(() => {
@@ -37,7 +84,7 @@ export function VoicePalette() {
 
   // Build per-stream solver assignment summary from analysisResult
   const solverSummary = useMemo(() => {
-    const map = new Map<string, { label: string; hand: string }>();
+    const map = new Map<string, { label: string; hand: string; finger: string }>();
     const fa = state.analysisResult?.executionPlan.fingerAssignments;
     if (!fa || fa.length === 0) return map;
 
@@ -52,14 +99,24 @@ export function VoicePalette() {
       if (!streamId || a.assignedHand === 'Unplayable') continue;
       const handChar = a.assignedHand === 'left' ? 'L' : 'R';
       const FINGER_SHORT: Record<string, string> = {
-        thumb: 'Th', index: 'Ix', middle: 'Md', ring: 'Rg', pinky: 'Pk',
+        thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
       };
       const fingerStr = a.finger ? FINGER_SHORT[a.finger] ?? '' : '';
-      const key = fingerStr ? `${handChar}-${fingerStr}` : handChar;
+      const key = fingerStr ? `${handChar}${fingerStr}` : handChar;
 
       const streamCounts = counts.get(streamId) ?? new Map<string, number>();
       streamCounts.set(key, (streamCounts.get(key) ?? 0) + 1);
       counts.set(streamId, streamCounts);
+    }
+
+    // Also track which raw finger name is most common per stream
+    const fingerCounts = new Map<string, Map<string, number>>();
+    for (const a of fa) {
+      const streamId = noteToStreamId.get(a.noteNumber);
+      if (!streamId || a.assignedHand === 'Unplayable' || !a.finger) continue;
+      const sc = fingerCounts.get(streamId) ?? new Map<string, number>();
+      sc.set(a.finger, (sc.get(a.finger) ?? 0) + 1);
+      fingerCounts.set(streamId, sc);
     }
 
     for (const [streamId, streamCounts] of counts) {
@@ -68,8 +125,17 @@ export function VoicePalette() {
       for (const [key, count] of streamCounts) {
         if (count > bestCount) { best = key; bestCount = count; }
       }
+      // Find most common raw finger name
+      let bestFinger = '';
+      let bestFingerCount = 0;
+      const fc = fingerCounts.get(streamId);
+      if (fc) {
+        for (const [finger, count] of fc) {
+          if (count > bestFingerCount) { bestFinger = finger; bestFingerCount = count; }
+        }
+      }
       if (best) {
-        map.set(streamId, { label: best, hand: best.startsWith('L') ? 'left' : 'right' });
+        map.set(streamId, { label: best, hand: best.startsWith('L') ? 'left' : 'right', finger: bestFinger });
       }
     }
     return map;
@@ -122,17 +188,6 @@ export function VoicePalette() {
     e.dataTransfer.effectAllowed = 'copyMove';
   };
 
-  const handleCreateGroup = useCallback(() => {
-    const group: LaneGroup = {
-      groupId: generateId('grp'),
-      name: `Group ${state.laneGroups.length + 1}`,
-      color: COLOR_PALETTE[state.laneGroups.length % COLOR_PALETTE.length],
-      orderIndex: state.laneGroups.length,
-      isCollapsed: false,
-    };
-    dispatch({ type: 'CREATE_LANE_GROUP', payload: group });
-  }, [dispatch, state.laneGroups.length]);
-
   const renderStreamRow = (stream: SoundStream) => (
     <StreamRow
       key={stream.id}
@@ -140,9 +195,10 @@ export function VoicePalette() {
       padKeys={streamPadLocations.get(stream.id) ?? []}
       voiceConstraint={state.voiceConstraints[stream.id]}
       solverAssignment={solverSummary.get(stream.id)}
-      analysisStale={state.analysisStale}
       groups={state.laneGroups}
       currentGroupId={streamGroupMap.get(stream.id) ?? null}
+      isSelected={selectedStreamIds.has(stream.id)}
+      onSelect={handleStreamSelect}
       onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: stream.id })}
       onSolo={() => dispatch({ type: 'SOLO_STREAM', payload: stream.id })}
       onDragStart={handleDragStart}
@@ -162,22 +218,7 @@ export function VoicePalette() {
   );
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-          Sounds
-        </h3>
-        <button
-          className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors px-1.5 py-0.5 rounded hover:bg-gray-800"
-          onClick={handleCreateGroup}
-          title="Create new group"
-        >
-          + Group
-        </button>
-      </div>
-
-      {/* Column headers for constraint dropdowns */}
-      <ConstraintColumnHeaders />
+    <div className="space-y-1">
 
       {/* Grouped streams */}
       {sortedGroups.map(group => {
@@ -230,6 +271,12 @@ export function VoicePalette() {
 
       {state.soundStreams.length === 0 && (
         <p className="text-xs text-gray-500 py-2">No sounds loaded.</p>
+      )}
+
+      {selectedStreamIds.size > 0 && (
+        <div className="text-[10px] text-blue-400 pt-1">
+          {selectedStreamIds.size} selected — press <kbd className="px-1 py-0.5 rounded bg-gray-800 text-gray-300 font-mono text-[9px]">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+G</kbd> to group
+        </div>
       )}
     </div>
   );
@@ -344,9 +391,10 @@ function StreamRow({
   padKeys,
   voiceConstraint,
   solverAssignment,
-  analysisStale,
   groups,
   currentGroupId,
+  isSelected,
+  onSelect,
   onToggleMute,
   onSolo,
   onDragStart,
@@ -357,8 +405,9 @@ function StreamRow({
   stream: SoundStream;
   padKeys: string[];
   voiceConstraint?: { hand?: 'left' | 'right'; finger?: string };
-  solverAssignment?: { label: string; hand: string };
-  analysisStale: boolean;
+  solverAssignment?: { label: string; hand: string; finger: string };
+  isSelected: boolean;
+  onSelect: (streamId: string, e: React.MouseEvent) => void;
   groups: LaneGroup[];
   currentGroupId: string | null;
   onToggleMute: () => void;
@@ -368,6 +417,7 @@ function StreamRow({
   onChangeColor: (color: string) => void;
   onSetGroup: (groupId: string | null) => void;
 }) {
+  const solverFinger = solverAssignment?.finger ?? null;
   const [showColorPicker, setShowColorPicker] = useState(false);
   const colorRef = useRef<HTMLDivElement>(null);
 
@@ -386,12 +436,14 @@ function StreamRow({
     <div
       className={`
         flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs
-        border border-transparent hover:border-gray-700
+        border hover:border-gray-700
         cursor-grab active:cursor-grabbing active:scale-95 transition-transform duration-150
         ${stream.muted ? 'opacity-40' : ''}
+        ${isSelected ? 'border-blue-500/50 bg-blue-500/10' : 'border-transparent'}
       `}
       draggable
       onDragStart={e => onDragStart(e, stream)}
+      onClick={e => onSelect(stream.id, e)}
     >
       {/* Color swatch (click to open color + group popover) */}
       <div className="relative flex-shrink-0" ref={colorRef}>
@@ -451,11 +503,6 @@ function StreamRow({
         {stream.name}
       </span>
 
-      {/* Event count */}
-      <span className="text-gray-500 text-[10px] flex-shrink-0">
-        {stream.events.length}x
-      </span>
-
       {/* Pad location(s) */}
       {padKeys.length > 0 && (
         <span className="text-[10px] text-gray-500 font-mono flex-shrink-0">
@@ -464,53 +511,41 @@ function StreamRow({
         </span>
       )}
 
-      {/* Solver assignment pill */}
-      {solverAssignment && (
-        <span
-          className={`text-[9px] font-mono px-1 py-0.5 rounded flex-shrink-0 ${
-            analysisStale ? 'text-gray-600 bg-gray-800/30' : 'text-sky-300/70 bg-sky-500/10'
-          }`}
-          title={`Solver: ${solverAssignment.label}${analysisStale ? ' (stale)' : ''}`}
-        >
-          {solverAssignment.label}
-        </span>
-      )}
-
-      {/* Hand constraint */}
+      {/* Hand constraint (populated from solver when no user constraint set) */}
       <select
         className="bg-gray-800 border border-gray-700 text-[10px] text-gray-400 rounded px-0.5 py-0.5 w-7 flex-shrink-0"
-        value={voiceConstraint?.hand ?? ''}
+        value={voiceConstraint?.hand ?? solverAssignment?.hand ?? ''}
         onChange={e => onSetConstraint(
           e.target.value === '' ? null : e.target.value as 'left' | 'right',
           undefined
         )}
         onClick={e => e.stopPropagation()}
         onMouseDown={e => e.stopPropagation()}
-        title="Hand constraint"
+        title="Hand assignment"
       >
         <option value="">-</option>
         <option value="left">L</option>
         <option value="right">R</option>
       </select>
 
-      {/* Finger constraint */}
+      {/* Finger constraint (populated from solver when no user constraint set) */}
       <select
         className="bg-gray-800 border border-gray-700 text-[10px] text-gray-400 rounded px-0.5 py-0.5 w-9 flex-shrink-0"
-        value={voiceConstraint?.finger ?? ''}
+        value={voiceConstraint?.finger ?? solverFinger ?? ''}
         onChange={e => onSetConstraint(
           undefined,
           e.target.value === '' ? null : e.target.value
         )}
         onClick={e => e.stopPropagation()}
         onMouseDown={e => e.stopPropagation()}
-        title="Finger constraint"
+        title="Finger assignment"
       >
         <option value="">-</option>
-        <option value="thumb">Th</option>
-        <option value="index">Ix</option>
-        <option value="middle">Md</option>
-        <option value="ring">Rg</option>
-        <option value="pinky">Pk</option>
+        <option value="thumb">1</option>
+        <option value="index">2</option>
+        <option value="middle">3</option>
+        <option value="ring">4</option>
+        <option value="pinky">5</option>
       </select>
 
       {/* Solo */}
@@ -547,23 +582,3 @@ function StreamRow({
   );
 }
 
-function ConstraintColumnHeaders() {
-  return (
-    <div className="flex items-center gap-1.5 px-2 py-0.5">
-      {/* Spacer for color swatch */}
-      <span className="w-2.5 flex-shrink-0" />
-      {/* Spacer for name */}
-      <span className="flex-1" />
-      {/* Spacer for event count */}
-      <span className="text-[10px] flex-shrink-0" />
-      {/* Spacer for pad location */}
-      <span className="flex-shrink-0" />
-      {/* Hand label */}
-      <span className="text-[8px] text-gray-600 w-7 text-center flex-shrink-0">Hand</span>
-      {/* Finger label */}
-      <span className="text-[8px] text-gray-600 w-9 text-center flex-shrink-0">Finger</span>
-      {/* Mute label */}
-      <span className="text-[8px] text-gray-600 w-5 text-center flex-shrink-0" />
-    </div>
-  );
-}

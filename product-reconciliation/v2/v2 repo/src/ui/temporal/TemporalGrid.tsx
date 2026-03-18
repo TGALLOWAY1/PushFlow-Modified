@@ -24,11 +24,11 @@ const HAND_COLORS = {
 };
 
 const FINGER_LABELS: Record<FingerType, string> = {
-  thumb: 'Th',
-  index: 'Ix',
-  middle: 'Md',
+  thumb: '1',
+  index: '2',
+  middle: '3',
   ring: 'Rn',
-  pinky: 'Pk',
+  pinky: '5',
 };
 
 const ALL_FINGERS: FingerType[] = ['thumb', 'index', 'middle', 'ring', 'pinky'];
