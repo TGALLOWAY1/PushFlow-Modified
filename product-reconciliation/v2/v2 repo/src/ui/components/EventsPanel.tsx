@@ -115,7 +115,13 @@ export function derivePerformanceMoments(
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function EventsPanel() {
+export function EventsPanel({
+  onionSkin,
+  onToggleOnionSkin,
+}: {
+  onionSkin: boolean;
+  onToggleOnionSkin: () => void;
+}) {
   const { state, dispatch } = useProject();
   const activeStreams = getActiveStreams(state);
   const listRef = useRef<HTMLDivElement>(null);
@@ -195,14 +201,29 @@ export function EventsPanel() {
         <span className="text-[10px] text-gray-500">
           {moments.length} events
         </span>
-        {selectedMomentIdx !== null && (
+        <div className="flex items-center gap-1.5">
           <button
-            className="text-[10px] text-gray-500 hover:text-gray-300"
-            onClick={() => dispatch({ type: 'SELECT_EVENT', payload: null })}
+            className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${
+              onionSkin ? 'text-sky-300 bg-sky-500/15' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-700/50'
+            }`}
+            onClick={onToggleOnionSkin}
+            title={onionSkin ? 'Disable onion skin' : 'Show previous/next event layers on grid'}
           >
-            Deselect
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <circle cx="8" cy="8" r="3" />
+              <circle cx="8" cy="8" r="5.5" opacity="0.5" />
+              <circle cx="8" cy="8" r="7.5" opacity="0.25" />
+            </svg>
           </button>
-        )}
+          {selectedMomentIdx !== null && (
+            <button
+              className="text-[10px] text-gray-500 hover:text-gray-300"
+              onClick={() => dispatch({ type: 'SELECT_EVENT', payload: null })}
+            >
+              Deselect
+            </button>
+          )}
+        </div>
       </div>
 
       <div ref={listRef} className="overflow-y-auto space-y-0.5" style={{ maxHeight: 'calc(100vh - 280px)' }}>
