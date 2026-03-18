@@ -228,6 +228,9 @@ export type ProjectAction =
   | { type: 'SELECT_CANDIDATE'; payload: string | null }
   | { type: 'MARK_ANALYSIS_STALE' }
 
+  // Instrument config
+  | { type: 'SET_INSTRUMENT_CONFIG'; payload: Partial<InstrumentConfig> }
+
   // Ephemeral UI
   | { type: 'SELECT_EVENT'; payload: number | null }
   | { type: 'SELECT_MOMENT'; payload: number | null }
@@ -338,6 +341,14 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
     case 'RESET':
       return createEmptyProjectState();
+
+    case 'SET_INSTRUMENT_CONFIG':
+      return {
+        ...state,
+        updatedAt: new Date().toISOString(),
+        instrumentConfig: { ...state.instrumentConfig, ...action.payload },
+        analysisStale: true,
+      };
 
     // -- Sound streams --
 

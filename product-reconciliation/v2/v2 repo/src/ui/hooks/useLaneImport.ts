@@ -119,12 +119,27 @@ export function useLaneImport() {
           payload: { lanes, sourceFile, group },
         });
 
+        // Update instrumentConfig.bottomLeftNote so the grid aligns with
+        // the imported MIDI note range. Without this, notes below the default
+        // bottomLeftNote (36) would fall outside the grid and be marked unmapped.
+        if (projectData.minNoteNumber !== null) {
+          const currentBottom = state.instrumentConfig.bottomLeftNote;
+          // Only lower the bottom note — don't raise it if existing content
+          // already uses lower pitches.
+          if (projectData.minNoteNumber < currentBottom) {
+            dispatch({
+              type: 'SET_INSTRUMENT_CONFIG',
+              payload: { bottomLeftNote: projectData.minNoteNumber },
+            });
+          }
+        }
+
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to parse MIDI file';
         dispatch({ type: 'SET_ERROR', payload: `Import error (${file.name}): ${message}` });
       }
     }
-  }, [state.performanceLanes, state.laneGroups, dispatch]);
+  }, [state.performanceLanes, state.laneGroups, state.instrumentConfig, dispatch]);
 
   return { importFiles };
 }
