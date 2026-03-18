@@ -148,7 +148,7 @@ export class AnnealingSolver implements SolverStrategy {
    * based on the config's useZoneTransfer flag.
    */
   private applyMutation(layout: Layout, rng: () => number): Layout {
-    if (this.annealingConfig.useZoneTransfer && rng() < 0.16) {
+    if (this.annealingConfig.useZoneTransfer && rng() < 0.05) {
       return applyZoneTransferMutation(layout, rng);
     }
     return applyRandomMutation(layout, rng);

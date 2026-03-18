@@ -408,25 +408,21 @@ export async function generateCandidates(
   // Filter trivial duplicates
   const [filtered, duplicatesRemoved] = filterTrivialDuplicates(candidates);
 
-  // Filter out candidates that violate hard constraints (Unplayable assignments)
+  // Filter candidates with excessive unplayable assignments (>25% of events).
+  // The previous strict filter (any unplayable → reject) was overly aggressive
+  // and discarded valid candidates for simple patterns. The beam solver already
+  // handles hand/zone assignment, so we don't second-guess zone violations here.
   const valid = filtered.filter(c => {
-    if (c.executionPlan.unplayableCount > 0) return false;
-    // Check zone violations: left hand should not be on right-only pads and vice versa
-    for (const a of c.executionPlan.fingerAssignments) {
-      if (a.assignedHand === 'Unplayable') return false;
-      if (a.col === undefined) continue;
-      // Left hand valid: cols 0-4, Right hand valid: cols 3-7
-      if (a.assignedHand === 'left' && a.col > 4) return false;
-      if (a.assignedHand === 'right' && a.col < 3) return false;
-      // Thumb topology: for left hand thumb should be on lower row than other fingers
-      // For right hand same — but this is hard to check post-hoc without full grip context
-      // so we only filter the obvious zone violations here
-    }
-    return true;
+    const totalEvents = c.executionPlan.fingerAssignments.length;
+    if (totalEvents === 0) return true;
+    const unplayableRatio = c.executionPlan.unplayableCount / totalEvents;
+    return unplayableRatio <= 0.25;
   });
 
-  // If all candidates were filtered, keep the best one anyway (least violations)
-  const finalCandidates = valid.length > 0 ? valid : filtered.slice(0, 1);
+  // If all candidates were filtered, keep the best one (lowest score = best)
+  const finalCandidates = valid.length > 0
+    ? valid
+    : [...filtered].sort((a, b) => a.executionPlan.score - b.executionPlan.score).slice(0, 1);
 
   // Build generation summary (includes low-diversity explanation)
   const summary = buildGenerationSummary(

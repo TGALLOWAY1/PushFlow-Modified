@@ -217,56 +217,65 @@ export function VoicePalette() {
     />
   );
 
+  const hasGroups = sortedGroups.length > 0;
+
   return (
     <div className="space-y-1">
 
-      {/* Grouped streams */}
-      {sortedGroups.map(group => {
-        const streams = groupedStreams.get(group.groupId) ?? [];
-        if (streams.length === 0) return (
-          <GroupHeader
-            key={group.groupId}
-            group={group}
-            count={0}
-            onToggleCollapse={() => dispatch({ type: 'TOGGLE_LANE_GROUP_COLLAPSE', payload: group.groupId })}
-            onRename={(name) => dispatch({ type: 'RENAME_LANE_GROUP', payload: { groupId: group.groupId, name } })}
-            onChangeColor={(color) => dispatch({ type: 'SET_LANE_GROUP_COLOR', payload: { groupId: group.groupId, color } })}
-            onDelete={() => dispatch({ type: 'DELETE_LANE_GROUP', payload: group.groupId })}
-          />
-        );
-        return (
-          <div key={group.groupId} className="space-y-0.5">
-            <GroupHeader
-              group={group}
-              count={streams.length}
-              onToggleCollapse={() => dispatch({ type: 'TOGGLE_LANE_GROUP_COLLAPSE', payload: group.groupId })}
-              onRename={(name) => dispatch({ type: 'RENAME_LANE_GROUP', payload: { groupId: group.groupId, name } })}
-              onChangeColor={(color) => dispatch({ type: 'SET_LANE_GROUP_COLOR', payload: { groupId: group.groupId, color } })}
-              onDelete={() => dispatch({ type: 'DELETE_LANE_GROUP', payload: group.groupId })}
-            />
-            {!group.isCollapsed && streams.map(renderStreamRow)}
-          </div>
-        );
-      })}
+      {hasGroups ? (
+        <>
+          {/* Grouped streams */}
+          {sortedGroups.map(group => {
+            const streams = groupedStreams.get(group.groupId) ?? [];
+            if (streams.length === 0) return (
+              <GroupHeader
+                key={group.groupId}
+                group={group}
+                count={0}
+                onToggleCollapse={() => dispatch({ type: 'TOGGLE_LANE_GROUP_COLLAPSE', payload: group.groupId })}
+                onRename={(name) => dispatch({ type: 'RENAME_LANE_GROUP', payload: { groupId: group.groupId, name } })}
+                onChangeColor={(color) => dispatch({ type: 'SET_LANE_GROUP_COLOR', payload: { groupId: group.groupId, color } })}
+                onDelete={() => dispatch({ type: 'DELETE_LANE_GROUP', payload: group.groupId })}
+              />
+            );
+            return (
+              <div key={group.groupId} className="space-y-0.5">
+                <GroupHeader
+                  group={group}
+                  count={streams.length}
+                  onToggleCollapse={() => dispatch({ type: 'TOGGLE_LANE_GROUP_COLLAPSE', payload: group.groupId })}
+                  onRename={(name) => dispatch({ type: 'RENAME_LANE_GROUP', payload: { groupId: group.groupId, name } })}
+                  onChangeColor={(color) => dispatch({ type: 'SET_LANE_GROUP_COLOR', payload: { groupId: group.groupId, color } })}
+                  onDelete={() => dispatch({ type: 'DELETE_LANE_GROUP', payload: group.groupId })}
+                />
+                {!group.isCollapsed && streams.map(renderStreamRow)}
+              </div>
+            );
+          })}
 
-      {/* Ungrouped unassigned streams */}
-      {ungroupedUnassigned.length > 0 && (
-        <div className="space-y-1">
-          <span className="text-[10px] text-gray-500">
-            Unassigned ({ungroupedUnassigned.length})
-          </span>
-          {ungroupedUnassigned.map(renderStreamRow)}
-        </div>
-      )}
+          {/* Ungrouped unassigned streams */}
+          {ungroupedUnassigned.length > 0 && (
+            <div className="space-y-1">
+              <span className="text-[10px] text-gray-500">
+                Unassigned ({ungroupedUnassigned.length})
+              </span>
+              {ungroupedUnassigned.map(renderStreamRow)}
+            </div>
+          )}
 
-      {/* Ungrouped assigned streams */}
-      {ungroupedAssigned.length > 0 && (
-        <div className="space-y-1">
-          <span className="text-[10px] text-gray-500">
-            On Grid ({ungroupedAssigned.length})
-          </span>
-          {ungroupedAssigned.map(renderStreamRow)}
-        </div>
+          {/* Ungrouped assigned streams */}
+          {ungroupedAssigned.length > 0 && (
+            <div className="space-y-1">
+              <span className="text-[10px] text-gray-500">
+                On Grid ({ungroupedAssigned.length})
+              </span>
+              {ungroupedAssigned.map(renderStreamRow)}
+            </div>
+          )}
+        </>
+      ) : (
+        /* No groups — flat list of all streams, no section headers */
+        state.soundStreams.map(renderStreamRow)
       )}
 
       {state.soundStreams.length === 0 && (
