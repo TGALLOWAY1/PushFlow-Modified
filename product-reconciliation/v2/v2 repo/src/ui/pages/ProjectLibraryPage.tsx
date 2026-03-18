@@ -2,15 +2,13 @@
  * ProjectLibraryPage.
  *
  * Browse, create, open, and manage projects.
- * Demo projects always listed with "Demo" badge.
  * MIDI import creates a new project with sound naming step.
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { type ProjectState, type SoundStream, type SoundEvent, createEmptyProjectState } from '../state/projectState';
 import { listProjects, saveProject, deleteProject, removeFromIndex, clearProjectIndex, type ProjectLibraryEntry } from '../persistence/projectStorage';
-import { getDemoProjects, createDemoCopy } from '../fixtures/demoProjects';
 import { parseMidiFileToProject } from '../../import/midiImport';
 import { analyzePerformance } from '../../engine/structure/performanceAnalyzer';
 import { generateId } from '../../utils/idGenerator';
@@ -48,8 +46,6 @@ export function ProjectLibraryPage() {
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const demoProjects = useMemo(() => getDemoProjects(), []);
-
   // ---- MIDI Import ----
 
   const handleFile = useCallback(async (file: File) => {
@@ -184,13 +180,6 @@ export function ProjectLibraryPage() {
   }, [navigate]);
 
   // ---- Project Actions ----
-
-  const handleOpenDemo = useCallback((demo: ProjectState) => {
-    const copy = createDemoCopy(demo);
-    saveProject(copy);
-    setSavedProjects(listProjects());
-    navigate(`/project/${copy.id}`);
-  }, [navigate]);
 
   const handleOpenProject = useCallback((id: string) => {
     navigate(`/project/${id}`);
@@ -349,30 +338,6 @@ export function ProjectLibraryPage() {
         </div>
       )}
 
-      {/* Demo Projects */}
-      <div className="space-y-2">
-        <h2 className="text-sm font-medium text-gray-400">Demo Projects</h2>
-        <div className="grid grid-cols-2 gap-2">
-          {demoProjects.map(demo => (
-            <button
-              key={demo.id}
-              className="p-3 rounded-lg bg-gray-800/50 border border-gray-700 hover:border-gray-500 text-left transition-colors"
-              onClick={() => handleOpenDemo(demo)}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-sm font-medium text-gray-200">{demo.name}</span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-medium">
-                  DEMO
-                </span>
-              </div>
-              <div className="text-[11px] text-gray-500">
-                {demo.soundStreams.length} sounds — {demo.soundStreams.map(s => s.name).join(', ')}
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Saved Projects */}
       {savedProjects.length > 0 && (
         <div className="space-y-2">
@@ -397,11 +362,6 @@ export function ProjectLibraryPage() {
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-gray-200">{entry.name}</span>
-                    {entry.isDemo && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-medium">
-                        DEMO
-                      </span>
-                    )}
                     {entry.difficulty && (
                       <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
                         entry.difficulty === 'Easy' ? 'bg-green-500/15 text-green-400' :

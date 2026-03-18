@@ -196,7 +196,6 @@ function buildFeasibilityDemo(scenario: FeasibilityDemoScenario): ProjectState {
     ...base,
     id: projectId,
     name: scenario.name,
-    isDemo: true,
     soundStreams,
     tempo: 120,
     activeLayout,
