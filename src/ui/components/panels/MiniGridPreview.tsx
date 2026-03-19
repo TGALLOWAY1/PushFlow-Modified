@@ -18,7 +18,7 @@ interface MiniGridPreviewProps {
 }
 
 export function MiniGridPreview({ layout, soundStreams, size = 1, highlighted = false }: MiniGridPreviewProps) {
-  const cellSize = Math.round(14 * size);
+  const cellSize = Math.round(18 * size);
   const gap = 1;
   const gridSize = cellSize * 8 + gap * 7;
 
