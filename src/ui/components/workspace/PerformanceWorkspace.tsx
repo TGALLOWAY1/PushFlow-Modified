@@ -9,7 +9,7 @@
  * Layout: full-viewport 3-column with unified top toolbar.
  * - Left: tabbed Sounds/Events panel
  * - Center: Grid + Timeline stacked
- * - Right: ActiveLayoutSummary + LayoutOptionsPanel
+ * - Right: tabbed Costs/Layouts panel (mirrors left panel structure)
  * - Bottom drawer: Pattern Composer (collapsible)
  */
 
@@ -33,6 +33,7 @@ import { CompareModal } from '../panels/CompareModal';
 import { MoveTracePanel } from '../panels/MoveTracePanel';
 
 type LeftPanelTab = 'sounds' | 'events';
+type RightPanelTab = 'costs' | 'layouts';
 type TimelineTab = 'timeline' | 'composer';
 
 // Panel width constraints
@@ -61,6 +62,7 @@ function PerformanceWorkspaceInner() {
 
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [leftTab, setLeftTab] = useState<LeftPanelTab>('sounds');
+  const [rightTab, setRightTab] = useState<RightPanelTab>('costs');
   const [onionSkin, setOnionSkin] = useState(false);
   const [timelineTab, setTimelineTab] = useState<TimelineTab>('timeline');
 
@@ -316,21 +318,53 @@ function PerformanceWorkspaceInner() {
           <div className="w-px h-8 bg-gray-700 group-hover:bg-blue-400 transition-colors" />
         </div>
 
-        {/* Right Column: Summary + Options + Cost Evaluation + Trace */}
-        <div className="flex-shrink-0 flex flex-col gap-3 min-h-0 overflow-y-auto" style={{ width: rightWidth }}>
-          <ActiveLayoutSummary />
-          <LayoutOptionsPanel
-            selectedForCompare={selectedForCompare}
-            onToggleCompare={handleToggleCompare}
-            onCompare={handleOpenCompare}
-          />
-
-          {/* Move Trace section */}
-          {state.moveHistory && state.moveHistory.length > 0 && (
-            <div className="rounded-lg glass-panel p-3">
-              <MoveTracePanel moves={state.moveHistory} />
+        {/* Right Column: Tabbed Costs / Layouts */}
+        <div className="flex-shrink-0 flex flex-col min-h-0" style={{ width: rightWidth }}>
+          <div className="rounded-lg glass-panel flex flex-col flex-1 min-h-0">
+            {/* Tab header */}
+            <div className="flex items-center border-b border-gray-800 flex-shrink-0">
+              <button
+                className={`flex-1 px-3 py-2 text-[11px] font-medium transition-colors ${
+                  rightTab === 'costs'
+                    ? 'text-gray-200 bg-gray-800/50 border-b-2 border-blue-500'
+                    : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/30'
+                }`}
+                onClick={() => setRightTab('costs')}
+              >
+                Costs
+              </button>
+              <button
+                className={`flex-1 px-3 py-2 text-[11px] font-medium transition-colors ${
+                  rightTab === 'layouts'
+                    ? 'text-gray-200 bg-gray-800/50 border-b-2 border-blue-500'
+                    : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/30'
+                }`}
+                onClick={() => setRightTab('layouts')}
+              >
+                Layouts
+              </button>
             </div>
-          )}
+
+            {/* Tab content */}
+            <div className="overflow-y-auto flex-1 min-h-0">
+              {rightTab === 'costs' ? (
+                <ActiveLayoutSummary />
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <LayoutOptionsPanel
+                    selectedForCompare={selectedForCompare}
+                    onToggleCompare={handleToggleCompare}
+                    onCompare={handleOpenCompare}
+                  />
+                  {state.moveHistory && state.moveHistory.length > 0 && (
+                    <div className="p-3">
+                      <MoveTracePanel moves={state.moveHistory} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
