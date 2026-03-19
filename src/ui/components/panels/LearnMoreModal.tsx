@@ -552,13 +552,13 @@ function ConstraintsSection() {
   return (
     <div className="space-y-5">
       <p className="text-xs text-gray-500">
-        Constraints guide the solver during candidate generation. Voice constraints are per-sound preferences.
+        Constraints guide the solver during candidate generation. Sound constraints are per-sound preferences.
         Placement locks pin a sound to a specific pad. Finger constraints assign a preferred finger to a pad.
       </p>
 
       {!hasAny && (
         <div className="text-xs text-gray-600 py-6 text-center">
-          No constraints set. Use the grid context menu or voice palette to add constraints.
+          No constraints set. Use the grid context menu or sounds panel to add constraints.
         </div>
       )}
 
@@ -566,7 +566,7 @@ function ConstraintsSection() {
       {voiceEntries.length > 0 && (
         <div>
           <h4 className="text-[11px] text-gray-400 font-medium uppercase tracking-wider mb-2">
-            Voice Constraints ({voiceEntries.length})
+            Sound Constraints ({voiceEntries.length})
           </h4>
           <div className="space-y-1.5">
             {voiceEntries.map(([streamId, constraint]) => (

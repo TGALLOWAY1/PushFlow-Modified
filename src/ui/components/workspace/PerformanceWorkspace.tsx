@@ -54,7 +54,7 @@ export function PerformanceWorkspace() {
 function PerformanceWorkspaceInner() {
   const { state, dispatch } = useProject();
   const navigate = useNavigate();
-  const { generateFull, calculateCost, generationProgress, canGenerate, generateDisabledReason } = useAutoAnalysis();
+  const { generateFull, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason } = useAutoAnalysis();
   useKeyboardShortcuts();
   const { settings: viewSettings } = useViewSettings();
 
@@ -154,6 +154,7 @@ function PerformanceWorkspaceInner() {
         onNavigateLibrary={() => navigate('/')}
         generateFull={handleGenerate}
         generationProgress={generationProgress}
+        analysisPhase={analysisPhase}
         canGenerate={canGenerate}
         generateDisabledReason={generateDisabledReason ?? null}
         compareCount={selectedForCompare.size}

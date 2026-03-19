@@ -146,23 +146,14 @@ export function ActiveLayoutSummary() {
             </div>
           )}
 
-          {/* Feasibility */}
+          {/* Three-layer cost breakdown: feasibility + ergonomics + difficulty */}
           {currentPlan && (
-            <div className="flex items-center gap-2 text-[10px]">
-              <span className={`w-2 h-2 rounded-full ${
-                currentPlan.unplayableCount === 0 ? 'bg-green-400' : 'bg-red-400'
-              }`} />
-              <span className="text-gray-400">
-                {currentPlan.unplayableCount === 0
-                  ? 'All events playable'
-                  : `${currentPlan.unplayableCount} unplayable event${currentPlan.unplayableCount !== 1 ? 's' : ''}`}
-              </span>
-            </div>
-          )}
-
-          {/* Cost breakdown bars */}
-          {currentPlan && (
-            <CostBreakdownBars metrics={currentPlan.averageMetrics} />
+            <CostBreakdownBars
+              metrics={currentPlan.averageMetrics}
+              diagnostics={currentPlan.diagnostics}
+              hardCount={currentPlan.hardCount}
+              unplayableCount={currentPlan.unplayableCount}
+            />
           )}
 
           {/* Event difficulty chart (collapsible) */}

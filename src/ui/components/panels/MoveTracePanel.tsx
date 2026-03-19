@@ -229,7 +229,7 @@ function MoveRow({
       {isExpanded && (
         <div className="mt-1.5 pt-1.5 border-t border-gray-700/50 space-y-1 text-[10px] text-gray-500">
           {move.affectedVoice && (
-            <div>Voice: <span className="text-gray-400">{move.affectedVoice}</span></div>
+            <div>Sound: <span className="text-gray-400">{move.affectedVoice}</span></div>
           )}
           {move.affectedPad && (
             <div>Pad: <span className="text-gray-400">{move.affectedPad}</span></div>

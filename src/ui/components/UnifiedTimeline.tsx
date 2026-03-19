@@ -349,7 +349,7 @@ export function UnifiedTimeline() {
 
         {/* Info */}
         <span className="text-[11px] text-gray-500">
-          {visibleStreams.length} voices
+          {visibleStreams.length} sounds
         </span>
 
         <div className="flex-1" />
@@ -514,6 +514,16 @@ export function UnifiedTimeline() {
                     const pillBg = isRaw ? stream.color : style.bg;
                     const pillText = isRaw ? '#ffffff' : style.text;
 
+                    // Difficulty indicator: colored bottom border for analyzed events
+                    const difficulty = a.difficulty as string;
+                    const difficultyBorder = !isRaw && difficulty === 'Hard'
+                      ? '2px solid #f59e0b'
+                      : !isRaw && difficulty === 'Moderate'
+                        ? '2px solid #a3a3a3'
+                        : isUnplayable
+                          ? '2px solid #ef4444'
+                          : undefined;
+
                     return (
                       <button
                         key={`pill-${stream.id}-${ai}`}
@@ -527,6 +537,7 @@ export function UnifiedTimeline() {
                           backgroundColor: pillBg,
                           opacity: isSelected ? 1 : isRaw ? 0.5 : isUnplayable ? 0.6 : 0.85,
                           border: isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined,
+                          borderBottom: difficultyBorder,
                         }}
                         onClick={() => handleEventClick(a.eventIndex ?? ai)}
                         title={`${a.startTime.toFixed(3)}s${fingerLabel ? ` | ${handPrefix}-${fingerLabel}` : ''}${a.cost ? ` | cost: ${a.cost.toFixed(1)} | ${a.difficulty}` : ''}`}

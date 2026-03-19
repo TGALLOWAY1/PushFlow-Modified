@@ -367,6 +367,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const isDragOver = padKey === dragOverPad;
       const isDragSource = padKey === dragSourcePad;
       const constraint = layout?.fingerConstraints[padKey];
+      const isLocked = !!layout?.placementLocks[padKey];
       const isGreyedOut = hasEventSelected && !isSelected;
       const selectedFingerInfo = selectedPadFingers.get(padKey);
 
@@ -521,6 +522,16 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                 {(gridLabels?.showFingerAssignment ?? true) && fingerList.length > 0 && (
                   <span className="block text-[10px] font-medium leading-none mt-0.5" style={{ color: textColor }}>
                     {fingerList.join(' ')}
+                  </span>
+                )}
+
+                {/* Lock indicator */}
+                {isLocked && (
+                  <span
+                    className="absolute top-0 left-0 w-4 h-4 flex items-center justify-center text-[8px] text-amber-400"
+                    title="Placement locked"
+                  >
+                    &#x1F512;
                   </span>
                 )}
 
