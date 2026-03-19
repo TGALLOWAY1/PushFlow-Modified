@@ -129,8 +129,9 @@ export function UnifiedTimeline() {
     return () => observer.disconnect();
   }, []);
 
+  // Auto-fit: scale so MIDI content fills the entire container width
   const autoFitZoom = containerWidth > 0 && totalDuration > 0
-    ? Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, (containerWidth - 20) / totalDuration))
+    ? Math.max(1, containerWidth / totalDuration)
     : MIN_ZOOM;
   const zoom = zoomOverride ?? autoFitZoom;
 
@@ -234,7 +235,11 @@ export function UnifiedTimeline() {
     return lines;
   }, [minTime, maxTime, zoom, beatDuration]);
 
-  const timelineWidth = totalDuration * zoom + 100;
+  // In auto-fit mode, match container exactly; when manually zoomed, add padding
+  const isAutoFit = zoomOverride === null;
+  const timelineWidth = isAutoFit
+    ? Math.max(containerWidth, totalDuration * zoom)
+    : totalDuration * zoom + 100;
   const totalHeight = visibleStreams.length * TRACK_HEIGHT;
 
   // ─── Auto-scroll to selected event ────────────────────────────────────
@@ -351,10 +356,21 @@ export function UnifiedTimeline() {
             type="range"
             min={MIN_ZOOM}
             max={MAX_ZOOM}
-            value={zoom}
+            value={Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom))}
             onChange={e => setZoomOverride(Number(e.target.value))}
             className="w-20 h-1 accent-blue-500"
           />
+          <button
+            className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+              zoomOverride === null
+                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                : 'bg-gray-800 text-gray-500 hover:text-gray-300 border border-gray-700'
+            }`}
+            onClick={() => setZoomOverride(null)}
+            title="Auto-fit: fill container with MIDI content"
+          >
+            Fit
+          </button>
         </div>
 
         {/* Transport */}
