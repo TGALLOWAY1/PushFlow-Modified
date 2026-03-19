@@ -22,7 +22,7 @@ PushFlow-Modified/
 │   └── index.css                 # Global styles
 ├── test/                         # Test suite
 ├── docs/
-│   ├── canonical/                # CANONICAL SOURCE OF TRUTH (7 planning docs)
+│   ├── canonical/                # CANONICAL SOURCE OF TRUTH (4 canon docs)
 │   ├── product/                  # Terminology, milestones, bugs, source of truth
 │   └── screenshots/              # UI screenshots
 ├── archive/                      # Historical reference material — NOT active
@@ -33,7 +33,8 @@ PushFlow-Modified/
 │   ├── v2-docs/                  # V2-era product synthesis docs
 │   ├── cost-model-planning/      # Cost evaluation audit docs
 │   ├── tasks/                    # Historical task/audit docs
-│   └── superseded-workflow/      # Superseded workflow reports
+│   ├── superseded-workflow/      # Superseded workflow reports
+│   └── superseded-canonical/    # Old canonical docs (replaced by new canon)
 ├── package.json                  # Dependencies
 ├── tsconfig.json                 # TypeScript config
 ├── vite.config.ts                # Build config
@@ -45,30 +46,22 @@ PushFlow-Modified/
 
 ## Canonical Source Of Truth
 
-Read these first for any planning or implementation work:
-1. `docs/canonical/PUSHFLOW_WORKFLOW_AND_PRODUCT_CONTRACT.md`
-2. `docs/canonical/PUSHFLOW_DECISIONS_AND_OPEN_QUESTIONS.md`
-3. `docs/canonical/PUSHFLOW_ENGINE_TOUCHPOINTS_AND_IMPLEMENTATION_SEQUENCE.md`
-4. `docs/canonical/PUSHFLOW_SOURCE_ARTIFACT_INDEX.md`
+These four files are the **only** canon for PushFlow. Read them first for any planning or implementation work:
 
-Additional canonical planning documents:
-- `docs/canonical/EVENT_AND_FINGER_CONSTRAINT_CORRECTION_PLAN.md`
-- `docs/canonical/EVENT_MODEL_CORRECTION_PLAN.md`
-- `docs/canonical/MANUAL_EDIT_DECISION_MATRIX.csv`
-
-Engine reconciliation analysis (for V3 design decisions):
-- `archive/engine-comparison/V3_ENGINE_DECISIONS.md` — which V1/V2 approach to adopt
-- `archive/engine-comparison/ENGINE_SALVAGE_MATRIX.md` — what to salvage from each version
-- `archive/engine-comparison/COST_MODEL_COMPARISON.md` — cost function differences
-- Other comparison files cover architecture, constraints, optimization, testing, domain model, constants
-
-Cost evaluation audit (for cost model context):
-- `archive/cost-model-planning/CANONICAL_COST_EVALUATION_PLAN.md`
+1. `docs/canonical/PUSHFLOW_CANON.md` — product canon (workflow and state truths)
+2. `docs/canonical/PUSHFLOW_ENGINE_CONTRACT.md` — workflow-facing engine contract
+3. `docs/canonical/PUSHFLOW_SURFACE_FEATURES.md` — concrete feature specs per surface
+4. `docs/canonical/PUSHFLOW_TERMINOLOGY.md` — stable term definitions
 
 Rules:
-- The four canonical files are the only planning source of truth.
-- If older docs conflict with them, the canonical files win.
+- These four canon files are the **only** planning source of truth.
+- If any other document conflicts with them, the canon files win.
 - Do not treat archived artifacts as active requirements.
+- Do not use files in `archive/superseded-canonical/` — those are the old canonical docs, now replaced.
+
+Historical reference (not canon, use only for engine salvage context):
+- `archive/engine-comparison/` — V1 vs V2 engine analysis
+- `archive/cost-model-planning/` — cost evaluation audit
 
 ## Historical Reference Material
 

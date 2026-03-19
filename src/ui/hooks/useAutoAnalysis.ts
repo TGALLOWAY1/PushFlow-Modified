@@ -310,62 +310,71 @@ export function useAutoAnalysis() {
 
       // ── Route: Greedy or other pluggable optimizer ───────────
       if (method === 'greedy') {
-        setGenerationProgress('Greedy optimization: building layout and optimizing...');
-
         const optimizer = getOptimizer('greedy');
         const solverConstraints = buildSolverConstraints(performance, effectiveLayout);
         const neutralHandCenters = getNeutralHandCenters(effectiveLayout, state.instrumentConfig);
 
-        const result = await optimizer.optimize({
-          performance,
-          layout: effectiveLayout,
-          costToggles: state.costToggles,
-          constraints: solverConstraints,
-          config: {
-            engineConfig: state.engineConfig,
-            sections: state.sections,
-          },
-          evaluationConfig: {
-            restingPose: state.engineConfig.restingPose,
-            stiffness: state.engineConfig.stiffness,
-            instrumentConfig: state.instrumentConfig,
-            neutralHandCenters,
-          },
-          instrumentConfig: state.instrumentConfig,
-        });
+        const seeds = [0, 1, 2]; // 3 random restarts for diversity
+        const candidates = [];
 
-        // Store move history for the trace panel
-        if (result.moveHistory) {
-          dispatch({ type: 'SET_MOVE_HISTORY', payload: { moves: result.moveHistory, stopReason: result.stopReason } });
+        for (const seed of seeds) {
+          setGenerationProgress(`Greedy optimization: candidate ${seed + 1}/${seeds.length}...`);
+
+          const result = await optimizer.optimize({
+            performance,
+            layout: effectiveLayout,
+            costToggles: state.costToggles,
+            constraints: solverConstraints,
+            config: {
+              engineConfig: state.engineConfig,
+              sections: state.sections,
+              seed,
+            },
+            evaluationConfig: {
+              restingPose: state.engineConfig.restingPose,
+              stiffness: state.engineConfig.stiffness,
+              instrumentConfig: state.instrumentConfig,
+              neutralHandCenters,
+            },
+            instrumentConfig: state.instrumentConfig,
+          });
+
+          // Store move history for the first candidate (shown in trace panel)
+          if (seed === 0 && result.moveHistory) {
+            dispatch({ type: 'SET_MOVE_HISTORY', payload: { moves: result.moveHistory, stopReason: result.stopReason } });
+          }
+
+          const difficultyAnalysis = analyzeDifficulty(result.executionPlan, state.sections);
+          const tradeoffProfile = computeTradeoffProfile(result.executionPlan, difficultyAnalysis);
+          candidates.push({
+            id: generateId('greedy'),
+            layout: result.layout,
+            executionPlan: result.executionPlan,
+            difficultyAnalysis,
+            tradeoffProfile,
+            metadata: {
+              strategy: 'greedy-hill-climb',
+              seed,
+              optimizationMode: undefined,
+              optimizationSummary: `Greedy #${seed + 1}: ${result.telemetry.iterationsCompleted} improvements, ${result.telemetry.wallClockMs}ms`,
+            },
+          });
         }
 
-        // Convert to CandidateSolution for existing UI
-        const difficultyAnalysis = analyzeDifficulty(result.executionPlan, state.sections);
-        const tradeoffProfile = computeTradeoffProfile(result.executionPlan, difficultyAnalysis);
-        const candidate = {
-          id: generateId('greedy'),
-          layout: result.layout,
-          executionPlan: result.executionPlan,
-          difficultyAnalysis,
-          tradeoffProfile,
-          metadata: {
-            strategy: 'greedy-hill-climb',
-            seed: 0,
-            optimizationMode: undefined,
-            optimizationSummary: `Greedy: ${result.telemetry.iterationsCompleted} improvements, ${result.telemetry.wallClockMs}ms`,
-          },
-        };
+        // Sort by total cost (best first)
+        candidates.sort((a, b) => {
+          const aCost = a.executionPlan.averageMetrics?.total ?? Infinity;
+          const bCost = b.executionPlan.averageMetrics?.total ?? Infinity;
+          return aCost - bCost;
+        });
 
-        dispatch({ type: 'SET_CANDIDATES', payload: [candidate] });
-        dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidate });
-
-        // If the greedy optimizer produced a different layout, update the grid
-        if (Object.keys(result.layout.padToVoice).length > 0) {
-          dispatch({ type: 'BULK_ASSIGN_PADS', payload: result.layout.padToVoice });
+        dispatch({ type: 'SET_CANDIDATES', payload: candidates });
+        if (candidates.length > 0) {
+          dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidates[0] });
         }
 
         setGenerationProgress(null);
-        return 1;
+        return candidates.length;
       }
 
       // ── Route: Legacy multi-candidate (beam / annealing) ────

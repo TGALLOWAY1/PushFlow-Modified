@@ -11,6 +11,7 @@ import {
   Play,
   GitCompare,
   Shield,
+  Clock,
   History,
 } from 'lucide-react';
 
@@ -55,8 +56,15 @@ const ACTIONS: ActionDef[] = [
   },
   {
     icon: <Shield size={14} />,
-    label: 'Open Constraint Review',
+    label: 'Constraint Validator',
     onClick: (p) => p.onNavigate('/validator'),
+    accent: 'text-cyan-400',
+  },
+  {
+    icon: <Clock size={14} />,
+    label: 'Temporal Evaluator',
+    onClick: (p) => p.onNavigate('/temporal-evaluator'),
+    accent: 'text-cyan-400',
   },
   {
     icon: <History size={14} />,

@@ -91,6 +91,23 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     return map;
   }, [state.soundStreams]);
 
+  // Build a live padToVoice that reflects current stream names/colors
+  // (safety net: reducer should already sync, but this ensures display is always fresh)
+  const livePadToVoice = useMemo(() => {
+    if (!layout) return {};
+    const streamById = new Map(state.soundStreams.map(s => [s.id, s]));
+    const result: Record<string, typeof layout.padToVoice[string]> = {};
+    for (const [key, voice] of Object.entries(layout.padToVoice)) {
+      const stream = streamById.get(voice.id);
+      if (stream) {
+        result[key] = { ...voice, name: stream.name, color: stream.color };
+      } else {
+        result[key] = voice;
+      }
+    }
+    return result;
+  }, [layout, state.soundStreams]);
+
   // Build per-pad summary from assignments, overlaying voiceConstraints
   const padSummaries = useMemo(() => {
     const map = new Map<string, PadSummary>();
@@ -310,7 +327,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
 
   const handlePadClick = useCallback((row: number, col: number) => {
     const padKey = `${row},${col}`;
-    const voice = layout?.padToVoice[padKey];
+    const voice = livePadToVoice[padKey];
 
     if (!voice) {
       // Empty pad — if there's a selected event, find its assignment
@@ -323,7 +340,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const a = assignments.find(fa => fa.row === row && fa.col === col);
       onEventClick(a?.eventIndex ?? null);
     }
-  }, [layout, assignments, onEventClick]);
+  }, [livePadToVoice, assignments, onEventClick]);
 
   const handleRemovePad = useCallback((padKey: string) => {
     dispatch({ type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey } });
@@ -337,8 +354,9 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     const cells = [];
     for (let col = 0; col < 8; col++) {
       const padKey = `${row},${col}`;
-      const voice = layout?.padToVoice[padKey];
+      const voice = livePadToVoice[padKey];
       const summary = padSummaries.get(padKey);
+      const isStreamHighlighted = !!voice && !!state.selectedStreamId && voice.id === state.selectedStreamId;
       const isSelected = selectedPadKeys.has(padKey);
       const isActivePlaying = activePadKeys.has(padKey);
       const isBlinking = blinkingPads.has(padKey);
@@ -360,11 +378,16 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       let isGlowActive = false;
 
       if (voice) {
+        // Always show the voice's custom color as pad background
+        if (voice.color) {
+          bgColor = safeColorAlpha(voice.color, 0.25, voice.color);
+        }
+
         if (summary && summary.hitCount > 0) {
           const hands = [...summary.hands];
           if (hands.length === 1 && hands[0] !== 'Unplayable') {
             glowColor = HAND_COLORS[hands[0] as 'left' | 'right'] ?? HAND_COLORS.mixed;
-            borderColor = glowColor;
+            borderColor = voice.color ?? glowColor;
             textColor = 'var(--text-primary)';
             isGlowActive = true;
           } else if (hands.includes('Unplayable') && hands.length === 1) {
@@ -374,7 +397,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             isGlowActive = true;
           } else {
             glowColor = HAND_COLORS.mixed;
-            borderColor = glowColor;
+            borderColor = voice.color ?? glowColor;
             textColor = 'var(--text-primary)';
             isGlowActive = true;
           }
@@ -383,7 +406,6 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           glowColor = voice.color ?? 'var(--border-strong)';
           borderColor = glowColor;
           textColor = 'var(--text-secondary)';
-          // No isGlowActive here unless selected/playing
         }
       }
 
@@ -422,8 +444,9 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             ${isDragSource ? 'opacity-30' : ''}
             ${isMuted ? 'opacity-30 pointer-events-none' : ''}
             ${isGreyedOut ? 'opacity-20 saturate-0' : ''}
+            ${isDragSource ? 'opacity-40 ring-2 ring-blue-400' : ''}
             ${!voice ? 'hover:brightness-110' : 'hover:scale-[1.02]'}
-            ${isMuted ? 'cursor-default' : 'cursor-pointer active:scale-95'}
+            ${isMuted ? 'cursor-default' : voice ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
           `}
           style={{
             backgroundColor: isSelected && selectedFingerInfo
@@ -433,11 +456,15 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                 : isNext && !voice
                   ? 'rgba(59, 130, 246, 0.08)'
                   : bgColor,
-            borderColor: isSelected && selectedFingerInfo
+            borderColor: isStreamHighlighted && !isSelected
+              ? '#60a5fa'
+              : isSelected && selectedFingerInfo
               ? selectedFingerInfo.color
               : isDragOver ? '#3b82f6' : isNext && !isSelected ? '#60a5fa' : borderColor,
             color: isSelected && selectedFingerInfo ? '#ffffff' : textColor,
-            boxShadow: isSelected && selectedFingerInfo
+            boxShadow: isStreamHighlighted && !isSelected
+              ? '0 0 8px rgba(96, 165, 250, 0.5), inset 0 0 4px rgba(96, 165, 250, 0.2)'
+              : isSelected && selectedFingerInfo
               ? `0 0 12px ${selectedFingerInfo.color}, inset 0 0 8px rgba(255,255,255,0.15)`
               : boxGlow,
             opacity: isGreyedOut ? 0.2 : isNext && !isSelected && !isActivePlaying ? 0.92 : undefined,
@@ -494,12 +521,6 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                 {(gridLabels?.showFingerAssignment ?? true) && fingerList.length > 0 && (
                   <span className="block text-[10px] font-medium leading-none mt-0.5" style={{ color: textColor }}>
                     {fingerList.join(' ')}
-                  </span>
-                )}
-                {/* Hit count badge */}
-                {summary && summary.hitCount > 0 && (
-                  <span className="absolute bottom-0.5 right-0.5 text-[7px] font-bold bg-black/40 rounded px-0.5 text-gray-400 pointer-events-none">
-                    {summary.hitCount}
                   </span>
                 )}
 

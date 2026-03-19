@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { useProject } from '../../state/ProjectContext';
 import { CandidatePreviewCard } from './CandidatePreviewCard';
+import { MiniGridPreview } from './MiniGridPreview';
 
 interface LayoutOptionsPanelProps {
   selectedForCompare: Set<string>;
@@ -74,9 +75,38 @@ export function LayoutOptionsPanel({
           </div>
         )}
 
-        {/* Candidate grid */}
+        {/* Active Layout card */}
+        {Object.keys(state.activeLayout.padToVoice).length > 0 && (
+          <div
+            className={`rounded-lg border-2 border-emerald-500 bg-emerald-500/5 ring-1 ring-emerald-500/20 cursor-pointer mb-2 ${
+              !state.selectedCandidateId ? 'ring-2 ring-emerald-400/30' : ''
+            }`}
+            onClick={() => {
+              dispatch({ type: 'SELECT_CANDIDATE', payload: null });
+            }}
+          >
+            <div className="p-2.5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">Active</span>
+                <span className="text-[10px] text-gray-400 truncate ml-2">{state.activeLayout.name}</span>
+              </div>
+              <div className="flex justify-center mb-2">
+                <MiniGridPreview
+                  layout={state.activeLayout}
+                  soundStreams={state.soundStreams}
+                  highlighted={!state.selectedCandidateId}
+                />
+              </div>
+              <div className="text-[10px] text-gray-500 px-0.5">
+                {Object.keys(state.activeLayout.padToVoice).length} pads assigned
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Candidate list */}
         {hasCandidates && (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col gap-2">
             {state.candidates.map((candidate, idx) => (
               <CandidatePreviewCard
                 key={candidate.id}
@@ -135,7 +165,7 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
               <h4 className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-3">
                 Generated Candidates ({state.candidates.length})
               </h4>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="flex flex-col gap-3">
                 {state.candidates.map((c, idx) => (
                   <CandidatePreviewCard
                     key={c.id}
@@ -161,7 +191,7 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
               <h4 className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-3">
                 Saved Variants ({state.savedVariants.length})
               </h4>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="flex flex-col gap-3">
                 {state.savedVariants.map((variant) => (
                   <div key={variant.id} className="rounded-lg border border-gray-700/60 bg-gray-800/30 p-3">
                     <div className="text-[11px] text-gray-300 font-medium mb-1 truncate">{variant.name}</div>

@@ -14,9 +14,10 @@
  * keyboard navigation (ArrowUp/Down, j/k), auto-scroll selected row.
  */
 
-import { useMemo, useCallback, useEffect, useRef } from 'react';
+import { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { getActiveStreams, type SoundStream } from '../state/projectState';
+import { type V1CostBreakdown } from '../../types/diagnostics';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -187,6 +188,35 @@ export function EventsPanel({
     row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [selectedMomentIdx]);
 
+  // Build per-moment cost from finger assignments
+  const momentCosts = useMemo(() => {
+    const map = new Map<number, V1CostBreakdown>();
+    const assignments = state.analysisResult?.executionPlan.fingerAssignments;
+    if (!assignments || moments.length === 0) return map;
+
+    for (const moment of moments) {
+      const matching = assignments.filter(
+        a => Math.abs(a.startTime - moment.startTime) < MOMENT_EPSILON && a.costBreakdown
+      );
+      if (matching.length === 0) continue;
+      const avg: V1CostBreakdown = {
+        fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0,
+        handBalance: 0, constraintPenalty: 0, total: 0,
+      };
+      for (const a of matching) {
+        const cb = a.costBreakdown!;
+        avg.fingerPreference += cb.fingerPreference;
+        avg.handShapeDeviation += cb.handShapeDeviation;
+        avg.transitionCost += cb.transitionCost;
+        avg.handBalance += cb.handBalance;
+        avg.constraintPenalty += cb.constraintPenalty;
+        avg.total += cb.total;
+      }
+      map.set(moment.momentIndex, avg);
+    }
+    return map;
+  }, [state.analysisResult, moments]);
+
   if (moments.length === 0) {
     return (
       <div className="py-6 text-center text-xs text-gray-500">
@@ -232,6 +262,7 @@ export function EventsPanel({
             key={moment.momentIndex}
             moment={moment}
             isSelected={selectedMomentIdx === moment.momentIndex}
+            costBreakdown={momentCosts.get(moment.momentIndex) ?? null}
             onClick={() => handleMomentClick(moment)}
           />
         ))}
@@ -245,12 +276,21 @@ export function EventsPanel({
 function MomentRow({
   moment,
   isSelected,
+  costBreakdown,
   onClick,
 }: {
   moment: PerformanceMomentSummary;
   isSelected: boolean;
+  costBreakdown: V1CostBreakdown | null;
   onClick: () => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Cost severity color
+  const costColor = costBreakdown
+    ? costBreakdown.total > 10 ? 'text-red-400' : costBreakdown.total > 5 ? 'text-amber-400' : 'text-green-400'
+    : 'text-gray-600';
+
   return (
     <button
       data-moment-index={moment.momentIndex}
@@ -274,6 +314,17 @@ function MomentRow({
           {moment.beatPosition}
         </span>
 
+        {/* Cost badge */}
+        {costBreakdown && (
+          <span
+            className={`text-[10px] font-mono flex-shrink-0 cursor-pointer ${costColor}`}
+            onClick={e => { e.stopPropagation(); setExpanded(!expanded); }}
+            title="Click for cost breakdown"
+          >
+            {costBreakdown.total.toFixed(1)}
+          </span>
+        )}
+
         {/* Note count badge */}
         <span className={`text-[10px] flex-shrink-0 ${
           moment.noteCount > 3 ? 'text-amber-400' : 'text-gray-500'
@@ -281,6 +332,26 @@ function MomentRow({
           {moment.noteCount}n
         </span>
       </div>
+
+      {/* Expanded cost breakdown */}
+      {expanded && costBreakdown && (
+        <div className="mt-1 ml-14 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[9px]" onClick={e => e.stopPropagation()}>
+          <span className="text-gray-500">Transition</span>
+          <span className="text-gray-400 font-mono text-right">{costBreakdown.transitionCost.toFixed(2)}</span>
+          <span className="text-gray-500">Grip</span>
+          <span className="text-gray-400 font-mono text-right">{costBreakdown.handShapeDeviation.toFixed(2)}</span>
+          <span className="text-gray-500">Finger Pref</span>
+          <span className="text-gray-400 font-mono text-right">{costBreakdown.fingerPreference.toFixed(2)}</span>
+          <span className="text-gray-500">Hand Balance</span>
+          <span className="text-gray-400 font-mono text-right">{costBreakdown.handBalance.toFixed(2)}</span>
+          {costBreakdown.constraintPenalty > 0 && (
+            <>
+              <span className="text-red-400">Constraint</span>
+              <span className="text-red-400 font-mono text-right">{costBreakdown.constraintPenalty.toFixed(2)}</span>
+            </>
+          )}
+        </div>
+      )}
     </button>
   );
 }

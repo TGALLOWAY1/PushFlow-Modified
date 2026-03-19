@@ -83,6 +83,7 @@ export function saveProject(state: ProjectState): void {
       workingLayout: null, // Session-scoped: strip working layout
       selectedEventIndex: null,
       selectedMomentIndex: null,
+      selectedStreamId: null,
       compareCandidateId: null,
       isProcessing: false,
       error: null,
@@ -161,6 +162,7 @@ export function exportProjectToFile(state: ProjectState): void {
     workingLayout: null,
     selectedEventIndex: null,
     selectedMomentIndex: null,
+    selectedStreamId: null,
     compareCandidateId: null,
     isProcessing: false,
     error: null,
@@ -335,6 +337,7 @@ function validateAndMigrateProjectState(parsed: unknown): ProjectState {
     // Ephemeral state always reset
     selectedEventIndex: null,
     selectedMomentIndex: null,
+    selectedStreamId: null,
     compareCandidateId: null,
     isProcessing: false,
     error: null,

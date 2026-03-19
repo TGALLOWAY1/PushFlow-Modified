@@ -69,7 +69,8 @@ export function UnifiedTimeline() {
   const beatDurationRaw = 60 / (state.tempo || 120);
   const barDuration = beatDurationRaw * 4; // 4 beats per bar
 
-  // Compute time range across all streams, snapped to bar boundaries
+  // Compute time range across all streams, snapped to bar boundaries for grid lines
+  // but using raw content extent for zoom calculation
   const { minTime, maxTime, totalDuration } = useMemo(() => {
     let min = Infinity;
     let max = -Infinity;
@@ -81,11 +82,15 @@ export function UnifiedTimeline() {
       }
     }
     if (min === Infinity) { min = 0; max = barDuration * 4; }
-    // Snap min down and max up to bar boundaries
+    // Snap min down and max up to bar boundaries (for grid lines)
     min = Math.floor(min / barDuration) * barDuration;
     max = Math.ceil(max / barDuration) * barDuration;
     if (max <= min) max = min + barDuration;
-    return { minTime: min, maxTime: max, totalDuration: max - min };
+    return {
+      minTime: min,
+      maxTime: max,
+      totalDuration: max - min,
+    };
   }, [state.soundStreams, barDuration]);
 
   // ─── Playback RAF Loop (with looping) ───────────────────────────────────
@@ -129,8 +134,9 @@ export function UnifiedTimeline() {
     return () => observer.disconnect();
   }, []);
 
+  // Auto-fit: scale so full bar-snapped duration fills the container width exactly
   const autoFitZoom = containerWidth > 0 && totalDuration > 0
-    ? Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, (containerWidth - 20) / totalDuration))
+    ? Math.max(MIN_ZOOM, containerWidth / totalDuration)
     : MIN_ZOOM;
   const zoom = zoomOverride ?? autoFitZoom;
 
@@ -234,7 +240,11 @@ export function UnifiedTimeline() {
     return lines;
   }, [minTime, maxTime, zoom, beatDuration]);
 
-  const timelineWidth = totalDuration * zoom + 100;
+  // In auto-fit mode, match container exactly; when manually zoomed, add padding
+  const isAutoFit = zoomOverride === null;
+  const timelineWidth = isAutoFit
+    ? Math.max(containerWidth, totalDuration * zoom)
+    : totalDuration * zoom + 100;
   const totalHeight = visibleStreams.length * TRACK_HEIGHT;
 
   // ─── Auto-scroll to selected event ────────────────────────────────────
@@ -318,9 +328,9 @@ export function UnifiedTimeline() {
   }
 
   return (
-    <div className="space-y-0">
+    <div className="flex flex-col h-full">
       {/* ─── Toolbar ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-3 py-2 border-b border-gray-800 bg-gray-900/40">
+      <div className="flex items-center gap-3 px-3 py-2 border-b border-gray-800 bg-gray-900/40 flex-shrink-0">
         {/* Import */}
         <button
           className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs font-medium text-white transition-colors"
@@ -351,10 +361,21 @@ export function UnifiedTimeline() {
             type="range"
             min={MIN_ZOOM}
             max={MAX_ZOOM}
-            value={zoom}
+            value={Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom))}
             onChange={e => setZoomOverride(Number(e.target.value))}
             className="w-20 h-1 accent-blue-500"
           />
+          <button
+            className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+              zoomOverride === null
+                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                : 'bg-gray-800 text-gray-500 hover:text-gray-300 border border-gray-700'
+            }`}
+            onClick={() => setZoomOverride(null)}
+            title="Auto-fit: fill container with MIDI content"
+          >
+            Fit
+          </button>
         </div>
 
         {/* Transport */}
@@ -386,11 +407,11 @@ export function UnifiedTimeline() {
       </div>
 
       {/* ─── Timeline Body ────────────────────────────────────────────────── */}
-      <div className="flex" style={{ minHeight: Math.max(totalHeight, 200) }}>
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Voice Sidebar */}
         <div
           ref={sidebarScrollRef}
-          className="flex-shrink-0 overflow-hidden border-r border-gray-800"
+          className="flex-shrink-0 overflow-y-auto border-r border-gray-800"
           style={{ width: SIDEBAR_WIDTH }}
         >
           {visibleStreams.map((stream, i) => (
@@ -398,6 +419,7 @@ export function UnifiedTimeline() {
               key={stream.id}
               stream={stream}
               isEven={i % 2 === 0}
+              isGlobalSelected={state.selectedStreamId === stream.id}
               onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: stream.id })}
               onSolo={() => dispatch({ type: 'SOLO_STREAM', payload: stream.id })}
               onRename={(name) => dispatch({ type: 'RENAME_SOUND', payload: { streamId: stream.id, name } })}
@@ -532,12 +554,14 @@ export function UnifiedTimeline() {
 function VoiceRow({
   stream,
   isEven,
+  isGlobalSelected,
   onToggleMute,
   onSolo,
   onRename,
 }: {
   stream: SoundStream;
   isEven: boolean;
+  isGlobalSelected: boolean;
   onToggleMute: () => void;
   onSolo: () => void;
   onRename: (name: string) => void;
@@ -564,7 +588,7 @@ function VoiceRow({
   return (
     <div
       className={`flex items-center gap-1.5 px-2 text-xs border-b border-gray-800/30 transition-colors
-        ${isEven ? '' : 'bg-white/[0.015]'}
+        ${isGlobalSelected ? 'bg-blue-500/15 border-l-2 border-l-blue-400' : isEven ? '' : 'bg-white/[0.015]'}
         ${stream.muted ? 'opacity-40' : ''}`}
       style={{ height: TRACK_HEIGHT }}
     >
