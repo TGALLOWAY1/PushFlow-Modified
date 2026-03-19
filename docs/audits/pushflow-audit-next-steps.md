@@ -5,7 +5,7 @@
 
 ## Executive Summary
 
-PushFlow is in solid shape architecturally. The V3 workflow model is well-implemented, types are clean, the engine is modular, and 548 tests all pass. The main weaknesses are: (1) accumulated dead code and unused modules (~2,500 lines), (2) 5 TypeScript errors from a recent refactor that left prop mismatches, (3) the homepage dashboard has ambitious cards backed by fake data with no real data pipeline, and (4) the relationship between debug/analysis pages and the main workspace is unclear to a user. The highest-value next work is fixing the type errors, removing dead code, and deciding whether the homepage cards should show real data or be simplified.
+PushFlow is in solid shape architecturally. The V3 workflow model is well-implemented, types are clean, the engine is modular, and 548 tests all pass. The main weaknesses are: (1) accumulated dead code and unused modules (~770+ lines removable immediately), (2) 5 TypeScript errors from a recent refactor that left prop mismatches, (3) the homepage dashboard has ambitious cards backed by fake data with no real data pipeline, and (4) the relationship between debug/analysis pages and the main workspace is unclear to a user. The highest-value next work is fixing the type errors, removing dead code, and deciding whether the homepage cards should show real data or be simplified.
 
 ## What Seems Strong
 
@@ -57,11 +57,12 @@ Five type errors from a recent refactor. Two are prop mismatches (`onCompare` on
 
 - Delete `src/engine/diagnostics/legacyCosts.ts` (392 lines) — zero imports
 - Delete `src/ui/fixtures/feasibilityDemos.ts` (214 lines) — zero imports
+- Delete `src/ui/components/AnalysisSidePanel.tsx` (163 lines) — defined but never imported
 - Remove unused import of `MiniGridPreview` from `CompareModal.tsx`
 - Remove unused `calculateCost` destructure from `PerformanceWorkspace.tsx`
 - Remove unused `exportProjectToFile` import from `WorkspaceToolbar.tsx`
 
-This is free complexity reduction. ~600 lines of dead code removed.
+This is free complexity reduction. ~770 lines of dead code removed.
 
 ### 3. Decide on the homepage data strategy (decision needed)
 
