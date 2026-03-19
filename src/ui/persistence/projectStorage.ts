@@ -1,150 +1,248 @@
 /**
  * Project Storage.
  *
- * localStorage CRUD for project library + JSON file export/import.
+ * Public API for project persistence. Uses IndexedDB as the primary store.
+ * Migrates existing localStorage projects on first access.
  *
- * V3 migration: Converts V1 format (layouts[] + activeLayoutId) to
- * V2 format (activeLayout + workingLayout + savedVariants).
+ * Costs and analysis results are intentionally NOT persisted.
+ * They are recomputed after load.
  */
 
-import { type ProjectState, createEmptyProjectState, PROJECT_STATE_VERSION } from '../state/projectState';
-import { type Layout } from '../../types/layout';
-import { type CostToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
-import { type OptimizerMethodKey } from '../../engine/optimization/optimizerInterface';
-import { buildLegacySourceFile, buildPerformanceLanesFromStreams } from '../state/streamsToLanes';
-
-const INDEX_KEY = 'pushflow_projects';
-const PROJECT_PREFIX = 'pushflow_project_';
+import { type ProjectState } from '../state/projectState';
+import { type PersistedProject, type ProjectIndexEntry } from './persistedProject';
+import {
+  serializeProject,
+  deserializeProject,
+  validateAndMigrateRaw,
+} from './projectSerializer';
+import {
+  putProject,
+  getProject,
+  deleteProjectFromDb,
+  listAllProjects,
+  getFullProject,
+} from './indexedDbStore';
 
 // ============================================================================
-// Library Index
+// Legacy localStorage keys (for migration)
 // ============================================================================
 
-export interface ProjectLibraryEntry {
-  id: string;
-  name: string;
-  createdAt: string;
-  updatedAt: string;
-  soundCount: number;
-  eventCount: number;
+const LEGACY_INDEX_KEY = 'pushflow_projects';
+const LEGACY_PROJECT_PREFIX = 'pushflow_project_';
+const MIGRATION_DONE_KEY = 'pushflow_idb_migrated';
+
+// ============================================================================
+// Re-export types for compatibility
+// ============================================================================
+
+export type { ProjectIndexEntry };
+
+/**
+ * Backward-compatible library entry type.
+ * Adds optional difficulty field for callers that used it.
+ */
+export interface ProjectLibraryEntry extends ProjectIndexEntry {
   difficulty: string | null;
 }
 
+// ============================================================================
+// Migration: localStorage → IndexedDB
+// ============================================================================
+
+let migrationPromise: Promise<void> | null = null;
+
+/**
+ * Migrate all projects from localStorage to IndexedDB.
+ * Runs once; subsequent calls are no-ops.
+ */
+async function ensureMigration(): Promise<void> {
+  if (migrationPromise) return migrationPromise;
+
+  if (localStorage.getItem(MIGRATION_DONE_KEY) === 'true') {
+    return;
+  }
+
+  migrationPromise = (async () => {
+    try {
+      const indexJson = localStorage.getItem(LEGACY_INDEX_KEY);
+      if (!indexJson) {
+        localStorage.setItem(MIGRATION_DONE_KEY, 'true');
+        return;
+      }
+      const entries = JSON.parse(indexJson) as Array<{ id: string }>;
+
+      for (const entry of entries) {
+        try {
+          const projectJson = localStorage.getItem(`${LEGACY_PROJECT_PREFIX}${entry.id}`);
+          if (!projectJson) continue;
+
+          const parsed = JSON.parse(projectJson);
+          const persisted = validateAndMigrateRaw(parsed);
+          await putProject(persisted);
+        } catch (err) {
+          console.warn(`Failed to migrate project ${entry.id}:`, err);
+        }
+      }
+
+      localStorage.setItem(MIGRATION_DONE_KEY, 'true');
+    } catch (err) {
+      console.error('localStorage → IndexedDB migration failed:', err);
+    }
+  })();
+
+  return migrationPromise;
+}
+
+// ============================================================================
+// Public API: Async
+// ============================================================================
+
+/**
+ * List all projects (lightweight index entries).
+ * Returns most-recently-updated first.
+ */
+export async function listProjectsAsync(): Promise<ProjectLibraryEntry[]> {
+  await ensureMigration();
+  const entries = await listAllProjects();
+  return entries.map(e => ({ ...e, difficulty: null }));
+}
+
+/**
+ * Load a project by ID and return a full ProjectState.
+ * Costs and analysis are NOT loaded — they are recomputed as needed.
+ */
+export async function loadProjectAsync(id: string): Promise<ProjectState | null> {
+  await ensureMigration();
+
+  const persisted = await getProject(id);
+  if (persisted) {
+    return deserializeProject(persisted);
+  }
+
+  // Fallback: try localStorage directly (for edge cases during migration)
+  try {
+    const json = localStorage.getItem(`${LEGACY_PROJECT_PREFIX}${id}`);
+    if (json) {
+      const parsed = JSON.parse(json);
+      const migrated = validateAndMigrateRaw(parsed);
+      await putProject(migrated); // Save to IndexedDB for next time
+      return deserializeProject(migrated);
+    }
+  } catch {
+    // Ignore localStorage fallback failures
+  }
+
+  return null;
+}
+
+/**
+ * Save a project to IndexedDB.
+ * Strips all computed/ephemeral data; only durable state is stored.
+ */
+export async function saveProjectAsync(state: ProjectState): Promise<void> {
+  const persisted = serializeProject(state);
+  await putProject(persisted);
+}
+
+/**
+ * Delete a project from IndexedDB.
+ */
+export async function deleteProjectAsync(id: string): Promise<void> {
+  await deleteProjectFromDb(id);
+  // Also clean up localStorage if present
+  try {
+    localStorage.removeItem(`${LEGACY_PROJECT_PREFIX}${id}`);
+  } catch {
+    // Ignore
+  }
+}
+
+/**
+ * Load the full persisted project for thumbnail rendering etc.
+ */
+export async function getFullPersistedProject(id: string): Promise<PersistedProject | null> {
+  await ensureMigration();
+  return getFullProject(id);
+}
+
+// ============================================================================
+// Synchronous API (backward compatible, fire-and-forget saves)
+// ============================================================================
+
+/**
+ * Synchronous save — fires an async IndexedDB write and returns immediately.
+ * Use for backward compatibility with existing sync call sites.
+ */
+export function saveProject(state: ProjectState): void {
+  saveProjectAsync(state).catch(err =>
+    console.error('Failed to save project:', err)
+  );
+}
+
+/**
+ * Synchronous project listing — reads from localStorage as fallback
+ * while IndexedDB migration may be in progress.
+ * Prefer listProjectsAsync() for new code.
+ */
 export function listProjects(): ProjectLibraryEntry[] {
   try {
-    const json = localStorage.getItem(INDEX_KEY);
+    const json = localStorage.getItem(LEGACY_INDEX_KEY);
     if (!json) return [];
-    return JSON.parse(json) as ProjectLibraryEntry[];
+    const entries = JSON.parse(json) as ProjectLibraryEntry[];
+    return entries.map(e => ({ ...e, difficulty: e.difficulty ?? null }));
   } catch {
     return [];
   }
 }
 
-function saveIndex(entries: ProjectLibraryEntry[]): void {
-  localStorage.setItem(INDEX_KEY, JSON.stringify(entries));
-}
-
-function entryFromState(state: ProjectState): ProjectLibraryEntry {
-  const totalEvents = state.soundStreams.reduce((sum, s) => sum + s.events.length, 0);
-  const difficulty = state.analysisResult?.difficultyAnalysis?.overallScore != null
-    ? classifyDifficulty(state.analysisResult.difficultyAnalysis.overallScore)
-    : null;
-
-  return {
-    id: state.id,
-    name: state.name,
-    createdAt: state.createdAt,
-    updatedAt: state.updatedAt,
-    soundCount: state.soundStreams.length,
-    eventCount: totalEvents,
-    difficulty,
-  };
-}
-
-function classifyDifficulty(score: number): string {
-  if (score <= 0.2) return 'Easy';
-  if (score <= 0.45) return 'Moderate';
-  if (score <= 0.7) return 'Hard';
-  return 'Extreme';
-}
-
-// ============================================================================
-// Project CRUD
-// ============================================================================
-
-export function saveProject(state: ProjectState): void {
-  try {
-    const now = new Date().toISOString();
-    // Strip ephemeral and session-scoped state before persisting
-    const persistable: ProjectState = {
-      ...state,
-      version: PROJECT_STATE_VERSION,
-      updatedAt: now,
-      workingLayout: null, // Session-scoped: strip working layout
-      selectedEventIndex: null,
-      selectedMomentIndex: null,
-      selectedStreamId: null,
-      compareCandidateId: null,
-      isProcessing: false,
-      error: null,
-      analysisStale: true,
-      // Strip ephemeral optimizer state
-      manualCostResult: null,
-      moveHistory: null,
-      moveHistoryIndex: null,
-      // Strip deprecated fields
-      layouts: undefined,
-      activeLayoutId: undefined,
-    };
-    const json = JSON.stringify(persistable);
-    localStorage.setItem(`${PROJECT_PREFIX}${state.id}`, json);
-
-    // Update index with fresh timestamp
-    const stateForEntry = { ...state, updatedAt: now };
-    const entries = listProjects().filter(e => e.id !== state.id);
-    entries.unshift(entryFromState(stateForEntry));
-    saveIndex(entries);
-  } catch (err) {
-    console.error('Failed to save project:', err);
-  }
-}
-
+/**
+ * Synchronous load — tries localStorage first.
+ * Prefer loadProjectAsync() for new code.
+ */
 export function loadProject(id: string): ProjectState | null {
   try {
-    const json = localStorage.getItem(`${PROJECT_PREFIX}${id}`);
+    const json = localStorage.getItem(`${LEGACY_PROJECT_PREFIX}${id}`);
     if (!json) return null;
     const parsed = JSON.parse(json);
-    return validateAndMigrateProjectState(parsed);
+    const persisted = validateAndMigrateRaw(parsed);
+    return deserializeProject(persisted);
   } catch (err) {
     console.error('Failed to load project:', err);
     return null;
   }
 }
 
+/**
+ * Synchronous delete.
+ */
 export function deleteProject(id: string): void {
   try {
-    localStorage.removeItem(`${PROJECT_PREFIX}${id}`);
+    localStorage.removeItem(`${LEGACY_PROJECT_PREFIX}${id}`);
     const entries = listProjects().filter(e => e.id !== id);
-    saveIndex(entries);
+    localStorage.setItem(LEGACY_INDEX_KEY, JSON.stringify(entries));
   } catch (err) {
     console.error('Failed to delete project:', err);
   }
+  deleteProjectAsync(id).catch(err =>
+    console.error('Failed to delete project from IndexedDB:', err)
+  );
 }
 
-/** Remove a project from the library index without deleting its data from localStorage. */
+/** Remove a project from the localStorage library index. */
 export function removeFromIndex(id: string): void {
   try {
     const entries = listProjects().filter(e => e.id !== id);
-    saveIndex(entries);
+    localStorage.setItem(LEGACY_INDEX_KEY, JSON.stringify(entries));
   } catch (err) {
     console.error('Failed to remove from index:', err);
   }
+  deleteProjectAsync(id).catch(() => {});
 }
 
-/** Clear the entire project library index. Project data remains in localStorage. */
+/** Clear the entire project library index. */
 export function clearProjectIndex(): void {
   try {
-    saveIndex([]);
+    localStorage.setItem(LEGACY_INDEX_KEY, JSON.stringify([]));
   } catch (err) {
     console.error('Failed to clear project index:', err);
   }
@@ -155,25 +253,8 @@ export function clearProjectIndex(): void {
 // ============================================================================
 
 export function exportProjectToFile(state: ProjectState): void {
-  const persistable: ProjectState = {
-    ...state,
-    version: PROJECT_STATE_VERSION,
-    updatedAt: new Date().toISOString(),
-    workingLayout: null,
-    selectedEventIndex: null,
-    selectedMomentIndex: null,
-    selectedStreamId: null,
-    compareCandidateId: null,
-    isProcessing: false,
-    error: null,
-    analysisStale: true,
-    manualCostResult: null,
-    moveHistory: null,
-    moveHistoryIndex: null,
-    layouts: undefined,
-    activeLayoutId: undefined,
-  };
-  const json = JSON.stringify(persistable, null, 2);
+  const persisted = serializeProject(state);
+  const json = JSON.stringify(persisted, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -193,159 +274,11 @@ export async function importProjectFromFile(file: File): Promise<ImportResult> {
   try {
     const text = await file.text();
     const parsed = JSON.parse(text);
-    const state = validateAndMigrateProjectState(parsed);
+    const persisted = validateAndMigrateRaw(parsed);
+    const state = deserializeProject(persisted);
     return { ok: true, state };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Invalid project file';
     return { ok: false, error: message };
   }
-}
-
-// ============================================================================
-// Migration: V1 format (layouts[] + activeLayoutId) -> V2 format
-// ============================================================================
-
-/**
- * Ensure a layout has the V3 fields (role, placementLocks).
- * Adds defaults for layouts loaded from the old format.
- */
-function ensureLayoutV3Fields(layout: Layout, role: Layout['role']): Layout {
-  return {
-    ...layout,
-    role: layout.role ?? role,
-    placementLocks: layout.placementLocks ?? {},
-  };
-}
-
-/**
- * Migrate a V1-format project state to V2 format.
- *
- * V1 format: layouts[] array + activeLayoutId string
- * V2 format: activeLayout object + workingLayout null + savedVariants[]
- */
-function migrateFromV1(p: Record<string, unknown>): {
-  activeLayout: Layout;
-  savedVariants: Layout[];
-} {
-  const layouts = Array.isArray(p.layouts) ? p.layouts as Layout[] : [];
-  const activeLayoutId = typeof p.activeLayoutId === 'string' ? p.activeLayoutId : '';
-
-  // Find the active layout
-  let activeLayout = layouts.find(l => l.id === activeLayoutId);
-  if (!activeLayout && layouts.length > 0) {
-    activeLayout = layouts[0]; // Fallback to first layout
-  }
-
-  if (!activeLayout) {
-    // No layouts at all: create empty active
-    const base = createEmptyProjectState();
-    return { activeLayout: base.activeLayout, savedVariants: [] };
-  }
-
-  // All other layouts become saved variants
-  const savedVariants = layouts
-    .filter(l => l.id !== activeLayout!.id)
-    .map(l => ensureLayoutV3Fields(l, 'variant'));
-
-  return {
-    activeLayout: ensureLayoutV3Fields(activeLayout, 'active'),
-    savedVariants,
-  };
-}
-
-// ============================================================================
-// Validation and Migration
-// ============================================================================
-
-function validateAndMigrateProjectState(parsed: unknown): ProjectState {
-  if (!parsed || typeof parsed !== 'object') {
-    throw new Error('Invalid project file: root must be an object.');
-  }
-  const p = parsed as Record<string, unknown>;
-
-  if (typeof p.id !== 'string' || !p.id) {
-    throw new Error('Project file missing id.');
-  }
-
-  const base = createEmptyProjectState();
-  const savedVersion = typeof p.version === 'number' ? p.version : 1;
-
-  // Determine layout model
-  let activeLayout: Layout;
-  let savedVariants: Layout[];
-
-  if (savedVersion < 2 || (!p.activeLayout && Array.isArray(p.layouts))) {
-    // V1 format: migrate from layouts[] + activeLayoutId
-    const migrated = migrateFromV1(p);
-    activeLayout = migrated.activeLayout;
-    savedVariants = migrated.savedVariants;
-  } else {
-    // V2 format: use activeLayout directly
-    activeLayout = (p.activeLayout && typeof p.activeLayout === 'object')
-      ? ensureLayoutV3Fields(p.activeLayout as Layout, 'active')
-      : base.activeLayout;
-    savedVariants = Array.isArray(p.savedVariants)
-      ? (p.savedVariants as Layout[]).map(l => ensureLayoutV3Fields(l, 'variant'))
-      : [];
-  }
-
-  const soundStreams = Array.isArray(p.soundStreams) ? p.soundStreams as ProjectState['soundStreams'] : [];
-  const persistedLanes = Array.isArray(p.performanceLanes) ? p.performanceLanes as ProjectState['performanceLanes'] : [];
-  const performanceLanes = persistedLanes.length > 0
-    ? persistedLanes
-    : buildPerformanceLanesFromStreams(soundStreams);
-  const sourceFiles = Array.isArray(p.sourceFiles) ? p.sourceFiles as ProjectState['sourceFiles'] : [];
-
-  return {
-    ...base,
-    version: PROJECT_STATE_VERSION,
-    id: p.id as string,
-    name: typeof p.name === 'string' ? p.name : 'Unnamed Project',
-    createdAt: typeof p.createdAt === 'string' ? p.createdAt : base.createdAt,
-    updatedAt: typeof p.updatedAt === 'string' ? p.updatedAt : base.updatedAt,
-    soundStreams,
-    tempo: typeof p.tempo === 'number' ? p.tempo : 120,
-    instrumentConfig: (p.instrumentConfig && typeof p.instrumentConfig === 'object')
-      ? p.instrumentConfig as ProjectState['instrumentConfig']
-      : base.instrumentConfig,
-    sections: Array.isArray(p.sections) ? p.sections as ProjectState['sections'] : [],
-    voiceProfiles: Array.isArray(p.voiceProfiles) ? p.voiceProfiles as ProjectState['voiceProfiles'] : [],
-    activeLayout,
-    workingLayout: null, // Session-scoped: always null on load
-    savedVariants,
-    analysisResult: null,
-    candidates: Array.isArray(p.candidates) ? p.candidates as ProjectState['candidates'] : [],
-    selectedCandidateId: typeof p.selectedCandidateId === 'string' ? p.selectedCandidateId : null,
-    engineConfig: (p.engineConfig && typeof p.engineConfig === 'object')
-      ? p.engineConfig as ProjectState['engineConfig']
-      : base.engineConfig,
-    voiceConstraints: (p.voiceConstraints && typeof p.voiceConstraints === 'object' && !Array.isArray(p.voiceConstraints))
-      ? p.voiceConstraints as ProjectState['voiceConstraints']
-      : {},
-    performanceLanes,
-    laneGroups: Array.isArray(p.laneGroups) ? p.laneGroups as ProjectState['laneGroups'] : [],
-    sourceFiles: sourceFiles.length > 0 || performanceLanes.length === 0
-      ? sourceFiles
-      : [buildLegacySourceFile(soundStreams)],
-    // Optimizer config (persisted)
-    optimizerMethod: (typeof p.optimizerMethod === 'string' && ['beam', 'annealing', 'greedy'].includes(p.optimizerMethod))
-      ? p.optimizerMethod as OptimizerMethodKey
-      : base.optimizerMethod,
-    costToggles: (p.costToggles && typeof p.costToggles === 'object' && !Array.isArray(p.costToggles))
-      ? p.costToggles as CostToggles
-      : ALL_COSTS_ENABLED,
-    // Ephemeral state always reset
-    selectedEventIndex: null,
-    selectedMomentIndex: null,
-    selectedStreamId: null,
-    compareCandidateId: null,
-    isProcessing: false,
-    error: null,
-    analysisStale: true,
-    manualCostResult: null,
-    moveHistory: null,
-    moveHistoryIndex: null,
-    currentTime: 0,
-    isPlaying: false,
-  };
 }

@@ -8,9 +8,9 @@
 
 import { useState, useRef } from 'react';
 import { useProject } from '../../state/ProjectContext';
-import { saveProject } from '../../persistence/projectStorage';
 import { hasWorkingChanges } from '../../state/projectState';
 import { type GenerationMode } from '../../hooks/useAutoAnalysis';
+import { type SaveStatus } from '../../hooks/useAutoSave';
 import { type OptimizerMethodKey } from '../../../engine/optimization/optimizerInterface';
 import { SettingsGear } from '../panels/SettingsGear';
 import { useViewSettings } from '../../state/viewSettings';
@@ -28,6 +28,8 @@ interface WorkspaceToolbarProps {
   onToggleComposer: () => void;
   onCalculateCost?: () => void;
   hasAssignment?: boolean;
+  saveStatus?: SaveStatus;
+  onSave?: () => void;
 }
 
 export function WorkspaceToolbar({
@@ -43,6 +45,8 @@ export function WorkspaceToolbar({
   onToggleComposer,
   onCalculateCost,
   hasAssignment,
+  saveStatus = 'saved',
+  onSave,
 }: WorkspaceToolbarProps) {
   const { state, dispatch, undo, redo, canUndo, canRedo } = useProject();
   const { settings: viewSettings, toggleGridLabel, toggleLayoutDisplay } = useViewSettings();
@@ -60,7 +64,7 @@ export function WorkspaceToolbar({
   // Generation mode
   const [generationMode, setGenerationMode] = useState<GenerationMode>('fast');
 
-  // Save confirmation
+  // Save confirmation (flash "Saved" briefly after explicit save)
   const [saveConfirm, setSaveConfirm] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -81,7 +85,9 @@ export function WorkspaceToolbar({
   };
 
   const handleSave = () => {
-    saveProject(state);
+    if (onSave) {
+      onSave();
+    }
     setSaveConfirm(true);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => setSaveConfirm(false), 1500);
@@ -92,10 +98,7 @@ export function WorkspaceToolbar({
       {/* Library back */}
       <button
         className="px-2 py-1 text-[11px] rounded bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition-colors"
-        onClick={() => {
-          saveProject(state);
-          onNavigateLibrary();
-        }}
+        onClick={onNavigateLibrary}
         title="Save and return to library"
       >
         &larr; Library
@@ -222,18 +225,25 @@ export function WorkspaceToolbar({
         </button>
       </div>
 
-      {/* Save */}
-      <button
-        className={`px-2 py-1 text-[11px] rounded transition-colors ${
-          saveConfirm
-            ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-            : 'bg-gray-800 hover:bg-gray-700 text-gray-300'
-        }`}
-        onClick={handleSave}
-        title="Save project"
-      >
-        {saveConfirm ? 'Saved' : 'Save Project'}
-      </button>
+      {/* Save + status */}
+      <div className="flex items-center gap-1.5">
+        <button
+          className={`px-2 py-1 text-[11px] rounded transition-colors ${
+            saveConfirm || saveStatus === 'saved'
+              ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+              : saveStatus === 'saving'
+                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                : 'bg-gray-800 hover:bg-gray-700 text-gray-300'
+          }`}
+          onClick={handleSave}
+          title="Save project"
+        >
+          {saveConfirm ? 'Saved' : saveStatus === 'saving' ? 'Saving...' : saveStatus === 'unsaved' ? 'Save' : 'Saved'}
+        </button>
+        {saveStatus === 'saved' && !saveConfirm && (
+          <span className="text-[9px] text-gray-600">saved locally</span>
+        )}
+      </div>
 
       <div className="w-px h-5 bg-gray-800" />
 
