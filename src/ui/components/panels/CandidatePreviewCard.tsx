@@ -2,7 +2,7 @@
  * CandidatePreviewCard.
  *
  * Compact preview of a candidate solution with mini grid,
- * summary metadata, and action buttons.
+ * summary metadata, selection checkbox for compare, and action buttons.
  */
 
 import { type CandidateSolution } from '../../../types/candidateSolution';
@@ -14,9 +14,10 @@ interface CandidatePreviewCardProps {
   soundStreams: SoundStream[];
   rank: number;
   isSelected: boolean;
+  isCheckedForCompare: boolean;
   onSelect: () => void;
   onPromote: () => void;
-  onCompare: () => void;
+  onToggleCompare: () => void;
 }
 
 function difficultyLabel(score: number): string {
@@ -49,35 +50,53 @@ export function CandidatePreviewCard({
   soundStreams,
   rank,
   isSelected,
+  isCheckedForCompare,
   onSelect,
   onPromote,
-  onCompare,
+  onToggleCompare,
 }: CandidatePreviewCardProps) {
   const overall = candidate.difficultyAnalysis.overallScore;
   const topDriver = topCostDriver(candidate.executionPlan.averageMetrics);
 
   return (
     <div
-      className={`rounded-lg border transition-all cursor-pointer ${
+      className={`rounded-lg border transition-all cursor-pointer relative ${
         isSelected
           ? 'border-blue-500 bg-blue-500/5 ring-1 ring-blue-500/20'
           : 'border-gray-700/60 bg-gray-800/30 hover:border-gray-600'
       }`}
       onClick={onSelect}
     >
+      {/* Compare checkbox */}
+      <button
+        className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded border flex items-center justify-center transition-all ${
+          isCheckedForCompare
+            ? 'bg-purple-600 border-purple-500 text-white'
+            : 'bg-gray-800/80 border-gray-600 text-transparent hover:border-gray-400'
+        }`}
+        onClick={e => { e.stopPropagation(); onToggleCompare(); }}
+        title="Select for comparison"
+      >
+        {isCheckedForCompare && (
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z" />
+          </svg>
+        )}
+      </button>
+
       <div className="p-2.5">
         {/* Top row: rank + difficulty */}
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 ml-5">
             <span className="text-[10px] bg-gray-700/70 text-gray-400 px-1.5 py-0.5 rounded font-mono">
               #{rank}
             </span>
-            <span className="text-[11px] text-gray-400 truncate max-w-[80px]">
-              {candidate.metadata.strategy ?? `Candidate`}
+            <span className="text-[10px] text-gray-400 truncate max-w-[60px]">
+              {candidate.metadata.strategy ?? 'Candidate'}
             </span>
           </div>
           <span
-            className="text-[11px] font-mono font-medium"
+            className="text-[10px] font-mono font-medium"
             style={{ color: difficultyColor(overall) }}
           >
             {difficultyLabel(overall)}
@@ -99,7 +118,7 @@ export function CandidatePreviewCard({
           <span>Top: {topDriver}</span>
         </div>
 
-        {/* Feasibility warning with reason summary */}
+        {/* Feasibility warning */}
         {candidate.executionPlan.unplayableCount > 0 && (
           <div className="text-[10px] text-red-400 bg-red-500/10 rounded px-1.5 py-0.5 mb-2">
             {candidate.executionPlan.unplayableCount} unplayable
@@ -122,16 +141,16 @@ export function CandidatePreviewCard({
         {/* Action buttons */}
         <div className="flex gap-1.5">
           <button
-            className="flex-1 px-2 py-1 text-[10px] rounded transition-colors bg-green-600/15 border border-green-500/30 text-green-400 hover:bg-green-600/25"
-            onClick={e => { e.stopPropagation(); onPromote(); }}
+            className="flex-1 px-2 py-1 text-[10px] rounded transition-colors bg-blue-600/15 border border-blue-500/30 text-blue-400 hover:bg-blue-600/25"
+            onClick={e => { e.stopPropagation(); onSelect(); }}
           >
-            Promote to Active
+            Load
           </button>
           <button
-            className="px-2 py-1 text-[10px] rounded transition-colors bg-gray-800 border border-gray-700 text-gray-400 hover:text-gray-300 hover:bg-gray-700"
-            onClick={e => { e.stopPropagation(); onCompare(); }}
+            className="flex-1 px-2 py-1 text-[10px] rounded transition-colors bg-emerald-600/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/25"
+            onClick={e => { e.stopPropagation(); onPromote(); }}
           >
-            Compare
+            Promote
           </button>
         </div>
       </div>

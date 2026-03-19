@@ -1,224 +1,114 @@
-import { useState, useRef, useCallback } from 'react';
+/**
+ * PerformanceWorkspace.
+ *
+ * Redesigned workspace centered around three focal points:
+ * 1. The Push grid (large, dominant, center)
+ * 2. The timeline (directly below grid, tightly coupled)
+ * 3. Layout options (right column with mini grid previews)
+ *
+ * Layout: full-viewport 3-column with unified top toolbar.
+ * - Left: tabbed Sounds/Events panel
+ * - Center: Grid + Timeline stacked
+ * - Right: ActiveLayoutSummary + LayoutOptionsPanel
+ * - Bottom drawer: Pattern Composer (collapsible)
+ */
+
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProject } from '../../state/ProjectContext';
+import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
+import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useViewSettings } from '../../state/viewSettings';
-import { saveProject } from '../../persistence/projectStorage';
-import { EditorToolbar } from '../EditorToolbar';
+
+import { WorkspaceToolbar } from './WorkspaceToolbar';
 import { VoicePalette } from '../VoicePalette';
 import { EventsPanel } from '../EventsPanel';
 import { InteractiveGrid } from '../InteractiveGrid';
-import { CompareGridView } from '../CompareGridView';
-import { PerformanceAnalysisPanel } from '../panels/PerformanceAnalysisPanel';
-import { EventDetailPanel } from '../EventDetailPanel';
-import { TransitionDetailPanel } from './TransitionDetailPanel';
 import { UnifiedTimeline } from '../UnifiedTimeline';
 import { WorkspacePatternStudio } from './WorkspacePatternStudio';
-
-import { SettingsGear } from '../panels/SettingsGear';
-import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
-import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
+import { ActiveLayoutSummary } from '../panels/ActiveLayoutSummary';
+import { LayoutOptionsPanel } from '../panels/LayoutOptionsPanel';
+import { CompareModal } from '../panels/CompareModal';
 
 type LeftPanelTab = 'sounds' | 'events';
-type BottomTab = 'timeline' | 'composer';
 
 export function PerformanceWorkspace() {
   const { state, dispatch } = useProject();
   const navigate = useNavigate();
   const { generateFull, calculateCost, generationProgress, canGenerate, generateDisabledReason } = useAutoAnalysis();
   useKeyboardShortcuts();
-  const { settings: viewSettings, toggleGridLabel, toggleLayoutDisplay } = useViewSettings();
+  const { settings: viewSettings } = useViewSettings();
 
   const [leftCollapsed, setLeftCollapsed] = useState(false);
-  const [rightCollapsed, setRightCollapsed] = useState(true);
-  const [onionSkin, setOnionSkin] = useState(false);
   const [leftTab, setLeftTab] = useState<LeftPanelTab>('sounds');
-  const [bottomTab, setBottomTab] = useState<BottomTab>('timeline');
-  const [leftWidth, setLeftWidth] = useState(260);
-  const [rightWidth, setRightWidth] = useState(360);
-  const isResizing = useRef<'left' | 'right' | false>(false);
+  const [onionSkin, setOnionSkin] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
 
-  // Editable project name
-  const [editingName, setEditingName] = useState(false);
-  const [nameDraft, setNameDraft] = useState('');
-  const nameInputRef = useRef<HTMLInputElement>(null);
-
-  // Editable BPM
-  const [editingBpm, setEditingBpm] = useState(false);
-  const [bpmDraft, setBpmDraft] = useState('');
+  // Compare state
+  const [selectedForCompare, setSelectedForCompare] = useState<Set<string>>(new Set());
+  const [compareModalOpen, setCompareModalOpen] = useState(false);
 
   const assignments = state.analysisResult?.executionPlan.fingerAssignments;
-  const selectedCandidate = state.candidates.find(candidate => candidate.id === state.selectedCandidateId) ?? null;
-  const compareCandidate = state.candidates.find(candidate => candidate.id === state.compareCandidateId) ?? null;
-  const isCompareMode = !!selectedCandidate && !!compareCandidate;
+  const selectedCandidate = state.candidates.find(c => c.id === state.selectedCandidateId) ?? null;
 
-  // Wrap generateFull to auto-open the analysis panel after generation
+  // Wrap generateFull to auto-open analysis after generation
   const handleGenerate = useCallback(async (mode?: Parameters<typeof generateFull>[0]) => {
-    const count = await generateFull(mode);
-    if (count && count > 0) {
-      setRightCollapsed(false);
-    }
+    await generateFull(mode);
   }, [generateFull]);
 
-  const commitName = () => {
-    const trimmed = nameDraft.trim();
-    if (trimmed && trimmed !== state.name) {
-      dispatch({ type: 'RENAME_PROJECT', payload: trimmed });
-    }
-    setEditingName(false);
-  };
-
-  const commitBpm = () => {
-    const val = parseInt(bpmDraft, 10);
-    if (!isNaN(val) && val !== state.tempo) {
-      dispatch({ type: 'SET_TEMPO', payload: val });
-    }
-    setEditingBpm(false);
-  };
-
-  // Panel resize via drag handle (shared for left and right)
-  const handleResizeStart = useCallback((side: 'left' | 'right', e: React.MouseEvent) => {
-    e.preventDefault();
-    isResizing.current = side;
-    const startX = e.clientX;
-    const startWidth = side === 'left' ? leftWidth : rightWidth;
-
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!isResizing.current) return;
-      const delta = ev.clientX - startX;
-      if (side === 'left') {
-        setLeftWidth(Math.max(200, Math.min(500, startWidth + delta)));
+  const handleToggleCompare = useCallback((id: string) => {
+    setSelectedForCompare(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
       } else {
-        // Right panel: dragging left increases width
-        setRightWidth(Math.max(280, Math.min(600, startWidth - delta)));
+        next.add(id);
       }
-    };
+      return next;
+    });
+  }, []);
 
-    const onMouseUp = () => {
-      isResizing.current = false;
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  }, [leftWidth, rightWidth]);
-
-  // Build grid template columns for the 3-column layout
-  const leftCol = leftCollapsed ? '48px' : `${leftWidth}px`;
-  const rightCol = rightCollapsed ? '48px' : `${rightWidth}px`;
-  const gridCols = `${leftCol} minmax(0, 1fr) ${rightCol}`;
+  const handleOpenCompare = useCallback(() => {
+    if (selectedForCompare.size >= 2) {
+      setCompareModalOpen(true);
+    }
+  }, [selectedForCompare]);
 
   return (
-    <div className="max-w-[1600px] mx-auto space-y-3">
-      {/* ─── Header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3">
-        <button
-          className="px-2 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700 text-gray-400"
-          onClick={() => {
-            saveProject(state);
-            navigate('/');
-          }}
-          title="Save and return to library"
-        >
-          &larr; Library
-        </button>
+    <div className="h-screen flex flex-col bg-[var(--bg-app)]">
+      {/* ─── Top Toolbar ──────────────────────────────────────── */}
+      <WorkspaceToolbar
+        onNavigateLibrary={() => navigate('/')}
+        generateFull={handleGenerate}
+        generationProgress={generationProgress}
+        canGenerate={canGenerate}
+        generateDisabledReason={generateDisabledReason ?? null}
+        compareCount={selectedForCompare.size}
+        onCompare={handleOpenCompare}
+        composerOpen={composerOpen}
+        onToggleComposer={() => setComposerOpen(!composerOpen)}
+      />
 
-        <div className="min-w-0">
-          {editingName ? (
-            <input
-              ref={nameInputRef}
-              className="text-sm font-medium text-gray-200 bg-gray-800 border border-gray-600 rounded px-1.5 py-0.5 outline-none focus:border-blue-500 w-48"
-              value={nameDraft}
-              onChange={e => setNameDraft(e.target.value)}
-              onBlur={commitName}
-              onKeyDown={e => {
-                if (e.key === 'Enter') commitName();
-                if (e.key === 'Escape') setEditingName(false);
-              }}
-              autoFocus
-            />
-          ) : (
-            <div
-              className="text-sm font-medium text-gray-200 truncate cursor-pointer hover:text-white transition-colors"
-              onDoubleClick={() => {
-                setNameDraft(state.name || 'Untitled');
-                setEditingName(true);
-              }}
-              title="Double-click to rename"
-            >
-              {state.name || 'Untitled'}
-            </div>
-          )}
-          <div className="text-[10px] text-gray-500 uppercase tracking-[0.2em] flex items-center gap-1">
-            Performance Workspace
-            {editingBpm ? (
-              <input
-                className="ml-2 w-14 text-[10px] normal-case tracking-normal text-gray-200 bg-gray-800 border border-gray-600 rounded px-1 py-0.5 outline-none focus:border-blue-500"
-                type="number"
-                min={20}
-                max={999}
-                value={bpmDraft}
-                onChange={e => setBpmDraft(e.target.value)}
-                onBlur={commitBpm}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') commitBpm();
-                  if (e.key === 'Escape') setEditingBpm(false);
-                }}
-                autoFocus
-              />
-            ) : (
-              <span
-                className="ml-2 normal-case tracking-normal text-gray-600 cursor-pointer hover:text-gray-400 transition-colors"
-                onDoubleClick={() => {
-                  setBpmDraft(String(state.tempo));
-                  setEditingBpm(true);
-                }}
-                title="Double-click to change BPM"
-              >
-                {state.tempo} BPM
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="flex-1" />
-      </div>
-
-      {/* ─── Error Banner ───────────────────────────────────────────────── */}
+      {/* ─── Error Banner ─────────────────────────────────────── */}
       {state.error && (
-        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
-          {state.error}
+        <div className="mx-3 mt-2 p-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-[11px] flex items-center justify-between">
+          <span>{state.error}</span>
           <button
             className="ml-2 text-red-500 hover:text-red-400"
             onClick={() => dispatch({ type: 'SET_ERROR', payload: null })}
           >
-            ×
+            &times;
           </button>
         </div>
       )}
 
-      {/* ─── Editor Toolbar ─────────────────────────────────────────────── */}
-      <EditorToolbar
-        generateFull={handleGenerate}
-        generationProgress={generationProgress}
-        canGenerate={canGenerate}
-        generateDisabledReason={generateDisabledReason}
-      />
-
-      {/* ─── Main Grid: Left Sidebar + Center Content + Right Analysis ── */}
-      <div
-        className="grid gap-4 items-start"
-        style={{ gridTemplateColumns: gridCols }}
-      >
-        {/* Left Column: Collapsible Sidebar with Sounds/Events tabs */}
-        <div className="min-w-0 relative flex">
+      {/* ─── Main Body: 3-column ──────────────────────────────── */}
+      <div className="flex-1 flex gap-3 overflow-hidden p-3 min-h-0">
+        {/* Left Column: Tabbed Sounds / Events */}
+        <div className={`flex-shrink-0 flex flex-col ${leftCollapsed ? 'w-10' : 'w-[280px]'} transition-all`}>
           {leftCollapsed ? (
             <button
-              className="flex flex-col items-center gap-3 py-3 w-full cursor-pointer hover:bg-gray-800/30 rounded transition-colors"
+              className="flex flex-col items-center gap-3 py-4 w-full cursor-pointer hover:bg-gray-800/30 rounded-lg transition-colors h-full"
               onClick={() => setLeftCollapsed(false)}
               title="Expand sidebar"
             >
@@ -228,11 +118,11 @@ export function PerformanceWorkspace() {
               <span className="text-[10px] text-gray-600">&#9656;</span>
             </button>
           ) : (
-            <div className="rounded-lg glass-panel flex flex-col" style={{ height: 'calc(100vh - 220px)' }}>
+            <div className="rounded-lg glass-panel flex flex-col flex-1 min-h-0">
               {/* Tab header */}
               <div className="flex items-center border-b border-gray-800 flex-shrink-0">
                 <button
-                  className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                  className={`flex-1 px-3 py-2 text-[11px] font-medium transition-colors ${
                     leftTab === 'sounds'
                       ? 'text-gray-200 bg-gray-800/50 border-b-2 border-blue-500'
                       : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/30'
@@ -242,7 +132,7 @@ export function PerformanceWorkspace() {
                   Sounds
                 </button>
                 <button
-                  className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                  className={`flex-1 px-3 py-2 text-[11px] font-medium transition-colors ${
                     leftTab === 'events'
                       ? 'text-gray-200 bg-gray-800/50 border-b-2 border-blue-500'
                       : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/30'
@@ -260,8 +150,8 @@ export function PerformanceWorkspace() {
                 </button>
               </div>
 
-              {/* Tab content — scrollable */}
-              <div className="p-3 overflow-y-auto flex-1">
+              {/* Tab content */}
+              <div className="p-3 overflow-y-auto flex-1 min-h-0">
                 {leftTab === 'sounds' ? (
                   <VoicePalette />
                 ) : (
@@ -270,49 +160,13 @@ export function PerformanceWorkspace() {
               </div>
             </div>
           )}
-          {/* Drag handle for resizing */}
-          {!leftCollapsed && (
-            <div
-              className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-500/40 transition-colors z-10"
-              onMouseDown={(e) => handleResizeStart('left', e)}
-            />
-          )}
         </div>
 
-        {/* Center Column: Push Grid + Event Detail + Transition Detail */}
-        <div className="space-y-3 min-w-0">
-          <div className="p-3 rounded-lg glass-panel">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-400">
-                {isCompareMode ? 'Layout Compare' : 'Push Grid'}
-              </h3>
-              <div className="flex items-center gap-2">
-                <SettingsGear
-                  gridLabels={viewSettings.gridLabels}
-                  layoutDisplay={viewSettings.layoutDisplay}
-                  onToggleGridLabel={toggleGridLabel}
-                  onToggleLayoutDisplay={toggleLayoutDisplay}
-                  onDuplicateLayout={() => {
-                    if (state.workingLayout) {
-                      dispatch({ type: 'SAVE_AS_VARIANT', payload: { name: `${state.workingLayout.name} copy`, source: 'working' } });
-                    } else {
-                      dispatch({ type: 'CREATE_WORKING_LAYOUT' });
-                      dispatch({ type: 'SAVE_AS_VARIANT', payload: { name: `${state.activeLayout.name} copy`, source: 'working' } });
-                      dispatch({ type: 'DISCARD_WORKING_LAYOUT' });
-                    }
-                  }}
-                />
-              </div>
-            </div>
-            {isCompareMode ? (
-              <CompareGridView
-                candidateA={selectedCandidate}
-                candidateB={compareCandidate}
-                voices={state.soundStreams}
-                candidateAIndex={state.candidates.indexOf(selectedCandidate) + 1}
-                candidateBIndex={state.candidates.indexOf(compareCandidate) + 1}
-              />
-            ) : (
+        {/* Center Column: Grid + Timeline stacked */}
+        <div className="flex-1 flex flex-col gap-3 min-w-0 min-h-0">
+          {/* Push Grid — takes available space */}
+          <div className="flex-1 min-h-0 rounded-lg glass-panel p-3 flex flex-col">
+            <div className="flex-1 min-h-0 flex items-center justify-center">
               <InteractiveGrid
                 assignments={assignments}
                 layoutOverride={selectedCandidate?.layout}
@@ -322,78 +176,51 @@ export function PerformanceWorkspace() {
                 voiceConstraints={state.voiceConstraints}
                 gridLabels={viewSettings.gridLabels}
               />
-            )}
+            </div>
           </div>
 
-          <EventDetailPanel />
-          <TransitionDetailPanel />
+          {/* Timeline — fixed height */}
+          <div className="h-[220px] flex-shrink-0 rounded-lg glass-panel overflow-hidden">
+            <UnifiedTimeline />
+          </div>
         </div>
 
-        {/* Right Column: Collapsible Analysis Panel */}
-        <div className="min-w-0 relative">
-          {rightCollapsed ? (
+        {/* Right Column: Summary + Options stacked */}
+        <div className="w-[340px] flex-shrink-0 flex flex-col gap-3 min-h-0">
+          <ActiveLayoutSummary />
+          <LayoutOptionsPanel
+            selectedForCompare={selectedForCompare}
+            onToggleCompare={handleToggleCompare}
+            onCompare={handleOpenCompare}
+          />
+        </div>
+      </div>
+
+      {/* ─── Pattern Composer Bottom Drawer ────────────────────── */}
+      {composerOpen && (
+        <div className="flex-shrink-0 border-t border-gray-800">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/60">
+            <span className="text-[11px] text-gray-300 font-medium">Pattern Composer</span>
+            <div className="flex-1" />
+            <span className="text-[10px] text-gray-600">Create and edit rhythmic patterns</span>
             <button
-              className="flex flex-col items-center gap-3 py-3 w-full cursor-pointer hover:bg-gray-800/30 rounded transition-colors"
-              onClick={() => setRightCollapsed(false)}
-              title="Expand analysis panel"
+              className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
+              onClick={() => setComposerOpen(false)}
             >
-              <span className="text-[10px] text-gray-500" style={{ writingMode: 'vertical-lr' }}>
-                Analysis
-              </span>
-              <span className="text-[10px] text-gray-600">&#9666;</span>
+              &times; Close
             </button>
-          ) : (
-            <>
-              <div className="rounded-lg glass-panel flex flex-col" style={{ height: 'calc(100vh - 220px)' }}>
-                <PerformanceAnalysisPanel
-                  onClose={() => setRightCollapsed(true)}
-                  calculateCost={calculateCost}
-                />
-              </div>
-              {/* Drag handle for resizing */}
-              <div
-                className="absolute top-0 left-0 w-1 h-full cursor-col-resize hover:bg-blue-500/40 transition-colors z-10"
-                onMouseDown={(e) => handleResizeStart('right', e)}
-              />
-            </>
-          )}
+          </div>
+          <WorkspacePatternStudio />
         </div>
-      </div>
+      )}
 
-      {/* ─── Bottom Drawer: Timeline / Pattern Composer ─────────────────── */}
-      <div className="rounded-lg glass-panel overflow-hidden">
-        <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-800 bg-gray-900/40">
-          <button
-            className={`px-2 py-1 text-xs rounded transition-colors ${
-              bottomTab === 'timeline'
-                ? 'text-gray-200 bg-gray-800/60'
-                : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/30'
-            }`}
-            onClick={() => setBottomTab('timeline')}
-          >
-            Timeline
-          </button>
-          <button
-            className={`px-2 py-1 text-xs rounded transition-colors ${
-              bottomTab === 'composer'
-                ? 'text-gray-200 bg-gray-800/60'
-                : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/30'
-            }`}
-            onClick={() => setBottomTab('composer')}
-          >
-            Pattern Composer
-          </button>
-          <div className="flex-1" />
-          <span className="text-[10px] text-gray-600">
-            {bottomTab === 'timeline'
-              ? 'Performance timeline with execution analysis'
-              : 'Create and edit rhythmic patterns'}
-          </span>
-        </div>
-        <div>
-          {bottomTab === 'timeline' ? <UnifiedTimeline /> : <WorkspacePatternStudio />}
-        </div>
-      </div>
+      {/* ─── Compare Modal ────────────────────────────────────── */}
+      {compareModalOpen && (
+        <CompareModal
+          candidateIds={Array.from(selectedForCompare)}
+          onClose={() => setCompareModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
