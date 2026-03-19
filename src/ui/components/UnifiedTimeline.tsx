@@ -141,7 +141,9 @@ export function UnifiedTimeline() {
   const autoFitZoom = containerWidth > 0 && totalDuration > 0
     ? Math.max(MIN_ZOOM, containerWidth / totalDuration)
     : MIN_ZOOM;
-  const zoom = zoomOverride ?? autoFitZoom;
+  // Minimum zoom is the auto-fit level (max zoom-out shows all content)
+  const effectiveMinZoom = Math.max(MIN_ZOOM, autoFitZoom);
+  const zoom = zoomOverride !== null ? Math.max(effectiveMinZoom, zoomOverride) : autoFitZoom;
 
   // Build per-stream finger assignments (or dummies pre-analysis),
   // then overlay voiceConstraints so user hand/finger selections show immediately
@@ -390,10 +392,10 @@ export function UnifiedTimeline() {
           <span className="text-[10px] text-gray-500">Zoom</span>
           <input
             type="range"
-            min={MIN_ZOOM}
+            min={effectiveMinZoom}
             max={MAX_ZOOM}
-            value={Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom))}
-            onChange={e => setZoomOverride(Number(e.target.value))}
+            value={Math.max(effectiveMinZoom, Math.min(MAX_ZOOM, zoom))}
+            onChange={e => setZoomOverride(Math.max(effectiveMinZoom, Number(e.target.value)))}
             className="w-20 h-1 accent-blue-500"
           />
           <button
