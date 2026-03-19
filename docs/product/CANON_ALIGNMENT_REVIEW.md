@@ -30,7 +30,7 @@ The canon requires four distinct states: Active Layout, Working/Test Layout, Sav
 
 | Issue | Location | Canon requirement |
 |---|---|---|
-| **Candidates are persisted** | `projectStorage.ts:317` loads candidates from storage | Canon treats candidates as ephemeral proposals. Currently they survive save/load, contradicting their "proposal" nature. Either strip on save or document as intentional. |
+| ~~Candidates are persisted~~ | ~~`projectStorage.ts:317`~~ | **Corrected:** candidates are already session-scoped and stripped on save. No issue. |
 | **No explicit "Candidate Solution" label in UI** | `CandidatePreviewCard.tsx` | Cards show rank (#1, #2) and strategy name but never say "Candidate Solution". The user may not understand these are a distinct workflow state. |
 | **Candidate layouts have ambiguous roles** | `candidateSolution.ts` | A CandidateSolution contains a Layout, but that layout doesn't carry `role='candidate'`. Its role is inherited from the source layout, creating ambiguity about the layout's workflow state in execution plans. |
 
@@ -199,11 +199,9 @@ Canon rule 9 says "Generation and analysis are different actions" and they "must
 
 **Files:** `WorkspaceToolbar.tsx`, `PerformanceWorkspace.tsx`
 
-### P3: Candidate persistence contradicts ephemeral nature
+### ~~P3: Candidate persistence~~ — RESOLVED (no action needed)
 
-Candidates surviving save/load blurs the line between "proposal" and "project truth." Either strip candidates on save or explicitly document this as an intentional design choice.
-
-**Files:** `projectStorage.ts`
+On deeper inspection, candidates are already session-scoped. `projectStorage.ts` strips candidates on save/load. The `loadProject` fallback for `candidates` only handles corrupted data — it does not persist candidates across sessions.
 
 ### P4: Timeline lacks difficulty indication
 
