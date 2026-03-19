@@ -136,6 +136,7 @@ export {
 // Import adapters to trigger self-registration
 export { beamAdapter } from './optimization/beamOptimizerAdapter';
 export { annealingAdapter } from './optimization/annealingOptimizerAdapter';
+export { greedyOptimizer, GreedyOptimizer } from './optimization/greedyOptimizer';
 
 // Pattern generation (rudiment/ostinato candidate generator)
 export { RudimentGenerator } from './rudiment/patternGenerator';
