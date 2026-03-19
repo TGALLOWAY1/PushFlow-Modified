@@ -40,34 +40,29 @@ PushFlow uses a three-tier layout lifecycle:
 - **Discard** — Abandon Working layout and revert to Active
 - **Undo/Redo** — Full operation history within the working session
 
-### Candidate Generation & Optimization
-- **Generate** produces multiple alternative layouts (default: 3 candidates)
-- Three generation strategies: baseline-aware, compact-right, compact-left
-- Each candidate is independently scored and profiled
-- Candidate switcher lets you preview each alternative on the grid instantly
-- **Promote Candidate** to make a candidate the new Active Layout
+### Multi-Method Optimization
+PushFlow V3 introduces a **Pluggable Optimization Architecture**:
+- **Greedy Solver** — Step-by-step local hill-climbing with human-readable move explanations ("Moved Snare to (3,3) because cost reduced by 2.4").
+- **Annealing Solver** — Global optimization using simulated annealing + beam search for deep layout exploration.
+- **Cost Toggles** — Selectively enable/disable cost families (static vs. temporal) for diagnostic auditing.
+- **Calculate Cost** — Instantly evaluate any manual layout or assignment against the cost model.
 
 ![Generated Layout](docs/screenshots/03-generated-layout.png)
 
 ### Analysis & Diagnostics
-- **Difficulty Heatmap** — per-event difficulty classification (Easy / Moderate / Hard / Extreme)
-- **Score summary** — total execution cost, average drift, hard event count, unplayable count
-- **Hand balance** — left/right distribution with visual bar
-- **Cost breakdown** — per-factor average metrics (movement, stretch, drift, bounce, fatigue, crossover)
-- **Finger fatigue** — accumulated workload per finger with overwork warnings
-- **Actionable suggestions** — context-aware recommendations (e.g. "High movement cost — group frequently alternating sounds on adjacent pads")
-- **Staleness indicator** — warns when analysis is outdated relative to current layout
+- **Per-Event Difficulty Breakdown** — Visualization of cost contributions per event (Stretch, Movement, Speed, Repetition).
+- **Difficulty Heatmap** — per-event difficulty classification (Easy / Moderate / Hard / Extreme).
+- **Optimization Trace** — Step-by-step history of moves made by the Greedy solver.
+- **Hand balance** — left/right distribution with visual bar.
+- **Actionable suggestions** — context-aware recommendations (e.g. "Infeasible chord — pads are beyond maximum finger span").
+- **Staleness indicator** — warns when analysis is outdated relative to current layout.
 
-### Candidate Comparison
-- Side-by-side tradeoff profile comparison across 6 dimensions
-- Layout diff highlighting: which pads changed between candidates
-- Metric-by-metric breakdown showing which candidate wins each factor
+![Optimizer Trace](docs/screenshots/04-greedy-optimizer-trace.png)
 
 ### Performance Timeline
-- Horizontal event timeline showing all MIDI events per voice
-- Finger assignment annotations per event (L1-L5, R1-R5)
-- Playback with real-time cursor and pad highlighting
-- Zoom and voice filtering controls
+- Horizontal event timeline showing all MIDI events per voice.
+- Finger assignment annotations per event (L1-L5, R1-R5).
+- Playback with real-time cursor and pad highlighting.
 
 ### Pattern Composer
 - Generative pattern pipeline: motif sampling, phrase building, two-hand coordination
@@ -78,75 +73,39 @@ PushFlow uses a three-tier layout lifecycle:
 
 ## Cost Model & Scoring
 
-PushFlow's engine uses a physics-informed cost model to evaluate how difficult a layout is to perform.
+PushFlow's engine uses a physics-informed cost model to evaluate how difficult a layout is to perform. The V1 refactor unifies the objective function and diagnostics into a single schema.
 
-### PerformabilityObjective (3-Component)
+### V1 Unified Cost Schema
 
-The core objective function scores each event assignment:
+The solver and diagnostics use four core cost components:
 
-**1. Pose Naturalness** — How comfortable is the current hand position?
-- **Attractor cost (40%)** — Distance from hand center to an ideal resting position
-- **Per-finger home cost (40%)** — How far each finger is from its natural home position
-- **Finger dominance cost (20%)** — Penalty for assigning critical events to weak fingers
+| Component | Description | Mapping to UI Label |
+|-----------|-------------|---------------------|
+| **Finger Preference** | Penalizes anatomically suboptimal fingers (Index: 0, Middle: 0, Ring: 1, Pinky: 3, Thumb: 5) | **Stretch** |
+| **Hand Shape Deviation** | Measures deviation from natural finger spread (translation-invariant) | **Movement (Positional)** |
+| **Transition Cost** | Fitts's Law model: `distance + speed * 0.5` | **Movement (Temporal)** |
+| **Hand Balance** | Quadratic penalty for deviation from 45/55 L/R split | **Hand Balance** |
 
-**2. Transition Difficulty** — How hard is it to move between consecutive events?
-- Based on **Fitts's Law**: `cost = (distance^2 / MAX_HAND_SPEED^2) * SPEED_COST_WEIGHT`
-- Accounts for actual timing between events (faster transitions are harder)
-- Alternation penalty when the same finger must repeat within 250ms
+### Hard Constraints (Binary Feasibility)
 
-**3. Constraint Penalty** — Does the assignment violate physical limits?
-- Strict grip: 0 penalty (within normal reach)
-- Relaxed grip: 200 penalty (1.5x normal limits — achievable but strained)
-- Fallback grip: 1000 penalty (beyond comfortable reach — likely unplayable)
+PushFlow now uses a binary feasibility system. Grips that violate hard constraints are rejected entirely:
 
-### Diagnostic Factors (5-Component Canonical)
-
-Every execution plan produces factorized diagnostics:
-
-| Factor | What It Measures |
-|--------|------------------|
-| `transition` | Movement cost between consecutive events |
-| `gripNaturalness` | How natural the hand shape is for each event |
-| `alternation` | Same-finger rapid reuse penalty |
-| `handBalance` | Distribution of workload between hands |
-| `constraintPenalty` | Physical constraint violations |
-
-### Difficulty Breakdown (6-Dimension UI Display)
-
-The UI shows a more granular breakdown for user interpretation:
-
-| Metric | Description | Good | Moderate | Bad |
-|--------|-------------|------|----------|-----|
-| **Movement** | Distance fingers travel between events | <0.4 | 0.4-1.0 | >1.0 |
-| **Stretch** | How far fingers spread within a single grip | <0.4 | 0.4-0.8 | >0.8 |
-| **Drift** | Hand center displacement from resting position | <0.4 | 0.4-0.8 | >0.8 |
-| **Bounce** | Same-finger repeated use without alternation | <0.4 | 0.4-0.6 | >0.6 |
-| **Fatigue** | Accumulated finger workload over time | <0.5 | 0.5-1.0 | >1.0 |
-| **Crossover** | Hands crossing over each other's zone | <0.4 | 0.4-0.5 | >0.5 |
-
-### Tradeoff Profile (6-Dimension Candidate Scoring)
-
-Each candidate solution is profiled across 6 dimensions (0-1 scale, higher = better):
-
-| Dimension | Weight | Description |
-|-----------|--------|-------------|
-| **Playability** | 0.30 | Overall physical feasibility and comfort |
-| **Transition Efficiency** | 0.20 | Low movement cost between sequential events |
-| **Compactness** | 0.15 | Sounds clustered tightly for minimal hand travel |
-| **Learnability** | 0.15 | Intuitive layout (pitched ordering, spatial logic) |
-| **Hand Balance** | 0.10 | Even workload distribution between hands |
-| **Robustness** | 0.10 | Tolerance to small timing/position variations |
+- **Zone Enforcement**: Left hand restricted to columns 0-4; Right hand to columns 3-7.
+- **Physical Span**: Finger pairs must stay within strict biomechanical limits (e.g., Index-Middle: 2.0 units).
+- **Topology**: Fingers cannot cross over each other (e.g., Pinky must be leftmost on Right hand).
+- **Collision**: No two fingers on the same pad.
+- **Speed Limit**: Hand movement speed cannot exceed `MAX_HAND_SPEED` (12.0 units/sec).
 
 ### Difficulty Classification Thresholds
 
-Events and overall layouts are classified into tiers:
+Events and overall layouts are classified into tiers based on the cumulative cost:
 
 | Classification | Score Range | Meaning |
 |----------------|-------------|---------|
 | Easy | 0 - 0.2 | Comfortable, no strain |
 | Moderate | 0.2 - 0.45 | Requires attention but playable |
 | Hard | 0.45 - 0.7 | Challenging, may need practice |
-| Extreme | > 0.7 | Very difficult, consider layout changes |
+| Extreme | > 0.7 | Physically demanding or high-speed |
 
 ---
 
@@ -154,45 +113,26 @@ Events and overall layouts are classified into tiers:
 
 ### Beam Solver (Finger Assignment)
 
-The beam solver assigns fingers to performance events using **beam search**:
+The beam solver assigns fingers to performance events using **K-best beam search**:
+- Explores multiple assignment paths simultaneously (configurable beam width, default 50).
+- At each event, generates candidate next-states by testing all valid finger assignments against hard constraints.
+- Produces the globally best finger assignment sequence based on the unified cost schema.
 
-- Explores multiple assignment paths simultaneously (configurable beam width, default 5)
-- At each event, generates candidate next-states by trying all valid finger assignments
-- Prunes to top-K states by cumulative cost at each step
-- Produces the globally best finger assignment sequence
+### Pluggable Optimization Methods
 
-**3-Tier Grip Feasibility:**
-Each event is tested against progressively relaxed physical constraints:
-1. **Strict** — Within normal finger span limits (0 penalty)
-2. **Relaxed** — Up to 1.5x strict limits (200 penalty) — achievable but uncomfortable
-3. **Fallback** — Beyond comfortable reach (1000 penalty) — flagged as problematic
+1. **Greedy / Hill-Climbing**:
+   - Start from an initial setup and repeatedly make the single best local move (pad move or swap).
+   - Highly interpretable: provides a full trace of "why" every change was made.
+   - Ideal for fine-tuning existing layouts.
 
-### Annealing Solver (Layout Optimization)
+2. **Simulated Annealing**:
+   - Global search that accepts occasional "worse" moves to escape local minima.
+   - Uses mutation operators: swap pads, move to empty, cluster swap, row/column shift.
+   - Presets for **Quick** (3,000 iter) and **Deep** (8,000 iter, 3 restarts).
 
-The annealing solver optimizes pad placement using **simulated annealing**:
-
-- **Mutation operators** (weighted random selection):
-  - Swap two pads (35%) — exchange positions of two assigned sounds
-  - Move to empty pad (35%) — relocate a sound to an unoccupied position
-  - Cluster swap (15%) — swap sounds within a local neighborhood
-  - Row/column shift (15%) — slide an entire row or column
-
-- **Acceptance criterion:** Metropolis — always accept improvements, probabilistically accept worse solutions based on temperature
-
-- **Presets:**
-
-| Preset | Iterations | Restarts | Beam Width | Cooling Rate |
-|--------|------------|----------|------------|--------------|
-| Quick | 3,000 | 0 | 12-50 | 0.997 |
-| Deep | 8,000 | 3 | 16-50 | 0.9985 |
-
-### Multi-Candidate Generation
-
-The generator produces diverse candidates by:
-1. Running the annealing solver with different initialization strategies
-2. Ensuring candidates differ meaningfully from the Active Layout baseline
-3. Computing independent tradeoff profiles for each candidate
-4. A real candidate must show at least one unlocked placement change or a materially different tradeoff profile
+3. **Baseline-Aware Mode**:
+   - Compares candidates against the "Active Layout" to ensure diversity.
+   - A candidate is rejected if it doesn't show at least one unlocked placement change or a materially different tradeoff profile.
 
 ---
 
@@ -203,11 +143,11 @@ PushFlow models human hand biomechanics with calibrated constants:
 ### Physical Limits
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| `MAX_HAND_SPAN` | 5.5 units | Maximum comfortable hand spread |
-| `MAX_REACH` | 5.0 units | Maximum single-finger reach from wrist |
+| `MAX_HAND_SPAN` | 5.5 units | Maximum comfortable hand multi-finger spread |
 | `MAX_SPEED` | 12.0 units/sec | Maximum hand movement speed |
+| `TARGET_LR_SPLIT`| 0.45 / 0.55 | Optimal left-hand share (slight right-hand bias) |
 
-### Finger Dominance Cost
+### Finger Selection Costs
 | Finger | Cost | Rationale |
 |--------|------|-----------|
 | Index | 0 | Strongest, most dexterous |
@@ -216,17 +156,15 @@ PushFlow models human hand biomechanics with calibrated constants:
 | Pinky | 3 | Weakest, limited reach |
 | Thumb | 5 | Limited lateral movement on pads |
 
-### Inter-Finger Span Limits (Strict)
+### Inter-Finger Span Limits
 | Finger Pair | Max Span |
 |-------------|----------|
 | Index-Middle | 2.0 units |
 | Middle-Ring | 2.0 units |
 | Ring-Pinky | 1.5 units |
-| Index-Ring | 3.5 units |
-| Index-Pinky | 4.5 units |
-| Middle-Pinky | 3.0 units |
-
-The relaxed tier multiplies these by **1.15x** for achievable-but-strained grips.
+| Index-Pinky | 4.0 units |
+| Index-Thumb | 3.5 units |
+| (others) | 5.5 units |
 
 ### Timing Constants
 | Parameter | Value | Description |
