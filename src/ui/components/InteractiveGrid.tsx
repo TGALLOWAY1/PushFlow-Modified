@@ -534,13 +534,6 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
 
   return (
     <div className="space-y-1">
-      {/* Analysis stale indicator */}
-      {state.analysisStale && state.analysisResult && (
-        <div className="text-[10px] text-amber-400 mb-1">
-          Layout changed — analysis outdated
-        </div>
-      )}
-
       <div className="inline-block relative">
         {transitionPaths.length > 0 && (
           <svg

@@ -47,9 +47,6 @@ export function EditorToolbar({
 
   return (
     <div className="flex items-center gap-3 pb-3 border-b border-gray-800">
-      {/* Project name */}
-      <h1 className="text-lg font-bold truncate">{state.name}</h1>
-
       {/* Layout status indicator */}
       {displayedLayout && (
         <div className="flex items-center gap-1.5">
@@ -197,12 +194,6 @@ export function EditorToolbar({
         </div>
       )}
 
-      {/* Analysis stale indicator */}
-      {state.analysisStale && state.analysisResult && (
-        <span className="text-[10px] text-amber-400 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 ml-2">
-          Analysis outdated
-        </span>
-      )}
     </div>
   );
 }

@@ -187,6 +187,21 @@ Avoid:
 
 Every panel should justify its existence.
 
+## PushFlow UI Guardrails — Do Not Regress
+
+These rules prevent the most common UI regressions:
+
+1. **Grid and timeline are primary.** They must always be visible and dominant in the viewport.
+2. **Every analysis view must sync to the grid.** Event selection → grid highlight. Trace step → grid layout update.
+3. **Canonical fields render once.** Project name, BPM, layout role, stale status — one render location each.
+4. **Editable values look editable.** Hover states, pencil icons, or button styling required.
+5. **Timeline zoom is content-bounded.** Minimum: clip fills half the viewport. No tiny slivers.
+6. **No duplicate controls.** Before adding any state display, verify it's not already shown elsewhere.
+7. **No debug UI in primary surfaces.** Dense diagnostics go in collapsible sections or the debug page.
+8. **Partial solver failure shows guidance.** All-unplayable results need explanation and next steps, not raw error markers.
+9. **Sounds + Events share one tab container** in the left panel.
+10. **Progressive disclosure over data dump.** Summary first, detail on click/expand.
+
 ---
 
 ## Tech / Repo Guidance

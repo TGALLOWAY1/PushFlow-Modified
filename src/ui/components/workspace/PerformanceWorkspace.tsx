@@ -51,6 +51,11 @@ export function PerformanceWorkspace() {
   const compareCandidate = state.candidates.find(candidate => candidate.id === state.compareCandidateId) ?? null;
   const isCompareMode = !!selectedCandidate && !!compareCandidate;
 
+  // When stepping through optimization trace, show the layout snapshot for that step
+  const traceLayoutOverride = state.moveHistoryIndex !== null && state.moveHistory
+    ? state.moveHistory[state.moveHistoryIndex]?.layoutSnapshot ?? null
+    : null;
+
   // Wrap generateFull to auto-open the analysis panel after generation
   const handleGenerate = useCallback(async (mode?: Parameters<typeof generateFull>[0]) => {
     const count = await generateFull(mode);
@@ -142,22 +147,28 @@ export function PerformanceWorkspace() {
               autoFocus
             />
           ) : (
-            <div
-              className="text-sm font-medium text-gray-200 truncate cursor-pointer hover:text-white transition-colors"
-              onDoubleClick={() => {
+            <button
+              className="flex items-center gap-1.5 text-sm font-medium text-gray-200 truncate hover:text-white transition-colors group"
+              onClick={() => {
                 setNameDraft(state.name || 'Untitled');
                 setEditingName(true);
               }}
-              title="Double-click to rename"
+              title="Click to rename"
             >
-              {state.name || 'Untitled'}
-            </div>
+              <span className="truncate">{state.name || 'Untitled'}</span>
+              <svg className="w-3 h-3 text-gray-600 group-hover:text-gray-400 transition-colors flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </button>
           )}
-          <div className="text-[10px] text-gray-500 uppercase tracking-[0.2em] flex items-center gap-1">
+          <div className="text-[10px] text-gray-500 uppercase tracking-[0.2em] flex items-center gap-2">
             Performance Workspace
+          </div>
+          <div className="flex items-center gap-2 mt-0.5">
             {editingBpm ? (
               <input
-                className="ml-2 w-14 text-[10px] normal-case tracking-normal text-gray-200 bg-gray-800 border border-gray-600 rounded px-1 py-0.5 outline-none focus:border-blue-500"
+                className="w-16 text-xs text-gray-200 bg-gray-800 border border-blue-500 rounded px-1.5 py-0.5 outline-none"
                 type="number"
                 min={20}
                 max={999}
@@ -171,16 +182,21 @@ export function PerformanceWorkspace() {
                 autoFocus
               />
             ) : (
-              <span
-                className="ml-2 normal-case tracking-normal text-gray-600 cursor-pointer hover:text-gray-400 transition-colors"
-                onDoubleClick={() => {
+              <button
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-800 border border-transparent hover:border-gray-600 transition-colors group"
+                onClick={() => {
                   setBpmDraft(String(state.tempo));
                   setEditingBpm(true);
                 }}
-                title="Double-click to change BPM"
+                title="Click to change BPM"
               >
-                {state.tempo} BPM
-              </span>
+                <span className="font-mono">{state.tempo}</span>
+                <span className="text-gray-500">BPM</span>
+                <svg className="w-3 h-3 text-gray-600 group-hover:text-gray-400 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+              </button>
             )}
           </div>
         </div>
@@ -313,15 +329,29 @@ export function PerformanceWorkspace() {
                 candidateBIndex={state.candidates.indexOf(compareCandidate) + 1}
               />
             ) : (
-              <InteractiveGrid
-                assignments={assignments}
-                layoutOverride={selectedCandidate?.layout}
-                selectedEventIndex={state.selectedEventIndex}
-                onEventClick={idx => dispatch({ type: 'SELECT_EVENT', payload: idx })}
-                onionSkin={onionSkin}
-                voiceConstraints={state.voiceConstraints}
-                gridLabels={viewSettings.gridLabels}
-              />
+              <>
+                <InteractiveGrid
+                  assignments={assignments}
+                  layoutOverride={traceLayoutOverride ?? selectedCandidate?.layout}
+                  selectedEventIndex={state.selectedEventIndex}
+                  onEventClick={idx => dispatch({ type: 'SELECT_EVENT', payload: idx })}
+                  onionSkin={onionSkin}
+                  voiceConstraints={state.voiceConstraints}
+                  gridLabels={viewSettings.gridLabels}
+                />
+                {traceLayoutOverride && state.moveHistoryIndex !== null && (
+                  <div className="flex items-center gap-2 mt-1 px-2 py-1 rounded bg-cyan-500/10 border border-cyan-500/20 text-[10px] text-cyan-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                    Showing optimization step {state.moveHistoryIndex + 1} of {state.moveHistory?.length ?? 0}
+                    <button
+                      className="ml-auto text-cyan-500 hover:text-cyan-300"
+                      onClick={() => dispatch({ type: 'SET_MOVE_HISTORY_INDEX', payload: null })}
+                    >
+                      Show final
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
 

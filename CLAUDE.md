@@ -371,6 +371,43 @@ Prefer:
 
 If simple cases fail, stop trusting complex cases.
 
+## PushFlow UI Guardrails
+
+These rules are non-negotiable for all UI changes. They exist to prevent regressions that make the product feel amateur, broken, or untrustworthy.
+
+### Do Not Regress
+
+- **Grid and timeline are the primary product surfaces.** They must always be visible, dominant, and synchronized with the current state.
+- **Every view that references a layout, event, or optimization step must visually sync to the grid.** If selecting an event doesn't highlight the grid, that's a bug. If stepping through the optimization trace doesn't update the grid, that's a bug.
+- **Canonical metadata fields must render exactly once.** Project name, BPM, layout role, and analysis stale status each have ONE canonical render location. Do not add duplicate displays.
+- **Editable values must have explicit edit affordance.** Hover states, pencil icons, underlines, or button styling — the user must be able to see that a value is editable without guessing.
+- **Timeline zoom must stay within product-defined bounds.** Minimum zoom: clip fills at least half the viewport (no tiny slivers). Maximum zoom: bounded to prevent absurd detail levels. These bounds are computed from musical content (bar duration, clip length), not arbitrary pixel constants.
+- **Partial solver states must be represented intentionally.** If the solver produces all-unplayable results, show a helpful explanation and next steps — not raw "unplayable" markers with no context.
+- **Sounds and Events live in one shared tab container** in the left panel. Do not separate them into independent panels.
+
+### Before Adding UI
+
+- **No new dense technical panels** in primary surfaces without strong product justification. Diagnostic detail belongs in collapsible sections, modals, or the dedicated debug page.
+- **No duplicate controls or duplicated data fields.** Before adding a display for any state value, verify it isn't already displayed elsewhere.
+- **No debug/diagnostic UI leaking into main workspace.** Debug panels, cost toggles, and trace details must be clearly separated from the primary editing experience.
+- **Every new panel must have clear ownership, purpose, and label.** If you can't describe what a panel does in one sentence, it shouldn't exist.
+- **Prefer progressive disclosure** over showing all data at once. Summary first, detail on demand.
+
+### Interaction Contracts
+
+- **Selecting an event** must highlight the corresponding pads on the grid and scroll the timeline to show the event.
+- **Stepping through optimization trace** must update the grid to show that step's layout snapshot.
+- **Setting a finger/hand constraint** must provide immediate visual feedback.
+- **Analysis stale state** is shown in exactly one location: the Performance Analysis panel.
+- **Manual layout edits** must feel direct — drag to assign, drag between pads to swap, right-click for context menu. No indirect form-filling for core operations.
+
+### Visual Standards
+
+- Maintain clear visual hierarchy: primary content > secondary labels > tertiary metadata.
+- State indicators use consistent colors: amber = stale/warning, green = good/success, red = error/unplayable, blue = active/selected, cyan = informational.
+- Interactive elements must have visible hover and focus states.
+- Do not use text smaller than 9px (`text-[9px]`) for anything the user needs to read.
+
 ## Final Reminder
 
 Do not let legacy docs, current file structure, or existing engine internals define the product by accident.

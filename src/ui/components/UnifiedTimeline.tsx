@@ -19,8 +19,10 @@ import { type FingerAssignment } from '../../types/executionPlan';
 
 const TRACK_HEIGHT = 32;
 const SIDEBAR_WIDTH = 180;
-const MIN_ZOOM = 30;  // px per second minimum
-const MAX_ZOOM = 500; // px per second maximum
+// Zoom bounds are computed dynamically from musical content.
+// These are fallbacks only used before container width is known.
+const FALLBACK_MIN_ZOOM = 30;
+const FALLBACK_MAX_ZOOM = 500;
 
 const FINGER_ABBREV: Record<string, string> = {
   thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
@@ -129,10 +131,22 @@ export function UnifiedTimeline() {
     return () => observer.disconnect();
   }, []);
 
+  // Content-aware zoom bounds:
+  // MIN_ZOOM: clip must fill at least half the viewport (prevents tiny sliver)
+  // MAX_ZOOM: one bar should be at least 60% of viewport width (prevents over-zoom)
+  const contentMinZoom = containerWidth > 0 && totalDuration > 0
+    ? Math.max(FALLBACK_MIN_ZOOM, (containerWidth * 0.5) / totalDuration)
+    : FALLBACK_MIN_ZOOM;
+  const contentMaxZoom = containerWidth > 0 && barDuration > 0
+    ? Math.max(contentMinZoom * 2, Math.min(FALLBACK_MAX_ZOOM, (containerWidth * 4) / barDuration))
+    : FALLBACK_MAX_ZOOM;
+
   const autoFitZoom = containerWidth > 0 && totalDuration > 0
-    ? Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, (containerWidth - 20) / totalDuration))
-    : MIN_ZOOM;
-  const zoom = zoomOverride ?? autoFitZoom;
+    ? Math.max(contentMinZoom, Math.min(contentMaxZoom, (containerWidth - 20) / totalDuration))
+    : contentMinZoom;
+  const zoom = zoomOverride !== null
+    ? Math.max(contentMinZoom, Math.min(contentMaxZoom, zoomOverride))
+    : autoFitZoom;
 
   // Build per-stream finger assignments (or dummies pre-analysis),
   // then overlay voiceConstraints so user hand/finger selections show immediately
@@ -349,12 +363,19 @@ export function UnifiedTimeline() {
           <span className="text-[10px] text-gray-500">Zoom</span>
           <input
             type="range"
-            min={MIN_ZOOM}
-            max={MAX_ZOOM}
-            value={zoom}
+            min={Math.round(contentMinZoom)}
+            max={Math.round(contentMaxZoom)}
+            value={Math.round(zoom)}
             onChange={e => setZoomOverride(Number(e.target.value))}
             className="w-20 h-1 accent-blue-500"
           />
+          <button
+            className="text-[9px] text-gray-600 hover:text-gray-400 transition-colors"
+            onClick={() => setZoomOverride(null)}
+            title="Reset to auto-fit"
+          >
+            Fit
+          </button>
         </div>
 
         {/* Transport */}

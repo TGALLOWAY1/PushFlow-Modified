@@ -109,6 +109,7 @@ class GreedyOptimizer implements OptimizerMethod {
       costDelta: 0,
       reason: 'Initialization complete',
       phase: 'init-fingers',
+      layoutSnapshot: deepCopyLayout(layout),
     });
 
     // ── Phase C: Hill-Climbing Local Improvement ───────────────
@@ -154,6 +155,9 @@ class GreedyOptimizer implements OptimizerMethod {
 
       // Accept best move
       const costDelta = bestCost - currentCost.total;
+      layout = bestMove.newLayout!;
+      assignment = bestMove.newAssignment!;
+
       const moveRecord: OptimizerMove = {
         iteration: iter,
         type: bestMove.type,
@@ -167,11 +171,9 @@ class GreedyOptimizer implements OptimizerMethod {
         reason: `Total cost decreased by ${Math.abs(costDelta).toFixed(3)}`,
         rejectedAlternatives: movesChecked - 1,
         phase: 'hill-climb',
+        layoutSnapshot: deepCopyLayout(layout),
       };
       moveHistory.push(moveRecord);
-
-      layout = bestMove.newLayout!;
-      assignment = bestMove.newAssignment!;
       currentCost = bestMove.costResult!;
 
       // Yield every 10 iterations
@@ -296,6 +298,7 @@ class GreedyOptimizer implements OptimizerMethod {
         reason: `Best placement score: ${bestScore.toFixed(2)} (${emptyPads.length} candidates)`,
         rejectedAlternatives: emptyPads.length - 1,
         phase: 'init-layout',
+        layoutSnapshot: deepCopyLayout(layout),
       });
     }
 

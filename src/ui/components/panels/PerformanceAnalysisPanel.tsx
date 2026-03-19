@@ -304,21 +304,19 @@ export function PerformanceAnalysisPanel({
 
 /** Summarizes WHY events are unplayable, using solver rejection reasons. */
 function UnplayableDiagnostics({ plan }: { plan: ExecutionPlanResult }) {
+  const totalEvents = plan.fingerAssignments.length;
+  const allUnplayable = plan.unplayableCount >= totalEvents && totalEvents > 0;
+  const mostUnplayable = plan.unplayableCount > totalEvents * 0.5;
+
   const reasons = plan.rejectionReasons;
-  if (!reasons || Object.keys(reasons).length === 0) {
-    return (
-      <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/5 text-[11px] text-red-300">
-        <div className="font-medium mb-1">{plan.unplayableCount} event{plan.unplayableCount !== 1 ? 's' : ''} unplayable</div>
-        <div className="text-red-400/70">No diagnostic details available.</div>
-      </div>
-    );
-  }
 
   // Aggregate reasons
   const counts: Record<string, number> = {};
-  for (const eventReasons of Object.values(reasons)) {
-    for (const r of eventReasons) {
-      counts[r] = (counts[r] || 0) + 1;
+  if (reasons) {
+    for (const eventReasons of Object.values(reasons)) {
+      for (const r of eventReasons) {
+        counts[r] = (counts[r] || 0) + 1;
+      }
     }
   }
 
@@ -331,22 +329,46 @@ function UnplayableDiagnostics({ plan }: { plan: ExecutionPlanResult }) {
     beam_exhausted: 'Solver could not find a solution path',
   };
 
+  // Special messaging for total failure (greedy solver produced nothing usable)
+  if (allUnplayable) {
+    return (
+      <div className="p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 space-y-2">
+        <div className="text-[11px] font-medium text-amber-300">
+          No playable assignments found
+        </div>
+        <div className="text-[11px] text-gray-400 leading-relaxed">
+          The solver could not assign fingers to any events. This usually means sounds
+          are not yet assigned to pads, or the current layout makes all events infeasible.
+        </div>
+        <div className="text-[11px] text-gray-300 space-y-1 pt-1 border-t border-amber-500/10">
+          <div className="font-medium text-gray-400 mb-1">Try:</div>
+          <div>1. Assign sounds to pads in the grid (drag from Sounds panel)</div>
+          <div>2. Import a MIDI file to create sound streams</div>
+          <div>3. Try a different optimizer method (Beam or Annealing)</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/5 space-y-2">
       <div className="text-[11px] font-medium text-red-300">
-        {plan.unplayableCount} event{plan.unplayableCount !== 1 ? 's' : ''} unplayable
+        {plan.unplayableCount} of {totalEvents} event{totalEvents !== 1 ? 's' : ''} unplayable
+        {mostUnplayable && <span className="text-red-400/60 ml-1">— consider adjusting layout</span>}
       </div>
-      <div className="space-y-1">
-        {Object.entries(counts)
-          .sort((a, b) => b[1] - a[1])
-          .map(([reason, count]) => (
-            <div key={reason} className="flex items-center gap-2 text-[10px]">
-              <span className="font-mono text-red-400 w-5 text-right">{count}</span>
-              <span className="text-red-300/80">{REASON_LABELS[reason] ?? reason}</span>
-            </div>
-          ))
-        }
-      </div>
+      {Object.keys(counts).length > 0 && (
+        <div className="space-y-1">
+          {Object.entries(counts)
+            .sort((a, b) => b[1] - a[1])
+            .map(([reason, count]) => (
+              <div key={reason} className="flex items-center gap-2 text-[10px]">
+                <span className="font-mono text-red-400 w-5 text-right">{count}</span>
+                <span className="text-red-300/80">{REASON_LABELS[reason] ?? reason}</span>
+              </div>
+            ))
+          }
+        </div>
+      )}
       <div className="text-[10px] text-gray-500 pt-1 border-t border-red-500/10">
         Try adjusting pad positions on the grid, then re-generate.
       </div>
