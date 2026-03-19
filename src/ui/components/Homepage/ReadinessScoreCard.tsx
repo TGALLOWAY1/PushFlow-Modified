@@ -81,7 +81,7 @@ interface StatRowProps {
 function StatRow({ icon, label, value }: StatRowProps) {
   return (
     <div className="flex items-center gap-2">
-      <span className="text-gray-500">{icon}</span>
+      <span>{icon}</span>
       <div className="min-w-0">
         <p className="text-sm font-medium text-gray-200">{value}</p>
         <p className="text-[10px] text-gray-500">{label}</p>
@@ -95,31 +95,28 @@ export function ReadinessScoreCard({ data }: ReadinessScoreCardProps) {
     <div className="glass-panel rounded-xl p-5 flex flex-col items-center">
       <div className="flex items-center justify-between w-full mb-3">
         <h3 className="text-sm font-medium text-gray-400">Performance Readiness Score</h3>
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 font-medium">
-          Needs Attention
-        </span>
       </div>
 
       <CircularGauge score={data.score} />
 
       <div className="grid grid-cols-2 gap-x-6 gap-y-3 mt-4 w-full">
         <StatRow
-          icon={<Clock size={14} />}
+          icon={<Clock size={14} className="text-blue-400" />}
           label="Total hours practiced"
           value={data.hoursPracticed}
         />
         <StatRow
-          icon={<LayoutGrid size={14} />}
+          icon={<LayoutGrid size={14} className="text-purple-400" />}
           label="Layouts"
           value={String(data.layoutsExplored)}
         />
         <StatRow
-          icon={<TrendingUp size={14} />}
+          icon={<TrendingUp size={14} className="text-emerald-400" />}
           label="Difficulty"
           value={data.difficultyLevel}
         />
         <StatRow
-          icon={<Flame size={14} />}
+          icon={<Flame size={14} className="text-orange-400" />}
           label="Current Streak"
           value={`${data.currentStreak}d`}
         />

@@ -38,21 +38,25 @@ const ACTIONS: ActionDef[] = [
     icon: <Download size={14} />,
     label: 'Import MIDI',
     onClick: (p) => p.onNewProject(), // Creates project, MIDI imported inside editor
+    accent: 'text-blue-400',
   },
   {
     icon: <Copy size={14} />,
     label: 'Duplicate Existing Layout',
     onClick: () => {},
+    accent: 'text-purple-400',
   },
   {
     icon: <Play size={14} />,
     label: 'Resume Last Practice',
     onClick: () => {},
+    accent: 'text-amber-400',
   },
   {
     icon: <GitCompare size={14} />,
     label: 'Compare Layout Options',
     onClick: () => {},
+    accent: 'text-orange-400',
   },
   {
     icon: <Shield size={14} />,
@@ -70,6 +74,7 @@ const ACTIONS: ActionDef[] = [
     icon: <History size={14} />,
     label: 'View Practice History',
     onClick: () => {},
+    accent: 'text-rose-400',
   },
 ];
 
