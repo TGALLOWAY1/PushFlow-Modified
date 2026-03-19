@@ -207,6 +207,7 @@ export function VoicePalette() {
       key={stream.id}
       stream={stream}
       padKeys={streamPadLocations.get(stream.id) ?? []}
+      isLocked={(streamPadLocations.get(stream.id) ?? []).some(pk => !!layout?.placementLocks[pk])}
       voiceConstraint={state.voiceConstraints[stream.id]}
       solverAssignment={solverSummary.get(stream.id)}
       groups={state.laneGroups}
@@ -420,6 +421,7 @@ function GroupHeader({
 function StreamRow({
   stream,
   padKeys,
+  isLocked,
   voiceConstraint,
   solverAssignment,
   groups,
@@ -440,6 +442,7 @@ function StreamRow({
 }: {
   stream: SoundStream;
   padKeys: string[];
+  isLocked: boolean;
   voiceConstraint?: { hand?: 'left' | 'right'; finger?: string };
   solverAssignment?: { label: string; hand: string; finger: string };
   isSelected: boolean;
@@ -574,9 +577,10 @@ function StreamRow({
         </span>
       )}
 
-      {/* Pad location(s) */}
+      {/* Pad location(s) + lock indicator */}
       {padKeys.length > 0 && (
-        <span className="text-[10px] text-gray-500 font-mono flex-shrink-0">
+        <span className="text-[10px] text-gray-500 font-mono flex-shrink-0 flex items-center gap-0.5">
+          {isLocked && <span className="text-[8px] text-amber-400" title="Placement locked">&#x1F512;</span>}
           [{padKeys[0]}]
           {padKeys.length > 1 && `+${padKeys.length - 1}`}
         </span>
