@@ -2,16 +2,7 @@
 
 ## Project
 
-PushFlow V3 is a performance-mapping and playability-analysis tool for Ableton Push 3. It is being defined from a workflow-first product contract before deep re-engineering begins.
-
-This workspace contains:
-- canonical V3 workflow and planning artifacts
-- a V2 codebase used as the primary salvage source (TypeScript + React + Vite)
-- a V1 codebase used as a secondary salvage source
-- engine reconciliation analysis comparing V1 and V2 approaches
-- a cost evaluation audit and canonical evaluator implementation
-
-The goal is to turn approved workflow decisions into a clear implementation path without letting legacy structure dictate the product.
+PushFlow V3 is a performance-mapping and playability-analysis tool for Ableton Push 3. The active codebase (TypeScript + React + Vite) lives at the repository root.
 
 The product promise is not "generate a layout." The product promise is: **converge on a Layout plus Execution Plan that is playable, understandable, and worth keeping.**
 
@@ -19,37 +10,60 @@ The product promise is not "generate a layout." The product promise is: **conver
 
 ```
 PushFlow-Modified/
-├── CLAUDE.md                              # This file — agent instructions
-├── README.md                              # Product overview, cost model, architecture
-├── CANONICAL_COST_EVALUATION_PLAN.md      # Cost evaluation audit and unification plan
-├── product-reconciliation/
-│   ├── output/                            # CANONICAL SOURCE OF TRUTH (4 key files + correction plans)
-│   ├── v2/v2 repo/                        # PRIMARY CODEBASE — TypeScript/React/Vite
-│   └── v1/v1 Repo/                        # SECONDARY REFERENCE — older version
-├── engine-reconciliation-output/          # 10 comparison docs (V1 vs V2 engine analysis)
-├── docs/screenshots/                      # UI screenshots (3 images)
-└── archive/                               # Superseded artifacts — DO NOT USE
+├── CLAUDE.md                     # This file — agent instructions
+├── README.md                     # Product overview
+├── src/                          # Active source code
+│   ├── engine/                   # Core optimization + analysis engine
+│   ├── ui/                       # React UI layer
+│   ├── types/                    # Domain types and contracts
+│   ├── import/                   # MIDI file import
+│   ├── utils/                    # Utilities
+│   ├── main.tsx                  # Application entry point
+│   └── index.css                 # Global styles
+├── test/                         # Test suite
+├── docs/
+│   ├── canonical/                # CANONICAL SOURCE OF TRUTH (7 planning docs)
+│   ├── product/                  # Terminology, milestones, bugs, source of truth
+│   └── screenshots/              # UI screenshots
+├── archive/                      # Historical reference material — NOT active
+│   ├── v1-reference/             # V1 codebase (reference only)
+│   ├── engine-comparison/        # V1 vs V2 engine analysis (10 docs)
+│   ├── reconciliation/           # Legacy planning artifacts
+│   ├── v2-planning/              # V2-era planning markdowns
+│   ├── v2-docs/                  # V2-era product synthesis docs
+│   ├── cost-model-planning/      # Cost evaluation audit docs
+│   ├── tasks/                    # Historical task/audit docs
+│   └── superseded-workflow/      # Superseded workflow reports
+├── package.json                  # Dependencies
+├── tsconfig.json                 # TypeScript config
+├── vite.config.ts                # Build config
+├── vitest.config.ts              # Test config
+├── tailwind.config.js            # Tailwind CSS config
+├── postcss.config.js             # PostCSS config
+└── index.html                    # App entry HTML
 ```
 
 ## Canonical Source Of Truth
 
 Read these first for any planning or implementation work:
-1. `product-reconciliation/output/PUSHFLOW_WORKFLOW_AND_PRODUCT_CONTRACT.md`
-2. `product-reconciliation/output/PUSHFLOW_DECISIONS_AND_OPEN_QUESTIONS.md`
-3. `product-reconciliation/output/PUSHFLOW_ENGINE_TOUCHPOINTS_AND_IMPLEMENTATION_SEQUENCE.md`
-4. `product-reconciliation/output/PUSHFLOW_SOURCE_ARTIFACT_INDEX.md`
+1. `docs/canonical/PUSHFLOW_WORKFLOW_AND_PRODUCT_CONTRACT.md`
+2. `docs/canonical/PUSHFLOW_DECISIONS_AND_OPEN_QUESTIONS.md`
+3. `docs/canonical/PUSHFLOW_ENGINE_TOUCHPOINTS_AND_IMPLEMENTATION_SEQUENCE.md`
+4. `docs/canonical/PUSHFLOW_SOURCE_ARTIFACT_INDEX.md`
 
 Additional canonical planning documents:
-- `product-reconciliation/output/EVENT_AND_FINGER_CONSTRAINT_CORRECTION_PLAN.md`
-- `product-reconciliation/output/EVENT_MODEL_CORRECTION_PLAN.md`
-- `product-reconciliation/output/MANUAL_EDIT_DECISION_MATRIX.csv`
-- `CANONICAL_COST_EVALUATION_PLAN.md` (root level — cost evaluation unification)
+- `docs/canonical/EVENT_AND_FINGER_CONSTRAINT_CORRECTION_PLAN.md`
+- `docs/canonical/EVENT_MODEL_CORRECTION_PLAN.md`
+- `docs/canonical/MANUAL_EDIT_DECISION_MATRIX.csv`
 
 Engine reconciliation analysis (for V3 design decisions):
-- `engine-reconciliation-output/V3_ENGINE_DECISIONS.md` — which V1/V2 approach to adopt
-- `engine-reconciliation-output/ENGINE_SALVAGE_MATRIX.md` — what to salvage from each version
-- `engine-reconciliation-output/COST_MODEL_COMPARISON.md` — cost function differences
+- `archive/engine-comparison/V3_ENGINE_DECISIONS.md` — which V1/V2 approach to adopt
+- `archive/engine-comparison/ENGINE_SALVAGE_MATRIX.md` — what to salvage from each version
+- `archive/engine-comparison/COST_MODEL_COMPARISON.md` — cost function differences
 - Other comparison files cover architecture, constraints, optimization, testing, domain model, constants
+
+Cost evaluation audit (for cost model context):
+- `archive/cost-model-planning/CANONICAL_COST_EVALUATION_PLAN.md`
 
 Rules:
 - The four canonical files are the only planning source of truth.
@@ -59,21 +73,11 @@ Rules:
 ## Historical Reference Material
 
 Use these only to salvage useful elements or understand regressions:
-- Primary salvage codebase: `product-reconciliation/v2/v2 repo`
-- Secondary salvage codebase: `product-reconciliation/v1/v1 Repo`
+- V1 reference codebase: `archive/v1-reference/`
 
-Use V1 and V2 docs as reference material only. They do **not** determine current product direction.
+Do not use archived material as source of truth.
 
-Do not use these as source of truth:
-- `product-reconciliation/v1/archive/exported-doc-bundles/`
-- `product-reconciliation/v2/archive/exported-doc-bundles/`
-- `product-reconciliation/v2/v2 repo/Version1/`
-- `product-reconciliation/output/archive/`
-- `archive/superseded-workflow-artifacts/`
-
-## Tech Stack (V2 Codebase)
-
-All code lives under `product-reconciliation/v2/v2 repo/`.
+## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
@@ -88,7 +92,7 @@ All code lives under `product-reconciliation/v2/v2 repo/`.
 
 ## Development Commands
 
-All commands run from `product-reconciliation/v2/v2 repo/`:
+All commands run from the repository root:
 
 ```bash
 npm install              # Install dependencies
@@ -100,10 +104,10 @@ npm run test:run         # Run tests once (CI mode)
 npm run test:coverage    # Run tests with coverage report
 ```
 
-## Codebase Architecture (V2)
+## Codebase Architecture
 
 ```
-product-reconciliation/v2/v2 repo/src/
+src/
 ├── engine/                        # Core optimization + analysis engine
 │   ├── optimization/              # Annealing solver, multi-candidate generator, mutation, ranker
 │   ├── evaluation/                # Canonical evaluator, cost functions, difficulty scoring, objective
@@ -151,8 +155,6 @@ product-reconciliation/v2/v2 repo/src/
 ```
 
 ### Test Suite
-
-Tests live in `product-reconciliation/v2/v2 repo/test/`:
 
 ```
 test/
@@ -247,7 +249,7 @@ Do not let engine internals outrun the approved workflow contract.
 
 ### Cost Evaluation Architecture
 
-Cost evaluation has three layers (see `CANONICAL_COST_EVALUATION_PLAN.md` for full audit):
+Cost evaluation has three layers (see `archive/cost-model-planning/CANONICAL_COST_EVALUATION_PLAN.md` for full audit):
 
 1. **Solver-Internal Cost Functions** (`src/engine/evaluation/costFunction.ts`) — pure functions called thousands of times during beam search (pose naturalness, transition cost, alternation, hand balance)
 2. **Objective Combination** (`src/engine/evaluation/objective.ts`) — two coexisting models: `PerformabilityObjective` (3-component, used for beam ranking) and `ObjectiveComponents` (7-component, legacy diagnostic display)
@@ -259,11 +261,11 @@ A canonical evaluator (`src/engine/evaluation/canonicalEvaluator.ts`) was implem
 
 ## Current Workspace Reality
 
-The workspace is primarily reconciliation and salvage material.
-There is not yet a single clean V3 implementation root.
+The active codebase lives at the repository root (`src/`, `test/`).
+Historical V1 and reconciliation material is archived under `archive/`.
 
 Working assumptions:
-- V2 is the main codebase to reshape
+- The current codebase is the active implementation to develop against
 - V1 is a reference for salvageable interaction ideas, validation habits, and missing capabilities
 - Any deep rewrite must be justified against the canonical workflow and implementation sequence
 
@@ -302,7 +304,7 @@ Before changing code:
 
 When planning:
 - optimize for workflow clarity first
-- be explicit about what is salvageable from V2 and V1
+- be explicit about what is salvageable from V1
 - separate resolved decisions from open questions
 - use defaults from the canonical decisions doc when possible
 - avoid giant matrices and duplicate planning artifacts
