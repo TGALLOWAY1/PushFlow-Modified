@@ -99,10 +99,23 @@ export function CandidatePreviewCard({
           <span>Top: {topDriver}</span>
         </div>
 
-        {/* Feasibility warning */}
+        {/* Feasibility warning with reason summary */}
         {candidate.executionPlan.unplayableCount > 0 && (
           <div className="text-[10px] text-red-400 bg-red-500/10 rounded px-1.5 py-0.5 mb-2">
             {candidate.executionPlan.unplayableCount} unplayable
+            {candidate.executionPlan.rejectionReasons && (() => {
+              const counts: Record<string, number> = {};
+              for (const reasons of Object.values(candidate.executionPlan.rejectionReasons)) {
+                for (const r of reasons) counts[r] = (counts[r] || 0) + 1;
+              }
+              const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+              const SHORT_LABELS: Record<string, string> = {
+                unmapped: 'unmapped', zone_conflict: 'zone conflict',
+                ownership_conflict: 'ownership', speed_limit: 'speed',
+                no_valid_grip: 'no grip', beam_exhausted: 'no solution path',
+              };
+              return top ? <span className="text-red-400/60"> ({SHORT_LABELS[top[0]] ?? top[0]})</span> : null;
+            })()}
           </div>
         )}
 

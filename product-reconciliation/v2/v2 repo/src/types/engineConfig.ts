@@ -78,6 +78,13 @@ export interface SolverConfig {
   engineConstants?: EngineConstants;
   neutralPadPositionsOverride?: NeutralPadPositions | null;
   mappingResolverMode?: 'strict' | 'allow-fallback';
+  /**
+   * Pre-seed pad ownership from the natural hand pose.
+   * When provided, the beam search starts with these finger-to-pad assignments
+   * already locked, ensuring consistent finger usage from the first event.
+   * Keys are pad coords ("row,col"), values are { hand, finger }.
+   */
+  initialPadOwnership?: Record<string, { hand: 'left' | 'right'; finger: import('./fingerModel').FingerType }>;
   seed?: number;
   annealingConfig?: AnnealingConfig;
 }

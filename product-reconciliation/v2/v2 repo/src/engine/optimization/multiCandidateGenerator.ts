@@ -35,7 +35,7 @@ import {
 import { type Section } from '../../types/performanceStructure';
 import { type FingerType } from '../../types/fingerModel';
 import { seedLayoutFromPose0 } from '../mapping/seedFromPose';
-import { getMaxSafeOffset, poseHasAssignments } from '../prior/naturalHandPose';
+import { getMaxSafeOffset, poseHasAssignments, fingerIdToHandAndFingerType, getPose0PadsWithOffset } from '../prior/naturalHandPose';
 import { createAnnealingSolver } from './annealingSolver';
 import { createBeamSolver } from '../solvers/beamSolver';
 import { analyzeDifficulty, computeTradeoffProfile } from '../evaluation/difficultyScoring';
@@ -45,6 +45,42 @@ import {
   buildGenerationSummary,
 } from '../analysis/diversityMeasurement';
 import { generateId } from '../../utils/idGenerator';
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Compute initial pad ownership from pose0 + layout.
+ * For each pad in the layout that corresponds to a pose0 finger position,
+ * pre-assign the natural finger. This prevents the solver from picking
+ * a random finger for the first hit and locking a sub-optimal assignment.
+ */
+function computeInitialPadOwnership(
+  pose0: NaturalHandPose,
+  layout: Layout,
+  offsetRow: number = 0,
+): Record<string, { hand: 'left' | 'right'; finger: FingerType }> {
+  const ownership: Record<string, { hand: 'left' | 'right'; finger: FingerType }> = {};
+  const posePads = getPose0PadsWithOffset(pose0, offsetRow, true);
+
+  // Build a map of pad position → fingerId from pose0
+  const padToFinger = new Map<string, string>();
+  for (const entry of posePads) {
+    padToFinger.set(`${entry.row},${entry.col}`, entry.fingerId);
+  }
+
+  // For each pad in the layout, if it matches a pose0 position, assign that finger
+  for (const padKey of Object.keys(layout.padToVoice)) {
+    const fingerId = padToFinger.get(padKey);
+    if (fingerId) {
+      const { hand, finger } = fingerIdToHandAndFingerType(fingerId as import('../../types/ergonomicPrior').FingerId);
+      ownership[padKey] = { hand, finger };
+    }
+  }
+
+  return ownership;
+}
 
 // ============================================================================
 // Configuration
@@ -285,9 +321,19 @@ export async function generateCandidates(
     const ls = strategy.layoutStrategy;
 
     if (ls.type === 'pose0-offset') {
-      // Pose0-based: seed layout from natural hand pose with offset
+      // Pose0-based: seed layout from natural hand pose with offset.
+      // Extract existing voices from baseLayout to preserve voiceId chain.
+      let existingVoices: Map<number, import('../../types/voice').Voice> | undefined;
+      if (config.baseLayout) {
+        existingVoices = new Map();
+        for (const voice of Object.values(config.baseLayout.padToVoice)) {
+          if (voice.originalMidiNote != null) {
+            existingVoices.set(voice.originalMidiNote, voice);
+          }
+        }
+      }
       layout = pose0 && poseHasAssignments(pose0)
-        ? seedLayoutFromPose0(performance, pose0, ls.offsetRow)
+        ? seedLayoutFromPose0(performance, pose0, ls.offsetRow, existingVoices)
         : config.baseLayout ?? {
             id: generateId('layout'),
             name: `Generated Layout (${strategy.name})`,
@@ -351,10 +397,23 @@ export async function generateCandidates(
       finalLayout = solver.getBestLayout() ?? layout;
     } else {
       // Run beam search only (no annealing requested or empty layout)
+      const hasLayout = Object.keys(layout.padToVoice).length > 0;
+
+      // Pre-seed pad ownership from pose0 when available — this ensures the
+      // solver uses the natural finger for each pad from the first event,
+      // preventing ownership conflicts from random grip selection.
+      const offsetRow = strategy.layoutStrategy.type === 'pose0-offset'
+        ? strategy.layoutStrategy.offsetRow
+        : 0;
+      const initialPadOwnership = (pose0 && poseHasAssignments(pose0) && hasLayout)
+        ? computeInitialPadOwnership(pose0, layout, offsetRow)
+        : undefined;
+
       const solverConfig: SolverConfig = {
         instrumentConfig: config.instrumentConfig,
-        layout: Object.keys(layout.padToVoice).length > 0 ? layout : null,
+        layout: hasLayout ? layout : null,
         mappingResolverMode: 'allow-fallback',
+        initialPadOwnership,
       };
       const solver = createBeamSolver(solverConfig);
       executionPlan = await solver.solve(performance, candidateEngineConfig, config.manualAssignments);
