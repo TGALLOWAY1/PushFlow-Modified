@@ -21,6 +21,9 @@ const TRACK_HEIGHT = 32;
 const SIDEBAR_WIDTH = 180;
 const MIN_ZOOM = 30;  // px per second minimum
 const MAX_ZOOM = 500; // px per second maximum
+const BAR_HEADER_HEIGHT = 40;  // Bar number row
+const BEAT_HEADER_HEIGHT = 20; // Beat subdivision row
+const TOTAL_HEADER_HEIGHT = BAR_HEADER_HEIGHT + BEAT_HEADER_HEIGHT;
 
 const FINGER_ABBREV: Record<string, string> = {
   thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
@@ -240,6 +243,34 @@ export function UnifiedTimeline() {
     return lines;
   }, [minTime, maxTime, zoom, beatDuration]);
 
+  // Bar/beat header data
+  const barWidth = barDuration * zoom;
+  const beatWidth = beatDuration * zoom;
+  const headerBars = useMemo(() => {
+    const bars: Array<{ barNum: number; x: number }> = [];
+    const startBar = Math.floor(minTime / barDuration);
+    const endBar = Math.ceil(maxTime / barDuration);
+    for (let b = startBar; b < endBar; b++) {
+      bars.push({ barNum: b + 1, x: (b * barDuration - minTime) * zoom });
+    }
+    return bars;
+  }, [minTime, maxTime, barDuration, zoom]);
+
+  const headerBeats = useMemo(() => {
+    const beats: Array<{ beatNum: number; x: number; isMeasureStart: boolean }> = [];
+    const startBeat = Math.floor(minTime / beatDuration);
+    const endBeat = Math.ceil(maxTime / beatDuration);
+    for (let b = startBeat; b < endBeat; b++) {
+      const beatInBar = (b % 4) + 1;
+      beats.push({
+        beatNum: beatInBar,
+        x: (b * beatDuration - minTime) * zoom,
+        isMeasureStart: beatInBar === 1,
+      });
+    }
+    return beats;
+  }, [minTime, maxTime, beatDuration, zoom]);
+
   // In auto-fit mode, match container exactly; when manually zoomed, add padding
   const isAutoFit = zoomOverride === null;
   const timelineWidth = isAutoFit
@@ -414,6 +445,8 @@ export function UnifiedTimeline() {
           className="flex-shrink-0 overflow-y-auto border-r border-gray-800"
           style={{ width: SIDEBAR_WIDTH }}
         >
+          {/* Header spacer to align with beat header */}
+          <div className="sticky top-0 z-10 bg-gray-900 border-b border-gray-800" style={{ height: TOTAL_HEADER_HEIGHT }} />
           {visibleStreams.map((stream, i) => (
             <VoiceRow
               key={stream.id}
@@ -433,26 +466,51 @@ export function UnifiedTimeline() {
           className="flex-1 overflow-auto"
           onScroll={handleTimelineScroll}
         >
-          <div className="relative" style={{ width: timelineWidth, minHeight: totalHeight }}>
-            {/* Beat grid lines */}
+          <div className="relative" style={{ width: timelineWidth, minHeight: totalHeight + TOTAL_HEADER_HEIGHT }}>
+            {/* ─── Sticky Beat Header ──────────────────────────────── */}
+            {/* Row 1: Bar numbers */}
+            <div className="sticky top-0 z-10 bg-gray-950" style={{ height: BAR_HEADER_HEIGHT }}>
+              <div className="flex" style={{ height: BAR_HEADER_HEIGHT }}>
+                {headerBars.map(bar => (
+                  <div
+                    key={`bar-${bar.barNum}`}
+                    className="text-center text-xs font-medium text-gray-400 border-l border-gray-600 flex items-end justify-center pb-1"
+                    style={{ width: barWidth, minWidth: barWidth }}
+                  >
+                    {bar.barNum}
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Row 2: Beat subdivisions */}
+            <div className="sticky z-10 bg-gray-900/80" style={{ height: BEAT_HEADER_HEIGHT, top: BAR_HEADER_HEIGHT }}>
+              <div className="flex" style={{ height: BEAT_HEADER_HEIGHT }}>
+                {headerBeats.map((beat, i) => (
+                  <div
+                    key={`subbeat-${i}`}
+                    className="text-center text-[10px] text-gray-500 flex items-center justify-center"
+                    style={{ width: beatWidth, minWidth: beatWidth }}
+                  >
+                    {beat.beatNum}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Beat grid lines (offset below header) */}
             {beatLines.map((line, i) => (
               <div
                 key={`beat-${i}`}
-                className="absolute top-0 w-px"
+                className="absolute w-px"
                 style={{
                   left: line.x,
+                  top: TOTAL_HEADER_HEIGHT,
                   height: totalHeight,
                   backgroundColor: line.isMeasure
                     ? 'rgba(255,255,255,0.10)'
                     : 'rgba(255,255,255,0.03)',
                 }}
-              >
-                {line.isMeasure && (
-                  <span className="absolute -top-0 left-1 text-[8px] text-gray-600 font-mono select-none">
-                    {line.label}
-                  </span>
-                )}
-              </div>
+              />
             ))}
 
             {/* Lane dividers + alternating backgrounds */}
@@ -461,12 +519,12 @@ export function UnifiedTimeline() {
                 {i % 2 === 1 && (
                   <div
                     className="absolute w-full bg-white/[0.015]"
-                    style={{ top: i * TRACK_HEIGHT, height: TRACK_HEIGHT }}
+                    style={{ top: TOTAL_HEADER_HEIGHT + i * TRACK_HEIGHT, height: TRACK_HEIGHT }}
                   />
                 )}
                 <div
                   className="absolute w-full border-b border-gray-800/30"
-                  style={{ top: (i + 1) * TRACK_HEIGHT }}
+                  style={{ top: TOTAL_HEADER_HEIGHT + (i + 1) * TRACK_HEIGHT }}
                 />
               </div>
             ))}
@@ -474,9 +532,10 @@ export function UnifiedTimeline() {
             {/* Playhead */}
             {state.currentTime > 0 && (
               <div
-                className="absolute top-0 z-30 pointer-events-none"
+                className="absolute z-30 pointer-events-none"
                 style={{
                   left: (state.currentTime - minTime) * zoom,
+                  top: TOTAL_HEADER_HEIGHT,
                   height: totalHeight,
                   width: 2,
                   backgroundColor: 'rgba(239, 68, 68, 0.8)',
@@ -488,7 +547,7 @@ export function UnifiedTimeline() {
             {/* Event pills per stream (single layer — no duplicate blocks) */}
             {visibleStreams.map((stream, trackIdx) => {
               const trackAssignments = streamAssignments.get(stream.id) ?? [];
-              const trackY = trackIdx * TRACK_HEIGHT;
+              const trackY = TOTAL_HEADER_HEIGHT + trackIdx * TRACK_HEIGHT;
 
               // Build duration lookup from stream events
               const durationByTime = new Map<number, number>();

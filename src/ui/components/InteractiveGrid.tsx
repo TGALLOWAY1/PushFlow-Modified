@@ -279,7 +279,16 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     e.preventDefault();
     setDragOverPad(null);
 
-    // Check if it's a palette drag (sound stream)
+    // Check pad-to-pad drag first (swap) — must come before stream check
+    // because handlePadDragStart sets both data types
+    const padData = e.dataTransfer.getData('application/pushflow-pad');
+    if (padData && padData !== padKey) {
+      dispatch({ type: 'SWAP_PADS', payload: { padKeyA: padData, padKeyB: padKey } });
+      setDragSourcePad(null);
+      return;
+    }
+
+    // Check if it's a palette drag (sound stream from VoicePalette)
     const streamData = e.dataTransfer.getData('application/pushflow-stream');
     if (streamData) {
       try {
@@ -293,11 +302,6 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       return;
     }
 
-    // Check if it's a pad-to-pad drag (swap)
-    const padData = e.dataTransfer.getData('application/pushflow-pad');
-    if (padData && padData !== padKey) {
-      dispatch({ type: 'SWAP_PADS', payload: { padKeyA: padData, padKeyB: padKey } });
-    }
     setDragSourcePad(null);
   }, [state.soundStreams, dispatch]);
 
