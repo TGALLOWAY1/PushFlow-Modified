@@ -23,14 +23,10 @@ import { generateId } from '../../utils/idGenerator';
 import { ContinuePracticingHero } from '../components/Homepage/ContinuePracticingHero';
 import { ReadinessScoreCard } from '../components/Homepage/ReadinessScoreCard';
 import { PerformanceCard } from '../components/Homepage/PerformanceCard';
-import { ImprovementPlanCard } from '../components/Homepage/ImprovementPlanCard';
-import { SuggestedSimilaritiesCard } from '../components/Homepage/SuggestedSimilaritiesCard';
 import { QuickActionsCard } from '../components/Homepage/QuickActionsCard';
 import { PracticeStatsCard } from '../components/Homepage/PracticeStatsCard';
 import {
   getReadinessData,
-  getImprovementPlan,
-  getSuggestedSimilarities,
   getPracticeStats,
   getProjectMockData,
 } from '../components/Homepage/homepageDemoData';
@@ -56,8 +52,6 @@ export function ProjectLibraryPage() {
 
   // Mock data (stable across renders)
   const readinessData = useMemo(() => getReadinessData(), []);
-  const improvementPlan = useMemo(() => getImprovementPlan(), []);
-  const similarities = useMemo(() => getSuggestedSimilarities(), []);
   const practiceStats = useMemo(() => getPracticeStats(), []);
 
   // ---- Handlers ----
@@ -189,8 +183,6 @@ export function ProjectLibraryPage() {
 
         {/* Sidebar */}
         <div className="flex flex-col gap-4">
-          <ImprovementPlanCard items={improvementPlan} />
-          <SuggestedSimilaritiesCard items={similarities} />
           <QuickActionsCard onNewProject={handleNewProject} onNavigate={navigate} />
           <PracticeStatsCard stats={practiceStats} />
         </div>

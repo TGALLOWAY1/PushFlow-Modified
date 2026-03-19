@@ -69,8 +69,9 @@ export function UnifiedTimeline() {
   const beatDurationRaw = 60 / (state.tempo || 120);
   const barDuration = beatDurationRaw * 4; // 4 beats per bar
 
-  // Compute time range across all streams, snapped to bar boundaries
-  const { minTime, maxTime, totalDuration } = useMemo(() => {
+  // Compute time range across all streams, snapped to bar boundaries for grid lines
+  // but using raw content extent for zoom calculation
+  const { minTime, maxTime, totalDuration, contentDuration } = useMemo(() => {
     let min = Infinity;
     let max = -Infinity;
     for (const s of state.soundStreams) {
@@ -81,11 +82,17 @@ export function UnifiedTimeline() {
       }
     }
     if (min === Infinity) { min = 0; max = barDuration * 4; }
-    // Snap min down and max up to bar boundaries
+    const rawContentDuration = max - min;
+    // Snap min down and max up to bar boundaries (for grid lines)
     min = Math.floor(min / barDuration) * barDuration;
     max = Math.ceil(max / barDuration) * barDuration;
     if (max <= min) max = min + barDuration;
-    return { minTime: min, maxTime: max, totalDuration: max - min };
+    return {
+      minTime: min,
+      maxTime: max,
+      totalDuration: max - min,
+      contentDuration: Math.max(rawContentDuration, barDuration),
+    };
   }, [state.soundStreams, barDuration]);
 
   // ─── Playback RAF Loop (with looping) ───────────────────────────────────
@@ -130,8 +137,9 @@ export function UnifiedTimeline() {
   }, []);
 
   // Auto-fit: scale so MIDI content fills the entire container width
-  const autoFitZoom = containerWidth > 0 && totalDuration > 0
-    ? Math.max(1, containerWidth / totalDuration)
+  // Use contentDuration (raw event extent) for tighter fit — no bar-snap padding
+  const autoFitZoom = containerWidth > 0 && contentDuration > 0
+    ? Math.max(1, containerWidth / contentDuration)
     : MIN_ZOOM;
   const zoom = zoomOverride ?? autoFitZoom;
 
@@ -414,6 +422,7 @@ export function UnifiedTimeline() {
               key={stream.id}
               stream={stream}
               isEven={i % 2 === 0}
+              isGlobalSelected={state.selectedStreamId === stream.id}
               onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: stream.id })}
               onSolo={() => dispatch({ type: 'SOLO_STREAM', payload: stream.id })}
               onRename={(name) => dispatch({ type: 'RENAME_SOUND', payload: { streamId: stream.id, name } })}
@@ -548,12 +557,14 @@ export function UnifiedTimeline() {
 function VoiceRow({
   stream,
   isEven,
+  isGlobalSelected,
   onToggleMute,
   onSolo,
   onRename,
 }: {
   stream: SoundStream;
   isEven: boolean;
+  isGlobalSelected: boolean;
   onToggleMute: () => void;
   onSolo: () => void;
   onRename: (name: string) => void;
@@ -580,7 +591,7 @@ function VoiceRow({
   return (
     <div
       className={`flex items-center gap-1.5 px-2 text-xs border-b border-gray-800/30 transition-colors
-        ${isEven ? '' : 'bg-white/[0.015]'}
+        ${isGlobalSelected ? 'bg-blue-500/15 border-l-2 border-l-blue-400' : isEven ? '' : 'bg-white/[0.015]'}
         ${stream.muted ? 'opacity-40' : ''}`}
       style={{ height: TRACK_HEIGHT }}
     >

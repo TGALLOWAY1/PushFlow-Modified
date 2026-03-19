@@ -2,11 +2,12 @@
  * View Settings State.
  *
  * Centralized UI display options for grid labeling, view modes,
- * and layout display preferences. Reusable across analysis,
- * candidate preview, compare mode, and event/onion views.
+ * and layout display preferences. Shared via React Context so all
+ * consumers (PerformanceWorkspace, WorkspaceToolbar, etc.) see the
+ * same state.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useContext, createContext, type ReactNode } from 'react';
 
 /**
  * GridLabelSettings: What labels to show on each pad in the grid.
@@ -70,10 +71,24 @@ export const LABEL_PRIORITY: Array<keyof GridLabelSettings> = [
   'showPositionLabels',
 ];
 
+// ============================================================================
+// Context
+// ============================================================================
+
+interface ViewSettingsContextValue {
+  settings: ViewSettings;
+  setSettings: (s: ViewSettings) => void;
+  updateGridLabels: (updates: Partial<GridLabelSettings>) => void;
+  toggleGridLabel: (key: keyof GridLabelSettings) => void;
+  toggleLayoutDisplay: (key: keyof LayoutDisplaySettings) => void;
+}
+
+const ViewSettingsContext = createContext<ViewSettingsContextValue | null>(null);
+
 /**
- * Hook for managing view settings state.
+ * Provider — wrap at workspace or app level so all consumers share one instance.
  */
-export function useViewSettings() {
+export function ViewSettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<ViewSettings>(DEFAULT_VIEW_SETTINGS);
 
   const updateGridLabels = useCallback((updates: Partial<GridLabelSettings>) => {
@@ -97,5 +112,20 @@ export function useViewSettings() {
     }));
   }, []);
 
-  return { settings, setSettings, updateGridLabels, toggleGridLabel, toggleLayoutDisplay };
+  return (
+    <ViewSettingsContext.Provider value={{ settings, setSettings, updateGridLabels, toggleGridLabel, toggleLayoutDisplay }}>
+      {children}
+    </ViewSettingsContext.Provider>
+  );
+}
+
+/**
+ * Hook for consuming view settings. Must be used within ViewSettingsProvider.
+ */
+export function useViewSettings() {
+  const ctx = useContext(ViewSettingsContext);
+  if (!ctx) {
+    throw new Error('useViewSettings must be used within a ViewSettingsProvider');
+  }
+  return ctx;
 }

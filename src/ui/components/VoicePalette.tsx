@@ -47,7 +47,13 @@ export function VoicePalette() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedStreamIds, state.laneGroups.length, dispatch]);
 
+  // Drag-to-reorder state
+  const [reorderTarget, setReorderTarget] = useState<string | null>(null);
+
   const handleStreamSelect = useCallback((streamId: string, e: React.MouseEvent) => {
+    // Always dispatch global selection for cross-panel highlighting
+    dispatch({ type: 'SELECT_STREAM', payload: state.selectedStreamId === streamId ? null : streamId });
+
     if (e.metaKey || e.ctrlKey) {
       setSelectedStreamIds(prev => {
         const next = new Set(prev);
@@ -56,7 +62,6 @@ export function VoicePalette() {
         return next;
       });
     } else if (e.shiftKey && selectedStreamIds.size > 0) {
-      // Shift-click: select range
       const allIds = state.soundStreams.map(s => s.id);
       const lastSelected = [...selectedStreamIds].pop()!;
       const lastIdx = allIds.indexOf(lastSelected);
@@ -68,7 +73,7 @@ export function VoicePalette() {
     } else {
       setSelectedStreamIds(prev => prev.has(streamId) && prev.size === 1 ? new Set() : new Set([streamId]));
     }
-  }, [selectedStreamIds, state.soundStreams]);
+  }, [selectedStreamIds, state.soundStreams, state.selectedStreamId, dispatch]);
 
   // Build a map of which pads each stream occupies
   const streamPadLocations = useMemo(() => {
@@ -188,6 +193,15 @@ export function VoicePalette() {
     e.dataTransfer.effectAllowed = 'copyMove';
   };
 
+  const handleReorderDrop = useCallback((targetStreamId: string) => {
+    if (!reorderTarget || reorderTarget === targetStreamId) return;
+    const targetIdx = state.soundStreams.findIndex(s => s.id === targetStreamId);
+    if (targetIdx !== -1) {
+      dispatch({ type: 'REORDER_STREAMS', payload: { streamId: reorderTarget, newIndex: targetIdx } });
+    }
+    setReorderTarget(null);
+  }, [reorderTarget, state.soundStreams, dispatch]);
+
   const renderStreamRow = (stream: SoundStream) => (
     <StreamRow
       key={stream.id}
@@ -198,6 +212,7 @@ export function VoicePalette() {
       groups={state.laneGroups}
       currentGroupId={streamGroupMap.get(stream.id) ?? null}
       isSelected={selectedStreamIds.has(stream.id)}
+      isGlobalSelected={state.selectedStreamId === stream.id}
       onSelect={handleStreamSelect}
       onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: stream.id })}
       onSolo={() => dispatch({ type: 'SOLO_STREAM', payload: stream.id })}
@@ -214,6 +229,13 @@ export function VoicePalette() {
         type: 'SET_LANE_GROUP',
         payload: { laneId: stream.id, groupId },
       })}
+      onRename={(name) => dispatch({
+        type: 'RENAME_SOUND',
+        payload: { streamId: stream.id, name },
+      })}
+      onReorderDragStart={() => setReorderTarget(stream.id)}
+      onReorderDrop={() => handleReorderDrop(stream.id)}
+      isReorderTarget={reorderTarget !== null && reorderTarget !== stream.id}
     />
   );
 
@@ -403,6 +425,7 @@ function StreamRow({
   groups,
   currentGroupId,
   isSelected,
+  isGlobalSelected,
   onSelect,
   onToggleMute,
   onSolo,
@@ -410,12 +433,17 @@ function StreamRow({
   onSetConstraint,
   onChangeColor,
   onSetGroup,
+  onRename,
+  onReorderDragStart,
+  onReorderDrop,
+  isReorderTarget,
 }: {
   stream: SoundStream;
   padKeys: string[];
   voiceConstraint?: { hand?: 'left' | 'right'; finger?: string };
   solverAssignment?: { label: string; hand: string; finger: string };
   isSelected: boolean;
+  isGlobalSelected: boolean;
   onSelect: (streamId: string, e: React.MouseEvent) => void;
   groups: LaneGroup[];
   currentGroupId: string | null;
@@ -425,10 +453,22 @@ function StreamRow({
   onSetConstraint: (hand?: 'left' | 'right' | null, finger?: string | null) => void;
   onChangeColor: (color: string) => void;
   onSetGroup: (groupId: string | null) => void;
+  onRename: (name: string) => void;
+  onReorderDragStart: () => void;
+  onReorderDrop: () => void;
+  isReorderTarget: boolean;
 }) {
   const solverFinger = solverAssignment?.finger ?? null;
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(stream.name);
   const colorRef = useRef<HTMLDivElement>(null);
+
+  const commitName = () => {
+    const trimmed = nameDraft.trim();
+    if (trimmed && trimmed !== stream.name) onRename(trimmed);
+    setEditingName(false);
+  };
 
   useEffect(() => {
     if (!showColorPicker) return;
@@ -448,10 +488,15 @@ function StreamRow({
         border hover:border-gray-700
         cursor-grab active:cursor-grabbing active:scale-95 transition-transform duration-150
         ${stream.muted ? 'opacity-40' : ''}
-        ${isSelected ? 'border-blue-500/50 bg-blue-500/10' : 'border-transparent'}
+        ${isGlobalSelected ? 'border-blue-400 bg-blue-500/20 ring-1 ring-blue-400/30' : isSelected ? 'border-blue-500/50 bg-blue-500/10' : 'border-transparent'}
       `}
       draggable
-      onDragStart={e => onDragStart(e, stream)}
+      onDragStart={e => {
+        onDragStart(e, stream);
+        onReorderDragStart();
+      }}
+      onDragOver={isReorderTarget ? e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } : undefined}
+      onDrop={isReorderTarget ? e => { e.preventDefault(); onReorderDrop(); } : undefined}
       onClick={e => onSelect(stream.id, e)}
     >
       {/* Color swatch (click to open color + group popover) */}
@@ -507,10 +552,27 @@ function StreamRow({
         )}
       </div>
 
-      {/* Name */}
-      <span className="flex-1 truncate text-gray-200 font-medium">
-        {stream.name}
-      </span>
+      {/* Name (double-click to edit) */}
+      {editingName ? (
+        <input
+          className="flex-1 text-xs font-medium text-gray-200 bg-gray-800 border border-gray-600 rounded px-1 py-0.5 outline-none focus:border-blue-500 min-w-0"
+          value={nameDraft}
+          onChange={e => setNameDraft(e.target.value)}
+          onBlur={commitName}
+          onKeyDown={e => { if (e.key === 'Enter') commitName(); if (e.key === 'Escape') setEditingName(false); }}
+          onClick={e => e.stopPropagation()}
+          onMouseDown={e => e.stopPropagation()}
+          autoFocus
+        />
+      ) : (
+        <span
+          className="flex-1 truncate text-gray-200 font-medium cursor-text"
+          onDoubleClick={e => { e.stopPropagation(); setNameDraft(stream.name); setEditingName(true); }}
+          title={stream.name}
+        >
+          {stream.name}
+        </span>
+      )}
 
       {/* Pad location(s) */}
       {padKeys.length > 0 && (

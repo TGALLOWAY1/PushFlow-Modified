@@ -18,7 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { useProject } from '../../state/ProjectContext';
 import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
-import { useViewSettings } from '../../state/viewSettings';
+import { useViewSettings, ViewSettingsProvider } from '../../state/viewSettings';
 
 import { WorkspaceToolbar } from './WorkspaceToolbar';
 import { VoicePalette } from '../VoicePalette';
@@ -44,6 +44,14 @@ const RIGHT_MAX = 600;
 const RIGHT_DEFAULT = 340;
 
 export function PerformanceWorkspace() {
+  return (
+    <ViewSettingsProvider>
+      <PerformanceWorkspaceInner />
+    </ViewSettingsProvider>
+  );
+}
+
+function PerformanceWorkspaceInner() {
   const { state, dispatch } = useProject();
   const navigate = useNavigate();
   const { generateFull, calculateCost, generationProgress, canGenerate, generateDisabledReason } = useAutoAnalysis();
@@ -61,6 +69,26 @@ export function PerformanceWorkspace() {
   const isResizing = useRef<'left' | 'right' | null>(null);
   const startX = useRef(0);
   const startWidth = useRef(0);
+
+  // Grid scaling — ResizeObserver measures container, scale grid to fit
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+  const [gridScale, setGridScale] = useState(1);
+  const GRID_NATURAL_SIZE = 8 * (56 + 4) + 40; // 8 cells * (cell + gap) + padding/labels
+
+  useEffect(() => {
+    const el = gridContainerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        const available = Math.min(width, height);
+        const scale = Math.min(1.2, available / GRID_NATURAL_SIZE);
+        setGridScale(Math.max(0.5, scale));
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // Compare state
   const [selectedForCompare, setSelectedForCompare] = useState<Set<string>>(new Set());
@@ -219,18 +247,20 @@ export function PerformanceWorkspace() {
 
         {/* Center Column: Grid + Timeline stacked */}
         <div className="flex-1 flex flex-col gap-3 min-w-0 min-h-0 px-1.5">
-          {/* Push Grid — takes available space */}
-          <div className="flex-1 min-h-0 rounded-lg glass-panel p-3 flex flex-col">
-            <div className="flex-1 min-h-0 flex items-center justify-center">
-              <InteractiveGrid
-                assignments={assignments}
-                layoutOverride={selectedCandidate?.layout}
-                selectedEventIndex={state.selectedEventIndex}
-                onEventClick={idx => dispatch({ type: 'SELECT_EVENT', payload: idx })}
-                onionSkin={onionSkin}
-                voiceConstraints={state.voiceConstraints}
-                gridLabels={viewSettings.gridLabels}
-              />
+          {/* Push Grid — takes available space, scales to fill */}
+          <div className="flex-1 min-h-0 rounded-lg glass-panel p-1 flex flex-col">
+            <div ref={gridContainerRef} className="flex-1 min-h-0 flex items-center justify-center overflow-hidden">
+              <div style={{ transform: `scale(${gridScale})`, transformOrigin: 'center' }}>
+                <InteractiveGrid
+                  assignments={assignments}
+                  layoutOverride={selectedCandidate?.layout}
+                  selectedEventIndex={state.selectedEventIndex}
+                  onEventClick={idx => dispatch({ type: 'SELECT_EVENT', payload: idx })}
+                  onionSkin={onionSkin}
+                  voiceConstraints={state.voiceConstraints}
+                  gridLabels={viewSettings.gridLabels}
+                />
+              </div>
             </div>
           </div>
 

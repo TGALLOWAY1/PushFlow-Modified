@@ -34,6 +34,7 @@ import { type CostToggles } from '../../types/costToggles';
 import { type EvaluationConfig } from '../../types/evaluationConfig';
 import { type PerformanceCostBreakdown } from '../../types/costBreakdown';
 import { generateId } from '../../utils/idGenerator';
+import { createSeededRng } from '../../utils/seededRng';
 import {
   buildCooccurrenceMatrix,
   buildSoundFrequency,
@@ -257,6 +258,12 @@ class GreedyOptimizer implements OptimizerMethod {
     // Build co-occurrence matrix
     const cooccurrence = buildCooccurrenceMatrix(input.performance.events);
 
+    // Seeded RNG for placement diversity (different seeds produce different layouts)
+    const seed = input.config.seed ?? 0;
+    const rng = createSeededRng(seed);
+    // Noise scale: seed 0 = no noise (baseline), seed > 0 = add randomness
+    const noiseScale = seed === 0 ? 0 : 0.3;
+
     // Place sounds one at a time
     for (const [soundId, voice] of sortedSounds) {
       const emptyPads = getEmptyPadPositions(
@@ -266,14 +273,18 @@ class GreedyOptimizer implements OptimizerMethod {
       );
       if (emptyPads.length === 0) break;
 
-      // Score each empty pad
+      // Score each empty pad with optional noise for diversity
       let bestPad = emptyPads[0];
       let bestScore = Infinity;
 
       for (const pad of emptyPads) {
-        const score = scorePlacement(
+        let score = scorePlacement(
           pad, soundId, layout, cooccurrence, input.costToggles,
         );
+        // Add seeded noise for non-zero seeds to explore different placements
+        if (noiseScale > 0) {
+          score += (rng() - 0.5) * noiseScale * Math.max(1, Math.abs(score));
+        }
         if (score < bestScore) {
           bestScore = score;
           bestPad = pad;

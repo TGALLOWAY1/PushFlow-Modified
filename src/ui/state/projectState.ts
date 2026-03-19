@@ -129,6 +129,8 @@ export interface ProjectState {
   selectedEventIndex: number | null;
   /** Moment-level selection index (indexes into ExecutionPlanResult.momentAssignments). */
   selectedMomentIndex: number | null;
+  /** Currently selected sound stream (for cross-panel highlighting). */
+  selectedStreamId: string | null;
   compareCandidateId: string | null;
   isProcessing: boolean;
   error: string | null;
@@ -222,6 +224,8 @@ export type ProjectAction =
   | { type: 'SOLO_STREAM'; payload: string }
   | { type: 'SET_SOUND_COLOR'; payload: { streamId: string; color: string } }
   | { type: 'SET_VOICE_CONSTRAINT'; payload: { streamId: string; hand?: 'left' | 'right' | null; finger?: string | null } }
+  | { type: 'SELECT_STREAM'; payload: string | null }
+  | { type: 'REORDER_STREAMS'; payload: { streamId: string; newIndex: number } }
 
   // Layout editing (targets working layout, auto-creates if needed)
   | { type: 'ASSIGN_VOICE_TO_PAD'; payload: { padKey: string; stream: SoundStream } }
@@ -397,18 +401,34 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
     // -- Sound streams --
 
-    case 'RENAME_SOUND':
+    case 'RENAME_SOUND': {
+      const { streamId, name } = action.payload;
+      const renamePadVoices = (pv: Layout['padToVoice']) => {
+        const out: Layout['padToVoice'] = {};
+        for (const [k, v] of Object.entries(pv)) {
+          out[k] = v.id === streamId ? { ...v, name } : v;
+        }
+        return out;
+      };
       return {
         ...state,
         updatedAt: new Date().toISOString(),
         soundStreams: state.soundStreams.map(s =>
-          s.id === action.payload.streamId ? { ...s, name: action.payload.name } : s
+          s.id === streamId ? { ...s, name } : s
         ),
-        // Keep lane names in sync so SYNC_STREAMS_FROM_LANES doesn't overwrite renames
         performanceLanes: state.performanceLanes.map(l =>
-          l.id === action.payload.streamId ? { ...l, name: action.payload.name } : l
+          l.id === streamId ? { ...l, name } : l
         ),
+        activeLayout: {
+          ...state.activeLayout,
+          padToVoice: renamePadVoices(state.activeLayout.padToVoice),
+        },
+        workingLayout: state.workingLayout ? {
+          ...state.workingLayout,
+          padToVoice: renamePadVoices(state.workingLayout.padToVoice),
+        } : null,
       };
+    }
 
     case 'TOGGLE_MUTE': {
       const stream = state.soundStreams.find(s => s.id === action.payload);
@@ -448,18 +468,34 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       };
     }
 
-    case 'SET_SOUND_COLOR':
+    case 'SET_SOUND_COLOR': {
+      const { streamId: colorStreamId, color } = action.payload;
+      const recolorPadVoices = (pv: Layout['padToVoice']) => {
+        const out: Layout['padToVoice'] = {};
+        for (const [k, v] of Object.entries(pv)) {
+          out[k] = v.id === colorStreamId ? { ...v, color } : v;
+        }
+        return out;
+      };
       return {
         ...state,
         updatedAt: new Date().toISOString(),
         soundStreams: state.soundStreams.map(s =>
-          s.id === action.payload.streamId ? { ...s, color: action.payload.color } : s
+          s.id === colorStreamId ? { ...s, color } : s
         ),
-        // Keep lane colors in sync so SYNC_STREAMS_FROM_LANES doesn't overwrite
         performanceLanes: state.performanceLanes.map(l =>
-          l.id === action.payload.streamId ? { ...l, color: action.payload.color } : l
+          l.id === colorStreamId ? { ...l, color } : l
         ),
+        activeLayout: {
+          ...state.activeLayout,
+          padToVoice: recolorPadVoices(state.activeLayout.padToVoice),
+        },
+        workingLayout: state.workingLayout ? {
+          ...state.workingLayout,
+          padToVoice: recolorPadVoices(state.workingLayout.padToVoice),
+        } : null,
       };
+    }
 
     case 'SET_VOICE_CONSTRAINT': {
       const { streamId, hand, finger } = action.payload;
@@ -473,6 +509,24 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       if (Object.keys(updated).length === 0) delete next[streamId];
       else next[streamId] = updated;
       return { ...state, updatedAt: new Date().toISOString(), voiceConstraints: next, analysisStale: true };
+    }
+
+    case 'SELECT_STREAM':
+      return { ...state, selectedStreamId: action.payload };
+
+    case 'REORDER_STREAMS': {
+      const { streamId: reorderId, newIndex } = action.payload;
+      const streams = [...state.soundStreams];
+      const oldIdx = streams.findIndex(s => s.id === reorderId);
+      if (oldIdx === -1 || oldIdx === newIndex) return state;
+      const [moved] = streams.splice(oldIdx, 1);
+      streams.splice(newIndex, 0, moved);
+      // Keep performanceLanes in same order
+      const laneOrder = new Map(streams.map((s, i) => [s.id, i]));
+      const lanes = [...state.performanceLanes].sort(
+        (a, b) => (laneOrder.get(a.id) ?? 0) - (laneOrder.get(b.id) ?? 0)
+      );
+      return { ...state, updatedAt: new Date().toISOString(), soundStreams: streams, performanceLanes: lanes };
     }
 
     // -- Layout editing (all target working layout) --
@@ -819,6 +873,7 @@ export function createEmptyProjectState(): ProjectState {
     sourceFiles: [],
     selectedEventIndex: null,
     selectedMomentIndex: null,
+    selectedStreamId: null,
     compareCandidateId: null,
     isProcessing: false,
     error: null,
