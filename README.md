@@ -251,7 +251,6 @@ src/
 
 ### Setup
 ```bash
-cd product-reconciliation/v2/v2\ repo
 npm install
 ```
 
@@ -294,9 +293,9 @@ The test suite validates critical invariants:
 
 PushFlow V3 is under active development. The canonical workflow contract and implementation sequence are defined in:
 
-- `product-reconciliation/output/PUSHFLOW_WORKFLOW_AND_PRODUCT_CONTRACT.md`
-- `product-reconciliation/output/PUSHFLOW_DECISIONS_AND_OPEN_QUESTIONS.md`
-- `product-reconciliation/output/PUSHFLOW_ENGINE_TOUCHPOINTS_AND_IMPLEMENTATION_SEQUENCE.md`
+- `docs/canonical/PUSHFLOW_WORKFLOW_AND_PRODUCT_CONTRACT.md`
+- `docs/canonical/PUSHFLOW_DECISIONS_AND_OPEN_QUESTIONS.md`
+- `docs/canonical/PUSHFLOW_ENGINE_TOUCHPOINTS_AND_IMPLEMENTATION_SEQUENCE.md`
 
 ### Completed Phases
 1. V3 Workflow State Model (Layout lifecycle, role transitions)
