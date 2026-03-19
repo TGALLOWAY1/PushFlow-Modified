@@ -12,7 +12,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import chroma from 'chroma-js';
 import { useProject } from '../state/ProjectContext';
-import { getDisplayedLayout, getActiveStreams, type SoundStream } from '../state/projectState';
+import { getDisplayedLayout, getDisplayedLayoutRole, type SoundStream } from '../state/projectState';
 import { PadContextMenu } from './PadContextMenu';
 import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
@@ -77,7 +77,6 @@ const IMPOSSIBLE_REACH_THRESHOLD = 5;
 export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels }: InteractiveGridProps) {
   const { state, dispatch } = useProject();
   const layout = layoutOverride ?? getDisplayedLayout(state);
-  const activeStreams = getActiveStreams(state);
   const [dragOverPad, setDragOverPad] = useState<string | null>(null);
   const [dragSourcePad, setDragSourcePad] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ padKey: string; x: number; y: number } | null>(null);
@@ -570,12 +569,23 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
 
   return (
     <div className="space-y-1">
-      {/* Analysis stale indicator */}
-      {state.analysisStale && state.analysisResult && (
-        <div className="text-[10px] text-amber-400 mb-1">
-          Layout changed — analysis outdated
-        </div>
-      )}
+      {/* Layout role badge + analysis stale indicator */}
+      <div className="flex items-center gap-2">
+        {layout && (
+          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+            getDisplayedLayoutRole(state) === 'working'
+              ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+              : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+          }`}>
+            {getDisplayedLayoutRole(state) === 'working' ? 'Working Draft' : 'Active'}
+          </span>
+        )}
+        {state.analysisStale && state.analysisResult && (
+          <span className="text-[10px] text-amber-400">
+            Analysis outdated
+          </span>
+        )}
+      </div>
 
       <div className="inline-block relative">
         {transitionPaths.length > 0 && (
@@ -620,23 +630,14 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
         </div>
       </div>
 
-      {/* Summary line */}
-      {layout && (
-        <div className="space-y-1 mt-1">
-          <div className="text-[10px] text-gray-500">
-            {Object.keys(layout.padToVoice).length} pad{Object.keys(layout.padToVoice).length !== 1 ? 's' : ''} assigned
-            {' / '}
-            {activeStreams.length} active sound{activeStreams.length !== 1 ? 's' : ''}
-          </div>
-          {selectedTransition?.next && (
-            <div className="text-[10px] text-sky-300/80">
-              Transition preview: {selectedTransition.timeDelta?.toFixed(3)}s to next event
-              {' · '}
-              {selectedTransition.sharedPadKeys.size} shared pad{selectedTransition.sharedPadKeys.size === 1 ? '' : 's'}
-              {' · '}
-              {selectedTransition.fingerMoves.filter(move => !move.isHold && move.fromPad && move.toPad).length} finger move{selectedTransition.fingerMoves.filter(move => !move.isHold && move.fromPad && move.toPad).length === 1 ? '' : 's'}
-            </div>
-          )}
+      {/* Transition preview */}
+      {selectedTransition?.next && (
+        <div className="text-[10px] text-sky-300/80 mt-1">
+          Transition preview: {selectedTransition.timeDelta?.toFixed(3)}s to next event
+          {' · '}
+          {selectedTransition.sharedPadKeys.size} shared pad{selectedTransition.sharedPadKeys.size === 1 ? '' : 's'}
+          {' · '}
+          {selectedTransition.fingerMoves.filter(move => !move.isHold && move.fromPad && move.toPad).length} finger move{selectedTransition.fingerMoves.filter(move => !move.isHold && move.fromPad && move.toPad).length === 1 ? '' : 's'}
         </div>
       )}
 

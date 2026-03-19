@@ -19,6 +19,10 @@ interface EventCostChartProps {
   fingerAssignments: FingerAssignment[];
   /** Which candidate is being shown (for display context) */
   candidateLabel?: string;
+  /** Currently selected event index (highlights the corresponding bar) */
+  selectedEventIndex?: number | null;
+  /** Callback when a bar is clicked */
+  onEventClick?: (eventIndex: number | null) => void;
 }
 
 interface CostLayer {
@@ -42,7 +46,7 @@ interface EventBar {
   total: number;
 }
 
-export function EventCostChart({ fingerAssignments, candidateLabel }: EventCostChartProps) {
+export function EventCostChart({ fingerAssignments, candidateLabel, selectedEventIndex, onEventClick }: EventCostChartProps) {
   const [enabledLayers, setEnabledLayers] = useState<Set<string>>(
     new Set(COST_LAYERS.map(l => l.key))
   );
@@ -141,20 +145,25 @@ export function EventCostChart({ fingerAssignments, candidateLabel }: EventCostC
           {eventBars.map((bar, idx) => {
             const barHeight = bar.total > 0 ? (bar.total / maxTotal) * height : 0;
             const isHovered = hoveredEvent === idx;
+            const isSelected = selectedEventIndex !== undefined && selectedEventIndex !== null && idx === selectedEventIndex;
 
             return (
               <div
                 key={idx}
-                className={`relative flex flex-col-reverse transition-opacity ${
-                  isHovered ? 'opacity-100' : hoveredEvent !== null ? 'opacity-50' : 'opacity-90'
+                className={`relative flex flex-col-reverse transition-opacity cursor-pointer ${
+                  isSelected ? 'opacity-100' : isHovered ? 'opacity-100' : hoveredEvent !== null || (selectedEventIndex !== undefined && selectedEventIndex !== null) ? 'opacity-40' : 'opacity-90'
                 }`}
                 style={{
                   width: barWidth,
                   height: barHeight,
                   minWidth: barWidth,
+                  outline: isSelected ? '2px solid #60a5fa' : undefined,
+                  outlineOffset: '1px',
+                  borderRadius: '2px',
                 }}
                 onMouseEnter={() => setHoveredEvent(idx)}
                 onMouseLeave={() => setHoveredEvent(null)}
+                onClick={() => onEventClick?.(isSelected ? null : idx)}
               >
                 {bar.segments.map(seg => {
                   const segHeight = bar.total > 0 ? (seg.value / bar.total) * barHeight : 0;

@@ -53,6 +53,40 @@ export function ActiveLayoutSummary() {
     return assignments.find(a => a.eventIndex === state.selectedEventIndex) ?? null;
   }, [state.selectedEventIndex, assignments]);
 
+  // All assignments for the selected event (for per-event cost breakdown)
+  const selectedEventAssignments = useMemo(() => {
+    if (state.selectedEventIndex === null || !assignments) return null;
+    const selected = assignments.filter(a => a.eventIndex === state.selectedEventIndex);
+    return selected.length > 0 ? selected : null;
+  }, [state.selectedEventIndex, assignments]);
+
+  // Per-event aggregated metrics
+  const selectedEventMetrics = useMemo(() => {
+    if (!selectedEventAssignments) return null;
+    const metrics = {
+      fingerPreference: 0,
+      handShapeDeviation: 0,
+      transitionCost: 0,
+      handBalance: 0,
+      constraintPenalty: 0,
+      total: 0,
+    };
+    for (const a of selectedEventAssignments) {
+      if (a.costBreakdown) {
+        metrics.fingerPreference += a.costBreakdown.fingerPreference;
+        metrics.handShapeDeviation += a.costBreakdown.handShapeDeviation;
+        metrics.transitionCost += a.costBreakdown.transitionCost;
+        metrics.handBalance += a.costBreakdown.handBalance;
+        metrics.constraintPenalty += a.costBreakdown.constraintPenalty;
+        metrics.total += a.costBreakdown.total;
+      } else {
+        metrics.transitionCost += a.cost;
+        metrics.total += a.cost;
+      }
+    }
+    return metrics;
+  }, [selectedEventAssignments]);
+
   // Transition data
   const transition = useMemo(
     () => buildSelectedTransitionModel(assignments ?? null, state.selectedEventIndex),
@@ -149,10 +183,13 @@ export function ActiveLayoutSummary() {
           {/* Three-layer cost breakdown: feasibility + ergonomics + difficulty */}
           {currentPlan && (
             <CostBreakdownBars
-              metrics={currentPlan.averageMetrics}
-              diagnostics={currentPlan.diagnostics}
-              hardCount={currentPlan.hardCount}
-              unplayableCount={currentPlan.unplayableCount}
+              metrics={selectedEventMetrics ?? currentPlan.averageMetrics}
+              diagnostics={selectedEventMetrics ? undefined : currentPlan.diagnostics}
+              hardCount={selectedEventMetrics ? undefined : currentPlan.hardCount}
+              unplayableCount={selectedEventMetrics ? undefined : currentPlan.unplayableCount}
+              eventLabel={selectedEventMetrics && state.selectedEventIndex !== null
+                ? `Event ${state.selectedEventIndex + 1} (t=${assignment?.startTime.toFixed(3) ?? '?'}s)`
+                : undefined}
             />
           )}
 
@@ -167,7 +204,11 @@ export function ActiveLayoutSummary() {
                 Event Difficulty Chart
               </button>
               {chartOpen && (
-                <EventCostChart fingerAssignments={currentPlan.fingerAssignments} />
+                <EventCostChart
+                  fingerAssignments={currentPlan.fingerAssignments}
+                  selectedEventIndex={state.selectedEventIndex}
+                  onEventClick={(idx) => dispatch({ type: 'SELECT_EVENT', payload: idx })}
+                />
               )}
             </div>
           )}

@@ -8,8 +8,8 @@
 
 import { useState, useRef } from 'react';
 import { useProject } from '../../state/ProjectContext';
-import { saveProject, exportProjectToFile } from '../../persistence/projectStorage';
-import { getDisplayedLayout, getDisplayedLayoutRole, hasWorkingChanges } from '../../state/projectState';
+import { saveProject } from '../../persistence/projectStorage';
+import { hasWorkingChanges } from '../../state/projectState';
 import { type GenerationMode } from '../../hooks/useAutoAnalysis';
 import { type OptimizerMethodKey } from '../../../engine/optimization/optimizerInterface';
 import { SettingsGear } from '../panels/SettingsGear';
@@ -46,8 +46,6 @@ export function WorkspaceToolbar({
 }: WorkspaceToolbarProps) {
   const { state, dispatch, undo, redo, canUndo, canRedo } = useProject();
   const { settings: viewSettings, toggleGridLabel, toggleLayoutDisplay } = useViewSettings();
-  const displayedLayout = getDisplayedLayout(state);
-  const layoutRole = getDisplayedLayoutRole(state);
   const hasChanges = hasWorkingChanges(state);
 
   // Editable project name
@@ -161,17 +159,6 @@ export function WorkspaceToolbar({
           title="Double-click to change BPM"
         >
           {state.tempo} BPM
-        </span>
-      )}
-
-      {/* Layout status badge */}
-      {displayedLayout && (
-        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-          layoutRole === 'working'
-            ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-            : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-        }`}>
-          {layoutRole === 'working' ? 'Working Draft' : 'Active'}
         </span>
       )}
 

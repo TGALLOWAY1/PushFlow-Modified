@@ -19,6 +19,8 @@ interface CostBreakdownBarsProps {
   diagnostics?: DiagnosticsPayload;
   hardCount?: number;
   unplayableCount?: number;
+  /** When set, shows event-specific metrics with a label */
+  eventLabel?: string;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -211,9 +213,16 @@ function DifficultySummary({ hardCount, unplayableCount }: {
 // Composite component
 // ────────────────────────────────────────────────────────────────────────────
 
-export function CostBreakdownBars({ metrics, diagnostics, hardCount, unplayableCount }: CostBreakdownBarsProps) {
+export function CostBreakdownBars({ metrics, diagnostics, hardCount, unplayableCount, eventLabel }: CostBreakdownBarsProps) {
   return (
     <div className="space-y-3">
+      {/* Event-specific label */}
+      {eventLabel && (
+        <div className="text-[10px] text-cyan-400 px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 inline-block">
+          {eventLabel}
+        </div>
+      )}
+
       {/* Layer 1: Feasibility verdict */}
       <FeasibilityBadge
         verdict={diagnostics?.feasibility}
