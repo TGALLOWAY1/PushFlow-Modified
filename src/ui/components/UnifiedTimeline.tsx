@@ -71,7 +71,7 @@ export function UnifiedTimeline() {
 
   // Compute time range across all streams, snapped to bar boundaries for grid lines
   // but using raw content extent for zoom calculation
-  const { minTime, maxTime, totalDuration, contentDuration } = useMemo(() => {
+  const { minTime, maxTime, totalDuration } = useMemo(() => {
     let min = Infinity;
     let max = -Infinity;
     for (const s of state.soundStreams) {
@@ -82,7 +82,6 @@ export function UnifiedTimeline() {
       }
     }
     if (min === Infinity) { min = 0; max = barDuration * 4; }
-    const rawContentDuration = max - min;
     // Snap min down and max up to bar boundaries (for grid lines)
     min = Math.floor(min / barDuration) * barDuration;
     max = Math.ceil(max / barDuration) * barDuration;
@@ -91,7 +90,6 @@ export function UnifiedTimeline() {
       minTime: min,
       maxTime: max,
       totalDuration: max - min,
-      contentDuration: Math.max(rawContentDuration, barDuration),
     };
   }, [state.soundStreams, barDuration]);
 
@@ -136,10 +134,9 @@ export function UnifiedTimeline() {
     return () => observer.disconnect();
   }, []);
 
-  // Auto-fit: scale so MIDI content fills the entire container width
-  // Use contentDuration (raw event extent) for tighter fit — no bar-snap padding
-  const autoFitZoom = containerWidth > 0 && contentDuration > 0
-    ? Math.max(1, containerWidth / contentDuration)
+  // Auto-fit: scale so full bar-snapped duration fills the container width exactly
+  const autoFitZoom = containerWidth > 0 && totalDuration > 0
+    ? Math.max(MIN_ZOOM, containerWidth / totalDuration)
     : MIN_ZOOM;
   const zoom = zoomOverride ?? autoFitZoom;
 
@@ -331,9 +328,9 @@ export function UnifiedTimeline() {
   }
 
   return (
-    <div className="space-y-0">
+    <div className="flex flex-col h-full">
       {/* ─── Toolbar ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-3 py-2 border-b border-gray-800 bg-gray-900/40">
+      <div className="flex items-center gap-3 px-3 py-2 border-b border-gray-800 bg-gray-900/40 flex-shrink-0">
         {/* Import */}
         <button
           className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs font-medium text-white transition-colors"
@@ -410,11 +407,11 @@ export function UnifiedTimeline() {
       </div>
 
       {/* ─── Timeline Body ────────────────────────────────────────────────── */}
-      <div className="flex" style={{ minHeight: Math.max(totalHeight, 200) }}>
+      <div className="flex flex-1 min-h-0">
         {/* Voice Sidebar */}
         <div
           ref={sidebarScrollRef}
-          className="flex-shrink-0 overflow-hidden border-r border-gray-800"
+          className="flex-shrink-0 overflow-y-auto border-r border-gray-800"
           style={{ width: SIDEBAR_WIDTH }}
         >
           {visibleStreams.map((stream, i) => (

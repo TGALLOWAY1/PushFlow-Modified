@@ -378,11 +378,16 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       let isGlowActive = false;
 
       if (voice) {
+        // Always show the voice's custom color as pad background
+        if (voice.color) {
+          bgColor = safeColorAlpha(voice.color, 0.25, voice.color);
+        }
+
         if (summary && summary.hitCount > 0) {
           const hands = [...summary.hands];
           if (hands.length === 1 && hands[0] !== 'Unplayable') {
             glowColor = HAND_COLORS[hands[0] as 'left' | 'right'] ?? HAND_COLORS.mixed;
-            borderColor = glowColor;
+            borderColor = voice.color ?? glowColor;
             textColor = 'var(--text-primary)';
             isGlowActive = true;
           } else if (hands.includes('Unplayable') && hands.length === 1) {
@@ -392,7 +397,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             isGlowActive = true;
           } else {
             glowColor = HAND_COLORS.mixed;
-            borderColor = glowColor;
+            borderColor = voice.color ?? glowColor;
             textColor = 'var(--text-primary)';
             isGlowActive = true;
           }
@@ -401,7 +406,6 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           glowColor = voice.color ?? 'var(--border-strong)';
           borderColor = glowColor;
           textColor = 'var(--text-secondary)';
-          // No isGlowActive here unless selected/playing
         }
       }
 
