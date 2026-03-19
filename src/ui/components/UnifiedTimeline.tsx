@@ -349,7 +349,7 @@ export function UnifiedTimeline() {
 
         {/* Info */}
         <span className="text-[11px] text-gray-500">
-          {visibleStreams.length} voices
+          {visibleStreams.length} sounds
         </span>
 
         <div className="flex-1" />

@@ -85,7 +85,7 @@ export function CandidateCompare({ candidateA, candidateB }: CandidateComparePro
         <div>Layout differences: {comparison.layoutDifferences.length} pads changed</div>
         {comparison.layoutDifferences.length > 0 && (
           <div>
-            Affected voices: {[...new Set(comparison.layoutDifferences.map(d => d.voiceId))].join(', ')}
+            Affected sounds: {[...new Set(comparison.layoutDifferences.map(d => d.voiceId))].join(', ')}
           </div>
         )}
       </div>
