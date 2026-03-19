@@ -5,17 +5,19 @@
  * Shows a hero card for the most recent performance, a readiness gauge,
  * a two-row Active Performances grid, and sidebar cards for improvement
  * planning, quick actions, and practice stats.
+ *
+ * Uses IndexedDB for project listing (async), with localStorage fallback.
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search } from 'lucide-react';
 import { type ProjectState, createEmptyProjectState } from '../state/projectState';
 import {
-  listProjects,
-  loadProject,
-  saveProject,
-  removeFromIndex,
+  listProjectsAsync,
+  saveProjectAsync,
+  deleteProjectAsync,
+  loadProjectAsync,
   type ProjectLibraryEntry,
 } from '../persistence/projectStorage';
 import { generateId } from '../../utils/idGenerator';
@@ -33,17 +35,37 @@ import {
 
 export function ProjectLibraryPage() {
   const navigate = useNavigate();
-  const [savedProjects, setSavedProjects] = useState<ProjectLibraryEntry[]>(() => listProjects());
+  const [savedProjects, setSavedProjects] = useState<ProjectLibraryEntry[]>([]);
+  const [projectStates, setProjectStates] = useState<Map<string, ProjectState>>(new Map());
+  const [loading, setLoading] = useState(true);
 
-  // Load full ProjectState for each project (for MiniGridPreview thumbnails)
-  const projectStates = useMemo(() => {
-    const map = new Map<string, ProjectState>();
-    for (const entry of savedProjects) {
-      const state = loadProject(entry.id);
-      if (state) map.set(entry.id, state);
+  // Load project list from IndexedDB
+  const refreshProjects = useCallback(async () => {
+    try {
+      const entries = await listProjectsAsync();
+      setSavedProjects(entries);
+
+      // Load full states for thumbnails
+      const stateMap = new Map<string, ProjectState>();
+      for (const entry of entries) {
+        try {
+          const state = await loadProjectAsync(entry.id);
+          if (state) stateMap.set(entry.id, state);
+        } catch {
+          // Skip failed loads
+        }
+      }
+      setProjectStates(stateMap);
+    } catch (err) {
+      console.error('Failed to load projects:', err);
+    } finally {
+      setLoading(false);
     }
-    return map;
-  }, [savedProjects]);
+  }, []);
+
+  useEffect(() => {
+    refreshProjects();
+  }, [refreshProjects]);
 
   // Hero project = most recently updated (index 0, already sorted)
   const heroProject = savedProjects.length > 0 ? savedProjects[0] : null;
@@ -56,7 +78,7 @@ export function ProjectLibraryPage() {
 
   // ---- Handlers ----
 
-  const handleNewProject = useCallback(() => {
+  const handleNewProject = useCallback(async () => {
     const now = new Date().toISOString();
     const id = generateId('proj');
     const state: ProjectState = {
@@ -66,17 +88,24 @@ export function ProjectLibraryPage() {
       createdAt: now,
       updatedAt: now,
     };
-    saveProject(state);
-    setSavedProjects(listProjects());
+    await saveProjectAsync(state);
     navigate(`/project/${id}`);
   }, [navigate]);
 
-  const handleRemoveFromHistory = useCallback((id: string) => {
-    removeFromIndex(id);
-    setSavedProjects(listProjects());
-  }, []);
+  const handleRemoveFromHistory = useCallback(async (id: string) => {
+    await deleteProjectAsync(id);
+    refreshProjects();
+  }, [refreshProjects]);
 
   // ---- Render ----
+
+  if (loading) {
+    return (
+      <div className="max-w-[1400px] mx-auto py-12 text-center">
+        <p className="text-gray-400 text-sm">Loading projects...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-5">

@@ -17,6 +17,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProject } from '../../state/ProjectContext';
 import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
+import { useAutoSave } from '../../hooks/useAutoSave';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useViewSettings, ViewSettingsProvider } from '../../state/viewSettings';
 
@@ -54,6 +55,7 @@ function PerformanceWorkspaceInner() {
   const { state, dispatch } = useProject();
   const navigate = useNavigate();
   const { generateFull, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason } = useAutoAnalysis();
+  const { saveStatus, saveNow } = useAutoSave(state);
   useKeyboardShortcuts();
   const { settings: viewSettings } = useViewSettings();
 
@@ -150,7 +152,7 @@ function PerformanceWorkspaceInner() {
     <div className="h-full flex flex-col bg-[var(--bg-app)] overflow-hidden">
       {/* ─── Top Toolbar ──────────────────────────────────────── */}
       <WorkspaceToolbar
-        onNavigateLibrary={() => navigate('/')}
+        onNavigateLibrary={() => { saveNow(); navigate('/'); }}
         generateFull={handleGenerate}
         generationProgress={generationProgress}
         analysisPhase={analysisPhase}
@@ -162,6 +164,8 @@ function PerformanceWorkspaceInner() {
         onToggleComposer={() => setTimelineTab(timelineTab === 'composer' ? 'timeline' : 'composer')}
         onCalculateCost={() => calculateCost(state.costToggles)}
         hasAssignment={!!(state.analysisResult?.executionPlan?.fingerAssignments?.length)}
+        saveStatus={saveStatus}
+        onSave={saveNow}
       />
 
       {/* ─── Error Banner ─────────────────────────────────────── */}
