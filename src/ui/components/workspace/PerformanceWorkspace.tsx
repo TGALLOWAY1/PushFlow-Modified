@@ -30,7 +30,6 @@ import { ActiveLayoutSummary } from '../panels/ActiveLayoutSummary';
 import { LayoutOptionsPanel } from '../panels/LayoutOptionsPanel';
 import { CompareModal } from '../panels/CompareModal';
 import { MoveTracePanel } from '../panels/MoveTracePanel';
-import { type CostToggles, TOGGLE_LABELS, TOGGLE_CATEGORIES, isExperimentalMode } from '../../../types/costToggles';
 
 type LeftPanelTab = 'sounds' | 'events';
 type TimelineTab = 'timeline' | 'composer';
@@ -148,7 +147,7 @@ function PerformanceWorkspaceInner() {
   }, [selectedForCompare]);
 
   return (
-    <div className="h-screen flex flex-col bg-[var(--bg-app)]">
+    <div className="h-full flex flex-col bg-[var(--bg-app)] overflow-hidden">
       {/* ─── Top Toolbar ──────────────────────────────────────── */}
       <WorkspaceToolbar
         onNavigateLibrary={() => navigate('/')}
@@ -161,6 +160,8 @@ function PerformanceWorkspaceInner() {
         onCompare={handleOpenCompare}
         composerOpen={timelineTab === 'composer'}
         onToggleComposer={() => setTimelineTab(timelineTab === 'composer' ? 'timeline' : 'composer')}
+        onCalculateCost={() => calculateCost(state.costToggles)}
+        hasAssignment={!!(state.analysisResult?.executionPlan?.fingerAssignments?.length)}
       />
 
       {/* ─── Error Banner ─────────────────────────────────────── */}
@@ -266,7 +267,7 @@ function PerformanceWorkspaceInner() {
           </div>
 
           {/* Timeline / Composer — tabbed view */}
-          <div className="flex-[0_1_280px] min-h-[200px] rounded-lg glass-panel overflow-hidden flex flex-col">
+          <div className="flex-[0_1_280px] min-h-[120px] rounded-lg glass-panel overflow-hidden flex flex-col">
             {/* Tab bar */}
             <div className="flex items-center border-b border-gray-800 flex-shrink-0 px-2">
               <button
@@ -320,9 +321,6 @@ function PerformanceWorkspaceInner() {
             onCompare={handleOpenCompare}
           />
 
-          {/* Cost Evaluation section */}
-          <CostEvaluationSection calculateCost={calculateCost} />
-
           {/* Move Trace section */}
           {state.moveHistory && state.moveHistory.length > 0 && (
             <div className="rounded-lg glass-panel p-3">
@@ -343,116 +341,3 @@ function PerformanceWorkspaceInner() {
   );
 }
 
-// ─── Cost Evaluation Section ──────────────────────────────────────────────────
-
-function CostEvaluationSection({ calculateCost }: { calculateCost: (toggles: CostToggles) => Promise<void> }) {
-  const { state, dispatch } = useProject();
-  const [open, setOpen] = useState(false);
-
-  const hasAssignment = !!(state.analysisResult?.executionPlan?.fingerAssignments?.length);
-  const toggleKeys = Object.keys(TOGGLE_LABELS) as Array<keyof CostToggles>;
-  const experimental = isExperimentalMode(state.costToggles);
-
-  const staticToggles = toggleKeys.filter(k => TOGGLE_CATEGORIES[k] === 'static');
-  const temporalToggles = toggleKeys.filter(k => TOGGLE_CATEGORIES[k] === 'temporal');
-  const hardToggles = toggleKeys.filter(k => TOGGLE_CATEGORIES[k] === 'hard');
-
-  const handleToggle = (key: keyof CostToggles) => {
-    dispatch({ type: 'SET_COST_TOGGLES', payload: { ...state.costToggles, [key]: !state.costToggles[key] } });
-  };
-
-  const result = state.manualCostResult;
-
-  return (
-    <div className="rounded-lg glass-panel overflow-hidden">
-      <button
-        className="flex items-center justify-between w-full px-3 py-2 text-[11px] font-medium text-gray-400 uppercase tracking-wider hover:text-gray-200 transition-colors"
-        onClick={() => setOpen(!open)}
-      >
-        <span className="flex items-center gap-1.5">
-          <span className="text-[10px]">{open ? '\u25BE' : '\u25B8'}</span>
-          Cost Evaluation
-        </span>
-        {result && <span className="text-[10px] font-mono text-gray-500 normal-case">{result.total.toFixed(2)}</span>}
-      </button>
-
-      {open && (
-        <div className="px-3 pb-3 space-y-3">
-          {/* Toggle groups */}
-          <div className="space-y-1.5">
-            <div className="text-[10px] text-gray-500 uppercase tracking-wider">Static</div>
-            {staticToggles.map(key => (
-              <label key={key} className="flex items-center gap-2 cursor-pointer group">
-                <input type="checkbox" checked={state.costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded accent-cyan-500" />
-                <span className={`text-[11px] group-hover:text-gray-200 ${state.costToggles[key] ? 'text-gray-300' : 'text-gray-600 line-through'}`}>{TOGGLE_LABELS[key]}</span>
-              </label>
-            ))}
-            <div className="text-[10px] text-gray-500 uppercase tracking-wider pt-1">Temporal</div>
-            {temporalToggles.map(key => (
-              <label key={key} className="flex items-center gap-2 cursor-pointer group">
-                <input type="checkbox" checked={state.costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded accent-cyan-500" />
-                <span className={`text-[11px] group-hover:text-gray-200 ${state.costToggles[key] ? 'text-gray-300' : 'text-gray-600 line-through'}`}>{TOGGLE_LABELS[key]}</span>
-              </label>
-            ))}
-            <div className="text-[10px] text-gray-500 uppercase tracking-wider pt-1">Hard Rules</div>
-            {hardToggles.map(key => (
-              <label key={key} className="flex items-center gap-2 cursor-pointer group">
-                <input type="checkbox" checked={state.costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded accent-cyan-500" />
-                <span className={`text-[11px] group-hover:text-gray-200 ${state.costToggles[key] ? 'text-gray-300' : 'text-gray-600 line-through'} ${!state.costToggles[key] ? 'text-orange-400' : ''}`}>{TOGGLE_LABELS[key]}</span>
-                <span className="text-[9px] text-gray-600 ml-auto">(hard)</span>
-              </label>
-            ))}
-          </div>
-
-          {experimental && (
-            <div className="px-2 py-1.5 rounded border border-orange-500/30 bg-orange-500/10 text-[10px] text-orange-400">
-              Hard constraints disabled — results may include infeasible assignments
-            </div>
-          )}
-
-          {/* Calculate button */}
-          <button
-            className={`w-full px-3 py-2 rounded text-xs font-medium transition-colors ${
-              hasAssignment ? 'bg-cyan-600 hover:bg-cyan-500 text-white' : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-            }`}
-            onClick={() => calculateCost(state.costToggles)}
-            disabled={!hasAssignment}
-            title={!hasAssignment ? 'Run Generate first to create a finger assignment' : 'Evaluate with active cost toggles'}
-          >
-            Calculate Cost
-          </button>
-
-          {/* Result display */}
-          {result && (
-            <div className="space-y-2 pt-2 border-t border-gray-800">
-              <div className="flex justify-between items-baseline">
-                <span className="text-[11px] text-gray-300 font-medium">Total Cost</span>
-                <span className="text-sm font-mono text-white">{result.total.toFixed(2)}</span>
-              </div>
-              <div className="space-y-1">
-                {[
-                  { label: 'Grip Quality', value: result.dimensions.poseNaturalness },
-                  { label: 'Movement', value: result.dimensions.transitionCost },
-                  { label: 'Repetition', value: result.dimensions.alternation },
-                  { label: 'Hand Balance', value: result.dimensions.handBalance },
-                  { label: 'Constraints', value: result.dimensions.constraintPenalty },
-                ].map(({ label, value }) => (
-                  <div key={label} className="flex justify-between text-[10px]">
-                    <span className="text-gray-500">{label}</span>
-                    <span className={`font-mono ${value > 0 ? 'text-gray-300' : 'text-gray-600'}`}>{value.toFixed(3)}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center gap-1.5 text-[10px]">
-                <span className={`w-2 h-2 rounded-full ${
-                  result.feasibility.level === 'feasible' ? 'bg-green-400' : result.feasibility.level === 'degraded' ? 'bg-yellow-400' : 'bg-red-400'
-                }`} />
-                <span className="text-gray-400">{result.feasibility.summary}</span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}

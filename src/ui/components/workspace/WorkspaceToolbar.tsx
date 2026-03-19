@@ -8,8 +8,8 @@
 
 import { useState, useRef } from 'react';
 import { useProject } from '../../state/ProjectContext';
-import { saveProject, exportProjectToFile } from '../../persistence/projectStorage';
-import { getDisplayedLayout, getDisplayedLayoutRole, hasWorkingChanges } from '../../state/projectState';
+import { saveProject } from '../../persistence/projectStorage';
+import { hasWorkingChanges } from '../../state/projectState';
 import { type GenerationMode } from '../../hooks/useAutoAnalysis';
 import { type OptimizerMethodKey } from '../../../engine/optimization/optimizerInterface';
 import { SettingsGear } from '../panels/SettingsGear';
@@ -26,6 +26,8 @@ interface WorkspaceToolbarProps {
   onCompare: () => void;
   composerOpen: boolean;
   onToggleComposer: () => void;
+  onCalculateCost?: () => void;
+  hasAssignment?: boolean;
 }
 
 export function WorkspaceToolbar({
@@ -39,11 +41,11 @@ export function WorkspaceToolbar({
   onCompare,
   composerOpen,
   onToggleComposer,
+  onCalculateCost,
+  hasAssignment,
 }: WorkspaceToolbarProps) {
   const { state, dispatch, undo, redo, canUndo, canRedo } = useProject();
   const { settings: viewSettings, toggleGridLabel, toggleLayoutDisplay } = useViewSettings();
-  const displayedLayout = getDisplayedLayout(state);
-  const layoutRole = getDisplayedLayoutRole(state);
   const hasChanges = hasWorkingChanges(state);
 
   // Editable project name
@@ -160,17 +162,6 @@ export function WorkspaceToolbar({
         </span>
       )}
 
-      {/* Layout status badge */}
-      {displayedLayout && (
-        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-          layoutRole === 'working'
-            ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-            : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-        }`}>
-          {layoutRole === 'working' ? 'Working Draft' : 'Active'}
-        </span>
-      )}
-
       {/* Workflow actions */}
       {hasChanges && (
         <>
@@ -241,7 +232,7 @@ export function WorkspaceToolbar({
         onClick={handleSave}
         title="Save project"
       >
-        {saveConfirm ? 'Saved' : 'Save'}
+        {saveConfirm ? 'Saved' : 'Save Project'}
       </button>
 
       <div className="w-px h-5 bg-gray-800" />
@@ -342,6 +333,10 @@ export function WorkspaceToolbar({
             dispatch({ type: 'DISCARD_WORKING_LAYOUT' });
           }
         }}
+        costToggles={state.costToggles}
+        onCostToggleChange={(toggles) => dispatch({ type: 'SET_COST_TOGGLES', payload: toggles })}
+        onCalculateCost={onCalculateCost}
+        hasAssignment={hasAssignment}
       />
     </div>
   );

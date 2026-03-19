@@ -341,6 +341,7 @@ function updateWorkingLayout(
     ...withWorking,
     updatedAt: now,
     analysisStale: true,
+    selectedCandidateId: null, // Clear candidate selection so grid shows the working layout
     workingLayout: { ...updater(withWorking.workingLayout), scoreCache: null },
   };
 }

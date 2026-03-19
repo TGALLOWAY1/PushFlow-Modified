@@ -56,6 +56,31 @@ export function PerformanceAnalysisPanel({
   // Other candidates for comparison picking
   const otherCandidates = state.candidates.filter(c => c.id !== state.selectedCandidateId);
 
+  // Per-event aggregated metrics when an event is selected
+  const selectedEventMetrics = useMemo(() => {
+    if (state.selectedEventIndex === null || !currentPlan) return null;
+    const eventAssignments = currentPlan.fingerAssignments.filter(a => a.eventIndex === state.selectedEventIndex);
+    if (eventAssignments.length === 0) return null;
+    const metrics = {
+      fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0,
+      handBalance: 0, constraintPenalty: 0, total: 0,
+    };
+    for (const a of eventAssignments) {
+      if (a.costBreakdown) {
+        metrics.fingerPreference += a.costBreakdown.fingerPreference;
+        metrics.handShapeDeviation += a.costBreakdown.handShapeDeviation;
+        metrics.transitionCost += a.costBreakdown.transitionCost;
+        metrics.handBalance += a.costBreakdown.handBalance;
+        metrics.constraintPenalty += a.costBreakdown.constraintPenalty;
+        metrics.total += a.costBreakdown.total;
+      } else {
+        metrics.transitionCost += a.cost;
+        metrics.total += a.cost;
+      }
+    }
+    return metrics;
+  }, [state.selectedEventIndex, currentPlan]);
+
   return (
     <>
       <div className="h-full flex flex-col">
@@ -115,6 +140,8 @@ export function PerformanceAnalysisPanel({
               <EventCostChart
                 fingerAssignments={currentPlan.fingerAssignments}
                 candidateLabel={selectedCandidateLabel}
+                selectedEventIndex={state.selectedEventIndex}
+                onEventClick={(idx) => dispatch({ type: 'SELECT_EVENT', payload: idx })}
               />
             </CollapsibleSection>
           )}
@@ -122,7 +149,12 @@ export function PerformanceAnalysisPanel({
           {/* ─── Section 2: Aggregate Cost Breakdown ──────────── */}
           {currentPlan && (
             <CollapsibleSection title="Cost Breakdown" defaultOpen>
-              <CostBreakdownBars metrics={currentPlan.averageMetrics} />
+              <CostBreakdownBars
+                metrics={selectedEventMetrics ?? currentPlan.averageMetrics}
+                eventLabel={selectedEventMetrics && state.selectedEventIndex !== null
+                  ? `Event ${state.selectedEventIndex + 1}`
+                  : undefined}
+              />
 
               {/* Quick stats row */}
               <div className="flex gap-2 mt-3">

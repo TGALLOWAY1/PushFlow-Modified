@@ -7,7 +7,6 @@
  */
 
 import { useState } from 'react';
-import { useProject } from '../../state/ProjectContext';
 
 interface LearnMoreModalProps {
   open: boolean;
@@ -524,111 +523,121 @@ function OptimizersSection() {
  * Constraints Section — active voice constraints, placement locks, finger constraints
  * ═══════════════════════════════════════════════════════════════════════ */
 
+const HARD_CONSTRAINTS = [
+  {
+    category: 'Biomechanical',
+    color: '#ef4444',
+    rules: [
+      {
+        name: 'Finger Span',
+        key: 'span',
+        description: 'Per-finger-pair maximum Euclidean distance on the grid. E.g., index-middle max 2.0 units, pinky-ring max 1.5 units (linked tendons), thumb-to-pinky envelope max 5.5 units.',
+      },
+      {
+        name: 'Finger Ordering',
+        key: 'ordering',
+        description: 'Fingers must maintain anatomical left-to-right order on the grid. No crossovers allowed (e.g., index cannot cross over pinky).',
+      },
+      {
+        name: 'Collision',
+        key: 'collision',
+        description: 'Two different fingers cannot occupy the same pad simultaneously.',
+      },
+      {
+        name: 'Thumb Position',
+        key: 'thumbDelta',
+        description: 'Thumb cannot be positioned more than 1 row above the index finger. Enforces natural "thumbs below" hand posture.',
+      },
+      {
+        name: 'Reachability',
+        key: 'reachability',
+        description: 'Each finger must stay within 5.0 grid units of the hand anchor. Pads outside this envelope are unreachable.',
+      },
+      {
+        name: 'Transition Speed',
+        key: 'speed',
+        description: 'Hand movement between consecutive events cannot exceed 12.0 grid units/second. Faster transitions are physically impossible.',
+      },
+    ],
+  },
+  {
+    category: 'Hand Zones',
+    color: '#3b82f6',
+    rules: [
+      {
+        name: 'Left Hand Zone',
+        key: 'zone-left',
+        description: 'Left hand is restricted to columns 0\u20134 of the 8\u00d78 grid.',
+      },
+      {
+        name: 'Right Hand Zone',
+        key: 'zone-right',
+        description: 'Right hand is restricted to columns 3\u20137 of the 8\u00d78 grid.',
+      },
+      {
+        name: 'Shared Zone',
+        key: 'zone-shared',
+        description: 'Columns 3\u20134 are a shared zone accessible by either hand.',
+      },
+    ],
+  },
+  {
+    category: 'Topology',
+    color: '#a855f7',
+    rules: [
+      {
+        name: 'Hand Topology',
+        key: 'topology',
+        description: 'Left hand: pinky \u2264 ring \u2264 middle \u2264 index \u2264 thumb (left to right). Right hand: thumb \u2264 index \u2264 middle \u2264 ring \u2264 pinky (left to right). Violations mean an anatomically impossible hand shape.',
+      },
+    ],
+  },
+];
+
 function ConstraintsSection() {
-  const { state } = useProject();
-  const voiceConstraints = state.voiceConstraints;
-  const layout = state.workingLayout ?? state.activeLayout;
-  const placementLocks = layout.placementLocks;
-  const fingerConstraints = layout.fingerConstraints;
-
-  const voiceEntries = Object.entries(voiceConstraints);
-  const lockEntries = Object.entries(placementLocks);
-  const fingerEntries = Object.entries(fingerConstraints);
-
-  const hasAny = voiceEntries.length > 0 || lockEntries.length > 0 || fingerEntries.length > 0;
-
-  // Helper: find stream name by ID
-  const streamName = (id: string) => {
-    const s = state.soundStreams.find(s => s.id === id);
-    return s?.name ?? id;
-  };
-
-  // Helper: find voice name at a pad key
-  const voiceAtPad = (padKey: string) => {
-    const voice = layout.padToVoice[padKey];
-    return voice?.name ?? padKey;
-  };
-
   return (
     <div className="space-y-5">
       <p className="text-xs text-gray-500">
-        Constraints guide the solver during candidate generation. Sound constraints are per-sound preferences.
-        Placement locks pin a sound to a specific pad. Finger constraints assign a preferred finger to a pad.
+        PushFlow enforces hard biomechanical constraints during solver execution. Violations result in infeasibility
+        (the grip is rejected entirely), not soft penalties. These constraints model the physical limits of human hands
+        on an 8&times;8 Push grid.
       </p>
 
-      {!hasAny && (
-        <div className="text-xs text-gray-600 py-6 text-center">
-          No constraints set. Use the grid context menu or sounds panel to add constraints.
-        </div>
-      )}
-
-      {/* Voice Constraints */}
-      {voiceEntries.length > 0 && (
-        <div>
-          <h4 className="text-[11px] text-gray-400 font-medium uppercase tracking-wider mb-2">
-            Sound Constraints ({voiceEntries.length})
+      {HARD_CONSTRAINTS.map(group => (
+        <div key={group.category}>
+          <h4 className="text-[11px] text-gray-400 font-medium uppercase tracking-wider mb-2 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: group.color }} />
+            {group.category}
           </h4>
           <div className="space-y-1.5">
-            {voiceEntries.map(([streamId, constraint]) => (
-              <div key={streamId} className="flex items-center gap-2 px-2 py-1.5 rounded bg-gray-800/40 border border-gray-700/30">
-                <span className="text-xs text-gray-300 truncate flex-1">{streamName(streamId)}</span>
-                {constraint.hand && (
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                    constraint.hand === 'left' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20' : 'bg-orange-500/15 text-orange-400 border border-orange-500/20'
-                  }`}>
-                    {constraint.hand === 'left' ? 'Left hand' : 'Right hand'}
-                  </span>
-                )}
-                {constraint.finger && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400 border border-purple-500/20">
-                    {constraint.finger}
-                  </span>
-                )}
+            {group.rules.map(rule => (
+              <div key={rule.key} className="flex gap-3 px-2 py-2 rounded bg-gray-800/40 border border-gray-700/30">
+                <div className="w-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: group.color }} />
+                <div>
+                  <div className="text-xs font-medium text-gray-300 flex items-center gap-2">
+                    {rule.name}
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 border border-gray-700">
+                      {rule.key}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+                    {rule.description}
+                  </div>
+                </div>
               </div>
             ))}
           </div>
         </div>
-      )}
+      ))}
 
-      {/* Placement Locks */}
-      {lockEntries.length > 0 && (
-        <div>
-          <h4 className="text-[11px] text-gray-400 font-medium uppercase tracking-wider mb-2">
-            Placement Locks ({lockEntries.length})
-          </h4>
-          <div className="space-y-1.5">
-            {lockEntries.map(([voiceId, padKey]) => (
-              <div key={voiceId} className="flex items-center gap-2 px-2 py-1.5 rounded bg-gray-800/40 border border-gray-700/30">
-                <span className="text-xs text-gray-300 truncate flex-1">{streamName(voiceId)}</span>
-                <span className="text-[10px] text-gray-500">locked to</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 font-mono">
-                  pad {padKey}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Finger Constraints */}
-      {fingerEntries.length > 0 && (
-        <div>
-          <h4 className="text-[11px] text-gray-400 font-medium uppercase tracking-wider mb-2">
-            Finger Constraints ({fingerEntries.length})
-          </h4>
-          <div className="space-y-1.5">
-            {fingerEntries.map(([padKey, finger]) => (
-              <div key={padKey} className="flex items-center gap-2 px-2 py-1.5 rounded bg-gray-800/40 border border-gray-700/30">
-                <span className="text-xs text-gray-300 truncate flex-1">{voiceAtPad(padKey)}</span>
-                <span className="text-[10px] text-gray-500">pad {padKey}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/15 text-green-400 border border-green-500/20">
-                  {finger}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="rounded-xl border border-gray-700/40 bg-gray-800/20 p-3">
+        <h4 className="text-xs font-medium text-gray-300 mb-1">Enforcement</h4>
+        <p className="text-[11px] text-gray-500 leading-relaxed">
+          When any constraint is violated, the candidate grip is rejected entirely (returns infeasibility).
+          The solver only considers grips that pass all hard constraints at the strict tier. Relaxed and fallback
+          tiers widen limits slightly when no strict solution exists, flagged by the feasibility verdict.
+        </p>
+      </div>
     </div>
   );
 }

@@ -105,7 +105,7 @@ export function ProjectLibraryPage() {
         </div>
       </div>
 
-      {/* ---- Top Row: Hero + Readiness ---- */}
+      {/* ---- Top Row: Hero + Readiness + Practice Stats ---- */}
       {heroProject ? (
         <div className="grid grid-cols-[1fr_380px] gap-4">
           <ContinuePracticingHero
@@ -115,7 +115,10 @@ export function ProjectLibraryPage() {
             onResume={() => navigate(`/project/${heroProject.id}`)}
             onOpenEditor={() => navigate(`/project/${heroProject.id}`)}
           />
-          <ReadinessScoreCard data={readinessData} />
+          <div className="flex flex-col gap-4">
+            <ReadinessScoreCard data={readinessData} />
+            <PracticeStatsCard stats={practiceStats} />
+          </div>
         </div>
       ) : (
         <div className="glass-panel-strong rounded-xl p-12 text-center">
@@ -135,7 +138,7 @@ export function ProjectLibraryPage() {
       {/* ---- Main Area: Performance Grid + Sidebar ---- */}
       <div className="grid grid-cols-[1fr_340px] gap-4">
         {/* Active Performances */}
-        <div>
+        <div className="glass-panel rounded-lg p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-medium text-gray-400">Active Performances</h2>
             {savedProjects.length > 7 && (
@@ -184,7 +187,6 @@ export function ProjectLibraryPage() {
         {/* Sidebar */}
         <div className="flex flex-col gap-4">
           <QuickActionsCard onNewProject={handleNewProject} onNavigate={navigate} />
-          <PracticeStatsCard stats={practiceStats} />
         </div>
       </div>
     </div>

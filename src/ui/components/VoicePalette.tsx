@@ -202,10 +202,11 @@ export function VoicePalette() {
     setReorderTarget(null);
   }, [reorderTarget, state.soundStreams, dispatch]);
 
-  const renderStreamRow = (stream: SoundStream) => (
+  const renderStreamRow = (stream: SoundStream, isGrouped?: boolean) => (
     <StreamRow
       key={stream.id}
       stream={stream}
+      isGrouped={!!isGrouped}
       padKeys={streamPadLocations.get(stream.id) ?? []}
       isLocked={(streamPadLocations.get(stream.id) ?? []).some(pk => !!layout?.placementLocks[pk])}
       voiceConstraint={state.voiceConstraints[stream.id]}
@@ -271,7 +272,7 @@ export function VoicePalette() {
                   onChangeColor={(color) => dispatch({ type: 'SET_LANE_GROUP_COLOR', payload: { groupId: group.groupId, color } })}
                   onDelete={() => dispatch({ type: 'DELETE_LANE_GROUP', payload: group.groupId })}
                 />
-                {!group.isCollapsed && streams.map(renderStreamRow)}
+                {!group.isCollapsed && streams.map(s => renderStreamRow(s, true))}
               </div>
             );
           })}
@@ -282,7 +283,7 @@ export function VoicePalette() {
               <span className="text-[10px] text-gray-500">
                 Unassigned ({ungroupedUnassigned.length})
               </span>
-              {ungroupedUnassigned.map(renderStreamRow)}
+              {ungroupedUnassigned.map(s => renderStreamRow(s))}
             </div>
           )}
 
@@ -292,13 +293,13 @@ export function VoicePalette() {
               <span className="text-[10px] text-gray-500">
                 On Grid ({ungroupedAssigned.length})
               </span>
-              {ungroupedAssigned.map(renderStreamRow)}
+              {ungroupedAssigned.map(s => renderStreamRow(s))}
             </div>
           )}
         </>
       ) : (
         /* No groups — flat list of all streams, no section headers */
-        state.soundStreams.map(renderStreamRow)
+        state.soundStreams.map(s => renderStreamRow(s))
       )}
 
       {state.soundStreams.length === 0 && (
@@ -428,6 +429,7 @@ function StreamRow({
   currentGroupId,
   isSelected,
   isGlobalSelected,
+  isGrouped,
   onSelect,
   onToggleMute,
   onSolo,
@@ -447,6 +449,7 @@ function StreamRow({
   solverAssignment?: { label: string; hand: string; finger: string };
   isSelected: boolean;
   isGlobalSelected: boolean;
+  isGrouped: boolean;
   onSelect: (streamId: string, e: React.MouseEvent) => void;
   groups: LaneGroup[];
   currentGroupId: string | null;
@@ -487,9 +490,10 @@ function StreamRow({
   return (
     <div
       className={`
-        flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs
+        flex items-center gap-1.5 py-1.5 rounded-md text-xs
         border hover:border-gray-700
         cursor-grab active:cursor-grabbing active:scale-95 transition-transform duration-150
+        ${isGrouped ? 'pl-6 pr-2' : 'px-2'}
         ${stream.muted ? 'opacity-40' : ''}
         ${isGlobalSelected ? 'border-blue-400 bg-blue-500/20 ring-1 ring-blue-400/30' : isSelected ? 'border-blue-500/50 bg-blue-500/10' : 'border-transparent'}
       `}
