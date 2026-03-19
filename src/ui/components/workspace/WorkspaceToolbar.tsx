@@ -245,7 +245,7 @@ export function WorkspaceToolbar({
         onClick={handleSave}
         title="Save project"
       >
-        {saveConfirm ? 'Saved' : 'Save'}
+        {saveConfirm ? 'Saved' : 'Save Project'}
       </button>
 
       <div className="w-px h-5 bg-gray-800" />
