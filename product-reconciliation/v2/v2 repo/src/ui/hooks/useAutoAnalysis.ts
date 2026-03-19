@@ -20,13 +20,18 @@ import { getActivePerformance, getDisplayedLayout, getActiveStreams, type SoundS
 import { createBeamSolver } from '../../engine/solvers/beamSolver';
 import { type SolverConstraints } from '../../engine/solvers/types';
 import { analyzeDifficulty, computeTradeoffProfile, classifyOptimizationDifficulty } from '../../engine/evaluation/difficultyScoring';
+import { evaluatePerformance } from '../../engine/evaluation/canonicalEvaluator';
 import { generateCandidates } from '../../engine/optimization/multiCandidateGenerator';
+import { buildPerformanceMoments, extractPadOwnership } from '../../engine/structure/momentBuilder';
+import { getNeutralHandCenters } from '../../engine/prior/handPose';
 import { generateId } from '../../utils/idGenerator';
 import { type SolverConfig, type OptimizationMode } from '../../types/engineConfig';
 import { type Performance } from '../../types/performance';
 import { type FingerType } from '../../types/fingerModel';
 import { type Layout } from '../../types/layout';
 import { type Voice } from '../../types/voice';
+import { type CostToggles } from '../../types/costToggles';
+import { type PadFingerAssignment } from '../../types/executionPlan';
 import { seedLayoutFromPose0 } from '../../engine/mapping/seedFromPose';
 import { createDefaultPose0, getPose0PadsWithOffset, fingerIdToHandAndFingerType } from '../../engine/prior/naturalHandPose';
 import { type FingerId, type NaturalHandPose } from '../../types/ergonomicPrior';
@@ -336,6 +341,59 @@ export function useAutoAnalysis() {
     }
   }, [state, dispatch]);
 
+  // Calculate Cost: evaluate current layout + assignment with given toggles
+  const calculateCost = useCallback(async (costToggles: CostToggles) => {
+    const layout = getDisplayedLayout(state);
+    if (!layout || Object.keys(layout.padToVoice).length === 0) return;
+
+    const performance = getActivePerformance(state);
+    if (performance.events.length === 0) return;
+
+    dispatch({ type: 'SET_ERROR', payload: null });
+
+    try {
+      // Build moments from performance events
+      const moments = buildPerformanceMoments(performance.events);
+      if (moments.length === 0) return;
+
+      // Get pad-finger assignment from latest analysis result, or extract from solver output
+      let padFingerAssignment: PadFingerAssignment = {};
+      if (state.analysisResult?.executionPlan?.padFingerOwnership) {
+        padFingerAssignment = state.analysisResult.executionPlan.padFingerOwnership;
+      } else if (state.analysisResult?.executionPlan?.fingerAssignments) {
+        const { ownership } = extractPadOwnership(state.analysisResult.executionPlan.fingerAssignments);
+        padFingerAssignment = ownership;
+      }
+
+      // If no assignment available, we can't evaluate — need to run solver first
+      if (Object.keys(padFingerAssignment).length === 0) {
+        dispatch({ type: 'SET_ERROR', payload: 'No finger assignment available. Run Generate first to create an initial assignment.' });
+        return;
+      }
+
+      // Build evaluation config
+      const neutralHandCenters = getNeutralHandCenters(layout, state.instrumentConfig);
+      const evaluationConfig = {
+        restingPose: state.engineConfig.restingPose,
+        stiffness: state.engineConfig.stiffness,
+        instrumentConfig: state.instrumentConfig,
+        neutralHandCenters,
+      };
+
+      const result = evaluatePerformance({
+        moments,
+        layout,
+        padFingerAssignment,
+        config: evaluationConfig,
+        costToggles,
+      });
+
+      dispatch({ type: 'SET_MANUAL_COST_RESULT', payload: result });
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err instanceof Error ? err.message : 'Cost calculation failed' });
+    }
+  }, [state, dispatch]);
+
   // Precondition checks for Generate button
   const activeStreams = getActiveStreams(state);
   const currentLayout = getDisplayedLayout(state);
@@ -346,5 +404,5 @@ export function useAutoAnalysis() {
       ? 'No sounds loaded — import MIDI or create patterns first'
       : null;
 
-  return { generateFull, generationProgress, canGenerate, generateDisabledReason };
+  return { generateFull, calculateCost, generationProgress, canGenerate, generateDisabledReason };
 }

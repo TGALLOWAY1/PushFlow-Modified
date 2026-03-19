@@ -24,7 +24,7 @@ type BottomTab = 'timeline' | 'composer';
 export function PerformanceWorkspace() {
   const { state, dispatch } = useProject();
   const navigate = useNavigate();
-  const { generateFull, generationProgress, canGenerate, generateDisabledReason } = useAutoAnalysis();
+  const { generateFull, calculateCost, generationProgress, canGenerate, generateDisabledReason } = useAutoAnalysis();
   useKeyboardShortcuts();
   const { settings: viewSettings, toggleGridLabel, toggleLayoutDisplay } = useViewSettings();
 
@@ -340,6 +340,7 @@ export function PerformanceWorkspace() {
             <div className="rounded-lg glass-panel overflow-hidden" style={{ maxHeight: 560 }}>
               <PerformanceAnalysisPanel
                 onClose={() => setRightCollapsed(true)}
+                calculateCost={calculateCost}
               />
             </div>
           )}

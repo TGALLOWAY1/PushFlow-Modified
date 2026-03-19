@@ -20,6 +20,9 @@ import { type Layout, type LayoutRole, cloneLayout, createEmptyLayout } from '..
 import { type Section, type VoiceProfile } from '../../types/performanceStructure';
 import { type PerformanceLane, type LaneGroup, type SourceFile } from '../../types/performanceLane';
 import { type LaneAction, isLaneAction, lanesReducer } from './lanesReducer';
+import { type CostToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
+import { type PerformanceCostBreakdown } from '../../types/costBreakdown';
+import { type OptimizerMethodKey, type OptimizerMove } from '../../engine/optimization/optimizerInterface';
 
 // ============================================================================
 // Sound Stream Model
@@ -115,6 +118,13 @@ export interface ProjectState {
   laneGroups: LaneGroup[];
   sourceFiles: SourceFile[];
 
+  // === Optimizer configuration ===
+
+  /** Active optimization method. */
+  optimizerMethod: OptimizerMethodKey;
+  /** Cost toggle state (which cost families are active). */
+  costToggles: CostToggles;
+
   // Ephemeral UI state (not persisted, not in undo stack)
   selectedEventIndex: number | null;
   /** Moment-level selection index (indexes into ExecutionPlanResult.momentAssignments). */
@@ -123,6 +133,13 @@ export interface ProjectState {
   isProcessing: boolean;
   error: string | null;
   analysisStale: boolean;
+
+  /** Manual cost evaluation result (from Calculate Cost button). */
+  manualCostResult: PerformanceCostBreakdown | null;
+  /** Move history from interpretable optimizers (greedy). */
+  moveHistory: OptimizerMove[] | null;
+  /** Current index in move history for step-through replay. */
+  moveHistoryIndex: number | null;
 
   // Transport
   currentTime: number;
@@ -239,6 +256,13 @@ export type ProjectAction =
   | { type: 'SET_PROCESSING'; payload: boolean }
   | { type: 'SET_ERROR'; payload: string | null }
 
+  // Optimizer configuration
+  | { type: 'SET_OPTIMIZER_METHOD'; payload: OptimizerMethodKey }
+  | { type: 'SET_COST_TOGGLES'; payload: CostToggles }
+  | { type: 'SET_MANUAL_COST_RESULT'; payload: PerformanceCostBreakdown | null }
+  | { type: 'SET_MOVE_HISTORY'; payload: { moves: OptimizerMove[] | null; stopReason?: string } }
+  | { type: 'SET_MOVE_HISTORY_INDEX'; payload: number | null }
+
   // Transport
   | { type: 'SET_CURRENT_TIME'; payload: number }
   | { type: 'TICK_TIME'; payload: number }
@@ -264,6 +288,9 @@ const EPHEMERAL_ACTIONS = new Set<ProjectAction['type']>([
   'TICK_TIME',
   'SET_IS_PLAYING',
   'TOGGLE_PLAYING',
+  'SET_MANUAL_COST_RESULT',
+  'SET_MOVE_HISTORY',
+  'SET_MOVE_HISTORY_INDEX',
 ]);
 
 export function isEphemeralAction(action: ProjectAction): boolean {
@@ -726,6 +753,22 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'TOGGLE_PLAYING':
       return { ...state, isPlaying: !state.isPlaying };
 
+    // Optimizer configuration
+    case 'SET_OPTIMIZER_METHOD':
+      return { ...state, optimizerMethod: action.payload };
+
+    case 'SET_COST_TOGGLES':
+      return { ...state, costToggles: action.payload };
+
+    case 'SET_MANUAL_COST_RESULT':
+      return { ...state, manualCostResult: action.payload };
+
+    case 'SET_MOVE_HISTORY':
+      return { ...state, moveHistory: action.payload.moves, moveHistoryIndex: null };
+
+    case 'SET_MOVE_HISTORY_INDEX':
+      return { ...state, moveHistoryIndex: action.payload };
+
     default:
       return state;
   }
@@ -769,6 +812,8 @@ export function createEmptyProjectState(): ProjectState {
       },
     },
     voiceConstraints: {},
+    optimizerMethod: 'greedy',
+    costToggles: ALL_COSTS_ENABLED,
     performanceLanes: [],
     laneGroups: [],
     sourceFiles: [],
@@ -778,6 +823,9 @@ export function createEmptyProjectState(): ProjectState {
     isProcessing: false,
     error: null,
     analysisStale: false,
+    manualCostResult: null,
+    moveHistory: null,
+    moveHistoryIndex: null,
     currentTime: 0,
     isPlaying: false,
   };

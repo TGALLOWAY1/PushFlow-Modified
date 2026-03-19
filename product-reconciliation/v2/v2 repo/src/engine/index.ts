@@ -97,6 +97,7 @@ export { checkPlanFreshness, getEffectiveLayoutBinding, type FreshnessCheck } fr
 
 // Structure analysis
 export { groupEventsByTime, getPolyphonyTimeline, getMaxPolyphony } from './structure/eventGrouping';
+export { buildPerformanceMoments, extractPadOwnership, validatePadOwnershipConsistency } from './structure/momentBuilder';
 export { computeDensityProfile, classifyDensity } from './structure/densityAnalysis';
 export { detectSections } from './structure/sectionDetection';
 export { buildCooccurrenceGraph } from './structure/cooccurrence';
@@ -112,6 +113,29 @@ export { AnnealingSolver, createAnnealingSolver } from './optimization/annealing
 export { applyRandomMutation, getEmptyPads } from './optimization/mutationService';
 export { generateCandidates, type CandidateGenerationResult } from './optimization/multiCandidateGenerator';
 export { rankCandidates, filterPareto, compositeScore, compareDimensions } from './optimization/candidateRanker';
+
+// Pluggable optimizer framework
+export {
+  type OptimizerMethod,
+  type OptimizerMethodKey,
+  type OptimizerInput,
+  type OptimizerOutput,
+  type OptimizerMove,
+  type OptimizerTelemetry,
+  type OptimizerConfig,
+  type MoveType,
+  type StopReason,
+} from './optimization/optimizerInterface';
+export {
+  registerOptimizer,
+  getOptimizer,
+  getAllOptimizers,
+  getAvailableMethodKeys,
+  hasOptimizer,
+} from './optimization/optimizerRegistry';
+// Import adapters to trigger self-registration
+export { beamAdapter } from './optimization/beamOptimizerAdapter';
+export { annealingAdapter } from './optimization/annealingOptimizerAdapter';
 
 // Pattern generation (rudiment/ostinato candidate generator)
 export { RudimentGenerator } from './rudiment/patternGenerator';
