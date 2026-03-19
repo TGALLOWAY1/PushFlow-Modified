@@ -92,14 +92,24 @@ export function validateNaturalHandPose(pose: NaturalHandPose): PoseValidationRe
 // Default Pose Factory
 // ============================================================================
 
-/** Built-in default Pose 0 positions. */
+/**
+ * Built-in default Pose 0 positions.
+ *
+ * All fingers within a 2-row vertical spread so simultaneous grips are
+ * biomechanically feasible. Thumb sits one row above the index finger
+ * (adjacent) rather than at the grid edge, preventing unreachable
+ * multi-finger chords.
+ *
+ * Left hand cluster: cols 0-3, rows 2-4
+ * Right hand cluster: cols 4-7, rows 2-4
+ */
 const BUILT_IN_POSE0_CELLS: Record<FingerId, PadCoord> = {
-  L_THUMB: { row: 0, col: 3 },
+  L_THUMB: { row: 2, col: 3 },
   L_INDEX: { row: 3, col: 3 },
   L_MIDDLE: { row: 4, col: 2 },
   L_RING: { row: 4, col: 1 },
   L_PINKY: { row: 4, col: 0 },
-  R_THUMB: { row: 0, col: 4 },
+  R_THUMB: { row: 2, col: 4 },
   R_INDEX: { row: 3, col: 4 },
   R_MIDDLE: { row: 4, col: 5 },
   R_RING: { row: 4, col: 6 },

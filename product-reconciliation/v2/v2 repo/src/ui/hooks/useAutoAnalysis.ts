@@ -23,9 +23,40 @@ import { analyzeDifficulty, computeTradeoffProfile, classifyOptimizationDifficul
 import { generateCandidates } from '../../engine/optimization/multiCandidateGenerator';
 import { generateId } from '../../utils/idGenerator';
 import { type SolverConfig, type OptimizationMode } from '../../types/engineConfig';
-import { type Performance, type InstrumentConfig } from '../../types/performance';
+import { type Performance } from '../../types/performance';
 import { type FingerType } from '../../types/fingerModel';
 import { type Layout } from '../../types/layout';
+import { type Voice } from '../../types/voice';
+import { seedLayoutFromPose0 } from '../../engine/mapping/seedFromPose';
+import { createDefaultPose0, getPose0PadsWithOffset, fingerIdToHandAndFingerType } from '../../engine/prior/naturalHandPose';
+import { type FingerId, type NaturalHandPose } from '../../types/ergonomicPrior';
+
+/**
+ * Compute initial pad ownership from pose0 + layout.
+ * For pads in the layout that match a pose0 finger position,
+ * pre-assign the natural finger so the solver maintains consistent assignments.
+ */
+function computeInitialOwnership(
+  pose0: NaturalHandPose,
+  layout: Layout,
+): Record<string, { hand: 'left' | 'right'; finger: FingerType }> | undefined {
+  const posePads = getPose0PadsWithOffset(pose0, 0, true);
+  const padToFinger = new Map<string, string>();
+  for (const entry of posePads) {
+    padToFinger.set(`${entry.row},${entry.col}`, entry.fingerId);
+  }
+  const ownership: Record<string, { hand: 'left' | 'right'; finger: FingerType }> = {};
+  let count = 0;
+  for (const padKey of Object.keys(layout.padToVoice)) {
+    const fingerId = padToFinger.get(padKey);
+    if (fingerId) {
+      const { hand, finger } = fingerIdToHandAndFingerType(fingerId as FingerId);
+      ownership[padKey] = { hand, finger };
+      count++;
+    }
+  }
+  return count > 0 ? ownership : undefined;
+}
 
 /** User-facing mode selection: 'auto' delegates to classifyOptimizationDifficulty. */
 export type GenerationMode = OptimizationMode | 'auto';
@@ -112,43 +143,41 @@ function constraintsToManualAssignments(
 }
 
 /**
- * Builds a Layout by assigning each unmuted stream to its chromatic grid position.
+ * Builds a Layout using the natural hand pose to place sounds on adjacent pads.
  *
- * Uses the same formula as the solver's internal noteToGrid fallback:
- *   offset = noteNumber - bottomLeftNote
- *   row    = floor(offset / cols)
- *   col    = offset % cols
+ * Most-played sounds get the most dominant finger positions (index, middle, ring).
+ * Overflow sounds fill adjacent remaining pads. This keeps all voices within
+ * reachable hand zones and avoids the zone conflicts that chromatic mapping causes.
  *
- * Called by generateFull() when the active layout has no pad assignments yet,
- * so that "Generate from scratch" immediately shows pad positions on the grid.
+ * Preserves voice identity: Voice.id = stream.id so the voiceId lookup chain works.
  */
 function buildAutoLayout(
   soundStreams: SoundStream[],
-  instrumentConfig: InstrumentConfig,
+  performance: Performance,
   existingLayout: Layout,
 ): Layout {
-  const padToVoice: Layout['padToVoice'] = {};
+  const activeStreams = soundStreams.filter(s => !s.muted);
+  if (activeStreams.length === 0) return existingLayout;
 
-  for (const stream of soundStreams.filter(s => !s.muted)) {
-    const offset = stream.originalMidiNote - instrumentConfig.bottomLeftNote;
-    if (offset < 0) continue;
-    const row = Math.floor(offset / instrumentConfig.cols);
-    const col = offset % instrumentConfig.cols;
-    if (row >= instrumentConfig.rows) continue;
-
-    padToVoice[`${row},${col}`] = {
+  // Build existingVoices map so seedLayoutFromPose0 preserves stream IDs
+  const existingVoices = new Map<number, Voice>();
+  for (const stream of activeStreams) {
+    existingVoices.set(stream.originalMidiNote, {
       id: stream.id,
       name: stream.name,
       sourceType: 'midi_track',
       sourceFile: '',
       originalMidiNote: stream.originalMidiNote,
       color: stream.color,
-    };
+    });
   }
+
+  const defaultPose = createDefaultPose0();
+  const seeded = seedLayoutFromPose0(performance, defaultPose, 0, existingVoices);
 
   return {
     ...existingLayout,
-    padToVoice,
+    padToVoice: seeded.padToVoice,
     layoutMode: 'auto',
     scoreCache: null,
   };
@@ -186,22 +215,24 @@ export function useAutoAnalysis() {
         dispatch({ type: 'SET_PROCESSING', payload: true });
 
         // If the layout has no pad assignments, auto-build from streams
-        // so that importing MIDI immediately produces analysis results.
+        // using the natural hand pose to place sounds on adjacent pads.
         let effectiveLayout = layout;
         if (Object.keys(layout.padToVoice).length === 0) {
-          effectiveLayout = buildAutoLayout(activeStreams, state.instrumentConfig, layout);
+          effectiveLayout = buildAutoLayout(activeStreams, performance, layout);
           if (Object.keys(effectiveLayout.padToVoice).length === 0) {
-            // Still empty after auto-build (all notes out of range) — bail
+            // Still empty after auto-build — bail
             dispatch({ type: 'SET_PROCESSING', payload: false });
             return;
           }
           dispatch({ type: 'BULK_ASSIGN_PADS', payload: effectiveLayout.padToVoice });
         }
 
+        const defaultPose = createDefaultPose0();
         const solverConfig: SolverConfig = {
           instrumentConfig: state.instrumentConfig,
           layout: effectiveLayout,
           sourceLayoutRole: effectiveLayout.role,
+          initialPadOwnership: computeInitialOwnership(defaultPose, effectiveLayout),
         };
         const solver = createBeamSolver(solverConfig);
 
@@ -257,13 +288,12 @@ export function useAutoAnalysis() {
     try {
       const performance = getActivePerformance(state);
 
-      // If the layout has no pad assignments yet, auto-assign each unmuted stream
-      // to its chromatic grid position (the same formula the solver uses internally
-      // as a fallback). Dispatch BULK_ASSIGN_PADS so the grid immediately shows the
-      // assignments — keeping generation tightly coupled to what's on screen.
+      // If the layout has no pad assignments yet, seed from the natural hand pose.
+      // Most-played sounds → dominant finger positions (index, middle, ring).
+      // Dispatch BULK_ASSIGN_PADS so the grid immediately shows the assignments.
       let effectiveLayout = layout;
       if (Object.keys(layout.padToVoice).length === 0) {
-        effectiveLayout = buildAutoLayout(state.soundStreams, state.instrumentConfig, layout);
+        effectiveLayout = buildAutoLayout(state.soundStreams, performance, layout);
         dispatch({ type: 'BULK_ASSIGN_PADS', payload: effectiveLayout.padToVoice });
       }
 
@@ -279,7 +309,8 @@ export function useAutoAnalysis() {
       const modeLabel = resolvedMode === 'deep' ? 'Thorough' : 'Quick';
       setGenerationProgress(`${modeLabel} optimization: generating 3 candidates...`);
 
-      const generationResult = await generateCandidates(performance, null, {
+      const defaultPose = createDefaultPose0();
+      const generationResult = await generateCandidates(performance, defaultPose, {
         count: 3,
         optimizationMode: resolvedMode,
         engineConfig: state.engineConfig,

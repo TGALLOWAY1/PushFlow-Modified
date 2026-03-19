@@ -31,7 +31,7 @@ import {
 } from '../../types/executionPlan';
 import { MOMENT_EPSILON } from '../../types/performanceEvent';
 import { buildNoteToPadIndex, buildVoiceIdToPadIndex, resolveEventToPad, hashLayout } from '../mapping/mappingResolver';
-import { allPadsInZone } from '../surface/handZone';
+import { allPadsInZone, isZoneValid } from '../surface/handZone';
 import { generateValidGripsWithTier } from '../prior/feasibility';
 import {
   calculateHandShapeDeviation,
@@ -185,6 +185,7 @@ export class BeamSolver implements SolverStrategy {
   private sourceLayoutRole: import('../../types/layout').LayoutRole | undefined;
   private neutralPadPositionsOverride: NeutralPadPositions | null;
   private mappingResolverMode: 'strict' | 'allow-fallback';
+  private initialPadOwnership: Map<string, { hand: 'left' | 'right'; finger: FingerType }>;
 
   constructor(config: SolverConfig) {
     this.instrumentConfig = config.instrumentConfig;
@@ -192,6 +193,14 @@ export class BeamSolver implements SolverStrategy {
     this.sourceLayoutRole = config.sourceLayoutRole ?? config.layout?.role;
     this.neutralPadPositionsOverride = config.neutralPadPositionsOverride ?? null;
     this.mappingResolverMode = config.mappingResolverMode ?? 'strict';
+
+    // Pre-seed pad ownership from config (e.g., natural hand pose finger assignments)
+    this.initialPadOwnership = new Map();
+    if (config.initialPadOwnership) {
+      for (const [key, assignment] of Object.entries(config.initialPadOwnership)) {
+        this.initialPadOwnership.set(key, assignment);
+      }
+    }
   }
 
   private createInitialBeam(config: EngineConfiguration): BeamNode[] {
@@ -205,7 +214,7 @@ export class BeamSolver implements SolverStrategy {
       depth: 0,
       leftCount: 0,
       rightCount: 0,
-      padOwnership: new Map(),
+      padOwnership: new Map(this.initialPadOwnership),
     }];
   }
 
@@ -645,6 +654,100 @@ export class BeamSolver implements SolverStrategy {
     return path;
   }
 
+  /**
+   * Post-hoc diagnostics: for each unplayable event, determine WHY it failed.
+   * Runs after the beam search completes, checking the same constraints the
+   * solver uses but collecting rejection reasons instead of discarding.
+   */
+  private diagnoseUnplayableEvents(
+    assignments: NoteAssignment[],
+    totalEvents: number,
+    unmappedIndices: Set<number>,
+    _sortedEvents: Array<{ event: PerformanceEvent; originalIndex: number }>,
+    eventsWithPositions: Array<{ event: PerformanceEvent; index: number; position: PadCoord | null }>,
+    groups?: PerformanceGroup[],
+    exhaustedGroupIndices?: Set<number>,
+  ): Record<number, string[]> {
+    const assignedIndices = new Set(assignments.map(a => a.eventIndex));
+    const reasons: Record<number, string[]> = {};
+
+    // Build a set of event indices that belonged to beam-exhausted groups
+    const beamExhaustedEventIndices = new Set<number>();
+    if (groups && exhaustedGroupIndices) {
+      for (const gi of exhaustedGroupIndices) {
+        const group = groups[gi];
+        for (const idx of group.eventIndices) {
+          beamExhaustedEventIndices.add(idx);
+        }
+      }
+    }
+
+    for (let i = 0; i < totalEvents; i++) {
+      // Skip events that were successfully assigned
+      if (assignedIndices.has(i)) continue;
+
+      const eventReasons: string[] = [];
+
+      if (unmappedIndices.has(i)) {
+        eventReasons.push('unmapped');
+      } else if (beamExhaustedEventIndices.has(i)) {
+        // This event was in a group where beam expansion produced zero children.
+        // Do additional post-hoc checks to explain WHY the beam exhausted.
+        const ewp = eventsWithPositions.find(e => e.index === i);
+        if (ewp?.position) {
+          const pad = ewp.position;
+          const leftZone = isZoneValid(pad, 'left');
+          const rightZone = isZoneValid(pad, 'right');
+          if (!leftZone && !rightZone) {
+            eventReasons.push('zone_conflict');
+          }
+          const leftGrips = leftZone ? generateValidGripsWithTier([pad], 'left') : [];
+          const rightGrips = rightZone ? generateValidGripsWithTier([pad], 'right') : [];
+          if (leftGrips.length === 0 && rightGrips.length === 0) {
+            eventReasons.push('no_valid_grip');
+          }
+        }
+        // Always include beam_exhausted as the proximate cause
+        eventReasons.push('beam_exhausted');
+      } else {
+        // Event had a position but wasn't assigned — check why
+        const ewp = eventsWithPositions.find(e => e.index === i);
+        if (!ewp || !ewp.position) {
+          eventReasons.push('unmapped');
+        } else {
+          const pad = ewp.position;
+
+          // Check zone: is this pad reachable by at least one hand?
+          const leftZone = isZoneValid(pad, 'left');
+          const rightZone = isZoneValid(pad, 'right');
+          if (!leftZone && !rightZone) {
+            eventReasons.push('zone_conflict');
+          }
+
+          // Check grip: can any hand form a valid grip on this pad?
+          const leftGrips = leftZone ? generateValidGripsWithTier([pad], 'left') : [];
+          const rightGrips = rightZone ? generateValidGripsWithTier([pad], 'right') : [];
+          if (leftGrips.length === 0 && rightGrips.length === 0) {
+            eventReasons.push('no_valid_grip');
+          }
+
+          // If we still haven't found a reason, it's likely a cascading
+          // beam exhaustion — the beam carried forward stale states from
+          // an earlier group failure, so this group had no viable parents.
+          if (eventReasons.length === 0) {
+            eventReasons.push('beam_exhausted');
+          }
+        }
+      }
+
+      if (eventReasons.length > 0) {
+        reasons[i] = eventReasons;
+      }
+    }
+
+    return reasons;
+  }
+
   private buildResult(
     assignments: NoteAssignment[],
     totalEvents: number,
@@ -653,6 +756,9 @@ export class BeamSolver implements SolverStrategy {
     sortedEvents: Array<{ event: PerformanceEvent; originalIndex: number }>,
     coverage: { totalNotes: number; unmappedNotesCount: number; fallbackNotesCount: number },
     winningPadOwnership?: Map<string, { hand: 'left' | 'right'; finger: FingerType }>,
+    eventsWithPositions?: Array<{ event: PerformanceEvent; index: number; position: PadCoord | null }>,
+    groups?: PerformanceGroup[],
+    exhaustedGroupIndices?: Set<number>,
   ): ExecutionPlanResult {
     const fingerAssignments: FingerAssignment[] = [];
     const fingerUsageStats: FingerUsageStats = {};
@@ -673,11 +779,17 @@ export class BeamSolver implements SolverStrategy {
       assignmentMap.set(assignment.eventIndex, assignment);
     }
 
+    // Build lookup from originalIndex → event for correct metadata on unplayable events
+    const eventByOriginalIndex = new Map<number, PerformanceEvent>();
+    for (const { event, originalIndex } of sortedEvents) {
+      eventByOriginalIndex.set(originalIndex, event);
+    }
+
     for (let i = 0; i < totalEvents; i++) {
       const assignment = assignmentMap.get(i);
+      const ev = eventByOriginalIndex.get(i);
 
       if (unmappedIndices.has(i)) {
-        const ev = sortedEvents[i]?.event;
         fingerAssignments.push({
           noteNumber: ev?.noteNumber ?? 0,
           voiceId: ev?.voiceId,
@@ -696,12 +808,15 @@ export class BeamSolver implements SolverStrategy {
       if (!assignment) {
         unplayableCount++;
         fingerAssignments.push({
-          noteNumber: 0, startTime: 0,
+          noteNumber: ev?.noteNumber ?? 0,
+          voiceId: ev?.voiceId,
+          startTime: ev?.startTime ?? 0,
           assignedHand: 'Unplayable', finger: null,
           cost: Infinity,
           costBreakdown: { ...createZeroV1CostBreakdown(), total: Infinity },
           difficulty: 'Unplayable',
           eventIndex: i,
+          eventKey: ev?.eventKey,
         });
         continue;
       }
@@ -872,6 +987,11 @@ export class BeamSolver implements SolverStrategy {
       });
     }
 
+    // Post-hoc diagnostics for unplayable events
+    const rejectionReasons = unplayableCount > 0 && eventsWithPositions
+      ? this.diagnoseUnplayableEvents(assignments, totalEvents, unmappedIndices, sortedEvents, eventsWithPositions, groups, exhaustedGroupIndices)
+      : undefined;
+
     return {
       score,
       unplayableCount,
@@ -891,6 +1011,7 @@ export class BeamSolver implements SolverStrategy {
         layoutRole: this.sourceLayoutRole ?? this.layout.role ?? 'active',
       } as ExecutionPlanLayoutBinding : undefined,
       diagnostics,
+      rejectionReasons,
       metadata: {
         layoutIdUsed: this.layout?.id,
         layoutHashUsed: this.layout ? hashLayout(this.layout) : undefined,
@@ -1001,6 +1122,9 @@ export class BeamSolver implements SolverStrategy {
     // Initialize beam
     let beam = this.createInitialBeam(effectiveConfig);
     let prevTimestamp = 0;
+
+    // Track which groups had beam exhaustion (no valid expansions)
+    const exhaustedGroupIndices = new Set<number>();
 
     // Process each group
     for (let gi = 0; gi < groups.length; gi++) {
@@ -1132,8 +1256,10 @@ export class BeamSolver implements SolverStrategy {
       // Events in this group become infeasible (no assignment in backtrack).
       if (newBeam.length > 0) {
         beam = this.pruneBeam(newBeam, effectiveConfig.beamWidth);
+      } else {
+        // Record which event indices had beam exhaustion
+        exhaustedGroupIndices.add(gi);
       }
-      // else: beam stays unchanged — previous nodes carry forward
       prevTimestamp = group.timestamp;
     }
 
@@ -1149,7 +1275,7 @@ export class BeamSolver implements SolverStrategy {
     };
 
     if (beam.length === 0) {
-      return this.buildResult([], performance.events.length, unmappedIndices, effectiveConfig, sortedEvents, coverage, new Map());
+      return this.buildResult([], performance.events.length, unmappedIndices, effectiveConfig, sortedEvents, coverage, new Map(), eventsWithPositions, groups, exhaustedGroupIndices);
     }
 
     const bestNode = beam.reduce((best, node) =>
@@ -1157,7 +1283,7 @@ export class BeamSolver implements SolverStrategy {
     );
 
     const assignments = this.backtrack(bestNode);
-    return this.buildResult(assignments, performance.events.length, unmappedIndices, effectiveConfig, sortedEvents, coverage, bestNode.padOwnership);
+    return this.buildResult(assignments, performance.events.length, unmappedIndices, effectiveConfig, sortedEvents, coverage, bestNode.padOwnership, eventsWithPositions, groups, exhaustedGroupIndices);
   }
 }
 

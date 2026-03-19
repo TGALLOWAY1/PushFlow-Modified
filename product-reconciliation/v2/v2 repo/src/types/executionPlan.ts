@@ -257,6 +257,18 @@ export interface ExecutionPlanResult {
   /** Canonical diagnostics payload (Phase 3). */
   diagnostics?: DiagnosticsPayload;
 
+  /**
+   * Per-event rejection reasons explaining why events are unplayable.
+   * Keyed by event index. Values are arrays of rejection reason strings:
+   * - 'unmapped' — event couldn't be resolved to any pad position
+   * - 'zone_conflict' — pads span both zones, no single-hand or split solution
+   * - 'ownership_conflict' — pad ownership invariant rejected all grips
+   * - 'speed_limit' — hand can't move fast enough between positions
+   * - 'no_valid_grip' — no biomechanically valid finger assignment exists
+   * - 'beam_exhausted' — beam had no valid parent nodes for this group
+   */
+  rejectionReasons?: Record<number, string[]>;
+
   /** Run metadata for debugging and telemetry. */
   metadata?: {
     /** @deprecated Use layoutBinding.layoutId instead. */

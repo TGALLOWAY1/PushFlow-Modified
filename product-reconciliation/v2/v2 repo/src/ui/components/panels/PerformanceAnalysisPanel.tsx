@@ -11,12 +11,14 @@
 
 import { useState, useMemo, type ReactNode } from 'react';
 import { useProject } from '../../state/ProjectContext';
+import { type ExecutionPlanResult } from '../../../types/executionPlan';
 
 import { LearnMoreModal } from './LearnMoreModal';
 import { EventCostChart } from './EventCostChart';
 import { CostBreakdownBars } from './CostBreakdownBars';
 import { CandidatePreviewCard } from './CandidatePreviewCard';
 import { CandidateCompare } from '../CandidateCompare';
+import { LayoutDebugPanel } from '../Debug/LayoutDebugPanel';
 
 interface PerformanceAnalysisPanelProps {
   onClose: () => void;
@@ -144,6 +146,11 @@ export function PerformanceAnalysisPanel({
             </CollapsibleSection>
           )}
 
+          {/* ─── Unplayable Diagnostics ─────────────────────── */}
+          {currentPlan && currentPlan.unplayableCount > 0 && (
+            <UnplayableDiagnostics plan={currentPlan} />
+          )}
+
           {/* ─── Section 3: Compare Mode ──────────────────────── */}
           {compareMode && selectedCandidate && (
             <div className="border-b border-gray-800 pb-4 space-y-3">
@@ -234,6 +241,11 @@ export function PerformanceAnalysisPanel({
             </CollapsibleSection>
           )}
 
+          {/* Debug panel for unplayable events */}
+          {currentPlan && currentPlan.unplayableCount > 0 && (
+            <LayoutDebugPanel executionPlan={currentPlan} />
+          )}
+
           {/* Saved variants */}
           {state.savedVariants.length > 0 && (
             <div className="text-[10px] text-gray-600 pt-2 border-t border-gray-800">
@@ -264,6 +276,58 @@ export function PerformanceAnalysisPanel({
         />
       )}
     </>
+  );
+}
+
+/** Summarizes WHY events are unplayable, using solver rejection reasons. */
+function UnplayableDiagnostics({ plan }: { plan: ExecutionPlanResult }) {
+  const reasons = plan.rejectionReasons;
+  if (!reasons || Object.keys(reasons).length === 0) {
+    return (
+      <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/5 text-[11px] text-red-300">
+        <div className="font-medium mb-1">{plan.unplayableCount} event{plan.unplayableCount !== 1 ? 's' : ''} unplayable</div>
+        <div className="text-red-400/70">No diagnostic details available.</div>
+      </div>
+    );
+  }
+
+  // Aggregate reasons
+  const counts: Record<string, number> = {};
+  for (const eventReasons of Object.values(reasons)) {
+    for (const r of eventReasons) {
+      counts[r] = (counts[r] || 0) + 1;
+    }
+  }
+
+  const REASON_LABELS: Record<string, string> = {
+    unmapped: 'Could not map to any pad position',
+    zone_conflict: 'Pad is outside all hand zones',
+    ownership_conflict: 'Pad ownership conflict (finger already assigned)',
+    speed_limit: 'Hand can\'t move fast enough',
+    no_valid_grip: 'No valid finger assignment exists',
+    beam_exhausted: 'Solver could not find a solution path',
+  };
+
+  return (
+    <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/5 space-y-2">
+      <div className="text-[11px] font-medium text-red-300">
+        {plan.unplayableCount} event{plan.unplayableCount !== 1 ? 's' : ''} unplayable
+      </div>
+      <div className="space-y-1">
+        {Object.entries(counts)
+          .sort((a, b) => b[1] - a[1])
+          .map(([reason, count]) => (
+            <div key={reason} className="flex items-center gap-2 text-[10px]">
+              <span className="font-mono text-red-400 w-5 text-right">{count}</span>
+              <span className="text-red-300/80">{REASON_LABELS[reason] ?? reason}</span>
+            </div>
+          ))
+        }
+      </div>
+      <div className="text-[10px] text-gray-500 pt-1 border-t border-red-500/10">
+        Try adjusting pad positions on the grid, then re-generate.
+      </div>
+    </div>
   );
 }
 
