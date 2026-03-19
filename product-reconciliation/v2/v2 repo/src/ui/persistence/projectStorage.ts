@@ -9,6 +9,8 @@
 
 import { type ProjectState, createEmptyProjectState, PROJECT_STATE_VERSION } from '../state/projectState';
 import { type Layout } from '../../types/layout';
+import { type CostToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
+import { type OptimizerMethodKey } from '../../engine/optimization/optimizerInterface';
 import { buildLegacySourceFile, buildPerformanceLanesFromStreams } from '../state/streamsToLanes';
 
 const INDEX_KEY = 'pushflow_projects';
@@ -72,15 +74,23 @@ function classifyDifficulty(score: number): string {
 
 export function saveProject(state: ProjectState): void {
   try {
+    const now = new Date().toISOString();
     // Strip ephemeral and session-scoped state before persisting
     const persistable: ProjectState = {
       ...state,
       version: PROJECT_STATE_VERSION,
+      updatedAt: now,
       workingLayout: null, // Session-scoped: strip working layout
       selectedEventIndex: null,
+      selectedMomentIndex: null,
       compareCandidateId: null,
       isProcessing: false,
       error: null,
+      analysisStale: true,
+      // Strip ephemeral optimizer state
+      manualCostResult: null,
+      moveHistory: null,
+      moveHistoryIndex: null,
       // Strip deprecated fields
       layouts: undefined,
       activeLayoutId: undefined,
@@ -88,9 +98,10 @@ export function saveProject(state: ProjectState): void {
     const json = JSON.stringify(persistable);
     localStorage.setItem(`${PROJECT_PREFIX}${state.id}`, json);
 
-    // Update index
+    // Update index with fresh timestamp
+    const stateForEntry = { ...state, updatedAt: now };
     const entries = listProjects().filter(e => e.id !== state.id);
-    entries.unshift(entryFromState(state));
+    entries.unshift(entryFromState(stateForEntry));
     saveIndex(entries);
   } catch (err) {
     console.error('Failed to save project:', err);
@@ -146,11 +157,17 @@ export function exportProjectToFile(state: ProjectState): void {
   const persistable: ProjectState = {
     ...state,
     version: PROJECT_STATE_VERSION,
+    updatedAt: new Date().toISOString(),
     workingLayout: null,
     selectedEventIndex: null,
+    selectedMomentIndex: null,
     compareCandidateId: null,
     isProcessing: false,
     error: null,
+    analysisStale: true,
+    manualCostResult: null,
+    moveHistory: null,
+    moveHistoryIndex: null,
     layouts: undefined,
     activeLayoutId: undefined,
   };
@@ -308,12 +325,23 @@ function validateAndMigrateProjectState(parsed: unknown): ProjectState {
     sourceFiles: sourceFiles.length > 0 || performanceLanes.length === 0
       ? sourceFiles
       : [buildLegacySourceFile(soundStreams)],
+    // Optimizer config (persisted)
+    optimizerMethod: (typeof p.optimizerMethod === 'string' && ['beam', 'annealing', 'greedy'].includes(p.optimizerMethod))
+      ? p.optimizerMethod as OptimizerMethodKey
+      : base.optimizerMethod,
+    costToggles: (p.costToggles && typeof p.costToggles === 'object' && !Array.isArray(p.costToggles))
+      ? p.costToggles as CostToggles
+      : ALL_COSTS_ENABLED,
     // Ephemeral state always reset
     selectedEventIndex: null,
+    selectedMomentIndex: null,
     compareCandidateId: null,
     isProcessing: false,
     error: null,
     analysisStale: true,
+    manualCostResult: null,
+    moveHistory: null,
+    moveHistoryIndex: null,
     currentTime: 0,
     isPlaying: false,
   };

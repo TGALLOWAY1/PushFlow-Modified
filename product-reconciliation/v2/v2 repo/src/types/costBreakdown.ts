@@ -14,6 +14,7 @@ import { type FeasibilityVerdict } from './diagnostics';
 import { type HandPose } from './performance';
 import { type PadFingerAssignment } from './executionPlan';
 import { type ConstraintTier } from '../engine/prior/feasibility';
+import { type CostToggles } from './costToggles';
 
 // ============================================================================
 // Canonical Cost Dimensions
@@ -202,6 +203,8 @@ export interface PerformanceCostBreakdown {
   feasibility: FeasibilityVerdict;
   /** Echo back the assignment that was evaluated. */
   padFingerAssignment: PadFingerAssignment;
+  /** Which cost toggles were active during this evaluation. */
+  costTogglesUsed?: CostToggles;
 }
 
 // ============================================================================

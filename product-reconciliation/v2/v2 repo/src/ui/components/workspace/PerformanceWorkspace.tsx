@@ -24,7 +24,7 @@ type BottomTab = 'timeline' | 'composer';
 export function PerformanceWorkspace() {
   const { state, dispatch } = useProject();
   const navigate = useNavigate();
-  const { generateFull, generationProgress, canGenerate, generateDisabledReason } = useAutoAnalysis();
+  const { generateFull, calculateCost, generationProgress, canGenerate, generateDisabledReason } = useAutoAnalysis();
   useKeyboardShortcuts();
   const { settings: viewSettings, toggleGridLabel, toggleLayoutDisplay } = useViewSettings();
 
@@ -34,7 +34,8 @@ export function PerformanceWorkspace() {
   const [leftTab, setLeftTab] = useState<LeftPanelTab>('sounds');
   const [bottomTab, setBottomTab] = useState<BottomTab>('timeline');
   const [leftWidth, setLeftWidth] = useState(260);
-  const isResizing = useRef(false);
+  const [rightWidth, setRightWidth] = useState(360);
+  const isResizing = useRef<'left' | 'right' | false>(false);
 
   // Editable project name
   const [editingName, setEditingName] = useState(false);
@@ -74,17 +75,22 @@ export function PerformanceWorkspace() {
     setEditingBpm(false);
   };
 
-  // Sidebar resize via drag handle
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+  // Panel resize via drag handle (shared for left and right)
+  const handleResizeStart = useCallback((side: 'left' | 'right', e: React.MouseEvent) => {
     e.preventDefault();
-    isResizing.current = true;
+    isResizing.current = side;
     const startX = e.clientX;
-    const startWidth = leftWidth;
+    const startWidth = side === 'left' ? leftWidth : rightWidth;
 
     const onMouseMove = (ev: MouseEvent) => {
       if (!isResizing.current) return;
-      const newWidth = Math.max(200, Math.min(450, startWidth + (ev.clientX - startX)));
-      setLeftWidth(newWidth);
+      const delta = ev.clientX - startX;
+      if (side === 'left') {
+        setLeftWidth(Math.max(200, Math.min(500, startWidth + delta)));
+      } else {
+        // Right panel: dragging left increases width
+        setRightWidth(Math.max(280, Math.min(600, startWidth - delta)));
+      }
     };
 
     const onMouseUp = () => {
@@ -99,11 +105,11 @@ export function PerformanceWorkspace() {
     document.addEventListener('mouseup', onMouseUp);
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
-  }, [leftWidth]);
+  }, [leftWidth, rightWidth]);
 
   // Build grid template columns for the 3-column layout
   const leftCol = leftCollapsed ? '48px' : `${leftWidth}px`;
-  const rightCol = rightCollapsed ? '48px' : '340px';
+  const rightCol = rightCollapsed ? '48px' : `${rightWidth}px`;
   const gridCols = `${leftCol} minmax(0, 1fr) ${rightCol}`;
 
   return (
@@ -222,7 +228,7 @@ export function PerformanceWorkspace() {
               <span className="text-[10px] text-gray-600">&#9656;</span>
             </button>
           ) : (
-            <div className="rounded-lg glass-panel overflow-hidden flex flex-col" style={{ maxHeight: 560 }}>
+            <div className="rounded-lg glass-panel flex flex-col" style={{ height: 'calc(100vh - 220px)' }}>
               {/* Tab header */}
               <div className="flex items-center border-b border-gray-800 flex-shrink-0">
                 <button
@@ -268,7 +274,7 @@ export function PerformanceWorkspace() {
           {!leftCollapsed && (
             <div
               className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-500/40 transition-colors z-10"
-              onMouseDown={handleResizeStart}
+              onMouseDown={(e) => handleResizeStart('left', e)}
             />
           )}
         </div>
@@ -324,7 +330,7 @@ export function PerformanceWorkspace() {
         </div>
 
         {/* Right Column: Collapsible Analysis Panel */}
-        <div className="min-w-0">
+        <div className="min-w-0 relative">
           {rightCollapsed ? (
             <button
               className="flex flex-col items-center gap-3 py-3 w-full cursor-pointer hover:bg-gray-800/30 rounded transition-colors"
@@ -337,11 +343,19 @@ export function PerformanceWorkspace() {
               <span className="text-[10px] text-gray-600">&#9666;</span>
             </button>
           ) : (
-            <div className="rounded-lg glass-panel overflow-hidden" style={{ maxHeight: 560 }}>
-              <PerformanceAnalysisPanel
-                onClose={() => setRightCollapsed(true)}
+            <>
+              <div className="rounded-lg glass-panel flex flex-col" style={{ height: 'calc(100vh - 220px)' }}>
+                <PerformanceAnalysisPanel
+                  onClose={() => setRightCollapsed(true)}
+                  calculateCost={calculateCost}
+                />
+              </div>
+              {/* Drag handle for resizing */}
+              <div
+                className="absolute top-0 left-0 w-1 h-full cursor-col-resize hover:bg-blue-500/40 transition-colors z-10"
+                onMouseDown={(e) => handleResizeStart('right', e)}
               />
-            </div>
+            </>
           )}
         </div>
       </div>

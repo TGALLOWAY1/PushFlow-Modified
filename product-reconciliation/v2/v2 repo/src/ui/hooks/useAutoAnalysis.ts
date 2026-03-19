@@ -20,13 +20,23 @@ import { getActivePerformance, getDisplayedLayout, getActiveStreams, type SoundS
 import { createBeamSolver } from '../../engine/solvers/beamSolver';
 import { type SolverConstraints } from '../../engine/solvers/types';
 import { analyzeDifficulty, computeTradeoffProfile, classifyOptimizationDifficulty } from '../../engine/evaluation/difficultyScoring';
+import { evaluatePerformance } from '../../engine/evaluation/canonicalEvaluator';
 import { generateCandidates } from '../../engine/optimization/multiCandidateGenerator';
+import { getOptimizer } from '../../engine/optimization/optimizerRegistry';
+// Import adapters to ensure they self-register
+import '../../engine/optimization/beamOptimizerAdapter';
+import '../../engine/optimization/annealingOptimizerAdapter';
+import '../../engine/optimization/greedyOptimizer';
+import { buildPerformanceMoments, extractPadOwnership } from '../../engine/structure/momentBuilder';
+import { getNeutralHandCenters } from '../../engine/prior/handPose';
 import { generateId } from '../../utils/idGenerator';
 import { type SolverConfig, type OptimizationMode } from '../../types/engineConfig';
 import { type Performance } from '../../types/performance';
 import { type FingerType } from '../../types/fingerModel';
 import { type Layout } from '../../types/layout';
 import { type Voice } from '../../types/voice';
+import { type CostToggles } from '../../types/costToggles';
+import { type PadFingerAssignment } from '../../types/executionPlan';
 import { seedLayoutFromPose0 } from '../../engine/mapping/seedFromPose';
 import { createDefaultPose0, getPose0PadsWithOffset, fingerIdToHandAndFingerType } from '../../engine/prior/naturalHandPose';
 import { type FingerId, type NaturalHandPose } from '../../types/ergonomicPrior';
@@ -275,7 +285,7 @@ export function useAutoAnalysis() {
     };
   }, [state.analysisStale, state.isProcessing, state.soundStreams, state.activeLayout, state.workingLayout, state.instrumentConfig, state.sections, state.engineConfig, dispatch]);
 
-  // Full multi-candidate generation (manual trigger)
+  // Full generation (manual trigger) — routes to selected optimizer method
   const generateFull = useCallback(async (mode: GenerationMode = 'fast') => {
     const activeStreams = getActiveStreams(state);
     const layout = getDisplayedLayout(state);
@@ -283,26 +293,86 @@ export function useAutoAnalysis() {
 
     dispatch({ type: 'SET_ERROR', payload: null });
     dispatch({ type: 'SET_PROCESSING', payload: true });
+    dispatch({ type: 'SET_MOVE_HISTORY', payload: { moves: null } }); // Clear previous trace
     setGenerationProgress('Preparing layout...');
 
     try {
       const performance = getActivePerformance(state);
 
       // If the layout has no pad assignments yet, seed from the natural hand pose.
-      // Most-played sounds → dominant finger positions (index, middle, ring).
-      // Dispatch BULK_ASSIGN_PADS so the grid immediately shows the assignments.
       let effectiveLayout = layout;
       if (Object.keys(layout.padToVoice).length === 0) {
         effectiveLayout = buildAutoLayout(state.soundStreams, performance, layout);
         dispatch({ type: 'BULK_ASSIGN_PADS', payload: effectiveLayout.padToVoice });
       }
 
-      // Resolve 'auto' mode by classifying the performance
+      const method = state.optimizerMethod;
+
+      // ── Route: Greedy or other pluggable optimizer ───────────
+      if (method === 'greedy') {
+        setGenerationProgress('Greedy optimization: building layout and optimizing...');
+
+        const optimizer = getOptimizer('greedy');
+        const solverConstraints = buildSolverConstraints(performance, effectiveLayout);
+        const neutralHandCenters = getNeutralHandCenters(effectiveLayout, state.instrumentConfig);
+
+        const result = await optimizer.optimize({
+          performance,
+          layout: effectiveLayout,
+          costToggles: state.costToggles,
+          constraints: solverConstraints,
+          config: {
+            engineConfig: state.engineConfig,
+            sections: state.sections,
+          },
+          evaluationConfig: {
+            restingPose: state.engineConfig.restingPose,
+            stiffness: state.engineConfig.stiffness,
+            instrumentConfig: state.instrumentConfig,
+            neutralHandCenters,
+          },
+          instrumentConfig: state.instrumentConfig,
+        });
+
+        // Store move history for the trace panel
+        if (result.moveHistory) {
+          dispatch({ type: 'SET_MOVE_HISTORY', payload: { moves: result.moveHistory, stopReason: result.stopReason } });
+        }
+
+        // Convert to CandidateSolution for existing UI
+        const difficultyAnalysis = analyzeDifficulty(result.executionPlan, state.sections);
+        const tradeoffProfile = computeTradeoffProfile(result.executionPlan, difficultyAnalysis);
+        const candidate = {
+          id: generateId('greedy'),
+          layout: result.layout,
+          executionPlan: result.executionPlan,
+          difficultyAnalysis,
+          tradeoffProfile,
+          metadata: {
+            strategy: 'greedy-hill-climb',
+            seed: 0,
+            optimizationMode: undefined,
+            optimizationSummary: `Greedy: ${result.telemetry.iterationsCompleted} improvements, ${result.telemetry.wallClockMs}ms`,
+          },
+        };
+
+        dispatch({ type: 'SET_CANDIDATES', payload: [candidate] });
+        dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidate });
+
+        // If the greedy optimizer produced a different layout, update the grid
+        if (Object.keys(result.layout.padToVoice).length > 0) {
+          dispatch({ type: 'BULK_ASSIGN_PADS', payload: result.layout.padToVoice });
+        }
+
+        setGenerationProgress(null);
+        return 1;
+      }
+
+      // ── Route: Legacy multi-candidate (beam / annealing) ────
       const resolvedMode: OptimizationMode = mode === 'auto'
         ? classifyOptimizationDifficulty(performance)
         : mode;
 
-      // Build solver constraints — finger constraints are soft preferences
       const solverConstraints = buildSolverConstraints(performance, effectiveLayout);
       const manualAssignments = constraintsToManualAssignments(solverConstraints);
 
@@ -336,6 +406,59 @@ export function useAutoAnalysis() {
     }
   }, [state, dispatch]);
 
+  // Calculate Cost: evaluate current layout + assignment with given toggles
+  const calculateCost = useCallback(async (costToggles: CostToggles) => {
+    const layout = getDisplayedLayout(state);
+    if (!layout || Object.keys(layout.padToVoice).length === 0) return;
+
+    const performance = getActivePerformance(state);
+    if (performance.events.length === 0) return;
+
+    dispatch({ type: 'SET_ERROR', payload: null });
+
+    try {
+      // Build moments from performance events
+      const moments = buildPerformanceMoments(performance.events);
+      if (moments.length === 0) return;
+
+      // Get pad-finger assignment from latest analysis result, or extract from solver output
+      let padFingerAssignment: PadFingerAssignment = {};
+      if (state.analysisResult?.executionPlan?.padFingerOwnership) {
+        padFingerAssignment = state.analysisResult.executionPlan.padFingerOwnership;
+      } else if (state.analysisResult?.executionPlan?.fingerAssignments) {
+        const { ownership } = extractPadOwnership(state.analysisResult.executionPlan.fingerAssignments);
+        padFingerAssignment = ownership;
+      }
+
+      // If no assignment available, we can't evaluate — need to run solver first
+      if (Object.keys(padFingerAssignment).length === 0) {
+        dispatch({ type: 'SET_ERROR', payload: 'No finger assignment available. Run Generate first to create an initial assignment.' });
+        return;
+      }
+
+      // Build evaluation config
+      const neutralHandCenters = getNeutralHandCenters(layout, state.instrumentConfig);
+      const evaluationConfig = {
+        restingPose: state.engineConfig.restingPose,
+        stiffness: state.engineConfig.stiffness,
+        instrumentConfig: state.instrumentConfig,
+        neutralHandCenters,
+      };
+
+      const result = evaluatePerformance({
+        moments,
+        layout,
+        padFingerAssignment,
+        config: evaluationConfig,
+        costToggles,
+      });
+
+      dispatch({ type: 'SET_MANUAL_COST_RESULT', payload: result });
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: err instanceof Error ? err.message : 'Cost calculation failed' });
+    }
+  }, [state, dispatch]);
+
   // Precondition checks for Generate button
   const activeStreams = getActiveStreams(state);
   const currentLayout = getDisplayedLayout(state);
@@ -346,5 +469,5 @@ export function useAutoAnalysis() {
       ? 'No sounds loaded — import MIDI or create patterns first'
       : null;
 
-  return { generateFull, generationProgress, canGenerate, generateDisabledReason };
+  return { generateFull, calculateCost, generationProgress, canGenerate, generateDisabledReason };
 }

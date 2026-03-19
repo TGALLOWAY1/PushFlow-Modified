@@ -23,6 +23,7 @@ import { type InstrumentConfig } from '../../types/performance';
 import { type PerformanceMoment } from '../../types/performanceEvent';
 import { type PadFingerAssignment } from '../../types/executionPlan';
 import { type EvaluationConfig } from '../../types/evaluationConfig';
+import { type CostToggles, applyToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
 import {
   type CostDimensions,
   type PoseNaturalnessDetail,
@@ -80,6 +81,8 @@ export interface EvaluateEventInput {
   /** Running left/right hand counts for hand balance. */
   handCounts?: { left: number; right: number };
   includeDebug?: boolean;
+  /** Cost toggles: disabled dimensions contribute 0 to total. All enabled if omitted. */
+  costToggles?: CostToggles;
 }
 
 /**
@@ -92,7 +95,8 @@ export interface EvaluateEventInput {
  * 4. Computes cost dimensions using the same functions the beam solver uses
  */
 export function evaluateEvent(input: EvaluateEventInput): EventCostBreakdown {
-  const { moment, layout, padFingerAssignment, config, prevMomentContext, handCounts, includeDebug } = input;
+  const { moment, layout, padFingerAssignment, config, prevMomentContext, handCounts, includeDebug, costToggles } = input;
+  const toggles = costToggles ?? ALL_COSTS_ENABLED;
 
   // Step 1: Resolve each note to a pad
   const voiceIdIndex = buildVoiceIdToPadIndex(layout.padToVoice);
@@ -165,16 +169,9 @@ export function evaluateEvent(input: EvaluateEventInput): EventCostBreakdown {
   // Transition cost is 0 for a single event (computed in evaluateTransition)
   const transitionCost = 0;
 
-  const total = poseNaturalness + transitionCost + constraintPenalty + alternation + handBalance;
-
-  const dimensions: CostDimensions = {
-    poseNaturalness,
-    transitionCost,
-    constraintPenalty,
-    alternation,
-    handBalance,
-    total,
-  };
+  // Apply cost toggles: disabled dimensions contribute 0 to total
+  const rawDimensions = { poseNaturalness, transitionCost, constraintPenalty, alternation, handBalance, total: 0 };
+  const dimensions: CostDimensions = applyToggles(rawDimensions, toggles);
 
   // Determine feasibility tier
   let feasibilityTier: ConstraintTier = poseResult.tier;
@@ -210,6 +207,8 @@ export interface EvaluateTransitionInput {
   padFingerAssignment: PadFingerAssignment;
   config: EvaluationConfig;
   includeDebug?: boolean;
+  /** Cost toggles: disabled dimensions contribute 0 to total. All enabled if omitted. */
+  costToggles?: CostToggles;
 }
 
 /**
@@ -219,7 +218,8 @@ export interface EvaluateTransitionInput {
  * plus speed pressure, hand switch, and finger change metrics.
  */
 export function evaluateTransition(input: EvaluateTransitionInput): TransitionCostBreakdown {
-  const { fromMoment, toMoment, layout, padFingerAssignment, config, includeDebug } = input;
+  const { fromMoment, toMoment, layout, padFingerAssignment, config, includeDebug, costToggles } = input;
+  const toggles = costToggles ?? ALL_COSTS_ENABLED;
 
   // Resolve pads for both moments
   const voiceIdIndex = buildVoiceIdToPadIndex(layout.padToVoice);
@@ -257,14 +257,9 @@ export function evaluateTransition(input: EvaluateTransitionInput): TransitionCo
   const handSwitch = detectHandSwitch(fromPadKeys, toPadKeys, padFingerAssignment);
   const fingerChange = detectFingerChange(fromPadKeys, toPadKeys, padFingerAssignment);
 
-  const dimensions: CostDimensions = {
-    poseNaturalness: 0,
-    transitionCost,
-    constraintPenalty: 0,
-    alternation: 0,
-    handBalance: 0,
-    total: transitionCost,
-  };
+  // Apply cost toggles
+  const rawDims = { poseNaturalness: 0, transitionCost, constraintPenalty: 0, alternation: 0, handBalance: 0, total: 0 };
+  const dimensions: CostDimensions = applyToggles(rawDims, toggles);
 
   return {
     fromMomentIndex: fromMoment.momentIndex,
@@ -304,6 +299,8 @@ export interface EvaluatePerformanceInput {
   padFingerAssignment: PadFingerAssignment;
   config: EvaluationConfig;
   includeDebug?: boolean;
+  /** Cost toggles: disabled dimensions contribute 0 to total. All enabled if omitted. */
+  costToggles?: CostToggles;
 }
 
 /**
@@ -315,7 +312,7 @@ export interface EvaluatePerformanceInput {
  * This is the primary canonical evaluation function.
  */
 export function evaluatePerformance(input: EvaluatePerformanceInput): PerformanceCostBreakdown {
-  const { moments, layout, padFingerAssignment, config, includeDebug } = input;
+  const { moments, layout, padFingerAssignment, config, includeDebug, costToggles } = input;
 
   if (moments.length === 0) {
     return emptyPerformanceBreakdown(padFingerAssignment);
@@ -344,6 +341,7 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
       prevMomentContext: i > 0 ? { assignments: prevAssignments, timestamp: prevTimestamp } : undefined,
       handCounts: { left: leftCount, right: rightCount },
       includeDebug,
+      costToggles,
     });
 
     eventCosts.push(eventResult);
@@ -372,6 +370,7 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
         padFingerAssignment,
         config,
         includeDebug,
+        costToggles,
       });
 
       transitionCosts.push(transitionResult);
@@ -426,6 +425,7 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
     aggregateMetrics,
     feasibility,
     padFingerAssignment,
+    costTogglesUsed: costToggles,
   };
 }
 

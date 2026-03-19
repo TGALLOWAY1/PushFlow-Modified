@@ -14,13 +14,13 @@ interface LearnMoreModalProps {
   onClose: () => void;
 }
 
-type LearnMoreTab = 'overview' | 'workflow' | 'costs' | 'constraints';
+type LearnMoreTab = 'overview' | 'workflow' | 'costs' | 'optimizers' | 'constraints';
 
 const COST_DEFINITIONS = [
   {
-    name: 'Stretch',
+    name: 'Grip Quality',
     color: '#a855f7',
-    description: 'Measures how far fingers must spread to reach the required pads. High stretch means the hand shape deviates significantly from a natural resting position. Reducing stretch improves comfort and reliability.',
+    description: 'Measures how far fingers must spread to reach the required pads. Combines attractor force (distance from resting pose), per-finger home distance, and finger dominance preference. Lower values mean more natural hand shapes.',
   },
   {
     name: 'Movement',
@@ -28,14 +28,37 @@ const COST_DEFINITIONS = [
     description: 'Fitts\'s Law transition cost between consecutive events. Captures how far the hand must travel between pads in sequence. Lower movement means smoother, faster performance.',
   },
   {
-    name: 'Speed',
-    color: '#22c55e',
-    description: 'Penalty for rapid transitions that exceed comfortable hand movement speed. When events are too close in time and too far apart in space, speed cost increases.',
+    name: 'Hard Constraints',
+    color: '#ef4444',
+    description: 'Penalty for biomechanically infeasible grips (relaxed/fallback tier). When the required hand shape exceeds physical limits, this cost increases. Hard constraints can be toggled off for experimental evaluation.',
   },
   {
     name: 'Repetition',
     color: '#3b82f6',
     description: 'Same-finger rapid repetition penalty. When the same finger must hit different pads in quick succession, alternation cost increases. Better layouts distribute work across fingers.',
+  },
+  {
+    name: 'Hand Balance',
+    color: '#22c55e',
+    description: 'Quadratic penalty when left/right hand usage deviates from 50/50 balance. Ensures both hands share the workload evenly for sustained performance.',
+  },
+];
+
+const OPTIMIZER_METHODS = [
+  {
+    name: 'Greedy Hill Climb',
+    key: 'greedy',
+    description: 'Builds an initial layout by placing sounds one at a time (most-used first), assigns fingers by hand zone, then iteratively makes the single best local move. Every step is explainable. Best for understanding and debugging.',
+  },
+  {
+    name: 'Beam Search',
+    key: 'beam',
+    description: 'Fast finger assignment via beam search. Keeps the K best candidates at each event step. Does not modify the layout. Best for quick analysis of a fixed layout.',
+  },
+  {
+    name: 'Simulated Annealing',
+    key: 'annealing',
+    description: 'Jointly optimizes layout and finger assignment through randomized mutations. Accepts occasionally worse solutions to escape local minima. Best for finding globally better layouts.',
   },
 ];
 
@@ -75,6 +98,7 @@ export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
             { id: 'overview' as const, label: 'Overview' },
             { id: 'workflow' as const, label: 'App Flow' },
             { id: 'costs' as const, label: 'Cost Factors' },
+            { id: 'optimizers' as const, label: 'Optimizers' },
             { id: 'constraints' as const, label: 'Constraints' },
           ]).map(t => (
             <button
@@ -96,6 +120,7 @@ export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
           {tab === 'overview' && <OverviewInfographic />}
           {tab === 'workflow' && <WorkflowSection />}
           {tab === 'costs' && <CostFactorsSection />}
+          {tab === 'optimizers' && <OptimizersSection />}
           {tab === 'constraints' && <ConstraintsSection />}
         </div>
       </div>
@@ -299,8 +324,16 @@ function OverviewInfographic() {
             PushFlow generates multiple alternatives so you can compare tradeoffs.
           </p>
           <p>
-            <strong className="text-gray-300">How do I use this?</strong> Generate candidates, compare their difficulty profiles,
-            then promote the one that best fits your playing style to become your active layout.
+            <strong className="text-gray-300">What is the Greedy optimizer?</strong> It builds a layout step by step, then improves it
+            one move at a time. Every change is logged with a plain-English explanation so you can see exactly why each decision was made.
+          </p>
+          <p>
+            <strong className="text-gray-300">What are cost toggles?</strong> You can enable/disable individual cost factors in the
+            Cost Evaluation section. This lets you evaluate a layout focusing on specific concerns (e.g., movement only, grip only).
+          </p>
+          <p>
+            <strong className="text-gray-300">What does Calculate Cost do?</strong> It evaluates your current layout and finger assignment
+            using the active cost toggles, without running a full optimization. Useful for manual assessment.
           </p>
         </div>
       </div>
@@ -435,6 +468,54 @@ function CostFactorsSection() {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Optimizers Section — available optimization methods
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+function OptimizersSection() {
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-gray-500">
+        PushFlow supports multiple optimization methods. Select your preferred method from the toolbar dropdown before clicking Generate.
+      </p>
+      {OPTIMIZER_METHODS.map(method => (
+        <div key={method.key} className="flex gap-3">
+          <div className="w-1 rounded-full flex-shrink-0 bg-cyan-500/60" />
+          <div>
+            <div className="text-sm font-medium text-gray-300 flex items-center gap-2">
+              {method.name}
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 border border-gray-700">
+                {method.key}
+              </span>
+            </div>
+            <div className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+              {method.description}
+            </div>
+          </div>
+        </div>
+      ))}
+
+      <div className="rounded-xl border border-gray-700/40 bg-gray-800/20 p-3 mt-4">
+        <h4 className="text-xs font-medium text-gray-300 mb-2">Cost Toggles</h4>
+        <p className="text-[11px] text-gray-500 leading-relaxed">
+          All cost factors can be individually toggled on/off in the Cost Evaluation section of the analysis panel.
+          Disabled factors contribute zero to the total cost during both manual evaluation (Calculate Cost) and optimization.
+          Disabling hard constraints enters experimental mode and is flagged in the UI.
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-gray-700/40 bg-gray-800/20 p-3">
+        <h4 className="text-xs font-medium text-gray-300 mb-2">Calculate Cost</h4>
+        <p className="text-[11px] text-gray-500 leading-relaxed">
+          The Calculate Cost button evaluates your current layout and finger assignment without running a full optimization.
+          It shows total cost, static/temporal subtotals, per-factor breakdown, feasibility verdict, and event counts.
+          The result uses the currently active cost toggles.
+        </p>
+      </div>
     </div>
   );
 }
