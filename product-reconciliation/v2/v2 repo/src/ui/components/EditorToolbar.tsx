@@ -10,7 +10,7 @@
  * Promote for the working layout (separate workflow action).
  */
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { saveProject, exportProjectToFile } from '../persistence/projectStorage';
 import { getDisplayedLayout, getDisplayedLayoutRole, hasWorkingChanges } from '../state/projectState';
@@ -35,6 +35,15 @@ export function EditorToolbar({
   const layoutRole = getDisplayedLayoutRole(state);
   const hasChanges = hasWorkingChanges(state);
   const [generationMode, setGenerationMode] = useState<GenerationMode>('fast');
+  const [saveConfirm, setSaveConfirm] = useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSave = () => {
+    saveProject(state);
+    setSaveConfirm(true);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => setSaveConfirm(false), 1500);
+  };
 
   return (
     <div className="flex items-center gap-3 pb-3 border-b border-gray-800">
@@ -116,11 +125,15 @@ export function EditorToolbar({
 
       {/* Save */}
       <button
-        className="px-2 py-1 text-xs rounded bg-gray-800 hover:bg-gray-700"
-        onClick={() => saveProject(state)}
+        className={`px-2 py-1 text-xs rounded transition-colors ${
+          saveConfirm
+            ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+            : 'bg-gray-800 hover:bg-gray-700'
+        }`}
+        onClick={handleSave}
         title="Save project"
       >
-        Save
+        {saveConfirm ? 'Saved' : 'Save'}
       </button>
 
       {/* Export */}
