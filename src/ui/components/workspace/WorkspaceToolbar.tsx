@@ -19,6 +19,7 @@ interface WorkspaceToolbarProps {
   onNavigateLibrary: () => void;
   generateFull: (mode?: GenerationMode) => Promise<void>;
   generationProgress: string | null;
+  analysisPhase: 'idle' | 'analyzing' | 'generating';
   canGenerate: boolean;
   generateDisabledReason: string | null;
   compareCount: number;
@@ -31,6 +32,7 @@ export function WorkspaceToolbar({
   onNavigateLibrary,
   generateFull,
   generationProgress,
+  analysisPhase,
   canGenerate,
   generateDisabledReason,
   compareCount,
@@ -244,10 +246,16 @@ export function WorkspaceToolbar({
 
       <div className="w-px h-5 bg-gray-800" />
 
-      {/* Generate */}
+      {/* Analyze / Generate phase indicator */}
       {state.isProcessing ? (
-        <span className="text-[11px] text-blue-400 animate-pulse px-2 py-1">
-          {generationProgress || 'Analyzing...'}
+        <span className={`text-[11px] animate-pulse px-2 py-1 rounded border ${
+          analysisPhase === 'generating'
+            ? 'text-blue-400 bg-blue-500/10 border-blue-500/20'
+            : 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20'
+        }`}>
+          {analysisPhase === 'generating'
+            ? (generationProgress || 'Generating...')
+            : 'Analyzing\u2026'}
         </span>
       ) : (
         <div className="flex items-center gap-1">

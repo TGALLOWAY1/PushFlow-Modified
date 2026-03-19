@@ -198,6 +198,7 @@ export function useAutoAnalysis() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef(false);
   const [generationProgress, setGenerationProgress] = useState<string | null>(null);
+  const [analysisPhase, setAnalysisPhase] = useState<'idle' | 'analyzing' | 'generating'>('idle');
 
   // Auto re-analysis: fast single-candidate when stale
   useEffect(() => {
@@ -222,6 +223,7 @@ export function useAutoAnalysis() {
         const performance = getActivePerformance(state);
         if (performance.events.length === 0) return;
 
+        setAnalysisPhase('analyzing');
         dispatch({ type: 'SET_PROCESSING', payload: true });
 
         // If the layout has no pad assignments, auto-build from streams
@@ -271,7 +273,9 @@ export function useAutoAnalysis() {
 
         dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidate });
         dispatch({ type: 'SET_PROCESSING', payload: false });
+        setAnalysisPhase('idle');
       } catch (err) {
+        setAnalysisPhase('idle');
         if (!abortRef.current) {
           dispatch({ type: 'SET_PROCESSING', payload: false });
           dispatch({ type: 'SET_ERROR', payload: err instanceof Error ? err.message : 'Analysis failed' });
@@ -294,6 +298,7 @@ export function useAutoAnalysis() {
     dispatch({ type: 'SET_ERROR', payload: null });
     dispatch({ type: 'SET_PROCESSING', payload: true });
     dispatch({ type: 'SET_MOVE_HISTORY', payload: { moves: null } }); // Clear previous trace
+    setAnalysisPhase('generating');
     setGenerationProgress('Preparing layout...');
 
     try {
@@ -374,6 +379,7 @@ export function useAutoAnalysis() {
         }
 
         setGenerationProgress(null);
+        setAnalysisPhase('idle');
         return candidates.length;
       }
 
@@ -406,9 +412,11 @@ export function useAutoAnalysis() {
         dispatch({ type: 'SET_ANALYSIS_RESULT', payload: generationResult.candidates[0] });
       }
       setGenerationProgress(null);
+      setAnalysisPhase('idle');
       return generationResult.candidates.length;
     } catch (err) {
       setGenerationProgress(null);
+      setAnalysisPhase('idle');
       dispatch({ type: 'SET_PROCESSING', payload: false });
       dispatch({ type: 'SET_ERROR', payload: err instanceof Error ? err.message : 'Generation failed' });
       return 0;
@@ -478,5 +486,5 @@ export function useAutoAnalysis() {
       ? 'No sounds loaded — import MIDI or create patterns first'
       : null;
 
-  return { generateFull, calculateCost, generationProgress, canGenerate, generateDisabledReason };
+  return { generateFull, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason };
 }
