@@ -246,7 +246,7 @@ function PerformanceWorkspaceInner() {
         )}
 
         {/* Center Column: Grid + Timeline stacked */}
-        <div className="flex-1 flex flex-col gap-3 min-w-0 min-h-0 px-1.5">
+        <div className="flex-1 flex flex-col gap-3 min-w-0 min-h-0 px-1.5 overflow-hidden">
           {/* Push Grid — takes available space, scales to fill */}
           <div className="flex-1 min-h-0 rounded-lg glass-panel p-1 flex flex-col">
             <div ref={gridContainerRef} className="flex-1 min-h-0 flex items-center justify-center overflow-hidden">
@@ -265,7 +265,7 @@ function PerformanceWorkspaceInner() {
           </div>
 
           {/* Timeline / Composer — tabbed view */}
-          <div className="h-[260px] flex-shrink-0 rounded-lg glass-panel overflow-hidden flex flex-col">
+          <div className="flex-[0_1_280px] min-h-[200px] rounded-lg glass-panel overflow-hidden flex flex-col">
             {/* Tab bar */}
             <div className="flex items-center border-b border-gray-800 flex-shrink-0 px-2">
               <button
