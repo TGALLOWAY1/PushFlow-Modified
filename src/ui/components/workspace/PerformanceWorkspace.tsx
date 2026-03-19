@@ -147,7 +147,7 @@ function PerformanceWorkspaceInner() {
   }, [selectedForCompare]);
 
   return (
-    <div className="h-screen flex flex-col bg-[var(--bg-app)]">
+    <div className="h-full flex flex-col bg-[var(--bg-app)] overflow-hidden">
       {/* ─── Top Toolbar ──────────────────────────────────────── */}
       <WorkspaceToolbar
         onNavigateLibrary={() => navigate('/')}
@@ -267,7 +267,7 @@ function PerformanceWorkspaceInner() {
           </div>
 
           {/* Timeline / Composer — tabbed view */}
-          <div className="flex-[0_1_280px] min-h-[200px] rounded-lg glass-panel overflow-hidden flex flex-col">
+          <div className="flex-[0_1_280px] min-h-[120px] rounded-lg glass-panel overflow-hidden flex flex-col">
             {/* Tab bar */}
             <div className="flex items-center border-b border-gray-800 flex-shrink-0 px-2">
               <button

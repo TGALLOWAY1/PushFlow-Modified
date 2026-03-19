@@ -14,15 +14,35 @@ import { TemporalEvaluatorPage } from './pages/TemporalEvaluatorPage';
 export function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen text-[var(--foreground)] p-6">
-        <Routes>
-          <Route path="/" element={<ProjectLibraryPage />} />
-          <Route path="/project/:id" element={<ProjectEditorPage />} />
-          <Route path="/optimizer-debug" element={<OptimizerDebugPage />} />
-          <Route path="/validator" element={<ConstraintValidatorPage />} />
-          <Route path="/temporal-evaluator" element={<TemporalEvaluatorPage />} />
-        </Routes>
-      </div>
+      <Routes>
+        {/* Editor route: full-viewport app shell, no padding */}
+        <Route path="/project/:id" element={
+          <div className="h-[100dvh] overflow-hidden text-[var(--foreground)]">
+            <ProjectEditorPage />
+          </div>
+        } />
+        {/* Non-editor routes: scrollable page with padding */}
+        <Route path="/" element={
+          <div className="min-h-screen text-[var(--foreground)] p-6">
+            <ProjectLibraryPage />
+          </div>
+        } />
+        <Route path="/optimizer-debug" element={
+          <div className="min-h-screen text-[var(--foreground)] p-6">
+            <OptimizerDebugPage />
+          </div>
+        } />
+        <Route path="/validator" element={
+          <div className="min-h-screen text-[var(--foreground)] p-6">
+            <ConstraintValidatorPage />
+          </div>
+        } />
+        <Route path="/temporal-evaluator" element={
+          <div className="min-h-screen text-[var(--foreground)] p-6">
+            <TemporalEvaluatorPage />
+          </div>
+        } />
+      </Routes>
     </BrowserRouter>
   );
 }
