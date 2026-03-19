@@ -22,6 +22,11 @@ import { type SolverConstraints } from '../../engine/solvers/types';
 import { analyzeDifficulty, computeTradeoffProfile, classifyOptimizationDifficulty } from '../../engine/evaluation/difficultyScoring';
 import { evaluatePerformance } from '../../engine/evaluation/canonicalEvaluator';
 import { generateCandidates } from '../../engine/optimization/multiCandidateGenerator';
+import { getOptimizer } from '../../engine/optimization/optimizerRegistry';
+// Import adapters to ensure they self-register
+import '../../engine/optimization/beamOptimizerAdapter';
+import '../../engine/optimization/annealingOptimizerAdapter';
+import '../../engine/optimization/greedyOptimizer';
 import { buildPerformanceMoments, extractPadOwnership } from '../../engine/structure/momentBuilder';
 import { getNeutralHandCenters } from '../../engine/prior/handPose';
 import { generateId } from '../../utils/idGenerator';
@@ -280,7 +285,7 @@ export function useAutoAnalysis() {
     };
   }, [state.analysisStale, state.isProcessing, state.soundStreams, state.activeLayout, state.workingLayout, state.instrumentConfig, state.sections, state.engineConfig, dispatch]);
 
-  // Full multi-candidate generation (manual trigger)
+  // Full generation (manual trigger) — routes to selected optimizer method
   const generateFull = useCallback(async (mode: GenerationMode = 'fast') => {
     const activeStreams = getActiveStreams(state);
     const layout = getDisplayedLayout(state);
@@ -288,26 +293,86 @@ export function useAutoAnalysis() {
 
     dispatch({ type: 'SET_ERROR', payload: null });
     dispatch({ type: 'SET_PROCESSING', payload: true });
+    dispatch({ type: 'SET_MOVE_HISTORY', payload: { moves: null } }); // Clear previous trace
     setGenerationProgress('Preparing layout...');
 
     try {
       const performance = getActivePerformance(state);
 
       // If the layout has no pad assignments yet, seed from the natural hand pose.
-      // Most-played sounds → dominant finger positions (index, middle, ring).
-      // Dispatch BULK_ASSIGN_PADS so the grid immediately shows the assignments.
       let effectiveLayout = layout;
       if (Object.keys(layout.padToVoice).length === 0) {
         effectiveLayout = buildAutoLayout(state.soundStreams, performance, layout);
         dispatch({ type: 'BULK_ASSIGN_PADS', payload: effectiveLayout.padToVoice });
       }
 
-      // Resolve 'auto' mode by classifying the performance
+      const method = state.optimizerMethod;
+
+      // ── Route: Greedy or other pluggable optimizer ───────────
+      if (method === 'greedy') {
+        setGenerationProgress('Greedy optimization: building layout and optimizing...');
+
+        const optimizer = getOptimizer('greedy');
+        const solverConstraints = buildSolverConstraints(performance, effectiveLayout);
+        const neutralHandCenters = getNeutralHandCenters(effectiveLayout, state.instrumentConfig);
+
+        const result = await optimizer.optimize({
+          performance,
+          layout: effectiveLayout,
+          costToggles: state.costToggles,
+          constraints: solverConstraints,
+          config: {
+            engineConfig: state.engineConfig,
+            sections: state.sections,
+          },
+          evaluationConfig: {
+            restingPose: state.engineConfig.restingPose,
+            stiffness: state.engineConfig.stiffness,
+            instrumentConfig: state.instrumentConfig,
+            neutralHandCenters,
+          },
+          instrumentConfig: state.instrumentConfig,
+        });
+
+        // Store move history for the trace panel
+        if (result.moveHistory) {
+          dispatch({ type: 'SET_MOVE_HISTORY', payload: { moves: result.moveHistory, stopReason: result.stopReason } });
+        }
+
+        // Convert to CandidateSolution for existing UI
+        const difficultyAnalysis = analyzeDifficulty(result.executionPlan, state.sections);
+        const tradeoffProfile = computeTradeoffProfile(result.executionPlan, difficultyAnalysis);
+        const candidate = {
+          id: generateId('greedy'),
+          layout: result.layout,
+          executionPlan: result.executionPlan,
+          difficultyAnalysis,
+          tradeoffProfile,
+          metadata: {
+            strategy: 'greedy-hill-climb',
+            seed: 0,
+            optimizationMode: undefined,
+            optimizationSummary: `Greedy: ${result.telemetry.iterationsCompleted} improvements, ${result.telemetry.wallClockMs}ms`,
+          },
+        };
+
+        dispatch({ type: 'SET_CANDIDATES', payload: [candidate] });
+        dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidate });
+
+        // If the greedy optimizer produced a different layout, update the grid
+        if (Object.keys(result.layout.padToVoice).length > 0) {
+          dispatch({ type: 'BULK_ASSIGN_PADS', payload: result.layout.padToVoice });
+        }
+
+        setGenerationProgress(null);
+        return 1;
+      }
+
+      // ── Route: Legacy multi-candidate (beam / annealing) ────
       const resolvedMode: OptimizationMode = mode === 'auto'
         ? classifyOptimizationDifficulty(performance)
         : mode;
 
-      // Build solver constraints — finger constraints are soft preferences
       const solverConstraints = buildSolverConstraints(performance, effectiveLayout);
       const manualAssignments = constraintsToManualAssignments(solverConstraints);
 

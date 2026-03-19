@@ -19,6 +19,7 @@ import { LearnMoreModal } from './LearnMoreModal';
 import { EventCostChart } from './EventCostChart';
 import { CostBreakdownBars } from './CostBreakdownBars';
 import { CandidatePreviewCard } from './CandidatePreviewCard';
+import { MoveTracePanel } from './MoveTracePanel';
 import { CandidateCompare } from '../CandidateCompare';
 import { LayoutDebugPanel } from '../Debug/LayoutDebugPanel';
 
@@ -253,6 +254,13 @@ export function PerformanceAnalysisPanel({
                   />
                 ))}
               </div>
+            </CollapsibleSection>
+          )}
+
+          {/* ─── Section 5: Move Trace (greedy optimizer) ────── */}
+          {state.moveHistory && state.moveHistory.length > 0 && (
+            <CollapsibleSection title="Optimization Trace" defaultOpen>
+              <MoveTracePanel moves={state.moveHistory} />
             </CollapsibleSection>
           )}
 
