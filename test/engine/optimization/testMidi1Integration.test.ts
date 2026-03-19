@@ -38,8 +38,8 @@ interface ParsedMidiData {
 }
 
 function loadTestMidi(): ParsedMidiData {
-  // Navigate from test/engine/optimization/ up to the workspace root (PushFlow V3)
-  const midiPath = path.resolve(__dirname, '../../../../../../TEST MIDI 1.mid');
+  // Navigate from test/engine/optimization/ to the archived V1 test data
+  const midiPath = path.resolve(__dirname, '../../../archive/v1-reference/test-data/Scenario 1 Tests/TEST MIDI 1.mid');
   const buffer = fs.readFileSync(midiPath);
   const midiData = new Midi(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
 

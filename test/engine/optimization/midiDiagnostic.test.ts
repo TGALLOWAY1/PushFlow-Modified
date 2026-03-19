@@ -23,7 +23,7 @@ import {
 } from '../../helpers/testHelpers';
 
 function loadTestMidi() {
-  const midiPath = path.resolve(__dirname, '../../../../../../TEST MIDI 1.mid');
+  const midiPath = path.resolve(__dirname, '../../../archive/v1-reference/test-data/Scenario 1 Tests/TEST MIDI 1.mid');
   const buffer = fs.readFileSync(midiPath);
   const midiData = new Midi(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
 
