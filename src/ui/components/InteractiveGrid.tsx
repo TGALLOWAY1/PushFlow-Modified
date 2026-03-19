@@ -523,12 +523,6 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                     {fingerList.join(' ')}
                   </span>
                 )}
-                {/* Hit count badge */}
-                {summary && summary.hitCount > 0 && (
-                  <span className="absolute bottom-0.5 right-0.5 text-[7px] font-bold bg-black/40 rounded px-0.5 text-gray-400 pointer-events-none">
-                    {summary.hitCount}
-                  </span>
-                )}
 
                 {/* Remove button (visible on hover via parent group) */}
                 <button
