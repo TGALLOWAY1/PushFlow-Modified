@@ -9,6 +9,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { type GridLabelSettings, type LayoutDisplaySettings } from '../../state/viewSettings';
+import { type CostToggles, TOGGLE_LABELS, TOGGLE_CATEGORIES, isExperimentalMode } from '../../../types/costToggles';
 
 interface SettingsGearProps {
   gridLabels: GridLabelSettings;
@@ -16,6 +17,10 @@ interface SettingsGearProps {
   onToggleGridLabel: (key: keyof GridLabelSettings) => void;
   onToggleLayoutDisplay: (key: keyof LayoutDisplaySettings) => void;
   onDuplicateLayout?: () => void;
+  costToggles?: CostToggles;
+  onCostToggleChange?: (toggles: CostToggles) => void;
+  onCalculateCost?: () => void;
+  hasAssignment?: boolean;
 }
 
 const VIEW_OPTIONS: Array<{ key: keyof GridLabelSettings; label: string }> = [
@@ -31,6 +36,10 @@ export function SettingsGear({
   onToggleGridLabel,
   onToggleLayoutDisplay,
   onDuplicateLayout,
+  costToggles,
+  onCostToggleChange,
+  onCalculateCost,
+  hasAssignment,
 }: SettingsGearProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -128,7 +137,98 @@ export function SettingsGear({
               </button>
             )}
           </div>
+
+          {/* Cost Toggles section */}
+          {costToggles && onCostToggleChange && (
+            <>
+              <div className="border-t border-gray-800 mx-3" />
+              <div className="px-4 pt-3 pb-1">
+                <div className="text-[11px] text-gray-500 uppercase tracking-wider font-medium">
+                  Cost Evaluation
+                </div>
+              </div>
+              <CostTogglesSection
+                costToggles={costToggles}
+                onToggleChange={onCostToggleChange}
+                onCalculate={onCalculateCost}
+                hasAssignment={hasAssignment ?? false}
+              />
+            </>
+          )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function CostTogglesSection({
+  costToggles,
+  onToggleChange,
+  onCalculate,
+  hasAssignment,
+}: {
+  costToggles: CostToggles;
+  onToggleChange: (toggles: CostToggles) => void;
+  onCalculate?: () => void;
+  hasAssignment: boolean;
+}) {
+  const toggleKeys = Object.keys(TOGGLE_LABELS) as Array<keyof CostToggles>;
+  const experimental = isExperimentalMode(costToggles);
+
+  const handleToggle = (key: keyof CostToggles) => {
+    onToggleChange({ ...costToggles, [key]: !costToggles[key] });
+  };
+
+  const staticToggles = toggleKeys.filter(k => TOGGLE_CATEGORIES[k] === 'static');
+  const temporalToggles = toggleKeys.filter(k => TOGGLE_CATEGORIES[k] === 'temporal');
+  const hardToggles = toggleKeys.filter(k => TOGGLE_CATEGORIES[k] === 'hard');
+
+  return (
+    <div className="px-3 pb-3 space-y-3">
+      <div className="space-y-1.5">
+        <div className="text-[10px] text-gray-500 uppercase tracking-wider">Static</div>
+        {staticToggles.map(key => (
+          <label key={key} className="flex items-center gap-2 cursor-pointer group">
+            <input type="checkbox" checked={costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded accent-cyan-500" />
+            <span className={`text-[11px] group-hover:text-gray-200 ${costToggles[key] ? 'text-gray-300' : 'text-gray-600 line-through'}`}>{TOGGLE_LABELS[key]}</span>
+          </label>
+        ))}
+
+        <div className="text-[10px] text-gray-500 uppercase tracking-wider pt-1">Temporal</div>
+        {temporalToggles.map(key => (
+          <label key={key} className="flex items-center gap-2 cursor-pointer group">
+            <input type="checkbox" checked={costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded accent-cyan-500" />
+            <span className={`text-[11px] group-hover:text-gray-200 ${costToggles[key] ? 'text-gray-300' : 'text-gray-600 line-through'}`}>{TOGGLE_LABELS[key]}</span>
+          </label>
+        ))}
+
+        <div className="text-[10px] text-gray-500 uppercase tracking-wider pt-1">Hard Rules</div>
+        {hardToggles.map(key => (
+          <label key={key} className="flex items-center gap-2 cursor-pointer group">
+            <input type="checkbox" checked={costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded accent-cyan-500" />
+            <span className={`text-[11px] group-hover:text-gray-200 ${costToggles[key] ? 'text-gray-300' : 'text-gray-600 line-through'} ${!costToggles[key] ? 'text-orange-400' : ''}`}>{TOGGLE_LABELS[key]}</span>
+            <span className="text-[9px] text-gray-600 ml-auto">(hard)</span>
+          </label>
+        ))}
+      </div>
+
+      {experimental && (
+        <div className="px-2 py-1.5 rounded border border-orange-500/30 bg-orange-500/10 text-[10px] text-orange-400">
+          Hard constraints disabled — results may include infeasible assignments
+        </div>
+      )}
+
+      {onCalculate && (
+        <button
+          className={`w-full px-3 py-2 rounded text-xs font-medium transition-colors ${
+            hasAssignment ? 'bg-cyan-600 hover:bg-cyan-500 text-white' : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+          }`}
+          onClick={onCalculate}
+          disabled={!hasAssignment}
+          title={!hasAssignment ? 'Run Generate first to create a finger assignment' : 'Evaluate with active cost toggles'}
+        >
+          Calculate Cost
+        </button>
       )}
     </div>
   );

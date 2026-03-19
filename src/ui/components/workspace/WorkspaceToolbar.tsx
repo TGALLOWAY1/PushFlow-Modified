@@ -26,6 +26,8 @@ interface WorkspaceToolbarProps {
   onCompare: () => void;
   composerOpen: boolean;
   onToggleComposer: () => void;
+  onCalculateCost?: () => void;
+  hasAssignment?: boolean;
 }
 
 export function WorkspaceToolbar({
@@ -39,6 +41,8 @@ export function WorkspaceToolbar({
   onCompare,
   composerOpen,
   onToggleComposer,
+  onCalculateCost,
+  hasAssignment,
 }: WorkspaceToolbarProps) {
   const { state, dispatch, undo, redo, canUndo, canRedo } = useProject();
   const { settings: viewSettings, toggleGridLabel, toggleLayoutDisplay } = useViewSettings();
@@ -342,6 +346,10 @@ export function WorkspaceToolbar({
             dispatch({ type: 'DISCARD_WORKING_LAYOUT' });
           }
         }}
+        costToggles={state.costToggles}
+        onCostToggleChange={(toggles) => dispatch({ type: 'SET_COST_TOGGLES', payload: toggles })}
+        onCalculateCost={onCalculateCost}
+        hasAssignment={hasAssignment}
       />
     </div>
   );
