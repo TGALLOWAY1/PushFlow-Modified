@@ -448,7 +448,7 @@ export function UnifiedTimeline() {
           style={{ width: SIDEBAR_WIDTH }}
         >
           {/* Header spacer to align with beat header */}
-          <div className="sticky top-0 z-10 bg-gray-900 border-b border-gray-800" style={{ height: TOTAL_HEADER_HEIGHT }} />
+          <div className="sticky top-0 z-40 bg-gray-900 border-b border-gray-800" style={{ height: TOTAL_HEADER_HEIGHT }} />
           {visibleStreams.map((stream, i) => (
             <VoiceRow
               key={stream.id}
@@ -465,19 +465,19 @@ export function UnifiedTimeline() {
         {/* Scrollable Track Area */}
         <div
           ref={scrollContainerRef}
-          className="flex-1 overflow-auto"
+          className="flex-1 min-w-0 overflow-auto"
           onScroll={handleTimelineScroll}
         >
           <div className="relative" style={{ width: timelineWidth, minHeight: totalHeight + TOTAL_HEADER_HEIGHT }}>
             {/* ─── Sticky Beat Header ──────────────────────────────── */}
             {/* Row 1: Bar numbers */}
-            <div className="sticky top-0 z-10 bg-gray-950" style={{ height: BAR_HEADER_HEIGHT }}>
-              <div className="flex" style={{ height: BAR_HEADER_HEIGHT }}>
+            <div className="sticky top-0 z-40 bg-gray-950 border-b border-gray-700" style={{ height: BAR_HEADER_HEIGHT, width: timelineWidth }}>
+              <div className="flex" style={{ height: BAR_HEADER_HEIGHT, width: timelineWidth }}>
                 {headerBars.map(bar => (
                   <div
                     key={`bar-${bar.barNum}`}
                     className="text-center text-xs font-medium text-gray-400 border-l border-gray-600 flex items-end justify-center pb-1"
-                    style={{ width: barWidth, minWidth: barWidth }}
+                    style={{ width: barWidth, minWidth: barWidth, flexShrink: 0 }}
                   >
                     {bar.barNum}
                   </div>
@@ -485,13 +485,13 @@ export function UnifiedTimeline() {
               </div>
             </div>
             {/* Row 2: Beat subdivisions */}
-            <div className="sticky z-10 bg-gray-900/80" style={{ height: BEAT_HEADER_HEIGHT, top: BAR_HEADER_HEIGHT }}>
-              <div className="flex" style={{ height: BEAT_HEADER_HEIGHT }}>
+            <div className="sticky z-40 bg-gray-900 border-b border-gray-800" style={{ height: BEAT_HEADER_HEIGHT, top: BAR_HEADER_HEIGHT, width: timelineWidth }}>
+              <div className="flex" style={{ height: BEAT_HEADER_HEIGHT, width: timelineWidth }}>
                 {headerBeats.map((beat, i) => (
                   <div
                     key={`subbeat-${i}`}
                     className="text-center text-[10px] text-gray-500 flex items-center justify-center"
-                    style={{ width: beatWidth, minWidth: beatWidth }}
+                    style={{ width: beatWidth, minWidth: beatWidth, flexShrink: 0 }}
                   >
                     {beat.beatNum}
                   </div>
