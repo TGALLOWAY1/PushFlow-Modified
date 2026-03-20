@@ -657,7 +657,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         analysisStale: true,
         selectedEventIndex: null,
         selectedMomentIndex: null,
-        candidates: [],
+        // Preserve candidates — discarding working layout doesn't invalidate them
         selectedCandidateId: null,
         compareCandidateId: null,
       };
@@ -693,7 +693,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         savedVariants: autoSavedVariants,
         updatedAt: now,
         analysisStale: true,
-        candidates: [],
+        // Preserve candidates — they remain valid for comparison/promotion
         selectedCandidateId: null,
         compareCandidateId: null,
       };
@@ -726,6 +726,9 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         savedAt: now,
       };
 
+      // Keep non-promoted candidates so the user can still compare or promote others
+      const remainingCandidates = state.candidates.filter(c => c.id !== action.payload.candidateId);
+
       return {
         ...state,
         activeLayout: promoted,
@@ -733,7 +736,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         savedVariants: autoSavedVariants,
         updatedAt: now,
         analysisStale: true,
-        candidates: [],
+        candidates: remainingCandidates,
         selectedCandidateId: null,
         compareCandidateId: null,
       };
