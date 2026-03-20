@@ -21,7 +21,7 @@ export function TransitionDetailPanel() {
   const movementCount = transition.fingerMoves.filter(move => move.fromPad && move.toPad && !move.isHold).length;
 
   return (
-    <div className="p-3 rounded-lg glass-panel space-y-2">
+    <div className="p-3 rounded-pf-lg glass-panel space-y-2">
       <div className="flex items-center justify-between">
         <h4 className="text-pf-sm text-[var(--text-secondary)] font-medium">Selected Transition</h4>
         <span className="text-pf-xs text-sky-300/80">

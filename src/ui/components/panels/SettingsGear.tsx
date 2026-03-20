@@ -114,23 +114,23 @@ export function SettingsGear({
           </div>
           <div className="px-2 pb-2">
             <button
-              className="w-full flex items-center gap-3 px-2 py-2.5 text-left hover:bg-gray-800/60 rounded-lg transition-colors"
+              className="w-full flex items-center gap-3 px-2 py-2.5 text-left hover:bg-[var(--bg-hover)] rounded-pf-lg transition-colors"
               onClick={() => onToggleLayoutDisplay('organize4x4Banks')}
             >
-              <span className={`text-sm ${layoutDisplay.organize4x4Banks ? 'text-gray-200' : 'text-gray-400'}`}>
+              <span className={`text-pf-base ${layoutDisplay.organize4x4Banks ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
                 Organize by 4x4 Banks
               </span>
             </button>
             {onDuplicateLayout && (
               <button
-                className="w-full flex items-center justify-between px-2 py-2.5 text-left hover:bg-gray-800/60 rounded-lg transition-colors"
+                className="w-full flex items-center justify-between px-2 py-2.5 text-left hover:bg-[var(--bg-hover)] rounded-pf-lg transition-colors"
                 onClick={() => {
                   onDuplicateLayout();
                   setOpen(false);
                 }}
               >
-                <span className="text-sm text-gray-400">Duplicate Layout</span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
+                <span className="text-pf-base text-[var(--text-secondary)]">Duplicate Layout</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-tertiary)]">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                   <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
                 </svg>
@@ -186,42 +186,42 @@ function CostTogglesSection({
   return (
     <div className="px-3 pb-3 space-y-3">
       <div className="space-y-1.5">
-        <div className="text-[10px] text-gray-500 uppercase tracking-wider">Static</div>
+        <div className="text-pf-xs text-[var(--text-tertiary)] uppercase tracking-wider">Static</div>
         {staticToggles.map(key => (
           <label key={key} className="flex items-center gap-2 cursor-pointer group">
-            <input type="checkbox" checked={costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded accent-cyan-500" />
-            <span className={`text-[11px] group-hover:text-gray-200 ${costToggles[key] ? 'text-gray-300' : 'text-gray-600 line-through'}`}>{TOGGLE_LABELS[key]}</span>
+            <input type="checkbox" checked={costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded-pf-sm accent-[var(--accent-primary)]" />
+            <span className={`text-pf-sm group-hover:text-[var(--text-primary)] ${costToggles[key] ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] line-through'}`}>{TOGGLE_LABELS[key]}</span>
           </label>
         ))}
 
         <div className="text-[10px] text-gray-500 uppercase tracking-wider pt-1">Temporal</div>
         {temporalToggles.map(key => (
           <label key={key} className="flex items-center gap-2 cursor-pointer group">
-            <input type="checkbox" checked={costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded accent-cyan-500" />
-            <span className={`text-[11px] group-hover:text-gray-200 ${costToggles[key] ? 'text-gray-300' : 'text-gray-600 line-through'}`}>{TOGGLE_LABELS[key]}</span>
+            <input type="checkbox" checked={costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded-pf-sm accent-[var(--accent-primary)]" />
+            <span className={`text-pf-sm group-hover:text-[var(--text-primary)] ${costToggles[key] ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] line-through'}`}>{TOGGLE_LABELS[key]}</span>
           </label>
         ))}
 
         <div className="text-[10px] text-gray-500 uppercase tracking-wider pt-1">Hard Rules</div>
         {hardToggles.map(key => (
           <label key={key} className="flex items-center gap-2 cursor-pointer group">
-            <input type="checkbox" checked={costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded accent-cyan-500" />
-            <span className={`text-[11px] group-hover:text-gray-200 ${costToggles[key] ? 'text-gray-300' : 'text-gray-600 line-through'} ${!costToggles[key] ? 'text-orange-400' : ''}`}>{TOGGLE_LABELS[key]}</span>
-            <span className="text-[9px] text-gray-600 ml-auto">(hard)</span>
+            <input type="checkbox" checked={costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded-pf-sm accent-[var(--accent-primary)]" />
+            <span className={`text-pf-sm group-hover:text-[var(--text-primary)] ${costToggles[key] ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] line-through'} ${!costToggles[key] ? 'text-orange-400' : ''}`}>{TOGGLE_LABELS[key]}</span>
+            <span className="text-pf-micro text-[var(--text-tertiary)] ml-auto">(hard)</span>
           </label>
         ))}
       </div>
 
       {experimental && (
-        <div className="px-2 py-1.5 rounded border border-orange-500/30 bg-orange-500/10 text-[10px] text-orange-400">
+        <div className="px-2 py-1.5 rounded-pf-sm border border-orange-500/30 bg-orange-500/10 text-pf-xs text-orange-400">
           Hard constraints disabled — results may include infeasible assignments
         </div>
       )}
 
       {onCalculate && (
         <button
-          className={`w-full px-3 py-2 rounded text-xs font-medium transition-colors ${
-            hasAssignment ? 'bg-cyan-600 hover:bg-cyan-500 text-white' : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+          className={`w-full px-3 py-2 rounded-pf-md text-pf-sm font-medium transition-colors ${
+            hasAssignment ? 'pf-btn-primary' : 'bg-[var(--bg-hover)] text-[var(--text-tertiary)] cursor-not-allowed'
           }`}
           onClick={onCalculate}
           disabled={!hasAssignment}

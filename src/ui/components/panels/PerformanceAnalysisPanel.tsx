@@ -219,17 +219,17 @@ export function PerformanceAnalysisPanel({
 
               {/* Comparison target picker */}
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-500">Compare with:</span>
+                <span className="text-pf-xs text-[var(--text-secondary)]">Compare with:</span>
                 <div className="flex gap-1">
                   {otherCandidates.map((c) => {
                     const globalIdx = state.candidates.indexOf(c);
                     return (
                       <button
                         key={c.id}
-                        className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
+                        className={`px-2 py-0.5 text-pf-xs rounded-pf-sm transition-colors ${
                           c.id === state.compareCandidateId
                             ? 'bg-purple-600/30 border border-purple-500 text-purple-300'
-                            : 'bg-gray-800 border border-gray-700 text-gray-400 hover:text-gray-200'
+                            : 'bg-[var(--bg-card)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                         }`}
                         onClick={() => dispatch({
                           type: 'SET_COMPARE_CANDIDATE',
@@ -246,7 +246,7 @@ export function PerformanceAnalysisPanel({
               {compareCandidate ? (
                 <CandidateCompare candidateA={selectedCandidate} candidateB={compareCandidate} />
               ) : (
-                <div className="text-xs text-gray-600 py-3 text-center">
+                <div className="text-pf-sm text-[var(--text-tertiary)] py-3 text-center">
                   Select a candidate above to compare.
                 </div>
               )}
@@ -306,7 +306,7 @@ export function PerformanceAnalysisPanel({
 
           {/* Saved variants */}
           {state.savedVariants.length > 0 && (
-            <div className="text-[10px] text-gray-600 pt-2 border-t border-gray-800">
+            <div className="text-pf-xs text-[var(--text-tertiary)] pt-2 border-t border-[var(--border-subtle)]">
               {state.savedVariants.length} saved variant{state.savedVariants.length !== 1 ? 's' : ''} available
             </div>
           )}
@@ -342,7 +342,7 @@ function UnplayableDiagnostics({ plan }: { plan: ExecutionPlanResult }) {
   const reasons = plan.rejectionReasons;
   if (!reasons || Object.keys(reasons).length === 0) {
     return (
-      <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/5 text-[11px] text-red-300">
+      <div className="p-3 rounded-pf-lg border border-red-500/30 bg-red-500/5 text-pf-sm text-red-300">
         <div className="font-medium mb-1">{plan.unplayableCount} event{plan.unplayableCount !== 1 ? 's' : ''} unplayable</div>
         <div className="text-red-400/70">No diagnostic details available.</div>
       </div>
@@ -367,22 +367,22 @@ function UnplayableDiagnostics({ plan }: { plan: ExecutionPlanResult }) {
   };
 
   return (
-    <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/5 space-y-2">
-      <div className="text-[11px] font-medium text-red-300">
+    <div className="p-3 rounded-pf-lg border border-red-500/30 bg-red-500/5 space-y-2">
+      <div className="text-pf-sm font-medium text-red-300">
         {plan.unplayableCount} event{plan.unplayableCount !== 1 ? 's' : ''} unplayable
       </div>
       <div className="space-y-1">
         {Object.entries(counts)
           .sort((a, b) => b[1] - a[1])
           .map(([reason, count]) => (
-            <div key={reason} className="flex items-center gap-2 text-[10px]">
+            <div key={reason} className="flex items-center gap-2 text-pf-xs">
               <span className="font-mono text-red-400 w-5 text-right">{count}</span>
               <span className="text-red-300/80">{REASON_LABELS[reason] ?? reason}</span>
             </div>
           ))
         }
       </div>
-      <div className="text-[10px] text-gray-500 pt-1 border-t border-red-500/10">
+      <div className="text-pf-xs text-[var(--text-secondary)] pt-1 border-t border-red-500/10">
         Try adjusting pad positions on the grid, then re-generate.
       </div>
     </div>
@@ -396,14 +396,14 @@ function QuickStat({ label, value, quality }: {
 }) {
   const colors = {
     good: 'text-green-400 border-green-500/20 bg-green-500/5',
-    ok: 'text-gray-300 border-gray-700 bg-gray-800/50',
+    ok: 'text-[var(--text-primary)] border-[var(--border-default)] bg-[var(--bg-card)]/50',
     bad: 'text-red-400 border-red-500/20 bg-red-500/5',
   };
-  const style = quality ? colors[quality] : 'text-gray-300 border-gray-700 bg-gray-800/50';
+  const style = quality ? colors[quality] : 'text-[var(--text-primary)] border-[var(--border-default)] bg-[var(--bg-card)]/50';
 
   return (
-    <div className={`px-2 py-1 rounded border text-[10px] ${style}`}>
-      <span className="text-[9px] text-gray-500 uppercase mr-1">{label}</span>
+    <div className={`px-2 py-1 rounded-pf-sm border text-pf-xs ${style}`}>
+      <span className="text-pf-micro text-[var(--text-secondary)] uppercase mr-1">{label}</span>
       <span className="font-mono">{value}</span>
     </div>
   );
@@ -422,18 +422,18 @@ function CollapsibleSection({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border-b border-gray-800 pb-4">
+    <div className="border-b border-[var(--border-subtle)] pb-4">
       <div className="flex items-center justify-between mb-2">
         <button
-          className="flex items-center gap-1.5 text-[11px] text-gray-400 font-medium uppercase tracking-wider hover:text-gray-200 transition-colors"
+          className="flex items-center gap-1.5 text-pf-sm text-[var(--text-secondary)] font-medium uppercase tracking-wider hover:text-[var(--text-primary)] transition-colors"
           onClick={() => setOpen(!open)}
         >
-          <span className="text-[10px]">{open ? '\u25BE' : '\u25B8'}</span>
+          <span className="text-pf-xs">{open ? '\u25BE' : '\u25B8'}</span>
           {title}
         </button>
         {onEnlarge && (
           <button
-            className="w-5 h-5 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors rounded hover:bg-gray-800"
+            className="w-5 h-5 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors rounded-pf-sm hover:bg-[var(--bg-hover)]"
             onClick={onEnlarge}
             title="Expand"
           >
@@ -481,17 +481,17 @@ function CostToggleSection({
       <div className="space-y-3">
         {/* Toggle groups */}
         <div className="space-y-2">
-          <div className="text-[10px] text-gray-500 uppercase tracking-wider">Static Costs</div>
+          <div className="text-pf-xs text-[var(--text-secondary)] uppercase tracking-wider">Static Costs</div>
           {staticToggles.map(key => (
             <ToggleRow key={key} label={TOGGLE_LABELS[key]} enabled={costToggles[key]} onChange={() => handleToggle(key)} />
           ))}
 
-          <div className="text-[10px] text-gray-500 uppercase tracking-wider pt-1">Temporal Costs</div>
+          <div className="text-pf-xs text-[var(--text-secondary)] uppercase tracking-wider pt-1">Temporal Costs</div>
           {temporalToggles.map(key => (
             <ToggleRow key={key} label={TOGGLE_LABELS[key]} enabled={costToggles[key]} onChange={() => handleToggle(key)} />
           ))}
 
-          <div className="text-[10px] text-gray-500 uppercase tracking-wider pt-1">Hard Rules</div>
+          <div className="text-pf-xs text-[var(--text-secondary)] uppercase tracking-wider pt-1">Hard Rules</div>
           {hardToggles.map(key => (
             <ToggleRow key={key} label={TOGGLE_LABELS[key]} enabled={costToggles[key]} onChange={() => handleToggle(key)} isHard />
           ))}
@@ -499,17 +499,17 @@ function CostToggleSection({
 
         {/* Experimental mode warning */}
         {experimental && (
-          <div className="px-2 py-1.5 rounded border border-orange-500/30 bg-orange-500/10 text-[10px] text-orange-400">
+          <div className="px-2 py-1.5 rounded-pf-sm border border-orange-500/30 bg-orange-500/10 text-pf-xs text-orange-400">
             Hard constraints disabled — results may include infeasible assignments
           </div>
         )}
 
         {/* Calculate button */}
         <button
-          className={`w-full px-3 py-2 rounded text-xs font-medium transition-colors ${
+          className={`w-full px-3 py-2 rounded-pf-md text-pf-sm font-medium transition-colors ${
             hasAssignment
               ? 'bg-cyan-600 hover:bg-cyan-500 text-white'
-              : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+              : 'bg-[var(--bg-hover)] text-[var(--text-secondary)] cursor-not-allowed'
           }`}
           onClick={onCalculate}
           disabled={!hasAssignment}
@@ -520,11 +520,11 @@ function CostToggleSection({
 
         {/* Manual cost result */}
         {manualCostResult && (
-          <div className="space-y-2 pt-2 border-t border-gray-800">
+          <div className="space-y-2 pt-2 border-t border-[var(--border-subtle)]">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-gray-400 uppercase tracking-wider">Manual Evaluation</span>
+              <span className="text-pf-xs text-[var(--text-secondary)] uppercase tracking-wider">Manual Evaluation</span>
               {manualCostResult.costTogglesUsed && (
-                <span className="text-[9px] text-gray-600">
+                <span className="text-pf-micro text-[var(--text-tertiary)]">
                   {Object.values(manualCostResult.costTogglesUsed).filter(Boolean).length}/5 toggles active
                 </span>
               )}
@@ -532,21 +532,21 @@ function CostToggleSection({
 
             {/* Total */}
             <div className="flex justify-between items-baseline">
-              <span className="text-[11px] text-gray-300 font-medium">Total Cost</span>
-              <span className="text-sm font-mono text-white">{manualCostResult.total.toFixed(2)}</span>
+              <span className="text-pf-sm text-[var(--text-primary)] font-medium">Total Cost</span>
+              <span className="text-pf-md font-mono text-white">{manualCostResult.total.toFixed(2)}</span>
             </div>
 
             {/* Static vs Temporal subtotals */}
             <div className="grid grid-cols-2 gap-2">
-              <div className="px-2 py-1.5 rounded bg-gray-800/50 border border-gray-700">
-                <div className="text-[9px] text-gray-500 uppercase">Static</div>
-                <div className="text-[11px] font-mono text-gray-300">
+              <div className="px-2 py-1.5 rounded-pf-sm bg-[var(--bg-card)]/50 border border-[var(--border-default)]">
+                <div className="text-pf-micro text-[var(--text-secondary)] uppercase">Static</div>
+                <div className="text-pf-sm font-mono text-[var(--text-primary)]">
                   {(manualCostResult.dimensions.poseNaturalness + manualCostResult.dimensions.handBalance).toFixed(2)}
                 </div>
               </div>
-              <div className="px-2 py-1.5 rounded bg-gray-800/50 border border-gray-700">
-                <div className="text-[9px] text-gray-500 uppercase">Temporal</div>
-                <div className="text-[11px] font-mono text-gray-300">
+              <div className="px-2 py-1.5 rounded-pf-sm bg-[var(--bg-card)]/50 border border-[var(--border-default)]">
+                <div className="text-pf-micro text-[var(--text-secondary)] uppercase">Temporal</div>
+                <div className="text-pf-sm font-mono text-[var(--text-primary)]">
                   {(manualCostResult.dimensions.transitionCost + manualCostResult.dimensions.alternation).toFixed(2)}
                 </div>
               </div>
@@ -561,9 +561,9 @@ function CostToggleSection({
                 { label: 'Hand Balance', value: manualCostResult.dimensions.handBalance },
                 { label: 'Constraints', value: manualCostResult.dimensions.constraintPenalty },
               ].map(({ label, value }) => (
-                <div key={label} className="flex justify-between text-[10px]">
-                  <span className="text-gray-500">{label}</span>
-                  <span className={`font-mono ${value > 0 ? 'text-gray-300' : 'text-gray-600'}`}>
+                <div key={label} className="flex justify-between text-pf-xs">
+                  <span className="text-[var(--text-secondary)]">{label}</span>
+                  <span className={`font-mono ${value > 0 ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)]'}`}>
                     {value.toFixed(3)}
                   </span>
                 </div>
@@ -571,16 +571,16 @@ function CostToggleSection({
             </div>
 
             {/* Feasibility */}
-            <div className="flex items-center gap-1.5 text-[10px]">
+            <div className="flex items-center gap-1.5 text-pf-xs">
               <span className={`w-2 h-2 rounded-full ${
                 manualCostResult.feasibility.level === 'feasible' ? 'bg-green-400' :
                 manualCostResult.feasibility.level === 'degraded' ? 'bg-yellow-400' : 'bg-red-400'
               }`} />
-              <span className="text-gray-400">{manualCostResult.feasibility.summary}</span>
+              <span className="text-[var(--text-secondary)]">{manualCostResult.feasibility.summary}</span>
             </div>
 
             {/* Event/transition counts */}
-            <div className="flex gap-2 text-[10px] text-gray-600">
+            <div className="flex gap-2 text-pf-xs text-[var(--text-tertiary)]">
               <span>{manualCostResult.aggregateMetrics.momentCount} events</span>
               <span>{manualCostResult.aggregateMetrics.transitionCount} transitions</span>
               {manualCostResult.aggregateMetrics.hardMomentCount > 0 && (
@@ -606,15 +606,15 @@ function ToggleRow({ label, enabled, onChange, isHard }: {
         type="checkbox"
         checked={enabled}
         onChange={onChange}
-        className="w-3 h-3 rounded accent-cyan-500 cursor-pointer"
+        className="w-3 h-3 rounded-pf-sm accent-cyan-500 cursor-pointer"
       />
-      <span className={`text-[11px] group-hover:text-gray-200 transition-colors ${
-        enabled ? 'text-gray-300' : 'text-gray-600 line-through'
+      <span className={`text-pf-sm group-hover:text-[var(--text-primary)] transition-colors ${
+        enabled ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] line-through'
       } ${isHard && !enabled ? 'text-orange-400' : ''}`}>
         {label}
       </span>
       {isHard && (
-        <span className="text-[9px] text-gray-600 ml-auto">(hard)</span>
+        <span className="text-pf-micro text-[var(--text-tertiary)] ml-auto">(hard)</span>
       )}
     </label>
   );
@@ -631,15 +631,15 @@ function ViewAllModal({ candidates, savedVariants, soundStreams, selectedId, onS
   return (
     <>
       <div className="fixed inset-0 z-[60] bg-black/50" onClick={onClose} />
-      <div className="fixed inset-6 md:inset-x-auto md:max-w-3xl md:mx-auto z-[61] rounded-xl border border-gray-700 bg-gray-900 shadow-2xl flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800">
-          <h3 className="text-sm font-semibold text-gray-200">All Candidates & Saved Variants</h3>
-          <button className="text-gray-500 hover:text-gray-300 text-lg" onClick={onClose}>&times;</button>
+      <div className="fixed inset-6 md:inset-x-auto md:max-w-3xl md:mx-auto z-[61] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-2xl flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)]">
+          <h3 className="text-pf-md font-semibold text-[var(--text-primary)]">All Candidates & Saved Variants</h3>
+          <button className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-lg" onClick={onClose}>&times;</button>
         </div>
         <div className="flex-1 overflow-y-auto p-5">
           {candidates.length > 0 && (
             <div className="mb-6">
-              <h4 className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-3">
+              <h4 className="text-pf-sm text-[var(--text-secondary)] font-medium uppercase tracking-wider mb-3">
                 Generated Candidates ({candidates.length})
               </h4>
               <div className="grid grid-cols-3 gap-3">
@@ -663,23 +663,23 @@ function ViewAllModal({ candidates, savedVariants, soundStreams, selectedId, onS
 
           {savedVariants.length > 0 && (
             <div>
-              <h4 className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-3">
+              <h4 className="text-pf-sm text-[var(--text-secondary)] font-medium uppercase tracking-wider mb-3">
                 Saved Layout Variants ({savedVariants.length})
               </h4>
               <div className="grid grid-cols-3 gap-3">
                 {savedVariants.map((variant) => (
                   <div
                     key={variant.id}
-                    className="rounded-lg border border-gray-700/60 bg-gray-800/30 p-3"
+                    className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)]/30 p-3"
                   >
-                    <div className="text-[11px] text-gray-300 font-medium mb-1 truncate">
+                    <div className="text-pf-sm text-[var(--text-primary)] font-medium mb-1 truncate">
                       {variant.name}
                     </div>
-                    <div className="text-[10px] text-gray-600">
+                    <div className="text-pf-xs text-[var(--text-tertiary)]">
                       {Object.keys(variant.padToVoice).length} pads assigned
                     </div>
                     {variant.savedAt && (
-                      <div className="text-[10px] text-gray-600">
+                      <div className="text-pf-xs text-[var(--text-tertiary)]">
                         Saved: {new Date(variant.savedAt).toLocaleDateString()}
                       </div>
                     )}
@@ -690,7 +690,7 @@ function ViewAllModal({ candidates, savedVariants, soundStreams, selectedId, onS
           )}
 
           {candidates.length === 0 && savedVariants.length === 0 && (
-            <div className="text-sm text-gray-500 text-center py-8">
+            <div className="text-pf-md text-[var(--text-secondary)] text-center py-8">
               No candidates or saved variants yet. Generate candidates to get started.
             </div>
           )}
