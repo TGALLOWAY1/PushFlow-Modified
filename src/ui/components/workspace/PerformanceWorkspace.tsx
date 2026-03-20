@@ -13,7 +13,7 @@
  * - Bottom drawer: Pattern Composer (collapsible)
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useReducer, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProject } from '../../state/ProjectContext';
 import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
@@ -31,8 +31,24 @@ import { ActiveLayoutSummary } from '../panels/ActiveLayoutSummary';
 import { LayoutOptionsPanel } from '../panels/LayoutOptionsPanel';
 import { CompareModal } from '../panels/CompareModal';
 import { MoveTracePanel } from '../panels/MoveTracePanel';
+import { PresetLibraryPanel } from '../composer/PresetLibraryPanel';
+import { PresetInspector } from '../composer/PresetInspector';
+import { loadComposerPresets } from '../../persistence/composerPresetStorage';
+import {
+  type PlacedPresetInstance,
+  createInitialComposerWorkspaceState,
+} from '../../../types/composerPreset';
+import {
+  composerWorkspaceReducer,
+} from '../../state/composerWorkspaceReducer';
+import {
+  mirrorPreset,
+  validatePlacement,
+} from '../../../engine/mapping/presetTransform';
+import { generateId } from '../../../utils/idGenerator';
+import { padKey } from '../../../types/padGrid';
 
-type LeftPanelTab = 'sounds' | 'events';
+type LeftPanelTab = 'sounds' | 'events' | 'presets';
 type RightPanelTab = 'costs' | 'layouts';
 type TimelineTab = 'timeline' | 'composer';
 
@@ -65,6 +81,124 @@ function PerformanceWorkspaceInner() {
   const [rightTab, setRightTab] = useState<RightPanelTab>('costs');
   const [onionSkin, setOnionSkin] = useState(false);
   const [timelineTab, setTimelineTab] = useState<TimelineTab>('timeline');
+
+  // Composer preset library state
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+  const [mirroredPresets, setMirroredPresets] = useState<Set<string>>(new Set());
+  const handleToggleMirror = useCallback((presetId: string) => {
+    setMirroredPresets(prev => {
+      const next = new Set(prev);
+      if (next.has(presetId)) next.delete(presetId);
+      else next.add(presetId);
+      return next;
+    });
+  }, []);
+
+  // Composer workspace assembly state
+  const [composerWorkspace, composerDispatch] = useReducer(
+    composerWorkspaceReducer,
+    undefined,
+    createInitialComposerWorkspaceState,
+  );
+
+  // Compute highlighted pads for selected instance
+  const highlightedInstancePads = useMemo(() => {
+    if (!composerWorkspace.selectedInstanceId) return undefined;
+    const instance = composerWorkspace.placedInstances.find(
+      i => i.id === composerWorkspace.selectedInstanceId
+    );
+    if (!instance) return undefined;
+    const keys = new Set<string>();
+    for (const pad of instance.pads) {
+      keys.add(padKey(
+        instance.anchorRow + pad.position.rowOffset,
+        instance.anchorCol + pad.position.colOffset,
+      ));
+    }
+    return keys;
+  }, [composerWorkspace.selectedInstanceId, composerWorkspace.placedInstances]);
+
+  // Get currently occupied pads (for collision detection during placement)
+  const occupiedPads = useMemo(() => {
+    const occupied = new Set<string>();
+    const layout = state.workingLayout ?? state.activeLayout;
+    if (layout) {
+      for (const key of Object.keys(layout.padToVoice)) {
+        occupied.add(key);
+      }
+    }
+    return occupied;
+  }, [state.workingLayout, state.activeLayout]);
+
+  // Handle preset drop on grid
+  const handlePresetDrop = useCallback((presetId: string, anchorRow: number, anchorCol: number, isMirrored: boolean) => {
+    const presets = loadComposerPresets();
+    let preset = presets.find(p => p.id === presetId);
+    if (!preset) return;
+
+    if (isMirrored) {
+      preset = mirrorPreset(preset);
+    }
+
+    // Validate placement
+    const validation = validatePlacement(preset.pads, anchorRow, anchorCol, occupiedPads);
+    if (!validation.valid) {
+      window.alert(`Cannot place preset here:\n${validation.reasons.join('\n')}`);
+      return;
+    }
+
+    // Create placed instance
+    const instance: PlacedPresetInstance = {
+      id: generateId('pinst'),
+      presetId,
+      presetName: preset.name,
+      anchorRow,
+      anchorCol,
+      isMirrored,
+      pads: preset.pads,
+      config: preset.config,
+      lanes: preset.lanes,
+      events: preset.events,
+      boundingBox: preset.boundingBox,
+    };
+
+    // Assign pads to grid via BULK_ASSIGN_PADS
+    const padToVoice: Record<string, any> = {};
+    for (const pad of preset.pads) {
+      const absRow = anchorRow + pad.position.rowOffset;
+      const absCol = anchorCol + pad.position.colOffset;
+      const key = padKey(absRow, absCol);
+      const lane = preset.lanes.find(l => l.id === pad.laneId);
+      padToVoice[key] = {
+        id: pad.laneId,
+        name: lane?.name ?? 'Preset Pad',
+        sourceType: 'midi_track' as const,
+        sourceFile: `preset:${preset.name}`,
+        originalMidiNote: lane?.midiNote ?? 36,
+        color: lane?.color ?? '#888',
+      };
+    }
+    dispatch({ type: 'BULK_ASSIGN_PADS', payload: padToVoice });
+
+    // Set finger constraints for placed pads
+    for (const pad of preset.pads) {
+      const absRow = anchorRow + pad.position.rowOffset;
+      const absCol = anchorCol + pad.position.colOffset;
+      const key = padKey(absRow, absCol);
+      const handChar = pad.hand === 'left' ? 'L' : 'R';
+      const fingerMap: Record<string, number> = {
+        thumb: 1, index: 2, middle: 3, ring: 4, pinky: 5,
+      };
+      const fingerNum = fingerMap[pad.finger] ?? 2;
+      dispatch({
+        type: 'SET_FINGER_CONSTRAINT',
+        payload: { padKey: key, constraint: `${handChar}${fingerNum}` },
+      });
+    }
+
+    // Add to workspace state
+    composerDispatch({ type: 'PLACE_PRESET', instance });
+  }, [dispatch, occupiedPads]);
 
   // Resizable panel state
   const [leftWidth, setLeftWidth] = useState(LEFT_DEFAULT);
@@ -123,6 +257,55 @@ function PerformanceWorkspaceInner() {
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, []);
+
+  // Resolve selected preset for inspector
+  const inspectorPreset = useMemo(() => {
+    // Priority: placed instance > library selection
+    const instance = composerWorkspace.placedInstances.find(
+      i => i.id === composerWorkspace.selectedInstanceId
+    );
+    if (instance) {
+      // Reconstruct a ComposerPreset-like object from the instance
+      return {
+        preset: {
+          id: instance.presetId,
+          name: instance.presetName,
+          createdAt: 0,
+          updatedAt: 0,
+          pads: instance.pads,
+          config: instance.config,
+          lanes: instance.lanes,
+          events: instance.events,
+          handedness: 'both' as const,
+          mirrorEligible: false,
+          boundingBox: instance.boundingBox,
+          tags: [],
+        },
+        instance,
+      };
+    }
+    if (selectedPresetId) {
+      const presets = loadComposerPresets();
+      const preset = presets.find(p => p.id === selectedPresetId);
+      if (preset) return { preset, instance: null };
+    }
+    return null;
+  }, [selectedPresetId, composerWorkspace.selectedInstanceId, composerWorkspace.placedInstances]);
+
+  const handleRemoveInstance = useCallback((instanceId: string) => {
+    const instance = composerWorkspace.placedInstances.find(i => i.id === instanceId);
+    if (!instance) return;
+
+    // Remove pads from grid
+    for (const pad of instance.pads) {
+      const absRow = instance.anchorRow + pad.position.rowOffset;
+      const absCol = instance.anchorCol + pad.position.colOffset;
+      const key = padKey(absRow, absCol);
+      dispatch({ type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey: key } });
+    }
+
+    composerDispatch({ type: 'REMOVE_INSTANCE', instanceId });
+  }, [composerWorkspace.placedInstances, dispatch]);
 
   const assignments = state.analysisResult?.executionPlan.fingerAssignments;
   const selectedCandidate = state.candidates.find(c => c.id === state.selectedCandidateId) ?? null;
@@ -194,7 +377,7 @@ function PerformanceWorkspaceInner() {
               title="Expand sidebar"
             >
               <span className="text-[10px] text-gray-500" style={{ writingMode: 'vertical-lr' }}>
-                {leftTab === 'sounds' ? 'Sounds' : 'Events'}
+                {leftTab === 'sounds' ? 'Sounds' : leftTab === 'events' ? 'Events' : 'Presets'}
               </span>
               <span className="text-[10px] text-gray-600">&#9656;</span>
             </button>
@@ -223,6 +406,16 @@ function PerformanceWorkspaceInner() {
                   Events
                 </button>
                 <button
+                  className={`flex-1 px-3 py-2 text-[11px] font-medium transition-colors ${
+                    leftTab === 'presets'
+                      ? 'text-gray-200 bg-gray-800/50 border-b-2 border-violet-500'
+                      : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/30'
+                  }`}
+                  onClick={() => setLeftTab('presets')}
+                >
+                  Presets
+                </button>
+                <button
                   className="w-7 h-7 flex items-center justify-center text-gray-600 hover:text-gray-300 hover:bg-gray-700/50 transition-colors text-[10px] flex-shrink-0"
                   onClick={() => setLeftCollapsed(true)}
                   title="Collapse sidebar"
@@ -232,11 +425,27 @@ function PerformanceWorkspaceInner() {
               </div>
 
               {/* Tab content */}
-              <div className="p-3 overflow-y-auto flex-1 min-h-0">
+              <div className={`overflow-y-auto flex-1 min-h-0 ${leftTab === 'presets' ? '' : 'p-3'}`}>
                 {leftTab === 'sounds' ? (
                   <VoicePalette />
-                ) : (
+                ) : leftTab === 'events' ? (
                   <EventsPanel onionSkin={onionSkin} onToggleOnionSkin={() => setOnionSkin(!onionSkin)} />
+                ) : (
+                  <PresetLibraryPanel
+                    selectedPresetId={selectedPresetId}
+                    onSelectPreset={(id) => {
+                      setSelectedPresetId(id);
+                      if (id) composerDispatch({ type: 'SELECT_INSTANCE', instanceId: null });
+                    }}
+                    mirroredPresets={mirroredPresets}
+                    onToggleMirror={handleToggleMirror}
+                    placedInstances={composerWorkspace.placedInstances}
+                    selectedInstanceId={composerWorkspace.selectedInstanceId}
+                    onSelectInstance={(id) => {
+                      composerDispatch({ type: 'SELECT_INSTANCE', instanceId: id });
+                      if (id) setSelectedPresetId(null);
+                    }}
+                  />
                 )}
               </div>
             </div>
@@ -267,6 +476,8 @@ function PerformanceWorkspaceInner() {
                   onionSkin={onionSkin}
                   voiceConstraints={state.voiceConstraints}
                   gridLabels={viewSettings.gridLabels}
+                  highlightedInstancePads={highlightedInstancePads}
+                  onPresetDrop={handlePresetDrop}
                 />
               </div>
             </div>
@@ -348,7 +559,15 @@ function PerformanceWorkspaceInner() {
             {/* Tab content */}
             <div className="overflow-y-auto flex-1 min-h-0">
               {rightTab === 'costs' ? (
-                <ActiveLayoutSummary />
+                inspectorPreset ? (
+                  <PresetInspector
+                    preset={inspectorPreset.preset}
+                    instance={inspectorPreset.instance}
+                    onRemoveInstance={handleRemoveInstance}
+                  />
+                ) : (
+                  <ActiveLayoutSummary />
+                )
               ) : (
                 <div className="flex flex-col gap-3">
                   <LayoutOptionsPanel

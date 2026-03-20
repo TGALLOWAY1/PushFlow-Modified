@@ -19,6 +19,7 @@ import { type FingerAssignment } from '../../types/executionPlan';
 import { type GridLabelSettings } from '../state/viewSettings';
 import { buildSelectedTransitionModel } from '../analysis/selectionModel';
 import { midiNoteToName } from '../../utils/midiNotes';
+import { COMPOSER_PRESET_DRAG_TYPE } from './composer/PresetCard';
 
 interface InteractiveGridProps {
   assignments?: FingerAssignment[];
@@ -33,6 +34,10 @@ interface InteractiveGridProps {
   voiceConstraints?: Record<string, { hand?: 'left' | 'right'; finger?: string }>;
   /** Grid label settings controlling what info is shown on pads. */
   gridLabels?: GridLabelSettings;
+  /** Pad keys belonging to the currently selected placed preset instance. */
+  highlightedInstancePads?: Set<string>;
+  /** Callback when a composer preset is dropped on the grid. */
+  onPresetDrop?: (presetId: string, anchorRow: number, anchorCol: number, isMirrored: boolean) => void;
 }
 
 /** Abbreviated finger names for display (numbered: thumb=1 through pinky=5) */
@@ -74,7 +79,7 @@ function safeColorAlpha(color: string | null | undefined, alpha: number, fallbac
 /** Physical reach threshold: pads farther apart than this are flagged as impossible. */
 const IMPOSSIBLE_REACH_THRESHOLD = 5;
 
-export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels }: InteractiveGridProps) {
+export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop }: InteractiveGridProps) {
   const { state, dispatch } = useProject();
   const layout = layoutOverride ?? getDisplayedLayout(state);
   const [dragOverPad, setDragOverPad] = useState<string | null>(null);
@@ -278,6 +283,19 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     e.preventDefault();
     setDragOverPad(null);
 
+    // Check for composer preset drop first
+    const presetData = e.dataTransfer.getData(COMPOSER_PRESET_DRAG_TYPE);
+    if (presetData && onPresetDrop) {
+      try {
+        const { presetId, isMirrored } = JSON.parse(presetData);
+        const [rowStr, colStr] = padKey.split(',');
+        const anchorRow = parseInt(rowStr, 10);
+        const anchorCol = parseInt(colStr, 10);
+        onPresetDrop(presetId, anchorRow, anchorCol, isMirrored);
+      } catch { /* invalid data */ }
+      return;
+    }
+
     // Check pad-to-pad drag first (swap) — must come before stream check
     // because handlePadDragStart sets both data types
     const padData = e.dataTransfer.getData('application/pushflow-pad');
@@ -369,6 +387,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const isImpossible = impossibleMoveTargets.has(padKey);
       const isDragOver = padKey === dragOverPad;
       const isDragSource = padKey === dragSourcePad;
+      const isInstanceHighlighted = highlightedInstancePads?.has(padKey) ?? false;
       const constraint = layout?.fingerConstraints[padKey];
       const isLocked = !!layout?.placementLocks[padKey];
       const isGreyedOut = hasEventSelected && !isSelected;
@@ -444,6 +463,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             ${isPrevious ? 'opacity-60' : ''}
             ${isShared ? 'ring-1 ring-emerald-400/50' : ''}
             ${isImpossible ? 'ring-2 ring-red-500/80' : ''}
+            ${isInstanceHighlighted ? 'ring-2 ring-violet-400/60' : ''}
             ${isDragOver ? 'ring-2 ring-blue-400/60 scale-105 bg-[var(--bg-card)]' : ''}
             ${isDragSource ? 'opacity-30' : ''}
             ${isMuted ? 'opacity-30 pointer-events-none' : ''}

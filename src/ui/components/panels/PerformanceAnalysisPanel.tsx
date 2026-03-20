@@ -654,6 +654,7 @@ function ViewAllModal({ candidates, savedVariants, soundStreams, selectedId, onS
                     onSelect={() => onSelect(c.id)}
                     onPromote={() => {}}
                     onToggleCompare={() => {}}
+                    onDelete={() => {}}
                   />
                 ))}
               </div>

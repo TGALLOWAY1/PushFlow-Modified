@@ -18,6 +18,17 @@ import { type Layout } from '../../../types/layout';
 import { RecipeEditorModal } from '../loop-editor/RecipeEditorModal';
 import { PatternSelector } from '../loop-editor/PatternSelector';
 import { savePreset, deletePreset, presetToLoopState, type PerformancePreset } from '../../persistence/presetStorage';
+import { saveComposerPreset } from '../../persistence/composerPresetStorage';
+import {
+  type PresetPad,
+  computeBoundingBox,
+  computeHandedness,
+  isMirrorEligible,
+  normalizePadPositions,
+} from '../../../types/composerPreset';
+import { type FingerType, type HandSide } from '../../../types/fingerModel';
+import { parsePadKey } from '../../../types/padGrid';
+import { getDisplayedLayout } from '../../state/projectState';
 
 const LANE_COLORS = ['#ef4444', '#f97316', '#22c55e', '#eab308', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6'];
 const DEFAULT_MIDI_NOTES = [36, 38, 42, 46, 48, 60, 62, 64];
@@ -205,6 +216,78 @@ export function WorkspacePatternStudio() {
     savePreset(name, loopState);
   }, [loopState]);
 
+  /**
+   * Save current composer state as a ComposerPreset.
+   * Captures pad positions + finger assignments from the project's current layout.
+   */
+  const handleSaveComposerPreset = useCallback(() => {
+    if (loopState.events.size === 0 || loopState.lanes.length === 0) return;
+
+    const layout = getDisplayedLayout(projectState);
+    if (!layout) return;
+
+    // Build preset pads from the current layout's padToVoice mapping
+    // Match lane IDs to pads assigned via BULK_ASSIGN_PADS
+    const presetPads: PresetPad[] = [];
+    const fingerConstraints = layout.fingerConstraints ?? {};
+
+    for (const [padKeyStr, voice] of Object.entries(layout.padToVoice)) {
+      // Only include pads that belong to current composer lanes
+      const lane = loopState.lanes.find(l => l.id === voice.id);
+      if (!lane) continue;
+
+      const coord = parsePadKey(padKeyStr);
+      if (!coord) continue;
+
+      // Parse finger constraint (format: "L2" = left index, "R3" = right middle, etc.)
+      const constraint = fingerConstraints[padKeyStr];
+      let hand: HandSide = coord.col <= 4 ? 'left' : 'right';
+      let finger: FingerType = 'index';
+
+      if (constraint) {
+        const handChar = constraint.charAt(0);
+        const fingerNum = parseInt(constraint.charAt(1), 10);
+        if (handChar === 'L' || handChar === 'l') hand = 'left';
+        else if (handChar === 'R' || handChar === 'r') hand = 'right';
+        const fingerMap: Record<number, FingerType> = {
+          1: 'thumb', 2: 'index', 3: 'middle', 4: 'ring', 5: 'pinky',
+        };
+        finger = fingerMap[fingerNum] ?? 'index';
+      }
+
+      presetPads.push({
+        position: { rowOffset: coord.row, colOffset: coord.col },
+        laneId: lane.id,
+        finger,
+        hand,
+      });
+    }
+
+    if (presetPads.length === 0) {
+      window.alert('No pads assigned. Assign pads on the grid before saving a Composer Preset.');
+      return;
+    }
+
+    // Normalize to relative coordinates
+    const normalizedPads = normalizePadPositions(presetPads);
+    const handedness = computeHandedness(normalizedPads);
+
+    const name = window.prompt('Composer Preset name:', `Preset ${new Date().toLocaleDateString()}`);
+    if (!name) return;
+
+    saveComposerPreset({
+      name,
+      pads: normalizedPads,
+      config: loopState.config,
+      lanes: loopState.lanes,
+      events: Array.from(loopState.events.entries()),
+      handedness,
+      mirrorEligible: isMirrorEligible(handedness),
+      boundingBox: computeBoundingBox(normalizedPads),
+      tags: [],
+    });
+  }, [loopState, projectState]);
+
   const handleLoadPreset = useCallback((preset: PerformancePreset) => {
     setHasTouchedComposer(true);
     dispatch({ type: 'LOAD_LOOP_STATE', payload: presetToLoopState(preset) });
@@ -354,6 +437,19 @@ export function WorkspacePatternStudio() {
           title={loopState.events.size > 0 ? 'Save current pattern as preset' : 'Add events first'}
         >
           Save
+        </button>
+
+        <button
+          className={`px-2 py-1 text-xs rounded transition-colors ${
+            loopState.events.size > 0 && loopState.lanes.length > 0
+              ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30 hover:bg-violet-600/30'
+              : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+          }`}
+          onClick={handleSaveComposerPreset}
+          disabled={loopState.events.size === 0 || loopState.lanes.length === 0}
+          title="Save as Composer Preset (captures pad layout + finger assignments + events)"
+        >
+          Save Preset
         </button>
 
         <button
