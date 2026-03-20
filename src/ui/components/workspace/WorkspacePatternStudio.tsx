@@ -97,6 +97,17 @@ export function WorkspacePatternStudio() {
     return null;
   }, [loopState.patternResult, loopState.rudimentResult]);
 
+  // Compute pad positions for each lane from the current layout
+  const lanePadPositions = useMemo(() => {
+    const layout = getDisplayedLayout(projectState);
+    if (!layout) return {};
+    const map: Record<string, string> = {};
+    for (const [pk, voice] of Object.entries(layout.padToVoice)) {
+      if (!map[voice.id]) map[voice.id] = pk;
+    }
+    return map;
+  }, [projectState]);
+
   useEffect(() => {
     if (!loopState.isPlaying) {
       cancelAnimationFrame(animFrameRef.current);
@@ -435,13 +446,6 @@ export function WorkspacePatternStudio() {
           {loopState.lanes.length} lanes · {loopState.events.size} events · live sync
         </span>
 
-        <button
-          className="px-2 py-1 text-xs rounded bg-gray-700 text-gray-200 hover:bg-gray-600"
-          onClick={handleAddLane}
-        >
-          + Lane
-        </button>
-
         <PatternSelector
           onSelectPreset={handleGeneratePattern}
           onRandomize={handleRandomizePattern}
@@ -506,6 +510,8 @@ export function WorkspacePatternStudio() {
             dispatch={dispatchComposer}
             fingerAssignments={laneFingerAssignments}
             onFingerAssignmentChange={handleFingerAssignmentChange}
+            onAddLane={handleAddLane}
+            padPositions={lanePadPositions}
           />
           <LoopGridCanvas
             config={loopState.config}

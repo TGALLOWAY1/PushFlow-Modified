@@ -402,4 +402,75 @@ describe('lanesReducer', () => {
       expect(result.soundStreams.map(s => s.id)).toEqual(['lane-1', 'lane-3']);
     });
   });
+
+  // ---- Auto-sync: lane-modifying actions rebuild soundStreams ----
+
+  describe('auto-sync on lane-modifying actions', () => {
+    it('UPSERT_LANE_SOURCE rebuilds soundStreams', () => {
+      const lane = makeLane({ id: 'lane-1', name: 'Kick' });
+      const state = makeState({ soundStreams: [] });
+
+      const result = lanesReducer(state, {
+        type: 'UPSERT_LANE_SOURCE',
+        payload: {
+          lanes: [lane],
+          sourceFile: makeSourceFile(),
+        },
+      });
+
+      expect(result.performanceLanes).toHaveLength(1);
+      expect(result.soundStreams).toHaveLength(1);
+      expect(result.soundStreams[0].id).toBe('lane-1');
+      expect(result.soundStreams[0].name).toBe('Kick');
+      expect(result.analysisStale).toBe(true);
+    });
+
+    it('IMPORT_LANES rebuilds soundStreams', () => {
+      const lane = makeLane({ id: 'lane-2', name: 'Snare' });
+      const state = makeState({ soundStreams: [] });
+
+      const result = lanesReducer(state, {
+        type: 'IMPORT_LANES',
+        payload: {
+          lanes: [lane],
+          sourceFile: makeSourceFile({ id: 'src-2' }),
+        },
+      });
+
+      expect(result.soundStreams).toHaveLength(1);
+      expect(result.soundStreams[0].id).toBe('lane-2');
+    });
+
+    it('DELETE_LANE removes stream from soundStreams', () => {
+      const state = makeState({
+        performanceLanes: [
+          makeLane({ id: 'lane-1', name: 'Kick' }),
+          makeLane({ id: 'lane-2', name: 'Snare' }),
+        ],
+        soundStreams: [],
+      });
+
+      const result = lanesReducer(state, { type: 'DELETE_LANE', payload: 'lane-1' });
+
+      expect(result.performanceLanes).toHaveLength(1);
+      expect(result.soundStreams).toHaveLength(1);
+      expect(result.soundStreams[0].id).toBe('lane-2');
+    });
+
+    it('REMOVE_LANE_SOURCE clears soundStreams when all lanes removed', () => {
+      const state = makeState({
+        performanceLanes: [makeLane({ id: 'lane-1', sourceFileId: 'src-1' })],
+        sourceFiles: [makeSourceFile()],
+        soundStreams: [{ id: 'lane-1', name: 'Kick', color: '#ef4444', originalMidiNote: 36, events: [], muted: false }],
+      });
+
+      const result = lanesReducer(state, {
+        type: 'REMOVE_LANE_SOURCE',
+        payload: { sourceFileId: 'src-1' },
+      });
+
+      expect(result.performanceLanes).toHaveLength(0);
+      expect(result.soundStreams).toHaveLength(0);
+    });
+  });
 });

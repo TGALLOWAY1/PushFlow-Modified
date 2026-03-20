@@ -11,6 +11,8 @@ import { useProject } from '../state/ProjectContext';
 import { getDisplayedLayout, type SoundStream } from '../state/projectState';
 import type { LaneGroup } from '../../types/performanceLane';
 import { generateId } from '../../utils/idGenerator';
+import { FingerAssignmentInput, type FingerAssignmentValue } from './shared/FingerAssignmentInput';
+import { type FingerType } from '../../types/fingerModel';
 
 const COLOR_PALETTE = [
   '#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6',
@@ -590,42 +592,26 @@ function StreamRow({
         </span>
       )}
 
-      {/* Hand constraint (populated from solver when no user constraint set) */}
-      <select
-        className="bg-gray-800 border border-gray-700 text-[10px] text-gray-400 rounded px-0.5 py-0.5 w-7 flex-shrink-0"
-        value={voiceConstraint?.hand ?? solverAssignment?.hand ?? ''}
-        onChange={e => onSetConstraint(
-          e.target.value === '' ? null : e.target.value as 'left' | 'right',
-          undefined
-        )}
-        onClick={e => e.stopPropagation()}
-        onMouseDown={e => e.stopPropagation()}
-        title="Hand assignment"
-      >
-        <option value="">-</option>
-        <option value="left">L</option>
-        <option value="right">R</option>
-      </select>
-
-      {/* Finger constraint (populated from solver when no user constraint set) */}
-      <select
-        className="bg-gray-800 border border-gray-700 text-[10px] text-gray-400 rounded px-0.5 py-0.5 w-9 flex-shrink-0"
-        value={voiceConstraint?.finger ?? solverFinger ?? ''}
-        onChange={e => onSetConstraint(
-          undefined,
-          e.target.value === '' ? null : e.target.value
-        )}
-        onClick={e => e.stopPropagation()}
-        onMouseDown={e => e.stopPropagation()}
-        title="Finger assignment"
-      >
-        <option value="">-</option>
-        <option value="thumb">1</option>
-        <option value="index">2</option>
-        <option value="middle">3</option>
-        <option value="ring">4</option>
-        <option value="pinky">5</option>
-      </select>
+      {/* Finger assignment — type L1, R5, etc. */}
+      <div onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+        <FingerAssignmentInput
+          value={
+            voiceConstraint?.hand && voiceConstraint?.finger
+              ? { hand: voiceConstraint.hand, finger: voiceConstraint.finger as FingerType }
+              : solverAssignment?.hand && solverFinger
+                ? { hand: solverAssignment.hand as 'left' | 'right', finger: solverFinger as FingerType }
+                : null
+          }
+          onChange={(assignment: FingerAssignmentValue | null) => {
+            if (assignment) {
+              onSetConstraint(assignment.hand, assignment.finger);
+            } else {
+              onSetConstraint(null, null);
+            }
+          }}
+          size="md"
+        />
+      </div>
 
       {/* Solo */}
       <button
