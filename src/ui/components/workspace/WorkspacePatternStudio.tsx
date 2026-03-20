@@ -385,20 +385,20 @@ export function WorkspacePatternStudio() {
             }}
             className="w-16 px-2 py-1 text-pf-sm bg-[var(--bg-card)] border border-[var(--border-default)] rounded-pf-sm text-[var(--text-primary)]"
           />
-          <span className="text-[10px] text-gray-500">BPM</span>
+          <span className="text-pf-xs text-[var(--text-secondary)]">BPM</span>
         </div>
 
         <div className="flex-1" />
 
-        <span className="text-[10px] text-emerald-300/80">
+        <span className="text-pf-xs text-emerald-300/80">
           {loopState.lanes.length} lanes · {loopState.events.size} events · live sync
         </span>
 
         <button
-          className={`px-2 py-1 text-xs rounded transition-colors ${
+          className={`px-2 py-1 text-pf-sm rounded-pf-sm transition-colors ${
             loopState.events.size > 0 && loopState.lanes.length > 0
               ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30 hover:bg-violet-600/30'
-              : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+              : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] cursor-not-allowed'
           }`}
           onClick={handleSaveComposerPreset}
           disabled={loopState.events.size === 0 || loopState.lanes.length === 0}
@@ -408,7 +408,7 @@ export function WorkspacePatternStudio() {
         </button>
 
         <button
-          className="px-2 py-1 text-xs rounded bg-gray-800 text-gray-400 hover:text-gray-200 hover:bg-gray-700"
+          className="pf-btn pf-btn-subtle text-pf-sm"
           onClick={handleResetComposer}
         >
           Clear
@@ -426,7 +426,7 @@ export function WorkspacePatternStudio() {
       ) : null}
 
       <div className="flex gap-3 items-start">
-        <div className="flex-1 min-w-0 flex rounded-lg bg-gray-800/20 border border-gray-700 overflow-hidden" style={{ minHeight: 260 }}>
+        <div className="flex-1 min-w-0 flex rounded-pf-lg bg-[var(--bg-card)]/20 border border-[var(--border-default)] overflow-hidden" style={{ minHeight: 260 }}>
           <LoopLaneSidebar
             lanes={loopState.lanes}
             dispatch={dispatchComposer}

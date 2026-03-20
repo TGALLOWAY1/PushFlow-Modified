@@ -70,8 +70,8 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
     return (
       <>
         <div className="fixed inset-0 z-[70] bg-black/60" onClick={onClose} />
-        <div className="fixed inset-8 z-[71] rounded-xl border border-gray-700 bg-gray-900 shadow-2xl flex items-center justify-center">
-          <div className="text-gray-500 text-sm">Not enough candidates to compare.</div>
+        <div className="fixed inset-8 z-[71] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex items-center justify-center">
+          <div className="text-[var(--text-tertiary)] text-pf-lg">Not enough candidates to compare.</div>
         </div>
       </>
     );
@@ -94,16 +94,16 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
   return (
     <>
       <div className="fixed inset-0 z-[70] bg-black/60" onClick={onClose} />
-      <div className="fixed inset-6 z-[71] rounded-xl border border-gray-700 bg-gray-900 shadow-2xl flex flex-col overflow-hidden">
+      <div className="fixed inset-6 z-[71] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800 flex-shrink-0">
-          <h3 className="text-sm font-semibold text-gray-200">Compare Layouts</h3>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)] flex-shrink-0">
+          <h3 className="text-pf-lg font-semibold text-[var(--text-primary)]">Compare Layouts</h3>
           <div className="flex items-center gap-3">
             {comparableCandidates.length > 2 && (
-              <div className="flex items-center gap-2 text-[11px] text-gray-400">
+              <div className="flex items-center gap-2 text-pf-sm text-[var(--text-secondary)]">
                 <span>Left:</span>
                 <select
-                  className="bg-gray-800 border border-gray-700 text-gray-300 text-[11px] rounded px-1 py-0.5"
+                  className="pf-select text-pf-sm px-1 py-0.5"
                   value={leftIdx}
                   onChange={e => setLeftIdx(Number(e.target.value))}
                 >
@@ -115,7 +115,7 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
                 </select>
                 <span>Right:</span>
                 <select
-                  className="bg-gray-800 border border-gray-700 text-gray-300 text-[11px] rounded px-1 py-0.5"
+                  className="pf-select text-pf-sm px-1 py-0.5"
                   value={rightIdx}
                   onChange={e => setRightIdx(Number(e.target.value))}
                 >
@@ -127,7 +127,7 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
                 </select>
               </div>
             )}
-            <button className="text-gray-500 hover:text-gray-300 text-lg transition-colors" onClick={onClose}>&times;</button>
+            <button className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-lg transition-colors" onClick={onClose}>&times;</button>
           </div>
         </div>
 
@@ -181,10 +181,10 @@ function ComparisonCard({
   const diff = candidate.difficultyAnalysis;
 
   return (
-    <div className="rounded-lg border border-gray-700/60 bg-gray-800/30 p-4 space-y-3">
+    <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-medium text-gray-200">{label}</span>
-        <span className={`text-[11px] font-mono font-medium ${
+        <span className="text-pf-sm font-medium text-[var(--text-primary)]">{label}</span>
+        <span className={`text-pf-sm font-mono font-medium ${
           diff.overallScore <= 0.2 ? 'text-green-400' :
           diff.overallScore <= 0.45 ? 'text-yellow-400' :
           diff.overallScore <= 0.7 ? 'text-orange-400' : 'text-red-400'
@@ -195,24 +195,24 @@ function ComparisonCard({
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 text-[10px]">
-        <div className="rounded bg-gray-900/40 px-2 py-1.5">
-          <div className="text-[9px] text-gray-500 uppercase">Score</div>
-          <div className="text-gray-200 font-mono">{plan.score.toFixed(1)}</div>
+      <div className="grid grid-cols-2 gap-2 text-pf-xs">
+        <div className="rounded-pf-sm bg-[var(--bg-panel)] px-2 py-1.5">
+          <div className="text-pf-micro text-[var(--text-tertiary)] uppercase">Score</div>
+          <div className="text-[var(--text-primary)] font-mono">{plan.score.toFixed(1)}</div>
         </div>
-        <div className="rounded bg-gray-900/40 px-2 py-1.5">
-          <div className="text-[9px] text-gray-500 uppercase">Unplayable</div>
+        <div className="rounded-pf-sm bg-[var(--bg-panel)] px-2 py-1.5">
+          <div className="text-pf-micro text-[var(--text-tertiary)] uppercase">Unplayable</div>
           <div className={`font-mono ${plan.unplayableCount === 0 ? 'text-green-400' : 'text-red-400'}`}>
             {plan.unplayableCount}
           </div>
         </div>
-        <div className="rounded bg-gray-900/40 px-2 py-1.5">
-          <div className="text-[9px] text-gray-500 uppercase">Hard Events</div>
-          <div className="text-gray-200 font-mono">{plan.hardCount}</div>
+        <div className="rounded-pf-sm bg-[var(--bg-panel)] px-2 py-1.5">
+          <div className="text-pf-micro text-[var(--text-tertiary)] uppercase">Hard Events</div>
+          <div className="text-[var(--text-primary)] font-mono">{plan.hardCount}</div>
         </div>
-        <div className="rounded bg-gray-900/40 px-2 py-1.5">
-          <div className="text-[9px] text-gray-500 uppercase">Balance</div>
-          <div className="text-gray-200 font-mono">{candidate.tradeoffProfile.handBalance.toFixed(2)}</div>
+        <div className="rounded-pf-sm bg-[var(--bg-panel)] px-2 py-1.5">
+          <div className="text-pf-micro text-[var(--text-tertiary)] uppercase">Balance</div>
+          <div className="text-[var(--text-primary)] font-mono">{candidate.tradeoffProfile.handBalance.toFixed(2)}</div>
         </div>
       </div>
 

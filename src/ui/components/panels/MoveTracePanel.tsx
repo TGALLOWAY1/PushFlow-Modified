@@ -187,7 +187,7 @@ function MoveRow({
     ? 'text-green-400'
     : move.costDelta > 0.01
       ? 'text-red-400'
-      : 'text-gray-500';
+      : 'text-[var(--text-tertiary)]';
 
   const phaseLabel = move.phase ? PHASE_LABELS[move.phase] ?? move.phase : '';
 
@@ -260,10 +260,10 @@ function FilterChip({
 }) {
   return (
     <button
-      className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
+      className={`px-2 py-0.5 text-pf-xs rounded-pf-sm transition-colors ${
         active
           ? 'bg-cyan-600/20 border border-cyan-500/30 text-cyan-400'
-          : 'bg-gray-800 border border-gray-700 text-gray-500 hover:text-gray-300'
+          : 'bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
       }`}
       onClick={onClick}
     >

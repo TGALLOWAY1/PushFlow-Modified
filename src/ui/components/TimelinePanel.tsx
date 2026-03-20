@@ -88,27 +88,27 @@ export function TimelinePanel() {
   }
 
   return (
-    <div className="rounded-lg glass-panel overflow-hidden relative z-40">
+    <div className="rounded-pf-lg glass-panel overflow-hidden relative z-40">
       {/* Header */}
-      <div className="w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-gray-800/50 transition-colors">
+      <div className="w-full flex items-center justify-between px-3 py-2 text-pf-sm hover:bg-[var(--bg-hover)] transition-colors">
         <button
-          className="flex items-center gap-2 text-gray-400 font-medium"
+          className="flex items-center gap-2 text-[var(--text-secondary)] font-medium"
           onClick={() => setCollapsed(!collapsed)}
         >
-          <span className="text-gray-600">{collapsed ? '+' : '-'}</span>
+          <span className="text-[var(--text-tertiary)]">{collapsed ? '+' : '-'}</span>
           <span>
             Timeline
-            <span className="text-gray-500 ml-2 font-normal">
+            <span className="text-[var(--text-secondary)] ml-2 font-normal">
               {new Set(filteredAssignments.map(a => a.startTime)).size} events
             </span>
           </span>
         </button>
         <div className="flex items-center gap-3">
-          <span className="text-gray-500 font-mono w-12 text-right">
+          <span className="text-[var(--text-secondary)] font-mono w-12 text-right">
             {state.currentTime.toFixed(2)}s
           </span>
           <button
-            className={`px-3 py-1 rounded text-[10px] font-bold ${state.isPlaying ? 'bg-amber-500 text-amber-950' : 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'}`}
+            className={`px-3 py-1 rounded-pf-sm text-pf-xs font-bold ${state.isPlaying ? 'bg-amber-500 text-amber-950' : 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'}`}
             onClick={() => dispatch({ type: 'TOGGLE_PLAYING' })}
           >
             {state.isPlaying ? 'STOP' : 'PLAY'}
