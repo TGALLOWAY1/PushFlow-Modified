@@ -319,7 +319,7 @@ export function useAutoAnalysis() {
         const solverConstraints = buildSolverConstraints(performance, effectiveLayout);
         const neutralHandCenters = getNeutralHandCenters(effectiveLayout, state.instrumentConfig);
 
-        const seeds = [0, 1, 2]; // 3 random restarts for diversity
+        const seeds = [0, 1, 2]; // 3 candidates with different seeds for diversity
         const candidates = [];
 
         for (const seed of seeds) {
@@ -334,6 +334,7 @@ export function useAutoAnalysis() {
               engineConfig: state.engineConfig,
               sections: state.sections,
               seed,
+              restartCount: seed === 0 ? 0 : 2, // Baseline is single-pass; variants get 2 restarts
             },
             evaluationConfig: {
               restingPose: state.engineConfig.restingPose,
@@ -380,6 +381,7 @@ export function useAutoAnalysis() {
 
         setGenerationProgress(null);
         setAnalysisPhase('idle');
+        dispatch({ type: 'SET_PROCESSING', payload: false });
         return candidates.length;
       }
 

@@ -156,6 +156,7 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
     analysisStale: true,
     manualCostResult: null,
     moveHistory: null,
+    moveHistoryStopReason: null,
     moveHistoryIndex: null,
     currentTime: 0,
     isPlaying: false,

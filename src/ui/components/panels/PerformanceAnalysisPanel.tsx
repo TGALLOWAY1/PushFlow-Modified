@@ -292,7 +292,10 @@ export function PerformanceAnalysisPanel({
           {/* ─── Section 5: Move Trace (greedy optimizer) ────── */}
           {state.moveHistory && state.moveHistory.length > 0 && (
             <CollapsibleSection title="Optimization Trace" defaultOpen>
-              <MoveTracePanel moves={state.moveHistory} />
+              <MoveTracePanel
+                moves={state.moveHistory}
+                stopReason={state.moveHistoryStopReason as any}
+              />
             </CollapsibleSection>
           )}
 

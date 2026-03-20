@@ -140,6 +140,8 @@ export interface ProjectState {
   manualCostResult: PerformanceCostBreakdown | null;
   /** Move history from interpretable optimizers (greedy). */
   moveHistory: OptimizerMove[] | null;
+  /** Why the optimizer stopped (stored alongside moveHistory). */
+  moveHistoryStopReason: string | null;
   /** Current index in move history for step-through replay. */
   moveHistoryIndex: number | null;
 
@@ -819,7 +821,12 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return { ...state, manualCostResult: action.payload };
 
     case 'SET_MOVE_HISTORY':
-      return { ...state, moveHistory: action.payload.moves, moveHistoryIndex: null };
+      return {
+        ...state,
+        moveHistory: action.payload.moves,
+        moveHistoryStopReason: action.payload.stopReason ?? null,
+        moveHistoryIndex: null,
+      };
 
     case 'SET_MOVE_HISTORY_INDEX':
       return { ...state, moveHistoryIndex: action.payload };
@@ -881,6 +888,7 @@ export function createEmptyProjectState(): ProjectState {
     analysisStale: false,
     manualCostResult: null,
     moveHistory: null,
+    moveHistoryStopReason: null,
     moveHistoryIndex: null,
     currentTime: 0,
     isPlaying: false,

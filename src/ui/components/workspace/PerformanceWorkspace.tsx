@@ -358,7 +358,10 @@ function PerformanceWorkspaceInner() {
                   />
                   {state.moveHistory && state.moveHistory.length > 0 && (
                     <div className="p-3">
-                      <MoveTracePanel moves={state.moveHistory} />
+                      <MoveTracePanel
+                        moves={state.moveHistory}
+                        stopReason={state.moveHistoryStopReason as any}
+                      />
                     </div>
                   )}
                 </div>
