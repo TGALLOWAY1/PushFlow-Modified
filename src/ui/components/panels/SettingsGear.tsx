@@ -58,8 +58,8 @@ export function SettingsGear({
   return (
     <div className="relative" ref={ref}>
       <button
-        className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${
-          open ? 'bg-gray-700 text-gray-200' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
+        className={`w-8 h-8 flex items-center justify-center rounded-pf-lg transition-colors ${
+          open ? 'bg-[var(--bg-active)] text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
         }`}
         onClick={() => setOpen(!open)}
         title="View settings"
@@ -73,10 +73,10 @@ export function SettingsGear({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-64 rounded-xl border border-gray-700 bg-gray-900 shadow-xl z-50 overflow-hidden">
+        <div className="absolute right-0 top-full mt-1 w-64 rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-lg z-50 overflow-hidden">
           {/* View Options section */}
           <div className="px-4 pt-3 pb-1">
-            <div className="text-[11px] text-gray-500 uppercase tracking-wider font-medium">
+            <div className="section-header">
               View Options
             </div>
           </div>
@@ -84,13 +84,13 @@ export function SettingsGear({
             {VIEW_OPTIONS.map(({ key, label }) => (
               <button
                 key={key}
-                className="w-full flex items-center gap-3 px-2 py-2.5 text-left hover:bg-gray-800/60 rounded-lg transition-colors"
+                className="w-full flex items-center gap-3 px-2 py-2.5 text-left hover:bg-[var(--bg-hover)] rounded-pf-lg transition-colors"
                 onClick={() => onToggleGridLabel(key)}
               >
-                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                <div className={`w-5 h-5 rounded-pf-sm border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
                   gridLabels[key]
                     ? 'bg-white border-white'
-                    : 'border-gray-500 bg-transparent'
+                    : 'border-[var(--border-default)] bg-transparent'
                 }`}>
                   {gridLabels[key] && (
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#111" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -98,17 +98,17 @@ export function SettingsGear({
                     </svg>
                   )}
                 </div>
-                <span className="text-sm text-gray-200">{label}</span>
+                <span className="text-pf-base text-[var(--text-primary)]">{label}</span>
               </button>
             ))}
           </div>
 
           {/* Divider */}
-          <div className="border-t border-gray-800 mx-3" />
+          <div className="pf-divider-h mx-3" />
 
           {/* Layout Options section */}
           <div className="px-4 pt-3 pb-1">
-            <div className="text-[11px] text-gray-500 uppercase tracking-wider font-medium">
+            <div className="section-header">
               Layout Options
             </div>
           </div>
@@ -141,9 +141,9 @@ export function SettingsGear({
           {/* Cost Toggles section */}
           {costToggles && onCostToggleChange && (
             <>
-              <div className="border-t border-gray-800 mx-3" />
+              <div className="pf-divider-h mx-3" />
               <div className="px-4 pt-3 pb-1">
-                <div className="text-[11px] text-gray-500 uppercase tracking-wider font-medium">
+                <div className="section-header">
                   Cost Evaluation
                 </div>
               </div>

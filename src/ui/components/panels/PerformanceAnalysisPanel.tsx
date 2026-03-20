@@ -85,22 +85,22 @@ export function PerformanceAnalysisPanel({
     <>
       <div className="h-full flex flex-col">
         {/* ─── Top Controls ────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 flex-shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)] flex-shrink-0">
           <div className="flex items-center gap-3">
-            <h3 className="text-sm font-semibold text-gray-200">Performance Analysis</h3>
+            <h3 className="text-pf-md font-semibold text-[var(--text-primary)]">Performance Analysis</h3>
             {state.analysisStale && activeResult && (
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Analysis outdated" />
             )}
           </div>
           <div className="flex items-center gap-1">
             <button
-              className="text-[11px] text-cyan-400 hover:text-cyan-300 transition-colors px-2 py-1 rounded hover:bg-gray-800"
+              className="text-pf-sm text-cyan-400 hover:text-cyan-300 transition-colors px-2 py-1 rounded-pf-sm hover:bg-[var(--bg-hover)]"
               onClick={() => setLearnMoreOpen(true)}
             >
               Learn more
             </button>
             <button
-              className="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-gray-300 transition-colors text-sm"
+              className="w-7 h-7 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors text-pf-md"
               onClick={onClose}
             >
               &times;
@@ -112,7 +112,7 @@ export function PerformanceAnalysisPanel({
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
           {/* Staleness warning */}
           {state.analysisStale && activeResult && (
-            <div className="flex items-center gap-2 px-2 py-1.5 rounded border border-amber-500/30 bg-amber-500/10 text-amber-400 text-[11px]">
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded-pf-sm border border-amber-500/30 bg-amber-500/10 text-amber-400 text-pf-sm">
               <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
               Analysis outdated — layout has changed since last run
             </div>
@@ -120,8 +120,8 @@ export function PerformanceAnalysisPanel({
 
           {/* Empty state */}
           {!activeResult && !state.isProcessing && !hasCandidates && (
-            <div className="text-xs text-gray-500 py-8 text-center">
-              <div className="mb-2 text-gray-400">No analysis yet</div>
+            <div className="text-pf-sm text-[var(--text-secondary)] py-8 text-center">
+              <div className="mb-2 text-[var(--text-secondary)]">No analysis yet</div>
               Assign sounds to pads, then click <strong>Generate</strong> to create
               candidate solutions and analyze difficulty.
             </div>
@@ -129,7 +129,7 @@ export function PerformanceAnalysisPanel({
 
           {/* Processing state */}
           {state.isProcessing && (
-            <div className="text-xs text-blue-400 py-6 text-center animate-pulse">
+            <div className="text-pf-sm text-blue-400 py-6 text-center animate-pulse">
               Generating candidate solutions...
             </div>
           )}
@@ -201,13 +201,13 @@ export function PerformanceAnalysisPanel({
 
           {/* ─── Section 3: Compare Mode ──────────────────────── */}
           {compareMode && selectedCandidate && (
-            <div className="border-b border-gray-800 pb-4 space-y-3">
+            <div className="border-b border-[var(--border-subtle)] pb-4 space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-[11px] text-gray-400 font-medium uppercase tracking-wider">
+                <h4 className="text-pf-sm text-[var(--text-secondary)] font-medium uppercase tracking-wider">
                   Compare Candidates
                 </h4>
                 <button
-                  className="text-[10px] text-gray-500 hover:text-gray-300"
+                  className="text-pf-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                   onClick={() => {
                     setCompareMode(false);
                     dispatch({ type: 'SET_COMPARE_CANDIDATE', payload: null });
