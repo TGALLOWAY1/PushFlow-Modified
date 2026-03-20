@@ -9,7 +9,6 @@ import { useState } from 'react';
 import { useProject } from '../../state/ProjectContext';
 import { CompareGridView } from '../CompareGridView';
 import { CandidateCompare } from '../CandidateCompare';
-import { MiniGridPreview } from './MiniGridPreview';
 import { type CandidateSolution } from '../../../types/candidateSolution';
 
 interface CompareModalProps {
@@ -17,13 +16,47 @@ interface CompareModalProps {
   onClose: () => void;
 }
 
+/**
+ * Build a synthetic CandidateSolution from the active layout for comparison.
+ * Uses the latest analysis result if available, otherwise builds a minimal stub.
+ */
+function buildActiveCandidate(state: ReturnType<typeof useProject>['state']): CandidateSolution {
+  const plan = state.analysisResult?.executionPlan ?? {
+    score: 0, unplayableCount: 0, hardCount: 0,
+    fingerAssignments: [], fingerUsageStats: {}, fatigueMap: {},
+    averageDrift: 0, averageMetrics: {
+      fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0,
+      handBalance: 0, constraintPenalty: 0, total: 0,
+    },
+  };
+  const diffAnalysis = state.analysisResult?.difficultyAnalysis ?? {
+    overallScore: 0, passages: [], bindingConstraints: [],
+  };
+  const tradeoff = state.analysisResult?.tradeoffProfile ?? {
+    playability: 0, compactness: 0, handBalance: 0, transitionEfficiency: 0,
+  };
+  return {
+    id: '__active__',
+    layout: state.activeLayout,
+    executionPlan: plan,
+    difficultyAnalysis: diffAnalysis,
+    tradeoffProfile: tradeoff,
+    metadata: { strategy: 'Active Layout', seed: 0 },
+  };
+}
+
 export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
   const { state, dispatch } = useProject();
 
-  // Find candidates from IDs
+  // Find candidates from IDs — handle special '__active__' ID
   const allCandidates = state.candidates;
+  const activeSynthetic = buildActiveCandidate(state);
+
   const comparableCandidates = candidateIds
-    .map(id => allCandidates.find(c => c.id === id))
+    .map(id => {
+      if (id === '__active__') return activeSynthetic;
+      return allCandidates.find(c => c.id === id);
+    })
     .filter((c): c is CandidateSolution => c !== undefined);
 
   // Allow picking which two to compare if more than 2 selected
@@ -45,14 +78,18 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
   }
 
   const handlePromote = (candidate: CandidateSolution) => {
+    if (candidate.id === '__active__') return; // Can't promote active to active
     if (confirm('Promote this candidate to become the Active Layout?')) {
       dispatch({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
       onClose();
     }
   };
 
-  const globalIdxA = allCandidates.indexOf(candidateA) + 1;
-  const globalIdxB = allCandidates.indexOf(candidateB) + 1;
+  const getLabelForCandidate = (c: CandidateSolution) => {
+    if (c.id === '__active__') return 'Active Layout';
+    const idx = allCandidates.indexOf(c) + 1;
+    return `#${idx} ${c.metadata.strategy ?? 'Candidate'}`;
+  };
 
   return (
     <>
@@ -72,7 +109,7 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
                 >
                   {comparableCandidates.map((c, i) => (
                     <option key={c.id} value={i} disabled={i === rightIdx}>
-                      #{allCandidates.indexOf(c) + 1} {c.metadata.strategy ?? 'Candidate'}
+                      {getLabelForCandidate(c)}
                     </option>
                   ))}
                 </select>
@@ -84,7 +121,7 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
                 >
                   {comparableCandidates.map((c, i) => (
                     <option key={c.id} value={i} disabled={i === leftIdx}>
-                      #{allCandidates.indexOf(c) + 1} {c.metadata.strategy ?? 'Candidate'}
+                      {getLabelForCandidate(c)}
                     </option>
                   ))}
                 </select>
@@ -101,8 +138,8 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
             candidateA={candidateA}
             candidateB={candidateB}
             voices={state.soundStreams}
-            candidateAIndex={globalIdxA}
-            candidateBIndex={globalIdxB}
+            candidateALabel={getLabelForCandidate(candidateA)}
+            candidateBLabel={getLabelForCandidate(candidateB)}
           />
 
           {/* Tradeoff comparison */}
@@ -112,13 +149,15 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
           <div className="grid grid-cols-2 gap-4">
             <ComparisonCard
               candidate={candidateA}
-              label={`#${globalIdxA} ${candidateA.metadata.strategy ?? 'Candidate'}`}
+              label={getLabelForCandidate(candidateA)}
               onPromote={() => handlePromote(candidateA)}
+              isActive={candidateA.id === '__active__'}
             />
             <ComparisonCard
               candidate={candidateB}
-              label={`#${globalIdxB} ${candidateB.metadata.strategy ?? 'Candidate'}`}
+              label={getLabelForCandidate(candidateB)}
               onPromote={() => handlePromote(candidateB)}
+              isActive={candidateB.id === '__active__'}
             />
           </div>
         </div>
@@ -131,10 +170,12 @@ function ComparisonCard({
   candidate,
   label,
   onPromote,
+  isActive = false,
 }: {
   candidate: CandidateSolution;
   label: string;
   onPromote: () => void;
+  isActive?: boolean;
 }) {
   const plan = candidate.executionPlan;
   const diff = candidate.difficultyAnalysis;
@@ -198,12 +239,14 @@ function ComparisonCard({
         ))}
       </div>
 
-      <button
-        className="w-full px-3 py-1.5 text-[11px] rounded bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/30 transition-colors font-medium"
-        onClick={onPromote}
-      >
-        Promote to Active
-      </button>
+      {!isActive && (
+        <button
+          className="w-full px-3 py-1.5 text-[11px] rounded bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/30 transition-colors font-medium"
+          onClick={onPromote}
+        >
+          Promote to Active
+        </button>
+      )}
     </div>
   );
 }

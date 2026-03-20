@@ -23,6 +23,8 @@ export function LayoutOptionsPanel({
 }: LayoutOptionsPanelProps) {
   const { state, dispatch } = useProject();
   const [viewAllOpen, setViewAllOpen] = useState(false);
+  const [editingLayoutName, setEditingLayoutName] = useState(false);
+  const [layoutNameDraft, setLayoutNameDraft] = useState('');
 
   const hasCandidates = state.candidates.length > 0;
   const compareCount = selectedForCompare.size;
@@ -87,8 +89,57 @@ export function LayoutOptionsPanel({
           >
             <div className="p-2.5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">Active</span>
-                <span className="text-[10px] text-gray-400 truncate ml-2">{state.activeLayout.name}</span>
+                <div className="flex items-center gap-2">
+                  {/* Compare checkbox */}
+                  <div
+                    className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
+                      selectedForCompare.has('__active__')
+                        ? 'bg-purple-600 border-purple-500'
+                        : 'border-gray-600 hover:border-gray-400'
+                    }`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleCompare('__active__');
+                    }}
+                  >
+                    {selectedForCompare.has('__active__') && (
+                      <span className="text-[8px] text-white font-bold">{'\u2713'}</span>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">Active</span>
+                </div>
+                {editingLayoutName ? (
+                  <input
+                    autoFocus
+                    className="text-[10px] text-gray-300 bg-gray-800 border border-gray-600 rounded px-1 py-0.5 outline-none focus:border-cyan-500 ml-2 w-28"
+                    value={layoutNameDraft}
+                    onClick={e => e.stopPropagation()}
+                    onChange={e => setLayoutNameDraft(e.target.value)}
+                    onBlur={() => {
+                      const trimmed = layoutNameDraft.trim();
+                      if (trimmed && trimmed !== state.activeLayout.name) {
+                        dispatch({ type: 'RENAME_LAYOUT', payload: { target: 'active', name: trimmed } });
+                      }
+                      setEditingLayoutName(false);
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                      if (e.key === 'Escape') setEditingLayoutName(false);
+                    }}
+                  />
+                ) : (
+                  <span
+                    className="text-[10px] text-gray-400 truncate ml-2 hover:text-gray-200 cursor-pointer transition-colors"
+                    onDoubleClick={e => {
+                      e.stopPropagation();
+                      setLayoutNameDraft(state.activeLayout.name);
+                      setEditingLayoutName(true);
+                    }}
+                    title="Double-click to rename"
+                  >
+                    {state.activeLayout.name}
+                  </span>
+                )}
               </div>
               <div className="flex justify-center mb-2">
                 <MiniGridPreview

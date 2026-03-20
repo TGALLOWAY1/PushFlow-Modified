@@ -364,6 +364,127 @@ Prefer:
 
 If simple cases fail, stop trusting complex cases.
 
+## Core Functionality Preservation Contract
+
+The following capabilities are **core product functionality**. They must not be removed, hidden, broken, or allowed to silently regress during refactors, solver changes, or UI reorganizations — unless the user explicitly requests their removal.
+
+### Optimization Core
+
+- The system supports **multiple optimization methods** (beam, annealing, greedy) via a pluggable registry. Adding a new method must not remove or disable existing ones.
+- The **greedy optimization path** is a first-class method, not a fallback. It must remain available and produce interpretable results.
+- Greedy optimization supports **exploration behavior**: configurable restart count, seeded randomness for placement diversity, and best-across-attempts tracking. Seed 0 is the deterministic baseline; seeds > 0 add stochastic noise.
+- **Deterministic mode** (fixed seed, stable ordering, predictable trace) must always be possible for debugging and regression testing.
+- The **annealing solver** supports restart-based exploration with temperature schedules. This must not be simplified into a single pass.
+
+### Trace / Explainability Core
+
+- **Optimization trace is a required product feature**, not an optional debug leftover.
+- The greedy optimizer produces a **move history** (`OptimizerMove[]`) capturing every step: phase, description, cost before/after, affected sounds, reason, and rejected alternatives count.
+- The annealing solver produces an **iteration trace** (`AnnealingIterationSnapshot[]`) with per-iteration cost, temperature, acceptance, and factor breakdowns.
+- Trace entries must preserve enough data to reconstruct what changed and why at each step.
+- Refactors to solver internals **must not break trace production or trace rendering**.
+- The `MoveTracePanel` component renders the greedy trace with phase filtering, step-through navigation, cost tracking, and stop-reason display. This is a product surface, not a dev tool.
+
+### Evaluation / Analysis Core
+
+- Difficulty evaluation must remain **temporal** (computed from time-ordered performance moments), not purely static layout scoring.
+- Layout reasoning must remain **coupled to execution reasoning** — the engine evaluates how a layout performs over time, not just spatial arrangement.
+- The 5 canonical `DiagnosticFactors` (`transition`, `gripNaturalness`, `alternation`, `handBalance`, `constraintPenalty`) must remain factorized. Factor-level analysis must not be collapsed into a single opaque score.
+- Difficult passages and local cost spikes must remain inspectable at the event level.
+
+### Multi-Candidate / Iteration Core
+
+- The system generates **multiple candidate solutions** with diversity enforcement. This multi-candidate workflow must not be reduced to a single opaque optimization run.
+- Each candidate carries metadata (strategy, seed, optimization summary) and baseline-relative diversity metrics.
+- Candidate comparison is a first-class workflow step, not a debug feature.
+
+### UI / Workflow Core
+
+- If optimization trace exists in the product, it **must remain visible and wired to actual optimizer output**. Changing solver internals must not desynchronize the trace panel.
+- The grid, candidate state, trace state, and timeline must remain consistent after optimization runs, candidate selection, and layout promotion.
+- Debugging and analysis surfaces (MoveTracePanel, cost breakdowns, event analysis) are **product features**, not disposable developer-only extras.
+
+## Do Not Regress
+
+These rules protect against recurring regressions. Violating them requires explicit user approval.
+
+### Optimization Trace Rules
+- Do not remove optimization trace UI or state wiring when changing solver internals.
+- Do not replace structured trace entries (per-move or per-iteration) with only final aggregate scores.
+- Do not drop `stopReason` from optimizer output or state — the user needs to know why optimization stopped.
+- Do not remove the `MoveTracePanel` or disconnect it from `state.moveHistory`.
+
+### Greedy Optimizer Rules
+- Do not simplify greedy optimization into a single pass if restart/exploration behavior exists.
+- Do not remove seeded randomness or restart configuration without explicit approval.
+- Do not remove the noise-based placement diversity (seed > 0 adds stochastic noise to greedy init).
+
+### Multi-Candidate Rules
+- Do not break the ability to compare different optimization attempts or candidates.
+- Do not remove candidate diversity filtering or baseline-relative diff summaries.
+- Do not reduce the candidate generation flow to produce only one result.
+
+### State Wiring Rules
+- Do not change core optimizer outputs without updating all dependent UI/state surfaces.
+- Do not remove existing diagnostics just because a new solver path is added.
+- Do not treat temporary internal refactors as justification for dropping observability.
+- After optimizer runs complete, `isProcessing` must be reset to `false` on both success and error paths.
+
+### Solver Change Checklist
+
+Any future change to solver or optimizer internals must verify:
+1. What optimizer outputs changed (layout, trace, diagnostics, telemetry)
+2. Whether trace shape changed (fields added/removed/renamed)
+3. Whether UI consumers were updated (MoveTracePanel, CandidatePreviewCard, PerformanceAnalysisPanel)
+4. Whether stochastic behavior / restart behavior was preserved
+5. Whether deterministic debug mode (seed=0) still works
+6. Whether `isProcessing` is correctly reset on all code paths
+
+## Canonical Optimizer Output Contract
+
+Every optimization method must return an `OptimizerOutput` containing:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `layout` | Yes | Final optimized layout (pad-to-voice mapping) |
+| `padFingerAssignment` | Yes | Final finger assignment for all occupied pads |
+| `executionPlan` | Yes | `ExecutionPlanResult` for backward compatibility with UI |
+| `diagnostics` | Yes | Full `PerformanceCostBreakdown` from canonical evaluator |
+| `costTogglesUsed` | Yes | Echo of which cost families were active |
+| `moveHistory` | For interpretable methods | `OptimizerMove[]` with per-step trace |
+| `stopReason` | Yes | Why the optimizer stopped (enum) |
+| `telemetry` | Yes | `OptimizerTelemetry` with timing, iteration count, cost improvement |
+
+### Trace Shape (Greedy)
+
+Each `OptimizerMove` must include:
+- `iteration`: step index
+- `type`: operation performed (`pad_move`, `pad_swap`, `finger_reassignment`)
+- `description`: plain-English explanation of what changed
+- `costBefore` / `costAfter` / `costDelta`: score context
+- `affectedVoice` / `affectedPad`: what was modified
+- `reason`: why this move was chosen
+- `phase`: which optimization phase (`init-layout`, `init-fingers`, `hill-climb`)
+- `rejectedAlternatives`: how many other moves were considered (optional)
+- `attemptIndex`: which restart attempt produced this move (when restarts are used)
+
+### Trace Shape (Annealing)
+
+Each `AnnealingIterationSnapshot` must include:
+- `iteration`, `temperature`, `currentCost`, `bestCost`
+- `accepted`, `deltaCost`, `acceptanceProbability`
+- Per-factor cost sums: `transitionSum`, `fingerPreferenceSum`, `handShapeDeviationSum`, `handBalanceSum`, `constraintPenaltySum`
+- `restartIndex`: which restart (0 = initial)
+
+### Restart / Attempt Metadata
+
+When an optimizer supports restarts, the output must include:
+- Which attempt produced the final result (via `telemetry` or trace metadata)
+- The seed used for reproducibility
+- Enough information to distinguish attempts in the trace
+
+This contract is implementation-agnostic. Types may change, but the semantic obligations remain.
+
 ## Final Reminder
 
 Do not let legacy docs, current file structure, or existing engine internals define the product by accident.

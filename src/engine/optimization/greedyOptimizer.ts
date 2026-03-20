@@ -65,9 +65,7 @@ class GreedyOptimizer implements OptimizerMethod {
 
   async optimize(input: OptimizerInput): Promise<OptimizerOutput> {
     const startTime = Date.now();
-    const maxIterations = input.config.maxIterations ?? DEFAULT_MAX_ITERATIONS;
-    const moveHistory: OptimizerMove[] = [];
-    let movesEvaluated = 0;
+    const restartCount = input.config.restartCount ?? 0;
 
     // Build moments from performance
     const moments = buildPerformanceMoments(input.performance.events);
@@ -75,17 +73,77 @@ class GreedyOptimizer implements OptimizerMethod {
       return buildEmptyOutput(input, startTime);
     }
 
+    // Run the initial attempt plus any restarts, keeping the best result
+    let bestResult = await this.runSingleAttempt(input, moments, 0);
+
+    for (let attempt = 1; attempt <= restartCount; attempt++) {
+      await yieldControl();
+      // Each restart uses a different seed derived from the base seed
+      const restartInput: OptimizerInput = {
+        ...input,
+        config: {
+          ...input.config,
+          seed: (input.config.seed ?? 0) + attempt * 7919, // Prime offset for diversity
+        },
+      };
+      const result = await this.runSingleAttempt(restartInput, moments, attempt);
+
+      if (result.diagnostics.total < bestResult.diagnostics.total) {
+        // Keep the better result but merge trace from all attempts
+        const mergedHistory = [
+          ...(bestResult.moveHistory ?? []),
+          ...(result.moveHistory ?? []),
+        ];
+        bestResult = { ...result, moveHistory: mergedHistory };
+      } else {
+        // Keep existing best but append this attempt's trace
+        bestResult = {
+          ...bestResult,
+          moveHistory: [
+            ...(bestResult.moveHistory ?? []),
+            ...(result.moveHistory ?? []),
+          ],
+        };
+      }
+    }
+
+    // Update telemetry with total wall clock
+    bestResult = {
+      ...bestResult,
+      telemetry: {
+        ...bestResult.telemetry,
+        wallClockMs: Date.now() - startTime,
+      },
+    };
+
+    return bestResult;
+  }
+
+  /**
+   * Run a single greedy optimization attempt.
+   * Each attempt has its own init, finger assignment, and hill-climbing phases.
+   */
+  private async runSingleAttempt(
+    input: OptimizerInput,
+    moments: PerformanceMoment[],
+    attemptIndex: number,
+  ): Promise<OptimizerOutput> {
+    const startTime = Date.now();
+    const maxIterations = input.config.maxIterations ?? DEFAULT_MAX_ITERATIONS;
+    const moveHistory: OptimizerMove[] = [];
+    let movesEvaluated = 0;
+
     // ── Phase A: Greedy Initial Layout ─────────────────────────
     let layout: Layout;
     const hasExistingLayout = Object.keys(input.layout.padToVoice).length > 0;
 
-    if (hasExistingLayout) {
-      // Use existing layout as starting point
+    if (hasExistingLayout && attemptIndex === 0) {
+      // Use existing layout as starting point (only for first attempt)
       layout = deepCopyLayout(input.layout);
     } else {
       // Build layout from scratch using greedy placement
       layout = await this.greedyInitLayout(
-        input, moments, moveHistory,
+        input, moments, moveHistory, attemptIndex,
       );
     }
 
@@ -104,12 +162,13 @@ class GreedyOptimizer implements OptimizerMethod {
     moveHistory.push({
       iteration: -1,
       type: 'pad_move',
-      description: `Initial layout: ${Object.keys(layout.padToVoice).length} sounds placed, cost = ${initialCost.toFixed(2)}`,
+      description: `[Attempt ${attemptIndex + 1}] Initial layout: ${Object.keys(layout.padToVoice).length} sounds placed, cost = ${initialCost.toFixed(2)}`,
       costBefore: initialCost,
       costAfter: initialCost,
       costDelta: 0,
       reason: 'Initialization complete',
       phase: 'init-fingers',
+      attemptIndex,
     });
 
     // ── Phase C: Hill-Climbing Local Improvement ───────────────
@@ -168,6 +227,7 @@ class GreedyOptimizer implements OptimizerMethod {
         reason: `Total cost decreased by ${Math.abs(costDelta).toFixed(3)}`,
         rejectedAlternatives: movesChecked - 1,
         phase: 'hill-climb',
+        attemptIndex,
       };
       moveHistory.push(moveRecord);
 
@@ -219,6 +279,7 @@ class GreedyOptimizer implements OptimizerMethod {
     input: OptimizerInput,
     _moments: PerformanceMoment[],
     moveHistory: OptimizerMove[],
+    attemptIndex: number = 0,
   ): Promise<Layout> {
     const layout: Layout = {
       ...input.layout,
@@ -307,6 +368,7 @@ class GreedyOptimizer implements OptimizerMethod {
         reason: `Best placement score: ${bestScore.toFixed(2)} (${emptyPads.length} candidates)`,
         rejectedAlternatives: emptyPads.length - 1,
         phase: 'init-layout',
+        attemptIndex,
       });
     }
 

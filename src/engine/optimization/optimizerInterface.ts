@@ -50,6 +50,8 @@ export interface OptimizerConfig {
   maxIterations?: number;
   /** Random seed for reproducibility. */
   seed?: number;
+  /** Number of restart attempts for methods that support exploration (0 = single run). */
+  restartCount?: number;
   /** Natural hand pose for pose0-based layout seeding. */
   pose0?: NaturalHandPose | null;
   /** Performance sections for difficulty analysis. */
@@ -118,6 +120,8 @@ export interface OptimizerMove {
   rejectedAlternatives?: number;
   /** Phase of the optimization (init-layout, init-fingers, hill-climb). */
   phase?: 'init-layout' | 'init-fingers' | 'hill-climb';
+  /** Which restart attempt produced this move (0 = initial, when restarts are used). */
+  attemptIndex?: number;
   /** Layout snapshot after this move (optional, for step-through replay). */
   layoutSnapshot?: Layout;
   /** Assignment snapshot after this move (optional). */
