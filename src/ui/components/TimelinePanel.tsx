@@ -114,7 +114,7 @@ export function TimelinePanel() {
             {state.isPlaying ? 'STOP' : 'PLAY'}
           </button>
           <button
-            className="px-2 py-1 rounded bg-gray-700/50 text-[10px] text-gray-400"
+            className="px-2 py-1 rounded-pf-sm bg-[var(--bg-hover)]/50 text-pf-xs text-[var(--text-secondary)]"
             onClick={() => {
               dispatch({ type: 'SET_IS_PLAYING', payload: false });
               dispatch({ type: 'SET_CURRENT_TIME', payload: 0 });

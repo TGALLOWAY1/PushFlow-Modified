@@ -225,14 +225,14 @@ function ComparisonCard({
           ['Transitions', candidate.tradeoffProfile.transitionEfficiency],
         ] as const).map(([label, value]) => (
           <div key={label} className="flex items-center gap-2">
-            <span className="text-[9px] text-gray-500 w-16">{label}</span>
-            <div className="flex-1 h-1.5 bg-gray-700/50 rounded-full overflow-hidden">
+            <span className="text-pf-micro text-[var(--text-tertiary)] w-16">{label}</span>
+            <div className="flex-1 h-1.5 bg-[var(--bg-hover)] rounded-full overflow-hidden">
               <div
                 className="h-full bg-blue-500/60 rounded-full"
                 style={{ width: `${(value * 100).toFixed(0)}%` }}
               />
             </div>
-            <span className="text-[9px] text-gray-400 font-mono w-7 text-right">
+            <span className="text-pf-micro text-[var(--text-secondary)] font-mono w-7 text-right">
               {(value * 100).toFixed(0)}
             </span>
           </div>
@@ -241,7 +241,7 @@ function ComparisonCard({
 
       {!isActive && (
         <button
-          className="w-full px-3 py-1.5 text-[11px] rounded bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/30 transition-colors font-medium"
+          className="w-full px-3 py-1.5 text-pf-sm rounded-pf-md bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/30 transition-colors font-medium"
           onClick={onPromote}
         >
           Promote to Active
