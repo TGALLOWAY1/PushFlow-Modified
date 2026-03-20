@@ -12,7 +12,7 @@
 import { type LoopLane } from '../../types/loopEditor';
 import { type RudimentType, type LanePadAssignment } from '../../types/rudiment';
 import { type PadCoord } from '../../types/padGrid';
-import { type SurfaceCategory, SURFACE_DEFAULTS } from '../../types/patternRecipe';
+import { type SurfaceCategory, SURFACE_DEFAULTS } from '../../types/surface';
 import { getPreferredHand } from '../surface/handZone';
 
 // ============================================================================

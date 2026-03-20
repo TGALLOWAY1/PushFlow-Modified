@@ -16,13 +16,10 @@ import {
   totalSteps,
 } from '../../types/loopEditor';
 import { type RudimentType } from '../../types/rudiment';
-import { type PatternRecipe, type PatternResult, type RandomRecipeConstraints } from '../../types/patternRecipe';
 import { generateRudiment } from '../../engine/rudiment/rudimentGenerator';
 import { assignLanesToPads } from '../../engine/rudiment/padAssignment';
 import { assignFingers } from '../../engine/rudiment/fingerAssigner';
 import { scoreComplexity } from '../../engine/rudiment/complexityScorer';
-import { compilePattern } from '../../engine/pattern/patternEngine';
-import { generateRandomRecipe } from '../../engine/pattern/randomRecipeGenerator';
 import { generateId } from '../../utils/idGenerator';
 
 // ============================================================================
@@ -55,11 +52,7 @@ export type LoopEditorAction =
   | { type: 'GENERATE_TEST_PATTERN' }
   // Rudiment
   | { type: 'GENERATE_RUDIMENT'; payload: { rudimentType: RudimentType } }
-  | { type: 'CLEAR_RUDIMENT_RESULT' }
-  // Pattern
-  | { type: 'GENERATE_PATTERN'; payload: { recipe: PatternRecipe; seed?: number } }
-  | { type: 'GENERATE_RANDOM_PATTERN'; payload: { seed: number; constraints?: RandomRecipeConstraints } }
-  | { type: 'CLEAR_PATTERN_RESULT' };
+  | { type: 'CLEAR_RUDIMENT_RESULT' };
 
 // ============================================================================
 // Reducer
@@ -70,10 +63,10 @@ export function loopEditorReducer(state: LoopState, action: LoopEditorAction): L
     // ---- Config ----
 
     case 'SET_BAR_COUNT':
-      return { ...state, config: { ...state.config, barCount: action.payload }, rudimentResult: null, patternResult: null };
+      return { ...state, config: { ...state.config, barCount: action.payload }, rudimentResult: null };
 
     case 'SET_SUBDIVISION':
-      return { ...state, config: { ...state.config, subdivision: action.payload }, events: new Map(), rudimentResult: null, patternResult: null };
+      return { ...state, config: { ...state.config, subdivision: action.payload }, events: new Map(), rudimentResult: null };
 
     case 'SET_BPM':
       return { ...state, config: { ...state.config, bpm: Math.max(20, Math.min(300, action.payload)) } };
@@ -103,7 +96,6 @@ export function loopEditorReducer(state: LoopState, action: LoopEditorAction): L
         lanes: state.lanes.filter(l => l.id !== action.payload),
         events: newEvents,
         rudimentResult: null,
-        patternResult: null,
       };
     }
 
@@ -164,7 +156,7 @@ export function loopEditorReducer(state: LoopState, action: LoopEditorAction): L
           velocity: 100,
         });
       }
-      return { ...state, events: newEvents, rudimentResult: null, patternResult: null };
+      return { ...state, events: newEvents, rudimentResult: null };
     }
 
     case 'SET_CELL_VELOCITY': {
@@ -177,7 +169,7 @@ export function loopEditorReducer(state: LoopState, action: LoopEditorAction): L
     }
 
     case 'CLEAR_ALL_EVENTS':
-      return { ...state, events: new Map(), rudimentResult: null, patternResult: null };
+      return { ...state, events: new Map(), rudimentResult: null };
 
     // ---- Playback ----
 
@@ -193,7 +185,7 @@ export function loopEditorReducer(state: LoopState, action: LoopEditorAction): L
       return action.payload;
 
     case 'GENERATE_TEST_PATTERN':
-      return { ...generateTestPattern(state), rudimentResult: null, patternResult: null };
+      return { ...generateTestPattern(state), rudimentResult: null };
 
     // ---- Rudiment ----
 
@@ -213,22 +205,6 @@ export function loopEditorReducer(state: LoopState, action: LoopEditorAction): L
 
     case 'CLEAR_RUDIMENT_RESULT':
       return { ...state, rudimentResult: null };
-
-    // ---- Pattern Generation ----
-
-    case 'GENERATE_PATTERN': {
-      const { recipe, seed } = action.payload;
-      return applyPatternRecipe(state, recipe, seed);
-    }
-
-    case 'GENERATE_RANDOM_PATTERN': {
-      const { seed, constraints } = action.payload;
-      const recipe = generateRandomRecipe(seed, constraints);
-      return applyPatternRecipe(state, recipe, seed);
-    }
-
-    case 'CLEAR_PATTERN_RESULT':
-      return { ...state, patternResult: null };
 
     default:
       return state;
@@ -252,42 +228,6 @@ export function createInitialLoopState(): LoopState {
     isPlaying: false,
     playheadStep: 0,
     rudimentResult: null,
-    patternResult: null,
-  };
-}
-
-// ============================================================================
-// Pattern Recipe Application
-// ============================================================================
-
-/**
- * Compile a pattern recipe and run the full pipeline:
- * compile → assign pads → assign fingers → score complexity.
- */
-function applyPatternRecipe(
-  state: LoopState,
-  recipe: PatternRecipe,
-  seed?: number,
-): LoopState {
-  const { lanes, events } = compilePattern(recipe, state.config, seed);
-  const padAssignments = assignLanesToPads(lanes, 'auto');
-  const fingerAssignments = assignFingers(events, padAssignments, state.config);
-  const complexity = scoreComplexity(events, lanes, state.config, fingerAssignments);
-
-  const patternResult: PatternResult = {
-    source: { type: 'recipe', recipeId: recipe.id, recipeName: recipe.name },
-    recipe,
-    padAssignments,
-    fingerAssignments,
-    complexity,
-  };
-
-  return {
-    ...state,
-    lanes,
-    events,
-    rudimentResult: null,
-    patternResult,
   };
 }
 

@@ -8,7 +8,6 @@
  */
 
 import { type RudimentResult } from './rudiment';
-import { type PatternResult } from './patternRecipe';
 
 // ============================================================================
 // Loop Configuration
@@ -86,8 +85,6 @@ export interface LoopState {
   playheadStep: number;
   /** Rudiment analysis results (present after Generate Rudiment). */
   rudimentResult?: RudimentResult | null;
-  /** Pattern generation result (present after Generate Pattern). */
-  patternResult?: PatternResult | null;
 }
 
 // ============================================================================
