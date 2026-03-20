@@ -273,16 +273,13 @@ export function PerformanceAnalysisPanel({
                       dispatch({ type: 'SELECT_CANDIDATE', payload: candidate.id });
                       dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidate });
                     }}
+                    isCheckedForCompare={false}
                     onPromote={() => {
                       if (confirm('Promote this candidate to become the Active Layout? The current active layout will be auto-saved as a variant.')) {
                         dispatch({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
                       }
                     }}
-                    onCompare={() => {
-                      dispatch({ type: 'SELECT_CANDIDATE', payload: candidate.id });
-                      dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidate });
-                      setCompareMode(true);
-                    }}
+                    onToggleCompare={() => {}}
                   />
                 ))}
               </div>
@@ -650,9 +647,10 @@ function ViewAllModal({ candidates, savedVariants, soundStreams, selectedId, onS
                     soundStreams={soundStreams}
                     rank={idx + 1}
                     isSelected={c.id === selectedId}
+                    isCheckedForCompare={false}
                     onSelect={() => onSelect(c.id)}
                     onPromote={() => {}}
-                    onCompare={() => {}}
+                    onToggleCompare={() => {}}
                   />
                 ))}
               </div>

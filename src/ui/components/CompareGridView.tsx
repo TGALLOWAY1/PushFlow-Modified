@@ -32,10 +32,10 @@ interface CompareGridViewProps {
   candidateB: CandidateSolution;
   /** Sound streams (converted to Voice[] for PadGrid). */
   voices: SoundStream[];
-  /** Display index for candidate A (1-based). */
-  candidateAIndex: number;
-  /** Display index for candidate B (1-based). */
-  candidateBIndex: number;
+  /** Display label for candidate A. */
+  candidateALabel: string;
+  /** Display label for candidate B. */
+  candidateBLabel: string;
 }
 
 /**
@@ -75,8 +75,8 @@ export function CompareGridView({
   candidateA,
   candidateB,
   voices: soundStreams,
-  candidateAIndex,
-  candidateBIndex,
+  candidateALabel,
+  candidateBLabel,
 }: CompareGridViewProps) {
   // Convert SoundStreams to Voices for PadGrid
   const voices = useMemo(() => streamsToVoices(soundStreams), [soundStreams]);
@@ -135,7 +135,7 @@ export function CompareGridView({
           assignments={candidateA.executionPlan.fingerAssignments}
           compact
           diffPads={diffPads}
-          label={`#${candidateAIndex}`}
+          label={candidateALabel}
           labelColor="text-blue-400"
         />
         <PadGrid
@@ -144,7 +144,7 @@ export function CompareGridView({
           assignments={candidateB.executionPlan.fingerAssignments}
           compact
           diffPads={diffPads}
-          label={`#${candidateBIndex}`}
+          label={candidateBLabel}
           labelColor="text-purple-400"
         />
       </div>

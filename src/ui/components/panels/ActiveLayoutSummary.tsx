@@ -40,6 +40,8 @@ export function ActiveLayoutSummary() {
   const { state, dispatch } = useProject();
   const [learnMoreOpen, setLearnMoreOpen] = useState(false);
   const [chartOpen, setChartOpen] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
 
   const displayedLayout = getDisplayedLayout(state);
   const layoutRole = getDisplayedLayoutRole(state);
@@ -138,9 +140,36 @@ export function ActiveLayoutSummary() {
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
           {/* Layout identity */}
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-gray-200 font-medium truncate">
-              {displayedLayout?.name ?? 'No Layout'}
-            </span>
+            {editingName ? (
+              <input
+                autoFocus
+                className="text-[11px] text-gray-200 font-medium bg-gray-800 border border-gray-600 rounded px-1 py-0.5 outline-none focus:border-cyan-500 w-40"
+                value={nameDraft}
+                onChange={e => setNameDraft(e.target.value)}
+                onBlur={() => {
+                  const trimmed = nameDraft.trim();
+                  if (trimmed && trimmed !== displayedLayout?.name) {
+                    dispatch({ type: 'RENAME_LAYOUT', payload: { target: layoutRole === 'working' ? 'working' : 'active', name: trimmed } });
+                  }
+                  setEditingName(false);
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                  if (e.key === 'Escape') setEditingName(false);
+                }}
+              />
+            ) : (
+              <span
+                className="text-[11px] text-gray-200 font-medium truncate cursor-pointer hover:text-white transition-colors"
+                onDoubleClick={() => {
+                  setNameDraft(displayedLayout?.name ?? '');
+                  setEditingName(true);
+                }}
+                title="Double-click to rename"
+              >
+                {displayedLayout?.name ?? 'No Layout'}
+              </span>
+            )}
             <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
               layoutRole === 'working'
                 ? 'bg-amber-500/15 text-amber-400'

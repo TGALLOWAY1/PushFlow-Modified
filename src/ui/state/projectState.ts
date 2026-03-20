@@ -245,6 +245,7 @@ export type ProjectAction =
   | { type: 'PROMOTE_WORKING_LAYOUT' }
   | { type: 'PROMOTE_CANDIDATE'; payload: { candidateId: string } }
   | { type: 'SAVE_AS_VARIANT'; payload: { name: string; source: 'working' | 'candidate'; candidateId?: string } }
+  | { type: 'RENAME_LAYOUT'; payload: { target: 'active' | 'working'; name: string } }
 
   // Analysis
   | { type: 'SET_ANALYSIS_RESULT'; payload: CandidateSolution | null }
@@ -758,6 +759,25 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         savedVariants: [...state.savedVariants, variant],
         updatedAt: new Date().toISOString(),
       };
+    }
+
+    case 'RENAME_LAYOUT': {
+      const { target, name: newName } = action.payload;
+      if (target === 'active') {
+        return {
+          ...state,
+          activeLayout: { ...state.activeLayout, name: newName },
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      if (target === 'working' && state.workingLayout) {
+        return {
+          ...state,
+          workingLayout: { ...state.workingLayout, name: newName },
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      return state;
     }
 
     // -- Analysis --
