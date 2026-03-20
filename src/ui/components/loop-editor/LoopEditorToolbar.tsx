@@ -2,13 +2,11 @@
  * LoopEditorToolbar.
  *
  * Top toolbar for the Loop Editor with config controls,
- * transport, lane management, pattern generation, and project commit.
+ * transport, lane management, and project commit.
  */
 
 import { type LoopConfig, type LoopSubdivision } from '../../../types/loopEditor';
-import { type PatternRecipe } from '../../../types/patternRecipe';
 import { type LoopEditorAction } from '../../state/loopEditorReducer';
-import { PatternSelector } from './PatternSelector';
 
 interface LoopEditorToolbarProps {
   config: LoopConfig;
@@ -18,10 +16,6 @@ interface LoopEditorToolbarProps {
   dispatch: React.Dispatch<LoopEditorAction>;
   onAddLane: () => void;
   onCommitToProject: () => void;
-  onGeneratePattern: (recipe: PatternRecipe) => void;
-  onRandomizePattern: (seed: number) => void;
-  onOpenRecipeEditor: (recipe?: PatternRecipe) => void;
-  hasPatternResult: boolean;
 }
 
 const SUBDIVISIONS: LoopSubdivision[] = ['1/8', '1/4', '1/2', '1/1'];
@@ -34,10 +28,6 @@ export function LoopEditorToolbar({
   dispatch,
   onAddLane,
   onCommitToProject,
-  onGeneratePattern,
-  onRandomizePattern,
-  onOpenRecipeEditor,
-  hasPatternResult,
 }: LoopEditorToolbarProps) {
   return (
     <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-800/30 border border-gray-700 flex-wrap">
@@ -130,14 +120,6 @@ export function LoopEditorToolbar({
       >
         + Add Lane
       </button>
-
-      {/* Pattern Selector (replaces rudiment dropdown) */}
-      <PatternSelector
-        onSelectPreset={onGeneratePattern}
-        onRandomize={onRandomizePattern}
-        onCustomize={onOpenRecipeEditor}
-        hasPatternResult={hasPatternResult}
-      />
 
       {/* Commit to Project */}
       <button

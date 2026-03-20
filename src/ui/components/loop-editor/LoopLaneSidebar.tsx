@@ -15,12 +15,16 @@ interface LoopLaneSidebarProps {
   fingerAssignments?: Record<string, LaneFingerAssignment>;
   /** Callback when a lane's finger assignment changes. */
   onFingerAssignmentChange?: (laneId: string, assignment: LaneFingerAssignment) => void;
+  /** Callback to add a new lane. */
+  onAddLane?: () => void;
+  /** Per-lane pad positions (e.g. "3,5"), keyed by lane ID. */
+  padPositions?: Record<string, string>;
 }
 
 const HEADER_HEIGHT = 40;
 const SUB_HEADER_HEIGHT = 20;
 
-export function LoopLaneSidebar({ lanes, dispatch, fingerAssignments, onFingerAssignmentChange }: LoopLaneSidebarProps) {
+export function LoopLaneSidebar({ lanes, dispatch, fingerAssignments, onFingerAssignmentChange, onAddLane, padPositions }: LoopLaneSidebarProps) {
   const sortedLanes = [...lanes].sort((a, b) => a.orderIndex - b.orderIndex);
 
   return (
@@ -30,7 +34,16 @@ export function LoopLaneSidebar({ lanes, dispatch, fingerAssignments, onFingerAs
         className="flex items-end px-2 pb-1 text-xs font-medium text-gray-400 border-b border-gray-700"
         style={{ height: HEADER_HEIGHT }}
       >
-        Lane
+        Lanes
+        {onAddLane && (
+          <button
+            className="ml-auto text-gray-500 hover:text-gray-200 text-sm leading-none px-1"
+            onClick={onAddLane}
+            title="Add lane"
+          >
+            +
+          </button>
+        )}
       </div>
 
       {/* Sub-header matching subdivision labels row */}
@@ -40,7 +53,7 @@ export function LoopLaneSidebar({ lanes, dispatch, fingerAssignments, onFingerAs
       >
         <span className="flex-1">Name</span>
         <span className="w-6 text-center">Fgr</span>
-        <span className="w-7 text-center">MIDI</span>
+        <span className="w-7 text-center">Pad</span>
         <span className="w-12 text-center">M S</span>
       </div>
 
@@ -53,6 +66,7 @@ export function LoopLaneSidebar({ lanes, dispatch, fingerAssignments, onFingerAs
             dispatch={dispatch}
             fingerAssignment={fingerAssignments?.[lane.id]}
             onFingerAssignmentChange={onFingerAssignmentChange}
+            padPosition={padPositions?.[lane.id]}
           />
         ))}
 

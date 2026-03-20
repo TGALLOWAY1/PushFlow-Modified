@@ -69,6 +69,22 @@ const LANE_ACTION_TYPES = new Set<string>([
 // Reducer
 // ============================================================================
 
+/**
+ * After any lane-modifying action, rebuild soundStreams so that VoicePalette
+ * and EventsPanel always reflect the current lanes — regardless of which
+ * UI components are mounted.
+ */
+function withSyncedStreams(next: ProjectState): ProjectState {
+  if (next.performanceLanes.length === 0) {
+    return { ...next, soundStreams: [], analysisStale: true };
+  }
+  return {
+    ...next,
+    soundStreams: buildSoundStreamsFromLanes(next.performanceLanes),
+    analysisStale: true,
+  };
+}
+
 export function lanesReducer(state: ProjectState, action: LaneAction): ProjectState {
   const now = new Date().toISOString();
 
@@ -81,13 +97,13 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
         ? [...state.laneGroups, group]
         : state.laneGroups;
 
-      return {
+      return withSyncedStreams({
         ...state,
         updatedAt: now,
         performanceLanes: [...state.performanceLanes, ...lanes],
         laneGroups: newGroups,
         sourceFiles: [...state.sourceFiles, sourceFile],
-      };
+      });
     }
 
     case 'UPSERT_LANE_SOURCE': {
@@ -104,18 +120,18 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
         ? [...state.laneGroups.filter(g => g.groupId !== group.groupId), group]
         : state.laneGroups;
 
-      return {
+      return withSyncedStreams({
         ...state,
         updatedAt: now,
         performanceLanes: nextLanes,
         laneGroups: nextGroups,
         sourceFiles: nextSourceFiles,
-      };
+      });
     }
 
     case 'REMOVE_LANE_SOURCE': {
       const { sourceFileId, groupId } = action.payload;
-      return {
+      return withSyncedStreams({
         ...state,
         updatedAt: now,
         performanceLanes: state.performanceLanes.filter(l => l.sourceFileId !== sourceFileId),
@@ -123,20 +139,20 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
         laneGroups: groupId
           ? state.laneGroups.filter(g => g.groupId !== groupId)
           : state.laneGroups,
-      };
+      });
     }
 
     case 'RENAME_LANE':
-      return {
+      return withSyncedStreams({
         ...state,
         updatedAt: now,
         performanceLanes: state.performanceLanes.map(l =>
           l.id === action.payload.laneId ? { ...l, name: action.payload.name } : l
         ),
-      };
+      });
 
     case 'SET_LANE_COLOR':
-      return {
+      return withSyncedStreams({
         ...state,
         updatedAt: now,
         performanceLanes: state.performanceLanes.map(l =>
@@ -144,7 +160,7 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
             ? { ...l, color: action.payload.color, colorMode: action.payload.colorMode }
             : l
         ),
-      };
+      });
 
     case 'REORDER_LANES': {
       const { orderedIds } = action.payload;
@@ -191,38 +207,38 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
     }
 
     case 'TOGGLE_LANE_MUTE':
-      return {
+      return withSyncedStreams({
         ...state,
         updatedAt: now,
         performanceLanes: state.performanceLanes.map(l =>
           l.id === action.payload ? { ...l, isMuted: !l.isMuted } : l
         ),
-      };
+      });
 
     case 'TOGGLE_LANE_SOLO':
-      return {
+      return withSyncedStreams({
         ...state,
         updatedAt: now,
         performanceLanes: state.performanceLanes.map(l =>
           l.id === action.payload ? { ...l, isSolo: !l.isSolo } : l
         ),
-      };
+      });
 
     case 'TOGGLE_LANE_HIDDEN':
-      return {
+      return withSyncedStreams({
         ...state,
         updatedAt: now,
         performanceLanes: state.performanceLanes.map(l =>
           l.id === action.payload ? { ...l, isHidden: !l.isHidden } : l
         ),
-      };
+      });
 
     case 'DELETE_LANE':
-      return {
+      return withSyncedStreams({
         ...state,
         updatedAt: now,
         performanceLanes: state.performanceLanes.filter(l => l.id !== action.payload),
-      };
+      });
 
     // ---- Group Operations ----
 
@@ -244,7 +260,7 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
 
     case 'SET_LANE_GROUP_COLOR': {
       const { groupId, color } = action.payload;
-      return {
+      return withSyncedStreams({
         ...state,
         updatedAt: now,
         laneGroups: state.laneGroups.map(g =>
@@ -256,7 +272,7 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
             ? { ...l, color }
             : l
         ),
-      };
+      });
     }
 
     case 'REORDER_LANE_GROUPS': {

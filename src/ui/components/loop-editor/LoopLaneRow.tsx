@@ -2,31 +2,19 @@
  * LoopLaneRow.
  *
  * A single lane row in the loop editor sidebar.
- * Shows color swatch, editable name, MIDI note label, M/S buttons, and delete.
+ * Shows color swatch, editable name, pad position, finger input, M/S buttons, and delete.
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { type LoopLane } from '../../../types/loopEditor';
 import { type LoopEditorAction } from '../../state/loopEditorReducer';
-import { type FingerType, type HandSide, ALL_FINGERS } from '../../../types/fingerModel';
-import { midiNoteToName } from '../../../utils/midiNotes';
+import { type FingerType, type HandSide } from '../../../types/fingerModel';
+import { FingerAssignmentInput, type FingerAssignmentValue } from '../shared/FingerAssignmentInput';
 
 /** A hand+finger assignment for a lane. */
 export interface LaneFingerAssignment {
   hand: HandSide;
   finger: FingerType;
-}
-
-/** All 10 hand+finger combinations in cycle order. */
-const FINGER_CYCLE: LaneFingerAssignment[] = (['left', 'right'] as HandSide[]).flatMap(
-  hand => ALL_FINGERS.map(finger => ({ hand, finger }))
-);
-
-/** Compact label for a finger assignment, e.g. "L2" = left index. */
-function fingerLabel(fa: LaneFingerAssignment): string {
-  const handChar = fa.hand === 'left' ? 'L' : 'R';
-  const fingerNum = ALL_FINGERS.indexOf(fa.finger) + 1;
-  return `${handChar}${fingerNum}`;
 }
 
 interface LoopLaneRowProps {
@@ -36,11 +24,20 @@ interface LoopLaneRowProps {
   fingerAssignment?: LaneFingerAssignment;
   /** Callback when finger assignment changes. */
   onFingerAssignmentChange?: (laneId: string, assignment: LaneFingerAssignment) => void;
+  /** Pad position string (e.g. "3,5") if lane is assigned to a pad. */
+  padPosition?: string;
+}
+
+/** Format a pad key like "3,5" into a compact label like "R3C5". */
+function formatPadPosition(pk: string): string {
+  const parts = pk.split(',');
+  if (parts.length !== 2) return pk;
+  return `R${parts[0]}C${parts[1]}`;
 }
 
 const ROW_HEIGHT = 32;
 
-export function LoopLaneRow({ lane, dispatch, fingerAssignment, onFingerAssignmentChange }: LoopLaneRowProps) {
+export function LoopLaneRow({ lane, dispatch, fingerAssignment, onFingerAssignmentChange, padPosition }: LoopLaneRowProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(lane.name);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -60,6 +57,11 @@ export function LoopLaneRow({ lane, dispatch, fingerAssignment, onFingerAssignme
     setIsEditing(false);
     setEditValue(lane.name);
   };
+
+  const handleFingerChange = useCallback((assignment: FingerAssignmentValue | null) => {
+    if (!onFingerAssignmentChange || !assignment) return;
+    onFingerAssignmentChange(lane.id, assignment);
+  }, [onFingerAssignmentChange, lane.id]);
 
   return (
     <div
@@ -101,35 +103,16 @@ export function LoopLaneRow({ lane, dispatch, fingerAssignment, onFingerAssignme
         </span>
       )}
 
-      {/* Finger assignment cycle-button */}
-      <button
-        className="text-[10px] font-mono w-6 h-5 flex items-center justify-center rounded flex-shrink-0 transition-colors"
-        style={{
-          backgroundColor: fingerAssignment
-            ? fingerAssignment.hand === 'left' ? 'rgba(0,136,255,0.2)' : 'rgba(255,68,0,0.2)'
-            : 'rgba(100,100,100,0.15)',
-          color: fingerAssignment
-            ? fingerAssignment.hand === 'left' ? '#0088FF' : '#FF4400'
-            : '#666',
-        }}
-        onClick={() => {
-          if (!onFingerAssignmentChange) return;
-          const currentIdx = fingerAssignment
-            ? FINGER_CYCLE.findIndex(fc => fc.hand === fingerAssignment.hand && fc.finger === fingerAssignment.finger)
-            : -1;
-          const nextIdx = (currentIdx + 1) % FINGER_CYCLE.length;
-          onFingerAssignmentChange(lane.id, FINGER_CYCLE[nextIdx]);
-        }}
-        title={fingerAssignment
-          ? `${fingerAssignment.hand} ${fingerAssignment.finger} — click to cycle`
-          : 'Click to assign finger'}
-      >
-        {fingerAssignment ? fingerLabel(fingerAssignment) : '··'}
-      </button>
+      {/* Finger assignment — type L1, R5, etc. */}
+      <FingerAssignmentInput
+        value={fingerAssignment ?? null}
+        onChange={handleFingerChange}
+        size="sm"
+      />
 
-      {/* MIDI note label */}
-      <span className="text-[10px] text-gray-500 w-7 text-center flex-shrink-0">
-        {lane.midiNote !== null ? midiNoteToName(lane.midiNote) : '--'}
+      {/* Pad position label */}
+      <span className="text-[10px] text-gray-500 w-7 text-center flex-shrink-0" title={padPosition ? `Pad ${padPosition}` : 'Not assigned to pad'}>
+        {padPosition ? formatPadPosition(padPosition) : '--'}
       </span>
 
       {/* M/S buttons */}

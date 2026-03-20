@@ -8,7 +8,6 @@
 
 import { type LoopState, type LoopCellKey, type LoopEvent } from '../../types/loopEditor';
 import { type RudimentResult } from '../../types/rudiment';
-import { type PatternResult } from '../../types/patternRecipe';
 import { generateId } from '../../utils/idGenerator';
 
 const PRESETS_KEY = 'pushflow_user_presets';
@@ -22,7 +21,6 @@ export interface PerformancePreset {
   /** Serialized as [key, event][] for JSON compatibility. */
   events: [LoopCellKey, LoopEvent][];
   rudimentResult: RudimentResult | null;
-  patternResult: PatternResult | null;
 }
 
 /** Load all presets from localStorage. */
@@ -46,7 +44,6 @@ export function savePreset(name: string, state: LoopState): PerformancePreset {
     lanes: state.lanes,
     events: Array.from(state.events.entries()),
     rudimentResult: state.rudimentResult ?? null,
-    patternResult: state.patternResult ?? null,
   };
 
   const presets = loadPresets();
@@ -80,6 +77,5 @@ export function presetToLoopState(preset: PerformancePreset): LoopState {
     isPlaying: false,
     playheadStep: 0,
     rudimentResult: preset.rudimentResult,
-    patternResult: preset.patternResult,
   };
 }

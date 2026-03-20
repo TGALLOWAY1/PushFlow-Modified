@@ -8,16 +8,11 @@ import {
 import { convertLoopToPerformanceLanes } from '../../state/loopToLanes';
 import { type LoopLane } from '../../../types/loopEditor';
 import { stepDuration, totalSteps } from '../../../types/loopEditor';
-import { type PatternRecipe } from '../../../types/patternRecipe';
 import { generateId } from '../../../utils/idGenerator';
 import { LoopLaneSidebar } from '../loop-editor/LoopLaneSidebar';
 import { LoopGridCanvas } from '../loop-editor/LoopGridCanvas';
 import { RudimentEventStepper } from '../loop-editor/RudimentEventStepper';
-// RudimentPadGrid removed — pad assignments now sync to main InteractiveGrid
 import { type Layout } from '../../../types/layout';
-import { RecipeEditorModal } from '../loop-editor/RecipeEditorModal';
-import { PatternSelector } from '../loop-editor/PatternSelector';
-import { savePreset, deletePreset, presetToLoopState, type PerformancePreset } from '../../persistence/presetStorage';
 import { saveComposerPreset } from '../../persistence/composerPresetStorage';
 import {
   type PresetPad,
@@ -46,8 +41,6 @@ export function WorkspacePatternStudio() {
   const { state: projectState, dispatch: projectDispatch } = useProject();
   const [loopState, dispatch] = useReducer(loopEditorReducer, undefined, createInitialLoopState);
   const [activeEventIndex, setActiveEventIndex] = useState<number | null>(null);
-  const [showRecipeEditor, setShowRecipeEditor] = useState(false);
-  const [editingRecipe, setEditingRecipe] = useState<PatternRecipe | undefined>(undefined);
   const [hasTouchedComposer, setHasTouchedComposer] = useState(false);
   const [laneFingerAssignments, setLaneFingerAssignments] = useState<Record<string, LaneFingerAssignment>>({});
   const syncTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -80,13 +73,6 @@ export function WorkspacePatternStudio() {
   }, []);
 
   const activeResult = useMemo(() => {
-    if (loopState.patternResult) {
-      return {
-        fingerAssignments: loopState.patternResult.fingerAssignments,
-        complexity: loopState.patternResult.complexity,
-        padAssignments: loopState.patternResult.padAssignments,
-      };
-    }
     if (loopState.rudimentResult) {
       return {
         fingerAssignments: loopState.rudimentResult.fingerAssignments,
@@ -95,7 +81,18 @@ export function WorkspacePatternStudio() {
       };
     }
     return null;
-  }, [loopState.patternResult, loopState.rudimentResult]);
+  }, [loopState.rudimentResult]);
+
+  // Compute pad positions for each lane from the current layout
+  const lanePadPositions = useMemo(() => {
+    const layout = getDisplayedLayout(projectState);
+    if (!layout) return {};
+    const map: Record<string, string> = {};
+    for (const [pk, voice] of Object.entries(layout.padToVoice)) {
+      if (!map[voice.id]) map[voice.id] = pk;
+    }
+    return map;
+  }, [projectState]);
 
   useEffect(() => {
     if (!loopState.isPlaying) {
@@ -185,27 +182,6 @@ export function WorkspacePatternStudio() {
     dispatchComposer({ type: 'ADD_LANE', payload: newLane });
   }, [dispatchComposer, loopState.lanes.length]);
 
-  const handleGeneratePattern = useCallback((recipe: PatternRecipe) => {
-    dispatchComposer({ type: 'GENERATE_PATTERN', payload: { recipe } });
-    setActiveEventIndex(null);
-  }, [dispatchComposer]);
-
-  const handleRandomizePattern = useCallback((seed: number) => {
-    dispatchComposer({ type: 'GENERATE_RANDOM_PATTERN', payload: { seed } });
-    setActiveEventIndex(null);
-  }, [dispatchComposer]);
-
-  const handleOpenRecipeEditor = useCallback((recipe?: PatternRecipe) => {
-    setEditingRecipe(recipe ?? loopState.patternResult?.recipe);
-    setShowRecipeEditor(true);
-  }, [loopState.patternResult]);
-
-  const handleRecipeGenerate = useCallback((recipe: PatternRecipe) => {
-    dispatchComposer({ type: 'GENERATE_PATTERN', payload: { recipe } });
-    setActiveEventIndex(null);
-    setShowRecipeEditor(false);
-  }, [dispatchComposer]);
-
   const handleSubdivisionChange = useCallback((subdivision: '1/8' | '1/4' | '1/2' | '1/1') => {
     if (subdivision === loopState.config.subdivision) return;
     if (loopState.events.size > 0) {
@@ -214,13 +190,6 @@ export function WorkspacePatternStudio() {
     }
     dispatchComposer({ type: 'SET_SUBDIVISION', payload: subdivision });
   }, [dispatchComposer, loopState.config.subdivision, loopState.events.size]);
-
-  const handleSavePreset = useCallback(() => {
-    if (loopState.events.size === 0) return;
-    const name = window.prompt('Preset name:', `Pattern ${new Date().toLocaleDateString()}`);
-    if (!name) return;
-    savePreset(name, loopState);
-  }, [loopState]);
 
   /**
    * Save current composer state as a ComposerPreset.
@@ -312,16 +281,6 @@ export function WorkspacePatternStudio() {
       tags: [],
     });
   }, [loopState, projectState, laneFingerAssignments]);
-
-  const handleLoadPreset = useCallback((preset: PerformancePreset) => {
-    setHasTouchedComposer(true);
-    dispatch({ type: 'LOAD_LOOP_STATE', payload: presetToLoopState(preset) });
-    setActiveEventIndex(null);
-  }, []);
-
-  const handleDeletePreset = useCallback((presetId: string) => {
-    deletePreset(presetId);
-  }, []);
 
   const handleResetComposer = useCallback(() => {
     setHasTouchedComposer(true);
@@ -436,35 +395,6 @@ export function WorkspacePatternStudio() {
         </span>
 
         <button
-          className="px-2 py-1 text-xs rounded bg-gray-700 text-gray-200 hover:bg-gray-600"
-          onClick={handleAddLane}
-        >
-          + Lane
-        </button>
-
-        <PatternSelector
-          onSelectPreset={handleGeneratePattern}
-          onRandomize={handleRandomizePattern}
-          onCustomize={handleOpenRecipeEditor}
-          hasPatternResult={!!activeResult}
-          onLoadPreset={handleLoadPreset}
-          onDeletePreset={handleDeletePreset}
-        />
-
-        <button
-          className={`px-2 py-1 text-xs rounded transition-colors ${
-            loopState.events.size > 0
-              ? 'bg-sky-600/20 text-sky-300 border border-sky-500/30 hover:bg-sky-600/30'
-              : 'bg-gray-800 text-gray-600 cursor-not-allowed'
-          }`}
-          onClick={handleSavePreset}
-          disabled={loopState.events.size === 0}
-          title={loopState.events.size > 0 ? 'Save current pattern as preset' : 'Add events first'}
-        >
-          Save
-        </button>
-
-        <button
           className={`px-2 py-1 text-xs rounded transition-colors ${
             loopState.events.size > 0 && loopState.lanes.length > 0
               ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30 hover:bg-violet-600/30'
@@ -493,10 +423,6 @@ export function WorkspacePatternStudio() {
           onSetActiveEvent={setActiveEventIndex}
           lanes={loopState.lanes}
         />
-      ) : loopState.events.size > 0 && hasTouchedComposer ? (
-        <div className="px-3 py-1.5 rounded bg-gray-800/30 border border-gray-700/50 text-[10px] text-gray-500">
-          Pattern edited — use Pattern Selector to re-generate analysis
-        </div>
       ) : null}
 
       <div className="flex gap-3 items-start">
@@ -506,6 +432,8 @@ export function WorkspacePatternStudio() {
             dispatch={dispatchComposer}
             fingerAssignments={laneFingerAssignments}
             onFingerAssignmentChange={handleFingerAssignmentChange}
+            onAddLane={handleAddLane}
+            padPositions={lanePadPositions}
           />
           <LoopGridCanvas
             config={loopState.config}
@@ -521,13 +449,6 @@ export function WorkspacePatternStudio() {
         {/* Pad assignments now sync to main InteractiveGrid via BULK_ASSIGN_PADS */}
       </div>
 
-      {showRecipeEditor && (
-        <RecipeEditorModal
-          initialRecipe={editingRecipe}
-          onGenerate={handleRecipeGenerate}
-          onClose={() => setShowRecipeEditor(false)}
-        />
-      )}
     </div>
   );
 }

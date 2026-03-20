@@ -3,7 +3,7 @@
  *
  * Top-level container for the Loop Editor tab.
  * Manages local loop state, persistence, playback, project commit,
- * and pattern generation with event stepping.
+ * and rudiment generation with event stepping.
  */
 
 import { useReducer, useEffect, useRef, useCallback, useMemo, useState } from 'react';
@@ -16,14 +16,12 @@ import { saveLoopState, loadLoopState } from '../../persistence/loopStorage';
 import { convertLoopToPerformanceLanes } from '../../state/loopToLanes';
 import { type LoopLane } from '../../../types/loopEditor';
 import { stepDuration, totalSteps } from '../../../types/loopEditor';
-import { type PatternRecipe } from '../../../types/patternRecipe';
 import { generateId } from '../../../utils/idGenerator';
 import { LoopEditorToolbar } from './LoopEditorToolbar';
 import { LoopLaneSidebar } from './LoopLaneSidebar';
 import { LoopGridCanvas } from './LoopGridCanvas';
 import { RudimentEventStepper } from './RudimentEventStepper';
 import { RudimentPadGrid } from './RudimentPadGrid';
-import { RecipeEditorModal } from './RecipeEditorModal';
 
 const LANE_COLORS = ['#ef4444', '#f97316', '#22c55e', '#eab308', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6'];
 const DEFAULT_MIDI_NOTES = [36, 38, 42, 46, 48, 60, 62, 64];
@@ -47,22 +45,11 @@ export function LoopEditorView() {
   // Event stepping state (local, not persisted)
   const [activeEventIndex, setActiveEventIndex] = useState<number | null>(null);
 
-  // Recipe editor modal state
-  const [showRecipeEditor, setShowRecipeEditor] = useState(false);
-  const [editingRecipe, setEditingRecipe] = useState<PatternRecipe | undefined>(undefined);
-
   // Keep playheadRef in sync
   playheadRef.current = loopState.playheadStep;
 
-  // Derive the active result (patternResult takes priority over rudimentResult)
+  // Derive the active result from rudimentResult
   const activeResult = useMemo(() => {
-    if (loopState.patternResult) {
-      return {
-        fingerAssignments: loopState.patternResult.fingerAssignments,
-        complexity: loopState.patternResult.complexity,
-        padAssignments: loopState.patternResult.padAssignments,
-      };
-    }
     if (loopState.rudimentResult) {
       return {
         fingerAssignments: loopState.rudimentResult.fingerAssignments,
@@ -71,7 +58,7 @@ export function LoopEditorView() {
       };
     }
     return null;
-  }, [loopState.patternResult, loopState.rudimentResult]);
+  }, [loopState.rudimentResult]);
 
   // Clear active event when result changes to null
   const prevResultRef = useRef(activeResult);
@@ -155,31 +142,6 @@ export function LoopEditorView() {
     });
   }, [loopState, projectState.name, projectState.laneGroups.length, projectDispatch]);
 
-  // Generate pattern from preset
-  const handleGeneratePattern = useCallback((recipe: PatternRecipe) => {
-    dispatch({ type: 'GENERATE_PATTERN', payload: { recipe } });
-    setActiveEventIndex(null);
-  }, []);
-
-  // Generate random pattern
-  const handleRandomizePattern = useCallback((seed: number) => {
-    dispatch({ type: 'GENERATE_RANDOM_PATTERN', payload: { seed } });
-    setActiveEventIndex(null);
-  }, []);
-
-  // Open recipe editor
-  const handleOpenRecipeEditor = useCallback((recipe?: PatternRecipe) => {
-    setEditingRecipe(recipe ?? loopState.patternResult?.recipe);
-    setShowRecipeEditor(true);
-  }, [loopState.patternResult]);
-
-  // Generate from recipe editor
-  const handleRecipeGenerate = useCallback((recipe: PatternRecipe) => {
-    dispatch({ type: 'GENERATE_PATTERN', payload: { recipe } });
-    setActiveEventIndex(null);
-    setShowRecipeEditor(false);
-  }, []);
-
   // Derive active step index for grid column highlight
   const activeStepIndex = useMemo(() => {
     if (activeEventIndex === null || !activeResult) return null;
@@ -199,10 +161,6 @@ export function LoopEditorView() {
         dispatch={dispatch}
         onAddLane={handleAddLane}
         onCommitToProject={handleCommitToProject}
-        onGeneratePattern={handleGeneratePattern}
-        onRandomizePattern={handleRandomizePattern}
-        onOpenRecipeEditor={handleOpenRecipeEditor}
-        hasPatternResult={!!activeResult}
       />
 
       {/* Event stepper (visible when any result exists) */}
@@ -244,15 +202,6 @@ export function LoopEditorView() {
           </div>
         )}
       </div>
-
-      {/* Recipe editor modal */}
-      {showRecipeEditor && (
-        <RecipeEditorModal
-          initialRecipe={editingRecipe}
-          onGenerate={handleRecipeGenerate}
-          onClose={() => setShowRecipeEditor(false)}
-        />
-      )}
     </div>
   );
 }
