@@ -54,12 +54,12 @@ interface PadSummary {
 export function PadGrid({ layout: _layout, voices, assignments, selectedEventIndex, onPadClick, compact, diffPads, label, labelColor }: PadGridProps) {
   const padSize = compact ? 'w-10 h-10' : 'w-14 h-14';
   const padSizeClass = compact ? 'w-10' : 'w-14';
-  const textSize = compact ? 'text-[8px]' : 'text-[10px]';
-  const nameSize = compact ? 'text-[7px]' : 'text-[9px]';
-  const fingerSize = compact ? 'text-[6px]' : 'text-[8px]';
+  const textSize = compact ? 'text-pf-micro' : 'text-pf-xs';
+  const nameSize = compact ? 'text-[7px]' : 'text-pf-micro';
+  const fingerSize = compact ? 'text-[6px]' : 'text-pf-micro';
   const badgeSize = compact ? 'text-[6px]' : 'text-[7px]';
   const zoneWidth = compact ? 'w-[calc(4*2.5rem+3*0.25rem)]' : 'w-[calc(4*3.5rem+3*0.25rem)]';
-  const rowLabelWidth = compact ? 'w-3 text-[8px]' : 'w-4 text-[10px]';
+  const rowLabelWidth = compact ? 'w-3 text-pf-micro' : 'w-4 text-pf-xs';
   // Build voice lookup by originalMidiNote
   const voiceByNote = useMemo(() => {
     const map = new Map<number, Voice>();
@@ -155,7 +155,7 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
           key={padKey}
           className={`
             relative flex flex-col items-center justify-center
-            ${padSize} rounded-lg ${textSize} font-mono leading-tight
+            ${padSize} rounded-pf-lg ${textSize} font-mono leading-tight
             border-2 transition-all duration-100
             ${isSelected ? 'ring-2 ring-yellow-400/60 z-10 scale-105' : ''}
             ${isDiff ? 'ring-2 ring-amber-400/70 z-10' : ''}
@@ -186,14 +186,14 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
               )}
             </>
           ) : (
-            <span className={`${fingerSize} text-gray-600`}>{compact ? '' : `${row},${col}`}</span>
+            <span className={`${fingerSize} text-[var(--text-tertiary)]`}>{compact ? '' : `${row},${col}`}</span>
           )}
         </button>
       );
     }
     rows.push(
       <div key={row} className="flex gap-1 items-center">
-        <span className={`${rowLabelWidth} text-gray-500 text-right mr-1 font-mono`}>{row}</span>
+        <span className={`${rowLabelWidth} text-[var(--text-secondary)] text-right mr-1 font-mono`}>{row}</span>
         {cells}
       </div>
     );
@@ -210,7 +210,7 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
     <div className="space-y-3">
       {/* Label above grid */}
       {label && (
-        <div className={`text-xs font-medium ${labelColor ?? 'text-gray-400'}`}>{label}</div>
+        <div className={`text-pf-sm font-medium ${labelColor ?? 'text-[var(--text-secondary)]'}`}>{label}</div>
       )}
       <div className="inline-block">
         <div className="flex flex-col gap-1">
@@ -219,7 +219,7 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
           {!compact && (
             <div className={`flex gap-1 ${colLabelMl}`}>
               {Array.from({ length: 8 }, (_, col) => (
-                <div key={col} className={`${padSizeClass} text-center ${textSize} text-gray-500 font-mono`}>{col}</div>
+                <div key={col} className={`${padSizeClass} text-center ${textSize} text-[var(--text-secondary)] font-mono`}>{col}</div>
               ))}
             </div>
           )}
@@ -240,19 +240,19 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
       {/* Pad assignments table (hidden in compact mode) */}
       {!compact && usedPads.length > 0 && (
         <div className="space-y-1">
-          <h4 className="text-xs text-gray-500 font-medium">Pad Assignments ({usedPads.length} pads used)</h4>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px]">
+          <h4 className="text-pf-sm text-[var(--text-secondary)] font-medium">Pad Assignments ({usedPads.length} pads used)</h4>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-pf-sm">
             {usedPads.map(([padKey, summary]) => {
               const hands = [...summary.hands];
               const handColor = hands.length === 1 && hands[0] === 'left' ? 'text-blue-400'
                 : hands.length === 1 && hands[0] === 'right' ? 'text-purple-400'
                 : 'text-yellow-400';
               return (
-                <div key={padKey} className="flex items-center gap-2 text-gray-400">
-                  <span className="font-mono text-gray-500 w-8">[{padKey}]</span>
-                  <span className="text-gray-200 font-medium truncate w-16">{summary.voiceName}</span>
+                <div key={padKey} className="flex items-center gap-2 text-[var(--text-secondary)]">
+                  <span className="font-mono text-[var(--text-secondary)] w-8">[{padKey}]</span>
+                  <span className="text-[var(--text-primary)] font-medium truncate w-16">{summary.voiceName}</span>
                   <span className={`${handColor} w-16`}>{[...summary.fingers].join(', ')}</span>
-                  <span className="text-gray-500">{summary.hitCount}x</span>
+                  <span className="text-[var(--text-secondary)]">{summary.hitCount}x</span>
                 </div>
               );
             })}

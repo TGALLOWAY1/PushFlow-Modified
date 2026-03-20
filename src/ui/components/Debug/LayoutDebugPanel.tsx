@@ -84,16 +84,16 @@ export function LayoutDebugPanel({ executionPlan }: LayoutDebugPanelProps) {
   if (unplayableCount === 0) return null;
 
   return (
-    <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 space-y-3">
+    <div className="rounded-pf-lg border border-red-500/15 bg-red-500/5 p-3 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-medium text-red-400">
+        <h3 className="text-pf-sm font-medium text-red-400">
           Debug: {unplayableCount}/{totalEvents} events unplayable
         </h3>
         <button
-          className={`px-2 py-1 text-[10px] rounded transition-colors ${
+          className={`pf-btn text-pf-xs ${
             isRecomputing
-              ? 'bg-gray-700 text-gray-500 cursor-wait'
-              : 'bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30'
+              ? 'bg-[var(--bg-hover)] text-[var(--text-tertiary)] cursor-wait'
+              : 'bg-red-600/15 hover:bg-red-600/25 text-red-400 border border-red-500/20'
           }`}
           onClick={handleRecompute}
           disabled={isRecomputing}
@@ -104,13 +104,13 @@ export function LayoutDebugPanel({ executionPlan }: LayoutDebugPanelProps) {
       </div>
 
       {/* Playability summary bar */}
-      <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+      <div className="h-2 bg-[var(--bg-hover)] rounded-full overflow-hidden">
         <div
-          className="h-full bg-green-500/60 transition-all"
+          className="h-full bg-green-500/60 transition-all rounded-full"
           style={{ width: `${(playableCount / totalEvents) * 100}%` }}
         />
       </div>
-      <div className="flex justify-between text-[10px] text-gray-500">
+      <div className="flex justify-between text-pf-xs text-[var(--text-secondary)]">
         <span>{playableCount} playable</span>
         <span>{unplayableCount} unplayable</span>
       </div>
@@ -118,27 +118,27 @@ export function LayoutDebugPanel({ executionPlan }: LayoutDebugPanelProps) {
       {/* Rejection reason breakdown */}
       {Object.keys(reasonCounts).length > 0 && (
         <div className="space-y-1">
-          <span className="text-[10px] text-gray-500 font-medium">Rejection reasons:</span>
+          <span className="section-header">Rejection reasons:</span>
           {Object.entries(reasonCounts)
             .sort((a, b) => b[1] - a[1])
             .map(([reason, count]) => (
-              <div key={reason} className="flex items-center justify-between text-[10px]">
-                <span className="text-gray-400">{REASON_LABELS[reason] ?? reason}</span>
-                <span className="text-red-400/80 font-mono">{count}</span>
+              <div key={reason} className="flex items-center justify-between text-pf-xs">
+                <span className="text-[var(--text-secondary)]">{REASON_LABELS[reason] ?? reason}</span>
+                <span className="text-red-400/80 font-mono tabular-nums">{count}</span>
               </div>
             ))}
         </div>
       )}
 
       {/* Zone reference */}
-      <div className="text-[10px] text-gray-600 border-t border-gray-800 pt-2">
-        <span className="font-medium text-gray-500">Hand zones: </span>
+      <div className="text-pf-xs text-[var(--text-tertiary)] border-t border-[var(--border-subtle)] pt-2">
+        <span className="font-medium text-[var(--text-secondary)]">Hand zones: </span>
         Left cols 0-4, Right cols 3-7, Shared cols 3-4.
         Drag pads on the grid to adjust placement, then click Recompute.
       </div>
 
       {recomputeResult && (
-        <div className="text-[10px] text-gray-500 italic">
+        <div className="text-pf-xs text-[var(--text-secondary)] italic">
           Showing recomputed results. {recomputeResult.unplayableCount === 0
             ? 'All events now playable!'
             : `Still ${recomputeResult.unplayableCount} unplayable.`}

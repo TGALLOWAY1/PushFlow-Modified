@@ -101,34 +101,35 @@ export function ProjectLibraryPage() {
 
   if (loading) {
     return (
-      <div className="max-w-[1400px] mx-auto py-12 text-center">
-        <p className="text-gray-400 text-sm">Loading projects...</p>
+      <div className="max-w-[1400px] mx-auto py-12 text-center px-6">
+        <p className="text-pf-sm text-[var(--text-secondary)]">Loading projects...</p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-[1400px] mx-auto space-y-5">
+    <div className="max-w-[1400px] mx-auto space-y-6 px-6 py-6">
       {/* ---- Header ---- */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">PUSHFLOW</h1>
-          <p className="text-gray-500 text-[11px] tracking-wide">Performance Practice Hub</p>
+          <h1 className="text-pf-xl font-bold tracking-tight text-[var(--text-primary)]">PUSHFLOW</h1>
+          <p className="text-[var(--text-tertiary)] text-pf-sm tracking-wide mt-0.5">Performance Practice Hub</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
             <input
               type="text"
               placeholder="Search..."
-              className="pl-8 pr-3 py-1.5 text-xs bg-[var(--bg-input)] border border-gray-800 rounded-lg text-gray-400 placeholder-gray-600 focus:outline-none focus:border-gray-600 w-48"
+              className="pf-input pl-8 pr-3 py-1.5 text-pf-sm w-52"
             />
           </div>
           <button
             onClick={handleNewProject}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs font-medium text-white transition-colors"
+            className="pf-btn pf-btn-primary text-pf-sm gap-1.5"
+            style={{ background: '#059669' }}
           >
-            <Plus size={14} />
+            <Plus size={13} />
             New Performance
           </button>
         </div>
@@ -150,14 +151,15 @@ export function ProjectLibraryPage() {
           </div>
         </div>
       ) : (
-        <div className="glass-panel-strong rounded-xl p-12 text-center">
-          <h2 className="text-lg font-medium mb-2">Welcome to PushFlow</h2>
-          <p className="text-gray-400 text-sm mb-4">
+        <div className="glass-panel-strong p-12 text-center">
+          <h2 className="text-pf-lg font-medium mb-2 text-[var(--text-primary)]">Welcome to PushFlow</h2>
+          <p className="text-[var(--text-secondary)] text-pf-sm mb-5">
             Create your first performance to get started with layout optimization.
           </p>
           <button
             onClick={handleNewProject}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-medium text-white transition-colors"
+            className="pf-btn text-pf-sm font-medium text-white px-5 py-2"
+            style={{ background: '#059669' }}
           >
             + New Performance
           </button>
@@ -167,11 +169,11 @@ export function ProjectLibraryPage() {
       {/* ---- Main Area: Performance Grid + Sidebar ---- */}
       <div className="grid grid-cols-[1fr_340px] gap-4">
         {/* Active Performances */}
-        <div className="glass-panel rounded-lg p-4">
+        <div className="glass-panel p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-medium text-gray-400">Active Performances</h2>
+            <h2 className="text-pf-sm font-medium text-[var(--text-secondary)]">Active Performances</h2>
             {savedProjects.length > 7 && (
-              <span className="text-[10px] text-gray-600 cursor-pointer hover:text-gray-400 transition-colors">
+              <span className="text-pf-xs text-[var(--text-tertiary)] cursor-pointer hover:text-[var(--text-secondary)] transition-colors">
                 View all {savedProjects.length - 1}
               </span>
             )}
@@ -193,11 +195,11 @@ export function ProjectLibraryPage() {
               {gridProjects.length < 6 && (
                 <button
                   onClick={handleNewProject}
-                  className="glass-panel rounded-lg p-3 border-dashed flex items-center justify-center min-h-[180px] hover:border-gray-600 transition-colors group"
+                  className="rounded-pf-lg border border-dashed border-[var(--border-default)] bg-[var(--bg-panel)] flex items-center justify-center min-h-[180px] hover:border-[var(--border-strong)] transition-colors group"
                 >
                   <div className="text-center">
-                    <Plus size={20} className="mx-auto text-gray-600 group-hover:text-gray-500 transition-colors" />
-                    <span className="text-xs text-gray-600 group-hover:text-gray-500 mt-1 block transition-colors">
+                    <Plus size={18} className="mx-auto text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)] transition-colors" />
+                    <span className="text-pf-xs text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)] mt-1.5 block transition-colors">
                       Add Performance
                     </span>
                   </div>
@@ -205,8 +207,8 @@ export function ProjectLibraryPage() {
               )}
             </div>
           ) : (
-            <div className="glass-panel rounded-lg p-8 text-center">
-              <p className="text-xs text-gray-500">
+            <div className="rounded-pf-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] p-8 text-center">
+              <p className="text-pf-sm text-[var(--text-tertiary)]">
                 No additional performances yet. Create one to see it here.
               </p>
             </div>

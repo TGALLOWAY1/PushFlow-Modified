@@ -343,11 +343,11 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
 
   if (state.soundStreams.length === 0) {
     return (
-      <div className="px-6 py-12 text-center text-gray-500 text-sm">
+      <div className="px-6 py-12 text-center text-[var(--text-tertiary)] text-pf-sm">
         Import MIDI files or open the Pattern Composer to generate timeline material.
         <div className="mt-3">
           <button
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium text-white transition-colors"
+            className="pf-btn pf-btn-primary text-pf-sm"
             onClick={handleImportClick}
           >
             Import MIDI Files
@@ -368,10 +368,10 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
   return (
     <div className="flex flex-col h-full">
       {/* ─── Toolbar ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-3 py-2 border-b border-gray-800 bg-gray-900/40 flex-shrink-0">
+      <div className="flex items-center gap-3 px-3 py-2 border-b border-[var(--border-subtle)] bg-[var(--bg-panel)]/40 flex-shrink-0">
         {/* Import */}
         <button
-          className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs font-medium text-white transition-colors"
+          className="pf-btn pf-btn-primary text-pf-xs"
           onClick={handleImportClick}
         >
           Import MIDI
@@ -386,7 +386,7 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
         />
 
         {/* Info */}
-        <span className="text-[11px] text-gray-500">
+        <span className="text-pf-sm text-[var(--text-tertiary)]">
           {visibleStreams.length} sounds
         </span>
 
@@ -394,7 +394,7 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
 
         {/* Zoom */}
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-gray-500">Zoom</span>
+          <span className="text-pf-xs text-[var(--text-tertiary)]">Zoom</span>
           <input
             type="range"
             min={effectiveMinZoom}
@@ -404,10 +404,10 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
             className="w-20 h-1 accent-blue-500"
           />
           <button
-            className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+            className={`px-1.5 py-0.5 text-pf-xs rounded-pf-sm transition-colors ${
               zoomOverride === null
                 ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                : 'bg-gray-800 text-gray-500 hover:text-gray-300 border border-gray-700'
+                : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] border border-[var(--border-default)]'
             }`}
             onClick={() => setZoomOverride(null)}
             title="Auto-fit: fill container with MIDI content"
@@ -417,12 +417,12 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
         </div>
 
         {/* Transport */}
-        <div className="flex items-center gap-2 pl-2 border-l border-gray-700">
-          <span className="text-gray-500 font-mono text-xs w-14 text-right">
+        <div className="flex items-center gap-2 pl-2 border-l border-[var(--border-default)]">
+          <span className="text-[var(--text-tertiary)] font-mono text-pf-sm w-14 text-right">
             {state.currentTime.toFixed(2)}s
           </span>
           <button
-            className={`px-2.5 py-1 rounded text-[10px] font-bold transition-colors ${
+            className={`px-2.5 py-1 rounded-pf-sm text-pf-xs font-bold transition-colors ${
               state.isPlaying
                 ? 'bg-amber-500 text-amber-950'
                 : 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
@@ -432,7 +432,7 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
             {state.isPlaying ? '⏹ STOP' : '▶ PLAY'}
           </button>
           <button
-            className="px-2 py-1 rounded bg-gray-700/50 text-[10px] text-gray-400 hover:text-gray-200 transition-colors"
+            className="px-2 py-1 rounded-pf-sm bg-[var(--bg-card)]/50 text-pf-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
             onClick={() => {
               dispatch({ type: 'SET_IS_PLAYING', payload: false });
               dispatch({ type: 'SET_CURRENT_TIME', payload: 0 });
@@ -449,11 +449,11 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
         {/* Voice Sidebar */}
         <div
           ref={sidebarScrollRef}
-          className="flex-shrink-0 overflow-y-auto border-r border-gray-800"
+          className="flex-shrink-0 overflow-y-auto border-r border-[var(--border-subtle)]"
           style={{ width: SIDEBAR_WIDTH }}
         >
           {/* Header spacer to align with beat header */}
-          <div className="sticky top-0 z-40 bg-gray-900 border-b border-gray-800" style={{ height: TOTAL_HEADER_HEIGHT }} />
+          <div className="sticky top-0 z-40 bg-[var(--bg-panel)] border-b border-[var(--border-subtle)]" style={{ height: TOTAL_HEADER_HEIGHT }} />
           {visibleStreams.map((stream, i) => (
             <VoiceRow
               key={stream.id}
@@ -477,12 +477,12 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
           <div className="relative" style={{ width: timelineWidth, minHeight: totalHeight + TOTAL_HEADER_HEIGHT }}>
             {/* ─── Sticky Beat Header ──────────────────────────────── */}
             {/* Row 1: Bar numbers */}
-            <div className="sticky top-0 z-40 bg-gray-950 border-b border-gray-700" style={{ height: BAR_HEADER_HEIGHT, width: timelineWidth }}>
+            <div className="sticky top-0 z-40 bg-[var(--bg-app)] border-b border-[var(--border-default)]" style={{ height: BAR_HEADER_HEIGHT, width: timelineWidth }}>
               <div className="flex" style={{ height: BAR_HEADER_HEIGHT, width: timelineWidth }}>
                 {headerBars.map(bar => (
                   <div
                     key={`bar-${bar.barNum}`}
-                    className="text-center text-xs font-medium text-gray-400 border-l border-gray-600 flex items-end justify-center pb-1"
+                    className="text-center text-pf-sm font-medium text-[var(--text-secondary)] border-l border-[var(--border-default)] flex items-end justify-center pb-1"
                     style={{ width: barWidth, minWidth: barWidth, flexShrink: 0 }}
                   >
                     {bar.barNum}
@@ -491,12 +491,12 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
               </div>
             </div>
             {/* Row 2: Beat subdivisions */}
-            <div className="sticky z-40 bg-gray-900 border-b border-gray-800" style={{ height: BEAT_HEADER_HEIGHT, top: BAR_HEADER_HEIGHT, width: timelineWidth }}>
+            <div className="sticky z-40 bg-[var(--bg-panel)] border-b border-[var(--border-subtle)]" style={{ height: BEAT_HEADER_HEIGHT, top: BAR_HEADER_HEIGHT, width: timelineWidth }}>
               <div className="flex" style={{ height: BEAT_HEADER_HEIGHT, width: timelineWidth }}>
                 {headerBeats.map((beat, i) => (
                   <div
                     key={`subbeat-${i}`}
-                    className="text-center text-[10px] text-gray-500 flex items-center justify-center"
+                    className="text-center text-pf-xs text-[var(--text-tertiary)] flex items-center justify-center"
                     style={{ width: beatWidth, minWidth: beatWidth, flexShrink: 0 }}
                   >
                     {beat.beatNum}
@@ -543,7 +543,7 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
                     />
                   ) : null}
                   <div
-                    className="absolute w-full border-b border-gray-800/30"
+                    className="absolute w-full border-b border-[var(--border-subtle)]/30"
                     style={{ top: TOTAL_HEADER_HEIGHT + (i + 1) * TRACK_HEIGHT }}
                   />
                 </div>
@@ -680,14 +680,14 @@ function VoiceRow({
 
   return (
     <div
-      className={`flex items-center gap-1.5 px-2 text-xs border-b border-gray-800/30 transition-colors
+      className={`flex items-center gap-1.5 px-2 text-pf-sm border-b border-[var(--border-subtle)]/30 transition-colors
         ${isGlobalSelected ? 'bg-blue-500/15 border-l-2 border-l-blue-400' : isInstanceHighlighted ? 'bg-violet-500/10 border-l-2 border-l-violet-400' : isEven ? '' : 'bg-white/[0.015]'}
         ${stream.muted ? 'opacity-40' : ''}`}
       style={{ height: TRACK_HEIGHT }}
     >
       {/* Color swatch */}
       <span
-        className="w-2 h-2 rounded-sm flex-shrink-0"
+        className="w-2 h-2 rounded-pf-sm flex-shrink-0"
         style={{ backgroundColor: stream.color }}
       />
 
@@ -695,7 +695,7 @@ function VoiceRow({
       {editing ? (
         <input
           ref={inputRef}
-          className="flex-1 min-w-0 bg-gray-800 border border-blue-500 rounded px-1 py-0 text-[11px] text-gray-200 outline-none"
+          className="flex-1 min-w-0 bg-[var(--bg-input)] border border-blue-500 rounded-pf-sm px-1 py-0 text-pf-sm text-[var(--text-primary)] outline-none"
           value={draft}
           onChange={e => setDraft(e.target.value)}
           onBlur={commitRename}
@@ -706,7 +706,7 @@ function VoiceRow({
         />
       ) : (
         <span
-          className="flex-1 truncate text-gray-300 text-[11px] cursor-text"
+          className="flex-1 truncate text-[var(--text-secondary)] text-pf-sm cursor-text"
           title={`${stream.name} (double-click to rename)`}
           onDoubleClick={() => setEditing(true)}
         >
@@ -716,7 +716,7 @@ function VoiceRow({
 
       {/* Solo */}
       <button
-        className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-[10px] transition-colors bg-gray-800 text-gray-500 hover:bg-amber-500/20 hover:text-amber-400"
+        className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-pf-sm text-pf-xs transition-colors bg-[var(--bg-card)] text-[var(--text-tertiary)] hover:bg-amber-500/20 hover:text-amber-400"
         onClick={e => { e.stopPropagation(); onSolo(); }}
         title="Solo"
       >
@@ -725,10 +725,10 @@ function VoiceRow({
 
       {/* Mute toggle */}
       <button
-        className={`flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-[10px] transition-colors
+        className={`flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-pf-sm text-pf-xs transition-colors
           ${stream.muted
             ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-            : 'bg-gray-800 text-gray-500 hover:bg-gray-700 hover:text-gray-300'}`}
+            : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}`}
         onClick={e => { e.stopPropagation(); onToggleMute(); }}
         title={stream.muted ? 'Unmute' : 'Mute'}
       >

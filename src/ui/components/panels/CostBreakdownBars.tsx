@@ -55,11 +55,11 @@ function FeasibilityBadge({ verdict, unplayableCount }: {
   };
 
   return (
-    <div className={`flex items-center gap-2 px-2 py-1.5 rounded border text-[10px] ${styles[level]}`}>
-      <span className="text-sm">{icons[level]}</span>
+    <div className={`flex items-center gap-2 px-2 py-1.5 rounded-pf-sm border text-pf-xs ${styles[level]}`}>
+      <span className="text-pf-sm">{icons[level]}</span>
       <div>
         <div className="font-medium capitalize">{level}</div>
-        <div className="text-[9px] opacity-80">{summary}</div>
+        <div className="text-pf-micro opacity-80">{summary}</div>
       </div>
     </div>
   );
@@ -133,7 +133,7 @@ function ErgonomicFactors({ metrics, diagnostics }: {
 
   return (
     <div className="space-y-1.5">
-      <h4 className="text-[11px] text-gray-400 font-medium uppercase tracking-wider">
+      <h4 className="section-header">
         Ergonomics
       </h4>
       <div className="space-y-1">
@@ -144,11 +144,11 @@ function ErgonomicFactors({ metrics, diagnostics }: {
                 className="w-2 h-2 rounded-full flex-shrink-0"
                 style={{ backgroundColor: row.color }}
               />
-              <span className="text-[11px] text-gray-400">{row.label}</span>
+              <span className="text-pf-sm text-[var(--text-secondary)]">{row.label}</span>
             </div>
-            <div className="flex-1 h-3 bg-gray-800 rounded overflow-hidden">
+            <div className="flex-1 h-3 bg-[var(--bg-card)] rounded-pf-sm overflow-hidden">
               <div
-                className="h-full rounded transition-all duration-300"
+                className="h-full rounded-pf-sm transition-all duration-300"
                 style={{
                   width: `${Math.max((row.value / maxValue) * 100, row.value > 0 ? 2 : 0)}%`,
                   backgroundColor: row.color,
@@ -156,14 +156,14 @@ function ErgonomicFactors({ metrics, diagnostics }: {
                 }}
               />
             </div>
-            <span className="text-[11px] text-gray-500 font-mono w-10 text-right">
+            <span className="text-pf-sm text-[var(--text-tertiary)] font-mono w-10 text-right">
               {row.value > 0 ? row.value.toFixed(0) : '0'}
             </span>
           </div>
         ))}
       </div>
       {diagnostics?.topContributors && diagnostics.topContributors.length > 0 && (
-        <div className="text-[9px] text-gray-500">
+        <div className="text-pf-micro text-[var(--text-tertiary)]">
           Main burden: {diagnostics.topContributors.slice(0, 2).join(', ')}
         </div>
       )}
@@ -186,13 +186,13 @@ function DifficultySummary({ hardCount, unplayableCount }: {
 
   return (
     <div className="space-y-1">
-      <h4 className="text-[11px] text-gray-400 font-medium uppercase tracking-wider">
+      <h4 className="section-header">
         Difficulty
       </h4>
       {total === 0 ? (
-        <div className="text-[10px] text-green-400">No hard or unplayable events</div>
+        <div className="text-pf-xs text-green-400">No hard or unplayable events</div>
       ) : (
-        <div className="flex gap-3 text-[10px]">
+        <div className="flex gap-3 text-pf-xs">
           {hard > 0 && (
             <span className="text-amber-400">
               {hard} hard event{hard !== 1 ? 's' : ''}
@@ -218,7 +218,7 @@ export function CostBreakdownBars({ metrics, diagnostics, hardCount, unplayableC
     <div className="space-y-3">
       {/* Event-specific label */}
       {eventLabel && (
-        <div className="text-[10px] text-cyan-400 px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 inline-block">
+        <div className="text-pf-xs text-cyan-400 px-1.5 py-0.5 rounded-pf-sm bg-cyan-500/10 border border-cyan-500/20 inline-block">
           {eventLabel}
         </div>
       )}

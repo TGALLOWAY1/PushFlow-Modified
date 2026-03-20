@@ -623,27 +623,27 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     }
     rows.push(
       <div key={row} className="flex gap-1 items-center">
-        <span className="w-4 text-[10px] text-gray-500 text-right mr-1 font-mono">{row}</span>
+        <span className="w-4 text-pf-xs text-[var(--text-tertiary)] text-right mr-1 font-mono tabular-nums">{row}</span>
         {cells}
       </div>
     );
   }
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5">
       {/* Layout role badge + analysis stale indicator */}
       <div className="flex items-center gap-2">
         {layout && (
-          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+          <span className={`pf-badge ${
             getDisplayedLayoutRole(state) === 'working'
-              ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-              : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/15'
+              : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/15'
           }`}>
             {getDisplayedLayoutRole(state) === 'working' ? 'Working Draft' : 'Active'}
           </span>
         )}
         {state.analysisStale && state.analysisResult && (
-          <span className="text-[10px] text-amber-400">
+          <span className="text-pf-xs text-amber-400/80">
             Analysis outdated
           </span>
         )}
@@ -677,7 +677,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           {/* Column labels */}
           <div className="flex gap-1 ml-5">
             {Array.from({ length: 8 }, (_, col) => (
-              <div key={col} className="w-14 text-center text-[10px] text-gray-500 font-mono">{col}</div>
+              <div key={col} className="w-14 text-center text-pf-xs text-[var(--text-tertiary)] font-mono tabular-nums">{col}</div>
             ))}
           </div>
         </div>
@@ -694,7 +694,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
 
       {/* Transition preview */}
       {selectedTransition?.next && (
-        <div className="text-[10px] text-sky-300/80 mt-1">
+        <div className="text-pf-xs text-sky-300/70 mt-1.5">
           Transition preview: {selectedTransition.timeDelta?.toFixed(3)}s to next event
           {' · '}
           {selectedTransition.sharedPadKeys.size} shared pad{selectedTransition.sharedPadKeys.size === 1 ? '' : 's'}

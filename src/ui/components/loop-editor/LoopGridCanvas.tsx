@@ -87,7 +87,7 @@ export function LoopGridCanvas({
 
   if (sortedLanes.length === 0) {
     return (
-      <div ref={containerRef} className="flex-1 flex items-center justify-center text-gray-500 text-sm">
+      <div ref={containerRef} className="flex-1 flex items-center justify-center text-[var(--text-secondary)] text-pf-sm">
         Add lanes to get started
       </div>
     );
@@ -96,12 +96,12 @@ export function LoopGridCanvas({
   const renderGrid = () => (
     <div className="relative w-full">
       {/* Bar number headers */}
-      <div className="sticky top-0 z-10 bg-gray-950" style={{ height: HEADER_HEIGHT }}>
+      <div className="sticky top-0 z-10 bg-[var(--bg-app)]" style={{ height: HEADER_HEIGHT }}>
         <div className="flex" style={{ height: HEADER_HEIGHT }}>
           {Array.from({ length: config.barCount }, (_, bar) => (
             <div
               key={bar}
-              className="text-center text-xs font-medium text-gray-400 border-l border-gray-600 flex items-end justify-center pb-1"
+              className="text-center text-pf-sm font-medium text-[var(--text-secondary)] border-l border-[var(--border-default)] flex items-end justify-center pb-1"
               style={{ width: spb * cellWidth }}
             >
               {bar + 1}
@@ -111,7 +111,7 @@ export function LoopGridCanvas({
       </div>
 
       {/* Subdivision labels */}
-      <div className="sticky z-10 bg-gray-900/80" style={{ height: SUB_HEADER_HEIGHT, top: HEADER_HEIGHT }}>
+      <div className="sticky z-10 bg-[var(--bg-panel)]" style={{ height: SUB_HEADER_HEIGHT, top: HEADER_HEIGHT }}>
         <div className="flex" style={{ height: SUB_HEADER_HEIGHT }}>
           {Array.from({ length: steps }, (_, step) => {
             const posInBar = step % spb;
@@ -121,7 +121,7 @@ export function LoopGridCanvas({
             return (
               <div
                 key={step}
-                className="text-center text-[10px] text-gray-500 flex items-center justify-center"
+                className="text-center text-pf-xs text-[var(--text-secondary)] flex items-center justify-center"
                 style={{ width: cellWidth }}
               >
                 {isBeat ? beatNum : ''}
@@ -144,10 +144,10 @@ export function LoopGridCanvas({
               key={`line-${step}`}
               className={`absolute top-0 bottom-0 ${
                 isBarLine
-                  ? 'border-l border-gray-500'
+                  ? 'border-l border-[var(--border-strong)]'
                   : isBeatLine
-                    ? 'border-l border-gray-700'
-                    : 'border-l border-gray-800/50'
+                    ? 'border-l border-[var(--border-default)]'
+                    : 'border-l border-[var(--border-subtle)]'
               }`}
               style={{ left: step * cellWidth }}
             />
@@ -166,7 +166,7 @@ export function LoopGridCanvas({
             }}
           >
             {/* Row border */}
-            <div className="absolute inset-0 border-b border-gray-800/40" />
+            <div className="absolute inset-0 border-b border-[var(--border-subtle)]" />
 
             {/* Cells */}
             {Array.from({ length: steps }, (_, step) => {
@@ -177,7 +177,7 @@ export function LoopGridCanvas({
               return (
                 <div
                   key={step}
-                  className="relative cursor-pointer hover:bg-gray-700/30 transition-colors"
+                  className="relative cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
                   style={{ width: cellWidth, height: CELL_HEIGHT }}
                   onClick={() => handleCellClick(lane.id, step)}
                 >
@@ -219,7 +219,7 @@ export function LoopGridCanvas({
 
       {/* Right edge bar line */}
       <div
-        className="absolute border-l border-gray-500"
+        className="absolute border-l border-[var(--border-strong)]"
         style={{
           left: gridWidth,
           top: HEADER_HEIGHT,

@@ -41,10 +41,10 @@ export function CandidateCard({ candidate, isSelected, rank, onClick }: Candidat
   return (
     <button
       className={`
-        w-full text-left p-3 rounded-lg border transition-all
+        w-full text-left p-3 rounded-pf-lg border transition-all
         ${isSelected
-          ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/30'
-          : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'}
+          ? 'border-[var(--accent-primary)]/40 bg-[var(--accent-muted)] ring-1 ring-[var(--accent-primary)]/20'
+          : 'border-[var(--border-default)] bg-[var(--bg-card)] hover:border-[var(--border-strong)]'}
       `}
       onClick={onClick}
     >
@@ -52,37 +52,37 @@ export function CandidateCard({ candidate, isSelected, rank, onClick }: Candidat
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           {rank !== undefined && (
-            <span className="text-xs bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded font-mono">
+            <span className="pf-badge bg-[var(--bg-hover)] text-[var(--text-secondary)] font-mono">
               #{rank}
             </span>
           )}
-          <span className="text-sm font-medium text-gray-200">
+          <span className="text-pf-base font-medium text-[var(--text-primary)]">
             {metadata.strategy ?? `Candidate ${candidate.id.slice(0, 6)}`}
           </span>
         </div>
-        <span className={`text-sm font-mono ${difficultyColor(overall)}`}>
+        <span className={`text-pf-base font-mono ${difficultyColor(overall)}`}>
           {difficultyLabel(overall)}
         </span>
       </div>
 
       {/* Quick stats */}
-      <div className="flex gap-3 text-[11px] text-gray-400 mb-2">
+      <div className="flex gap-3 text-pf-sm text-[var(--text-secondary)] mb-2.5">
         <span>{new Set(executionPlan.fingerAssignments.map(a => a.startTime)).size} events</span>
         <span>{executionPlan.unplayableCount} unplayable</span>
-        <span>score: {executionPlan.score.toFixed(1)}</span>
-        {metadata.seed !== undefined && <span>seed: {metadata.seed}</span>}
+        <span className="tabular-nums">score: {executionPlan.score.toFixed(1)}</span>
+        {metadata.seed !== undefined && <span className="tabular-nums">seed: {metadata.seed}</span>}
       </div>
 
       {/* Tradeoff mini bars */}
-      <div className="grid grid-cols-3 gap-x-3 gap-y-1">
+      <div className="grid grid-cols-3 gap-x-3 gap-y-1.5">
         {PROFILE_KEYS.map(({ key, label }) => {
           const value = tradeoffProfile[key];
           return (
-            <div key={key} className="flex items-center gap-1">
-              <span className="text-[10px] text-gray-500 w-10">{label}</span>
-              <div className="flex-1 h-1.5 bg-gray-700 rounded overflow-hidden">
+            <div key={key} className="flex items-center gap-1.5">
+              <span className="text-pf-xs text-[var(--text-tertiary)] w-10">{label}</span>
+              <div className="flex-1 h-1.5 bg-[var(--bg-hover)] rounded-full overflow-hidden">
                 <div
-                  className="h-full rounded"
+                  className="h-full rounded-full"
                   style={{
                     width: `${value * 100}%`,
                     backgroundColor: value > 0.7 ? '#22c55e' : value > 0.4 ? '#eab308' : '#ef4444',

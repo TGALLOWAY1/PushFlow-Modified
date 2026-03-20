@@ -28,16 +28,16 @@ export function LoopLaneSidebar({ lanes, dispatch, fingerAssignments, onFingerAs
   const sortedLanes = [...lanes].sort((a, b) => a.orderIndex - b.orderIndex);
 
   return (
-    <div className="w-56 flex-shrink-0 border-r border-gray-700">
+    <div className="w-56 flex-shrink-0 border-r border-[var(--border-default)]">
       {/* Header matching grid bar numbers row */}
       <div
-        className="flex items-end px-2 pb-1 text-xs font-medium text-gray-400 border-b border-gray-700"
+        className="flex items-end px-2 pb-1 text-pf-sm font-medium text-[var(--text-secondary)] border-b border-[var(--border-default)]"
         style={{ height: HEADER_HEIGHT }}
       >
         Lanes
         {onAddLane && (
           <button
-            className="ml-auto text-gray-500 hover:text-gray-200 text-sm leading-none px-1"
+            className="ml-auto text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-pf-sm leading-none px-1"
             onClick={onAddLane}
             title="Add lane"
           >
@@ -48,7 +48,7 @@ export function LoopLaneSidebar({ lanes, dispatch, fingerAssignments, onFingerAs
 
       {/* Sub-header matching subdivision labels row */}
       <div
-        className="flex items-center px-2 text-[10px] text-gray-500 bg-gray-900/80 border-b border-gray-800/40"
+        className="flex items-center px-2 text-pf-xs text-[var(--text-secondary)] bg-[var(--bg-panel)] border-b border-[var(--border-subtle)]"
         style={{ height: SUB_HEADER_HEIGHT }}
       >
         <span className="flex-1">Name</span>
@@ -71,7 +71,7 @@ export function LoopLaneSidebar({ lanes, dispatch, fingerAssignments, onFingerAs
         ))}
 
         {sortedLanes.length === 0 && (
-          <div className="px-3 py-4 text-xs text-gray-600 text-center">
+          <div className="px-3 py-4 text-pf-sm text-[var(--text-tertiary)] text-center">
             No lanes yet
           </div>
         )}

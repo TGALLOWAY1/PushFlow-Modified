@@ -94,10 +94,10 @@ export function WorkspaceToolbar({
   };
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-800/80 bg-gray-900/60 flex-shrink-0">
+    <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[var(--border-subtle)] bg-[var(--bg-panel)] flex-shrink-0">
       {/* Library back */}
       <button
-        className="px-2 py-1 text-[11px] rounded bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition-colors"
+        className="pf-btn pf-btn-subtle text-pf-sm"
         onClick={onNavigateLibrary}
         title="Save and return to library"
       >
@@ -105,14 +105,14 @@ export function WorkspaceToolbar({
       </button>
 
       {/* Divider */}
-      <div className="w-px h-5 bg-gray-800" />
+      <div className="pf-divider-v" />
 
       {/* Project name */}
       <div className="min-w-0">
         {editingName ? (
           <input
             ref={nameInputRef}
-            className="text-sm font-semibold text-gray-200 bg-gray-800 border border-gray-600 rounded px-1.5 py-0.5 outline-none focus:border-blue-500 w-48"
+            className="pf-input text-pf-base font-semibold w-48"
             value={nameDraft}
             onChange={e => setNameDraft(e.target.value)}
             onBlur={commitName}
@@ -124,7 +124,7 @@ export function WorkspaceToolbar({
           />
         ) : (
           <span
-            className="text-sm font-semibold text-gray-200 truncate cursor-pointer hover:text-white transition-colors"
+            className="text-pf-base font-semibold text-[var(--text-primary)] truncate editable-field hover:text-white transition-colors"
             onDoubleClick={() => {
               setNameDraft(state.name || 'Untitled');
               setEditingName(true);
@@ -139,7 +139,7 @@ export function WorkspaceToolbar({
       {/* BPM */}
       {editingBpm ? (
         <input
-          className="w-14 text-[11px] text-gray-200 bg-gray-800 border border-gray-600 rounded px-1.5 py-0.5 outline-none focus:border-blue-500"
+          className="pf-input w-14 text-pf-sm tabular-nums"
           type="number"
           min={20}
           max={999}
@@ -154,7 +154,7 @@ export function WorkspaceToolbar({
         />
       ) : (
         <span
-          className="text-[11px] text-gray-500 cursor-pointer hover:text-gray-300 transition-colors tabular-nums"
+          className="text-pf-sm text-[var(--text-tertiary)] cursor-pointer hover:text-[var(--text-secondary)] transition-colors tabular-nums editable-field"
           onDoubleClick={() => {
             setBpmDraft(String(state.tempo));
             setEditingBpm(true);
@@ -168,24 +168,24 @@ export function WorkspaceToolbar({
       {/* Workflow actions */}
       {hasChanges && (
         <>
-          <div className="w-px h-5 bg-gray-800" />
+          <div className="pf-divider-v" />
           <div className="flex gap-1">
             <button
-              className="px-2 py-1 text-[11px] rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+              className="pf-btn text-pf-sm bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/30"
               onClick={() => dispatch({ type: 'PROMOTE_WORKING_LAYOUT' })}
               title="Make this layout the new Active Layout"
             >
               Promote
             </button>
             <button
-              className="px-2 py-1 text-[11px] rounded bg-blue-600/80 hover:bg-blue-500 text-white transition-colors"
+              className="pf-btn text-pf-sm bg-[var(--accent-primary)]/80 hover:bg-[var(--accent-primary)] text-white border border-[var(--accent-primary)]/30"
               onClick={() => dispatch({ type: 'SAVE_AS_VARIANT', payload: { name: `${state.activeLayout.name} variant`, source: 'working' } })}
               title="Save current working layout as a named variant"
             >
               Save Variant
             </button>
             <button
-              className="px-2 py-1 text-[11px] rounded bg-gray-800 hover:bg-red-900/50 text-gray-400 hover:text-red-300 transition-colors"
+              className="pf-btn pf-btn-subtle text-pf-sm hover:bg-red-900/30 hover:text-red-300 hover:border-red-500/30"
               onClick={() => dispatch({ type: 'DISCARD_WORKING_LAYOUT' })}
               title="Discard working changes"
             >
@@ -200,7 +200,7 @@ export function WorkspaceToolbar({
 
       {/* Analysis stale indicator */}
       {state.analysisStale && state.analysisResult && (
-        <span className="text-[10px] text-amber-400 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+        <span className="pf-badge text-amber-400 bg-amber-500/8 border border-amber-500/15">
           Analysis outdated
         </span>
       )}
@@ -208,7 +208,7 @@ export function WorkspaceToolbar({
       {/* Undo / Redo */}
       <div className="flex gap-1">
         <button
-          className="px-2 py-1 text-[11px] rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className="pf-btn pf-btn-subtle text-pf-sm"
           onClick={undo}
           disabled={!canUndo}
           title="Undo (Ctrl+Z)"
@@ -216,7 +216,7 @@ export function WorkspaceToolbar({
           Undo
         </button>
         <button
-          className="px-2 py-1 text-[11px] rounded bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className="pf-btn pf-btn-subtle text-pf-sm"
           onClick={redo}
           disabled={!canRedo}
           title="Redo (Ctrl+Y)"
@@ -228,12 +228,12 @@ export function WorkspaceToolbar({
       {/* Save + status */}
       <div className="flex items-center gap-1.5">
         <button
-          className={`px-2 py-1 text-[11px] rounded transition-colors ${
+          className={`pf-btn text-pf-sm ${
             saveConfirm || saveStatus === 'saved'
-              ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+              ? 'bg-emerald-600/12 text-emerald-400 border border-emerald-500/20'
               : saveStatus === 'saving'
-                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                : 'bg-gray-800 hover:bg-gray-700 text-gray-300'
+                ? 'bg-[var(--accent-muted)] text-[var(--accent-primary)] border border-[var(--accent-primary)]/20'
+                : 'pf-btn-subtle'
           }`}
           onClick={handleSave}
           title="Save project"
@@ -241,27 +241,27 @@ export function WorkspaceToolbar({
           {saveConfirm ? 'Saved' : saveStatus === 'saving' ? 'Saving...' : saveStatus === 'unsaved' ? 'Save' : 'Saved'}
         </button>
         {saveStatus === 'saved' && !saveConfirm && (
-          <span className="text-[9px] text-gray-600">saved locally</span>
+          <span className="text-pf-micro text-[var(--text-tertiary)]">saved</span>
         )}
       </div>
 
-      <div className="w-px h-5 bg-gray-800" />
+      <div className="pf-divider-v" />
 
       {/* Analyze / Generate phase indicator */}
       {state.isProcessing ? (
-        <span className={`text-[11px] animate-pulse px-2 py-1 rounded border ${
+        <span className={`text-pf-sm animate-pulse px-2.5 py-1 rounded-pf-md border ${
           analysisPhase === 'generating'
-            ? 'text-blue-400 bg-blue-500/10 border-blue-500/20'
-            : 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20'
+            ? 'text-[var(--accent-primary)] bg-[var(--accent-muted)] border-[var(--accent-primary)]/15'
+            : 'text-cyan-400 bg-cyan-500/8 border-cyan-500/15'
         }`}>
           {analysisPhase === 'generating'
             ? (generationProgress || 'Generating...')
             : 'Analyzing\u2026'}
         </span>
       ) : (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           <select
-            className="bg-gray-800 border border-gray-700 text-gray-300 text-[11px] rounded px-1 py-1 cursor-pointer"
+            className="pf-select"
             value={state.optimizerMethod}
             onChange={(e) => dispatch({ type: 'SET_OPTIMIZER_METHOD', payload: e.target.value as OptimizerMethodKey })}
             title="Optimizer method"
@@ -273,7 +273,7 @@ export function WorkspaceToolbar({
 
           {state.optimizerMethod === 'annealing' && (
             <select
-              className="bg-gray-800 border border-gray-700 text-gray-300 text-[11px] rounded px-1 py-1 cursor-pointer"
+              className="pf-select"
               value={generationMode}
               onChange={(e) => setGenerationMode(e.target.value as GenerationMode)}
               title="Intensity"
@@ -285,10 +285,10 @@ export function WorkspaceToolbar({
           )}
 
           <button
-            className={`px-3 py-1 rounded text-[11px] font-medium transition-colors ${
+            className={`pf-btn text-pf-sm font-medium ${
               canGenerate
-                ? 'bg-blue-600 hover:bg-blue-500 text-white'
-                : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                ? 'pf-btn-primary'
+                : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border border-[var(--border-subtle)] cursor-not-allowed'
             }`}
             onClick={() => canGenerate && generateFull(generationMode)}
             disabled={!canGenerate}
@@ -301,10 +301,10 @@ export function WorkspaceToolbar({
 
       {/* Compare */}
       <button
-        className={`px-2 py-1 text-[11px] rounded transition-colors ${
+        className={`pf-btn text-pf-sm ${
           compareCount >= 2
-            ? 'bg-purple-600 hover:bg-purple-500 text-white'
-            : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+            ? 'bg-purple-600 hover:bg-purple-500 text-white border border-purple-500/30'
+            : 'pf-btn-subtle opacity-50 cursor-not-allowed'
         }`}
         onClick={onCompare}
         disabled={compareCount < 2}
@@ -313,14 +313,14 @@ export function WorkspaceToolbar({
         Compare{compareCount >= 2 ? ` (${compareCount})` : ''}
       </button>
 
-      <div className="w-px h-5 bg-gray-800" />
+      <div className="pf-divider-v" />
 
       {/* Pattern Composer toggle */}
       <button
-        className={`px-2 py-1 text-[11px] rounded transition-colors ${
+        className={`pf-btn text-pf-sm ${
           composerOpen
-            ? 'bg-gray-700 text-gray-200'
-            : 'bg-gray-800 text-gray-400 hover:text-gray-300 hover:bg-gray-700'
+            ? 'bg-[var(--bg-active)] text-[var(--text-primary)] border border-[var(--border-default)]'
+            : 'pf-btn-subtle'
         }`}
         onClick={onToggleComposer}
         title="Toggle Pattern Composer"

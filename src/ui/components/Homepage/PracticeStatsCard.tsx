@@ -18,19 +18,19 @@ interface StatEntryProps {
 
 function StatEntry({ label, value }: StatEntryProps) {
   return (
-    <div className="flex items-center justify-between py-1.5 border-b border-gray-800 last:border-0">
-      <span className="text-[11px] text-gray-500">{label}</span>
-      <span className="text-sm font-medium text-gray-200">{value}</span>
+    <div className="flex items-center justify-between py-1.5 border-b border-[var(--border-subtle)] last:border-0">
+      <span className="text-pf-sm text-[var(--text-tertiary)]">{label}</span>
+      <span className="text-pf-base font-medium text-[var(--text-primary)]">{value}</span>
     </div>
   );
 }
 
 export function PracticeStatsCard({ stats }: PracticeStatsCardProps) {
   return (
-    <div className="glass-panel rounded-lg p-4">
+    <div className="glass-panel rounded-pf-lg p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium text-gray-300">Practice Stats</h3>
-        <span className="text-[10px] text-gray-600 cursor-pointer hover:text-gray-400 transition-colors">
+        <h3 className="text-pf-base font-medium text-[var(--text-secondary)]">Practice Stats</h3>
+        <span className="text-pf-xs text-[var(--text-tertiary)] cursor-pointer hover:text-[var(--text-secondary)] transition-colors">
           Refined stats
         </span>
       </div>

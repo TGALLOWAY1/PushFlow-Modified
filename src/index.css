@@ -2,33 +2,59 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   PushFlow Design Tokens
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 :root {
-  /* --- Color Palette: Base Backgrounds --- */
-  --bg-app: #0A0A0A; /* Deep Void */
-  --bg-panel: #121212; /* Matte Charcoal */
-  --bg-card: #1A1A1A; /* Elevated Surface */
-  --bg-input: #050505; /* Inset Depth */
+  /* --- Backgrounds: warm dark graphite scale --- */
+  --bg-app: #111114;        /* Deep graphite — calm, not void */
+  --bg-panel: #18181c;      /* Panel surface */
+  --bg-card: #1e1e23;       /* Elevated card/section */
+  --bg-input: #111114;      /* Inset field */
+  --bg-hover: #252529;      /* Hover state on surfaces */
+  --bg-active: #2a2a30;     /* Active/pressed state */
 
-  /* --- Color Palette: Text Hierarchy --- */
-  --text-primary: #FFFFFF; /* High Clarity */
-  --text-secondary: #888888; /* Muted Data */
-  --text-tertiary: #444444; /* Subtle Labels */
-  --text-warning: #FF3333; /* Conflict/Error */
+  /* --- Text hierarchy: off-white scale for readability --- */
+  --text-primary: #e8e8ed;    /* Primary text — bright but not harsh */
+  --text-secondary: #8b8b96;  /* Secondary/metadata */
+  --text-tertiary: #55555e;   /* Subtle labels, placeholders */
+  --text-warning: #f87171;    /* Errors/conflicts */
 
-  /* Legacy aliases to avoid breaking things immediately */
+  /* --- Accent: restrained blue --- */
+  --accent-primary: #5b8def;
+  --accent-hover: #6d9bf5;
+  --accent-muted: rgba(91, 141, 239, 0.12);
+
+  /* --- Borders: delicate, low-contrast --- */
+  --border-subtle: #2a2a30;
+  --border-default: #333339;
+  --border-strong: #44444d;
+  --border-active: #5b8def;
+  --border-focus: #5b8def;
+
+  /* --- Shadows --- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.25);
+  --shadow-xl: 0 8px 24px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
+
+  /* --- Radii --- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* --- Legacy aliases (backward compat) --- */
   --background: var(--bg-app);
   --foreground: var(--text-primary);
-  --border: var(--border-subtle);
+  --border: var(--border-default);
   --surface-1: var(--bg-panel);
   --surface-2: var(--bg-card);
-  
-  --accent-primary: #3b82f6;
-
-  /* Borders */
-  --border-subtle: #333333;
-  --border-strong: #555555;
-  --border-active: #FFFFFF;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Base Reset & Typography
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 html, body, #root {
   margin: 0;
@@ -37,24 +63,242 @@ html, body, #root {
 
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background-color: var(--background);
-  color: var(--foreground);
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
 }
+
+/* Tabular nums for all numeric displays */
+.tabular-nums, [data-numeric] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Surface System
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 .glass-panel {
   background: var(--bg-panel);
   border: 1px solid var(--border-subtle);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-lg);
 }
 
 .glass-panel-strong {
   background: var(--bg-card);
-  border: 1px solid var(--border-strong);
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-default);
+  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-lg);
 }
 
 /* Hero card subtle glow */
 .glow-emerald {
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.08), 0 0 40px rgba(16, 185, 129, 0.04),
-    0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.06), 0 0 40px rgba(16, 185, 129, 0.03),
+    var(--shadow-lg);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Component Utilities
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Section headers */
+.section-header {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Editable field affordance */
+.editable-field {
+  cursor: text;
+  border-bottom: 1px dashed transparent;
+  transition: border-color 0.15s ease;
+}
+.editable-field:hover {
+  border-bottom-color: var(--border-default);
+}
+
+/* Focus ring for keyboard nav */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
+/* Smooth transitions everywhere */
+*, *::before, *::after {
+  transition-property: background-color, border-color, color, opacity;
+  transition-duration: 0ms;
+}
+button, a, [role="button"], select, input,
+.transition-colors, .transition-all {
+  transition-duration: 120ms;
+  transition-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Tab System
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pf-tab {
+  position: relative;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  transition: color 120ms ease;
+  border-bottom: 2px solid transparent;
+}
+.pf-tab:hover {
+  color: var(--text-secondary);
+}
+.pf-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Button System
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pf-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  transition: all 120ms ease;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pf-btn-ghost {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+}
+.pf-btn-ghost:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.pf-btn-subtle {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+.pf-btn-subtle:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+.pf-btn-primary {
+  background: var(--accent-primary);
+  border: 1px solid transparent;
+  color: #fff;
+}
+.pf-btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.pf-btn:disabled, .pf-btn[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Input System
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pf-input {
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  padding: 4px 8px;
+  font-size: 11px;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.pf-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(91, 141, 239, 0.15);
+}
+.pf-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* Select styling */
+.pf-select {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  padding: 4px 6px;
+  font-size: 11px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+.pf-select:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.pf-select:focus {
+  border-color: var(--accent-primary);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Badge / Chip / Pill
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pf-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Divider
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pf-divider-v {
+  width: 1px;
+  height: 20px;
+  background: var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.pf-divider-h {
+  height: 1px;
+  background: var(--border-subtle);
+  width: 100%;
 }

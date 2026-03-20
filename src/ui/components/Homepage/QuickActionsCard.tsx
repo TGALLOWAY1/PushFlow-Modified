@@ -82,20 +82,20 @@ export function QuickActionsCard({ onNewProject, onNavigate }: QuickActionsCardP
   const props = { onNewProject, onNavigate };
 
   return (
-    <div className="glass-panel rounded-lg p-4">
-      <h3 className="text-sm font-medium text-gray-300 mb-3">Quick Actions</h3>
+    <div className="glass-panel rounded-pf-lg p-4">
+      <h3 className="text-pf-base font-medium text-[var(--text-secondary)] mb-3">Quick Actions</h3>
 
       <div className="space-y-0.5">
         {ACTIONS.map(action => (
           <button
             key={action.label}
-            className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-gray-800/50 transition-colors text-left group"
+            className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-pf-sm hover:bg-[var(--bg-hover)] transition-colors text-left group"
             onClick={() => action.onClick(props)}
           >
-            <span className={action.accent ?? 'text-gray-500 group-hover:text-gray-400'}>
+            <span className={action.accent ?? 'text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]'}>
               {action.icon}
             </span>
-            <span className="text-xs text-gray-400 group-hover:text-gray-300">
+            <span className="text-pf-sm text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">
               {action.label}
             </span>
           </button>
