@@ -20,6 +20,7 @@ import { type GridLabelSettings } from '../state/viewSettings';
 import { buildSelectedTransitionModel } from '../analysis/selectionModel';
 import { midiNoteToName } from '../../utils/midiNotes';
 import { COMPOSER_PRESET_DRAG_TYPE } from './composer/PresetCard';
+import { type PresetDragPreview } from '../../types/composerPreset';
 
 interface InteractiveGridProps {
   assignments?: FingerAssignment[];
@@ -38,6 +39,12 @@ interface InteractiveGridProps {
   highlightedInstancePads?: Set<string>;
   /** Callback when a composer preset is dropped on the grid. */
   onPresetDrop?: (presetId: string, anchorRow: number, anchorCol: number, isMirrored: boolean) => void;
+  /** Ghost preview during preset drag-over. */
+  dragPreview?: PresetDragPreview | null;
+  /** Callback when dragging a preset over a grid pad (for ghost preview). */
+  onGridDragOver?: (anchorRow: number, anchorCol: number) => void;
+  /** Callback when drag leaves the grid. */
+  onGridDragLeave?: () => void;
 }
 
 /** Abbreviated finger names for display (numbered: thumb=1 through pinky=5) */
@@ -79,7 +86,7 @@ function safeColorAlpha(color: string | null | undefined, alpha: number, fallbac
 /** Physical reach threshold: pads farther apart than this are flagged as impossible. */
 const IMPOSSIBLE_REACH_THRESHOLD = 5;
 
-export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop }: InteractiveGridProps) {
+export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave }: InteractiveGridProps) {
   const { state, dispatch } = useProject();
   const layout = layoutOverride ?? getDisplayedLayout(state);
   const [dragOverPad, setDragOverPad] = useState<string | null>(null);
@@ -278,6 +285,19 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     prevActivePadsRef.current = new Set(activePadKeys);
   }, [activePadKeys, state.isPlaying]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Build ghost preview pad map for rendering
+  const ghostPads = useMemo(() => {
+    if (!dragPreview) return null;
+    const map = new Map<string, { hand: string; valid: boolean }>();
+    for (const pad of dragPreview.pads) {
+      const absRow = dragPreview.anchorRow + pad.position.rowOffset;
+      const absCol = dragPreview.anchorCol + pad.position.colOffset;
+      const key = `${absRow},${absCol}`;
+      map.set(key, { hand: pad.hand, valid: dragPreview.isValid });
+    }
+    return map;
+  }, [dragPreview]);
+
   // Handle dropping a sound onto a pad
   const handleDrop = useCallback((e: React.DragEvent, padKey: string) => {
     e.preventDefault();
@@ -326,11 +346,18 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     setDragOverPad(padKey);
-  }, []);
+
+    // Notify workspace for ghost preview (only for composer preset drags)
+    if (onGridDragOver && e.dataTransfer.types.includes(COMPOSER_PRESET_DRAG_TYPE)) {
+      const [rowStr, colStr] = padKey.split(',');
+      onGridDragOver(parseInt(rowStr, 10), parseInt(colStr, 10));
+    }
+  }, [onGridDragOver]);
 
   const handleDragLeave = useCallback(() => {
     setDragOverPad(null);
-  }, []);
+    onGridDragLeave?.();
+  }, [onGridDragLeave]);
 
   // Drag from a pad (for swapping)
   const handlePadDragStart = useCallback((e: React.DragEvent, padKey: string, voice: Voice) => {
@@ -388,6 +415,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const isDragOver = padKey === dragOverPad;
       const isDragSource = padKey === dragSourcePad;
       const isInstanceHighlighted = highlightedInstancePads?.has(padKey) ?? false;
+      const ghostInfo = ghostPads?.get(padKey);
       const constraint = layout?.fingerConstraints[padKey];
       const isLocked = !!layout?.placementLocks[padKey];
       const isGreyedOut = hasEventSelected && !isSelected;
@@ -508,6 +536,20 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             ? `[${row},${col}] ${voice.name}${summary ? ` | ${summary.hitCount} hits` : ''}${constraint ? ` | Constraint: ${constraint}` : ''}`
             : `[${row},${col}] empty — drop a sound here`}
         >
+          {/* Ghost preview for preset drag */}
+          {ghostInfo && (
+            <div
+              className="absolute inset-0 rounded-lg pointer-events-none z-20"
+              style={{
+                backgroundColor: ghostInfo.valid
+                  ? ghostInfo.hand === 'left' ? 'rgba(0,136,255,0.25)' : 'rgba(255,68,0,0.25)'
+                  : 'rgba(255,50,50,0.3)',
+                border: ghostInfo.valid
+                  ? `2px solid ${ghostInfo.hand === 'left' ? 'rgba(0,136,255,0.6)' : 'rgba(255,68,0,0.6)'}`
+                  : '2px solid rgba(255,50,50,0.6)',
+              }}
+            />
+          )}
           {/* Previous event ghost (onion skin) */}
           {isPrevious && !voice && (
             <div

@@ -8,11 +8,12 @@
  * - Diagnostic cost breakdown (framed as model debugging, not prescriptive)
  */
 
-import { useMemo } from 'react';
-import { type ComposerPreset, type PresetPad, type PlacedPresetInstance } from '../../../types/composerPreset';
+import { useMemo, useState, useCallback } from 'react';
+import { type ComposerPreset, type PresetPad, type PlacedPresetInstance, computeHandedness, isMirrorEligible } from '../../../types/composerPreset';
 import { type FingerType } from '../../../types/fingerModel';
 import { GRID_ROWS, GRID_COLS } from '../../../types/padGrid';
 import { totalSteps } from '../../../types/loopEditor';
+import { updateComposerPreset } from '../../persistence/composerPresetStorage';
 
 interface PresetInspectorProps {
   /** The preset being inspected (from library selection or placed instance). */
@@ -21,6 +22,8 @@ interface PresetInspectorProps {
   instance?: PlacedPresetInstance | null;
   /** Callback to remove a placed instance. */
   onRemoveInstance?: (instanceId: string) => void;
+  /** Callback to mirror a placed instance. */
+  onMirrorInstance?: (instanceId: string) => void;
 }
 
 const FINGER_LABELS: Record<FingerType, string> = {
@@ -44,7 +47,7 @@ const HAND_COLORS = {
   right: '#FF4400',
 } as const;
 
-export function PresetInspector({ preset, instance, onRemoveInstance }: PresetInspectorProps) {
+export function PresetInspector({ preset, instance, onRemoveInstance, onMirrorInstance }: PresetInspectorProps) {
   if (!preset) return null;
 
   const pads = instance?.pads ?? preset.pads;
@@ -128,14 +131,34 @@ export function PresetInspector({ preset, instance, onRemoveInstance }: PresetIn
         <DiagnosticMetrics pads={pads} />
       </div>
 
+      {/* Tags (library presets only) */}
+      {!instance && (
+        <div className="bg-gray-800/30 rounded-lg p-2">
+          <div className="text-[10px] text-gray-500 mb-1.5">Tags</div>
+          <TagEditor presetId={preset.id} tags={preset.tags} />
+        </div>
+      )}
+
       {/* Instance actions */}
-      {instance && onRemoveInstance && (
-        <button
-          className="w-full px-3 py-1.5 text-xs rounded bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors"
-          onClick={() => onRemoveInstance(instance.id)}
-        >
-          Remove from workspace
-        </button>
+      {instance && (
+        <div className="space-y-1.5">
+          {onMirrorInstance && isMirrorEligible(computeHandedness(instance.pads)) && (
+            <button
+              className="w-full px-3 py-1.5 text-xs rounded bg-violet-500/10 text-violet-400 border border-violet-500/20 hover:bg-violet-500/20 transition-colors"
+              onClick={() => onMirrorInstance(instance.id)}
+            >
+              Mirror (flip hand){instance.isMirrored ? ' — currently mirrored' : ''}
+            </button>
+          )}
+          {onRemoveInstance && (
+            <button
+              className="w-full px-3 py-1.5 text-xs rounded bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors"
+              onClick={() => onRemoveInstance(instance.id)}
+            >
+              Remove from workspace
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -351,6 +374,70 @@ function DiagnosticMetrics({ pads }: { pads: PresetPad[] }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ============================================================================
+// Tag Editor
+// ============================================================================
+
+function TagEditor({ presetId, tags }: { presetId: string; tags: string[] }) {
+  const [inputValue, setInputValue] = useState('');
+  const [currentTags, setCurrentTags] = useState(tags);
+
+  const persistTags = useCallback((newTags: string[]) => {
+    setCurrentTags(newTags);
+    updateComposerPreset(presetId, { tags: newTags });
+    window.dispatchEvent(new Event('composer-presets-changed'));
+  }, [presetId]);
+
+  const handleAddTag = useCallback(() => {
+    const tag = inputValue.trim().toLowerCase();
+    if (!tag || currentTags.includes(tag)) {
+      setInputValue('');
+      return;
+    }
+    persistTags([...currentTags, tag]);
+    setInputValue('');
+  }, [inputValue, currentTags, persistTags]);
+
+  const handleRemoveTag = useCallback((tag: string) => {
+    persistTags(currentTags.filter(t => t !== tag));
+  }, [currentTags, persistTags]);
+
+  return (
+    <div>
+      {/* Tag pills */}
+      {currentTags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-1.5">
+          {currentTags.map(tag => (
+            <span
+              key={tag}
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded bg-gray-700/50 text-gray-300"
+            >
+              {tag}
+              <button
+                className="text-gray-500 hover:text-red-400 ml-0.5"
+                onClick={() => handleRemoveTag(tag)}
+              >
+                &times;
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {/* Add tag input */}
+      <input
+        type="text"
+        placeholder="Add tag..."
+        value={inputValue}
+        onChange={e => setInputValue(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') handleAddTag();
+        }}
+        className="w-full px-2 py-1 text-[10px] bg-gray-800 border border-gray-700 rounded text-gray-300 placeholder-gray-600"
+      />
     </div>
   );
 }

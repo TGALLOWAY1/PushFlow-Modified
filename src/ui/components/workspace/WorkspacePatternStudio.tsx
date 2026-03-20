@@ -27,6 +27,7 @@ import {
   normalizePadPositions,
 } from '../../../types/composerPreset';
 import { type FingerType, type HandSide } from '../../../types/fingerModel';
+import { type LaneFingerAssignment } from '../loop-editor/LoopLaneRow';
 import { parsePadKey } from '../../../types/padGrid';
 import { getDisplayedLayout } from '../../state/projectState';
 
@@ -48,6 +49,7 @@ export function WorkspacePatternStudio() {
   const [showRecipeEditor, setShowRecipeEditor] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<PatternRecipe | undefined>(undefined);
   const [hasTouchedComposer, setHasTouchedComposer] = useState(false);
+  const [laneFingerAssignments, setLaneFingerAssignments] = useState<Record<string, LaneFingerAssignment>>({});
   const syncTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const animFrameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
@@ -165,6 +167,10 @@ export function WorkspacePatternStudio() {
     };
   }, [hasTouchedComposer, loopState, projectDispatch]);
 
+  const handleFingerAssignmentChange = useCallback((laneId: string, assignment: LaneFingerAssignment) => {
+    setLaneFingerAssignments(prev => ({ ...prev, [laneId]: assignment }));
+  }, []);
+
   const handleAddLane = useCallback(() => {
     const nextIndex = loopState.lanes.length;
     const newLane: LoopLane = {
@@ -218,7 +224,8 @@ export function WorkspacePatternStudio() {
 
   /**
    * Save current composer state as a ComposerPreset.
-   * Captures pad positions + finger assignments from the project's current layout.
+   * Uses Composer finger assignments as the primary source.
+   * Falls back to layout finger constraints if no Composer assignments exist.
    */
   const handleSaveComposerPreset = useCallback(() => {
     if (loopState.events.size === 0 || loopState.lanes.length === 0) return;
@@ -226,8 +233,16 @@ export function WorkspacePatternStudio() {
     const layout = getDisplayedLayout(projectState);
     if (!layout) return;
 
+    // Check if any lane has a finger assignment set in the Composer
+    const hasComposerFingerAssignments = loopState.lanes.some(l => laneFingerAssignments[l.id]);
+
+    // If no Composer finger assignments and no pads on grid, require finger assignments
+    if (!hasComposerFingerAssignments && Object.keys(layout.padToVoice).length === 0) {
+      window.alert('Set finger assignments for each lane before saving a Composer Preset.\nClick the ·· button next to each lane name to assign a hand + finger.');
+      return;
+    }
+
     // Build preset pads from the current layout's padToVoice mapping
-    // Match lane IDs to pads assigned via BULK_ASSIGN_PADS
     const presetPads: PresetPad[] = [];
     const fingerConstraints = layout.fingerConstraints ?? {};
 
@@ -239,20 +254,30 @@ export function WorkspacePatternStudio() {
       const coord = parsePadKey(padKeyStr);
       if (!coord) continue;
 
-      // Parse finger constraint (format: "L2" = left index, "R3" = right middle, etc.)
-      const constraint = fingerConstraints[padKeyStr];
-      let hand: HandSide = coord.col <= 4 ? 'left' : 'right';
-      let finger: FingerType = 'index';
+      // Primary: use Composer finger assignment for this lane
+      const composerFA = laneFingerAssignments[lane.id];
+      let hand: HandSide;
+      let finger: FingerType;
 
-      if (constraint) {
-        const handChar = constraint.charAt(0);
-        const fingerNum = parseInt(constraint.charAt(1), 10);
-        if (handChar === 'L' || handChar === 'l') hand = 'left';
-        else if (handChar === 'R' || handChar === 'r') hand = 'right';
-        const fingerMap: Record<number, FingerType> = {
-          1: 'thumb', 2: 'index', 3: 'middle', 4: 'ring', 5: 'pinky',
-        };
-        finger = fingerMap[fingerNum] ?? 'index';
+      if (composerFA) {
+        hand = composerFA.hand;
+        finger = composerFA.finger;
+      } else {
+        // Fallback: parse finger constraint from layout (format: "L2" = left index)
+        const constraint = fingerConstraints[padKeyStr];
+        hand = coord.col <= 4 ? 'left' : 'right';
+        finger = 'index';
+
+        if (constraint) {
+          const handChar = constraint.charAt(0);
+          const fingerNum = parseInt(constraint.charAt(1), 10);
+          if (handChar === 'L' || handChar === 'l') hand = 'left';
+          else if (handChar === 'R' || handChar === 'r') hand = 'right';
+          const fingerMap: Record<number, FingerType> = {
+            1: 'thumb', 2: 'index', 3: 'middle', 4: 'ring', 5: 'pinky',
+          };
+          finger = fingerMap[fingerNum] ?? 'index';
+        }
       }
 
       presetPads.push({
@@ -286,7 +311,7 @@ export function WorkspacePatternStudio() {
       boundingBox: computeBoundingBox(normalizedPads),
       tags: [],
     });
-  }, [loopState, projectState]);
+  }, [loopState, projectState, laneFingerAssignments]);
 
   const handleLoadPreset = useCallback((preset: PerformancePreset) => {
     setHasTouchedComposer(true);
@@ -476,7 +501,12 @@ export function WorkspacePatternStudio() {
 
       <div className="flex gap-3 items-start">
         <div className="flex-1 min-w-0 flex rounded-lg bg-gray-800/20 border border-gray-700 overflow-hidden" style={{ minHeight: 260 }}>
-          <LoopLaneSidebar lanes={loopState.lanes} dispatch={dispatchComposer} />
+          <LoopLaneSidebar
+            lanes={loopState.lanes}
+            dispatch={dispatchComposer}
+            fingerAssignments={laneFingerAssignments}
+            onFingerAssignmentChange={handleFingerAssignmentChange}
+          />
           <LoopGridCanvas
             config={loopState.config}
             lanes={loopState.lanes}

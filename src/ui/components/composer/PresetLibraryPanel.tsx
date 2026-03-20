@@ -28,6 +28,10 @@ interface PresetLibraryPanelProps {
   selectedInstanceId?: string | null;
   /** Callback to select a placed instance. */
   onSelectInstance?: (instanceId: string | null) => void;
+  /** Notify parent when preset drag starts (for ghost preview). */
+  onDragStartPreset?: (presetId: string, isMirrored: boolean) => void;
+  /** Notify parent when preset drag ends. */
+  onDragEndPreset?: () => void;
 }
 
 export function PresetLibraryPanel({
@@ -38,6 +42,8 @@ export function PresetLibraryPanel({
   placedInstances = [],
   selectedInstanceId,
   onSelectInstance,
+  onDragStartPreset,
+  onDragEndPreset,
 }: PresetLibraryPanelProps) {
   const [presets, setPresets] = useState<ComposerPreset[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -141,6 +147,8 @@ export function PresetLibraryPanel({
               onDuplicate={handleDuplicate}
               onRename={handleRename}
               onToggleMirror={onToggleMirror}
+              onDragStartPreset={onDragStartPreset}
+              onDragEndPreset={onDragEndPreset}
             />
           ))
         )}

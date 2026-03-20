@@ -8,8 +8,11 @@
 import {
   type ComposerWorkspaceState,
   type PlacedPresetInstance,
+  type PresetPad,
+  type PresetBoundingBox,
   createInitialComposerWorkspaceState,
 } from '../../types/composerPreset';
+// mirrorPads is called by PerformanceWorkspace before dispatching MIRROR_INSTANCE
 
 // ============================================================================
 // Actions
@@ -19,6 +22,7 @@ export type ComposerWorkspaceAction =
   | { type: 'PLACE_PRESET'; instance: PlacedPresetInstance }
   | { type: 'REMOVE_INSTANCE'; instanceId: string }
   | { type: 'SELECT_INSTANCE'; instanceId: string | null }
+  | { type: 'MIRROR_INSTANCE'; instanceId: string; mirroredPads: PresetPad[]; boundingBox: PresetBoundingBox }
   | { type: 'CLEAR_ALL_INSTANCES' }
   | { type: 'LOAD_WORKSPACE'; state: ComposerWorkspaceState };
 
@@ -54,6 +58,20 @@ export function composerWorkspaceReducer(
       return {
         ...state,
         selectedInstanceId: action.instanceId,
+      };
+
+    case 'MIRROR_INSTANCE':
+      return {
+        ...state,
+        placedInstances: state.placedInstances.map(inst => {
+          if (inst.id !== action.instanceId) return inst;
+          return {
+            ...inst,
+            isMirrored: !inst.isMirrored,
+            pads: action.mirroredPads,
+            boundingBox: action.boundingBox,
+          };
+        }),
       };
 
     case 'CLEAR_ALL_INSTANCES':
