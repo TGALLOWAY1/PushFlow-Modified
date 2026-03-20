@@ -279,6 +279,9 @@ export function PerformanceAnalysisPanel({
                         dispatch({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
                       }
                     }}
+                    onDelete={() => {
+                      dispatch({ type: 'DELETE_CANDIDATE', payload: { candidateId: candidate.id } });
+                    }}
                     onToggleCompare={() => {}}
                   />
                 ))}

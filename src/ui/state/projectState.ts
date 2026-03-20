@@ -244,6 +244,7 @@ export type ProjectAction =
   | { type: 'DISCARD_WORKING_LAYOUT' }
   | { type: 'PROMOTE_WORKING_LAYOUT' }
   | { type: 'PROMOTE_CANDIDATE'; payload: { candidateId: string } }
+  | { type: 'DELETE_CANDIDATE'; payload: { candidateId: string } }
   | { type: 'SAVE_AS_VARIANT'; payload: { name: string; source: 'working' | 'candidate'; candidateId?: string } }
   | { type: 'RENAME_LAYOUT'; payload: { target: 'active' | 'working'; name: string } }
 
@@ -739,6 +740,18 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         candidates: remainingCandidates,
         selectedCandidateId: null,
         compareCandidateId: null,
+      };
+    }
+
+    case 'DELETE_CANDIDATE': {
+      const filtered = state.candidates.filter(c => c.id !== action.payload.candidateId);
+      const wasSelected = state.selectedCandidateId === action.payload.candidateId;
+      const wasCompare = state.compareCandidateId === action.payload.candidateId;
+      return {
+        ...state,
+        candidates: filtered,
+        selectedCandidateId: wasSelected ? null : state.selectedCandidateId,
+        compareCandidateId: wasCompare ? null : state.compareCandidateId,
       };
     }
 
