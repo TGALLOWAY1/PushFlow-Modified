@@ -23,6 +23,10 @@ interface PresetCardProps {
   onDuplicate?: (presetId: string) => void;
   onRename?: (presetId: string) => void;
   onToggleMirror?: (presetId: string) => void;
+  /** Notify parent when drag starts (for ghost preview). */
+  onDragStartPreset?: (presetId: string, isMirrored: boolean) => void;
+  /** Notify parent when drag ends. */
+  onDragEndPreset?: () => void;
 }
 
 /** Hand indicator colors. */
@@ -47,6 +51,8 @@ export function PresetCard({
   onDuplicate,
   onRename,
   onToggleMirror,
+  onDragStartPreset,
+  onDragEndPreset,
 }: PresetCardProps) {
   const handleDragStart = (e: DragEvent) => {
     e.dataTransfer.setData(COMPOSER_PRESET_DRAG_TYPE, JSON.stringify({
@@ -54,6 +60,11 @@ export function PresetCard({
       isMirrored,
     }));
     e.dataTransfer.effectAllowed = 'copy';
+    onDragStartPreset?.(preset.id, isMirrored);
+  };
+
+  const handleDragEnd = () => {
+    onDragEndPreset?.();
   };
 
   return (
@@ -65,6 +76,7 @@ export function PresetCard({
       }`}
       draggable
       onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       onClick={() => onSelect?.(preset.id)}
     >
       {/* Header: name + hand indicator */}

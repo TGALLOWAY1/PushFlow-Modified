@@ -232,6 +232,7 @@ export type ProjectAction =
   // Layout editing (targets working layout, auto-creates if needed)
   | { type: 'ASSIGN_VOICE_TO_PAD'; payload: { padKey: string; stream: SoundStream } }
   | { type: 'BULK_ASSIGN_PADS'; payload: Layout['padToVoice'] }
+  | { type: 'MERGE_ASSIGN_PADS'; payload: Layout['padToVoice'] }
   | { type: 'REMOVE_VOICE_FROM_PAD'; payload: { padKey: string } }
   | { type: 'SWAP_PADS'; payload: { padKeyA: string; padKeyB: string } }
   | { type: 'SET_FINGER_CONSTRAINT'; payload: { padKey: string; constraint: string | null } }
@@ -569,6 +570,13 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         ...layout,
         padToVoice: action.payload,
         layoutMode: 'auto',
+      }));
+
+    case 'MERGE_ASSIGN_PADS':
+      return updateWorkingLayout(state, layout => ({
+        ...layout,
+        padToVoice: { ...layout.padToVoice, ...action.payload },
+        layoutMode: 'manual',
       }));
 
     case 'REMOVE_VOICE_FROM_PAD':

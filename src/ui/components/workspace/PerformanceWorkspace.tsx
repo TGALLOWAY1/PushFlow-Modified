@@ -36,6 +36,8 @@ import { PresetInspector } from '../composer/PresetInspector';
 import { loadComposerPresets } from '../../persistence/composerPresetStorage';
 import {
   type PlacedPresetInstance,
+  type ComposerPreset,
+  type PresetDragPreview,
   createInitialComposerWorkspaceState,
 } from '../../../types/composerPreset';
 import {
@@ -43,6 +45,7 @@ import {
 } from '../../state/composerWorkspaceReducer';
 import {
   mirrorPreset,
+  mirrorPads,
   validatePlacement,
 } from '../../../engine/mapping/presetTransform';
 import { generateId } from '../../../utils/idGenerator';
@@ -101,6 +104,18 @@ function PerformanceWorkspaceInner() {
     createInitialComposerWorkspaceState,
   );
 
+  // Get currently occupied pads (for collision detection during placement)
+  const occupiedPads = useMemo(() => {
+    const occupied = new Set<string>();
+    const layout = state.workingLayout ?? state.activeLayout;
+    if (layout) {
+      for (const key of Object.keys(layout.padToVoice)) {
+        occupied.add(key);
+      }
+    }
+    return occupied;
+  }, [state.workingLayout, state.activeLayout]);
+
   // Compute highlighted pads for selected instance
   const highlightedInstancePads = useMemo(() => {
     if (!composerWorkspace.selectedInstanceId) return undefined;
@@ -118,27 +133,79 @@ function PerformanceWorkspaceInner() {
     return keys;
   }, [composerWorkspace.selectedInstanceId, composerWorkspace.placedInstances]);
 
-  // Get currently occupied pads (for collision detection during placement)
-  const occupiedPads = useMemo(() => {
-    const occupied = new Set<string>();
-    const layout = state.workingLayout ?? state.activeLayout;
-    if (layout) {
-      for (const key of Object.keys(layout.padToVoice)) {
-        occupied.add(key);
-      }
+  // Dragging preset state (for ghost preview + mirror-during-drag)
+  const [draggingPreset, setDraggingPreset] = useState<{ preset: ComposerPreset; isMirrored: boolean } | null>(null);
+  const [dragPreview, setDragPreview] = useState<PresetDragPreview | null>(null);
+
+  const handleDragStartPreset = useCallback((presetId: string, isMirrored: boolean) => {
+    const presets = loadComposerPresets();
+    const preset = presets.find(p => p.id === presetId);
+    if (preset) {
+      setDraggingPreset({ preset, isMirrored });
     }
-    return occupied;
-  }, [state.workingLayout, state.activeLayout]);
+  }, []);
+
+  const handleDragEndPreset = useCallback(() => {
+    setDraggingPreset(null);
+    setDragPreview(null);
+  }, []);
+
+  // M key toggles mirror during drag
+  useEffect(() => {
+    if (!draggingPreset) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'm' || e.key === 'M') {
+        setDraggingPreset(prev => {
+          if (!prev) return prev;
+          return { ...prev, isMirrored: !prev.isMirrored };
+        });
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [draggingPreset]);
+
+  // Update ghost preview when dragging preset mirror state changes
+  const handleGridDragOver = useCallback((anchorRow: number, anchorCol: number) => {
+    if (!draggingPreset) {
+      setDragPreview(null);
+      return;
+    }
+    const effectivePreset = draggingPreset.isMirrored
+      ? mirrorPreset(draggingPreset.preset)
+      : draggingPreset.preset;
+    const validation = validatePlacement(effectivePreset.pads, anchorRow, anchorCol, occupiedPads);
+    setDragPreview({
+      presetId: draggingPreset.preset.id,
+      anchorRow,
+      anchorCol,
+      isMirrored: draggingPreset.isMirrored,
+      isValid: validation.valid,
+      pads: effectivePreset.pads,
+      boundingBox: effectivePreset.boundingBox,
+    });
+  }, [draggingPreset, occupiedPads]);
+
+  const handleGridDragLeave = useCallback(() => {
+    setDragPreview(null);
+  }, []);
 
   // Handle preset drop on grid
-  const handlePresetDrop = useCallback((presetId: string, anchorRow: number, anchorCol: number, isMirrored: boolean) => {
+  const handlePresetDrop = useCallback((presetId: string, anchorRow: number, anchorCol: number, isMirroredFromDrag: boolean) => {
     const presets = loadComposerPresets();
     let preset = presets.find(p => p.id === presetId);
     if (!preset) return;
 
+    // Use the workspace-level mirror state if drag is active (M key may have changed it)
+    const isMirrored = draggingPreset ? draggingPreset.isMirrored : isMirroredFromDrag;
+
     if (isMirrored) {
       preset = mirrorPreset(preset);
     }
+
+    // Clear drag state
+    setDraggingPreset(null);
+    setDragPreview(null);
 
     // Validate placement
     const validation = validatePlacement(preset.pads, anchorRow, anchorCol, occupiedPads);
@@ -178,7 +245,7 @@ function PerformanceWorkspaceInner() {
         color: lane?.color ?? '#888',
       };
     }
-    dispatch({ type: 'BULK_ASSIGN_PADS', payload: padToVoice });
+    dispatch({ type: 'MERGE_ASSIGN_PADS', payload: padToVoice });
 
     // Set finger constraints for placed pads
     for (const pad of preset.pads) {
@@ -198,7 +265,7 @@ function PerformanceWorkspaceInner() {
 
     // Add to workspace state
     composerDispatch({ type: 'PLACE_PRESET', instance });
-  }, [dispatch, occupiedPads]);
+  }, [dispatch, occupiedPads, draggingPreset]);
 
   // Resizable panel state
   const [leftWidth, setLeftWidth] = useState(LEFT_DEFAULT);
@@ -296,16 +363,108 @@ function PerformanceWorkspaceInner() {
     const instance = composerWorkspace.placedInstances.find(i => i.id === instanceId);
     if (!instance) return;
 
-    // Remove pads from grid
+    // Remove pads and finger constraints from grid
     for (const pad of instance.pads) {
       const absRow = instance.anchorRow + pad.position.rowOffset;
       const absCol = instance.anchorCol + pad.position.colOffset;
       const key = padKey(absRow, absCol);
       dispatch({ type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey: key } });
+      dispatch({ type: 'SET_FINGER_CONSTRAINT', payload: { padKey: key, constraint: null } });
     }
 
     composerDispatch({ type: 'REMOVE_INSTANCE', instanceId });
   }, [composerWorkspace.placedInstances, dispatch]);
+
+  // Handle in-place mirror of a placed instance
+  const handleMirrorInstance = useCallback((instanceId: string) => {
+    const instance = composerWorkspace.placedInstances.find(i => i.id === instanceId);
+    if (!instance) return;
+
+    // Mirror the pads
+    const mirroredPads = mirrorPads(instance.pads, instance.boundingBox);
+
+    // Validate the new placement
+    // First remove the current instance's pads from occupied set
+    const currentPadKeys = new Set<string>();
+    for (const pad of instance.pads) {
+      currentPadKeys.add(padKey(
+        instance.anchorRow + pad.position.rowOffset,
+        instance.anchorCol + pad.position.colOffset,
+      ));
+    }
+    const occupiedWithoutSelf = new Set([...occupiedPads].filter(k => !currentPadKeys.has(k)));
+    const validation = validatePlacement(mirroredPads, instance.anchorRow, instance.anchorCol, occupiedWithoutSelf);
+
+    if (!validation.valid) {
+      window.alert(`Cannot mirror here:\n${validation.reasons.join('\n')}`);
+      return;
+    }
+
+    // Remove old pad assignments and finger constraints
+    for (const pad of instance.pads) {
+      const absRow = instance.anchorRow + pad.position.rowOffset;
+      const absCol = instance.anchorCol + pad.position.colOffset;
+      const key = padKey(absRow, absCol);
+      dispatch({ type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey: key } });
+      dispatch({ type: 'SET_FINGER_CONSTRAINT', payload: { padKey: key, constraint: null } });
+    }
+
+    // Apply mirrored pad assignments
+    const newPadToVoice: Record<string, any> = {};
+    for (const pad of mirroredPads) {
+      const absRow = instance.anchorRow + pad.position.rowOffset;
+      const absCol = instance.anchorCol + pad.position.colOffset;
+      const key = padKey(absRow, absCol);
+      const lane = instance.lanes.find(l => l.id === pad.laneId);
+      newPadToVoice[key] = {
+        id: pad.laneId,
+        name: lane?.name ?? 'Preset Pad',
+        sourceType: 'midi_track' as const,
+        sourceFile: `preset:${instance.presetName}`,
+        originalMidiNote: lane?.midiNote ?? 36,
+        color: lane?.color ?? '#888',
+      };
+    }
+    dispatch({ type: 'MERGE_ASSIGN_PADS', payload: newPadToVoice });
+
+    // Set finger constraints for mirrored pads
+    for (const pad of mirroredPads) {
+      const absRow = instance.anchorRow + pad.position.rowOffset;
+      const absCol = instance.anchorCol + pad.position.colOffset;
+      const key = padKey(absRow, absCol);
+      const handChar = pad.hand === 'left' ? 'L' : 'R';
+      const fingerMap: Record<string, number> = {
+        thumb: 1, index: 2, middle: 3, ring: 4, pinky: 5,
+      };
+      const fingerNum = fingerMap[pad.finger] ?? 2;
+      dispatch({
+        type: 'SET_FINGER_CONSTRAINT',
+        payload: { padKey: key, constraint: `${handChar}${fingerNum}` },
+      });
+    }
+
+    // Update workspace state
+    composerDispatch({
+      type: 'MIRROR_INSTANCE',
+      instanceId,
+      mirroredPads,
+      boundingBox: instance.boundingBox,
+    });
+  }, [composerWorkspace.placedInstances, dispatch, occupiedPads]);
+
+  // Compute highlighted stream IDs for the selected instance (for timeline sync)
+  const highlightedStreamIds = useMemo(() => {
+    if (!composerWorkspace.selectedInstanceId) return undefined;
+    const instance = composerWorkspace.placedInstances.find(
+      i => i.id === composerWorkspace.selectedInstanceId
+    );
+    if (!instance) return undefined;
+    const ids = new Set<string>();
+    for (const lane of instance.lanes) {
+      ids.add(lane.id);
+    }
+    return ids;
+  }, [composerWorkspace.selectedInstanceId, composerWorkspace.placedInstances]);
 
   const assignments = state.analysisResult?.executionPlan.fingerAssignments;
   const selectedCandidate = state.candidates.find(c => c.id === state.selectedCandidateId) ?? null;
@@ -445,6 +604,8 @@ function PerformanceWorkspaceInner() {
                       composerDispatch({ type: 'SELECT_INSTANCE', instanceId: id });
                       if (id) setSelectedPresetId(null);
                     }}
+                    onDragStartPreset={handleDragStartPreset}
+                    onDragEndPreset={handleDragEndPreset}
                   />
                 )}
               </div>
@@ -478,13 +639,16 @@ function PerformanceWorkspaceInner() {
                   gridLabels={viewSettings.gridLabels}
                   highlightedInstancePads={highlightedInstancePads}
                   onPresetDrop={handlePresetDrop}
+                  dragPreview={dragPreview}
+                  onGridDragOver={handleGridDragOver}
+                  onGridDragLeave={handleGridDragLeave}
                 />
               </div>
             </div>
           </div>
 
           {/* Timeline / Composer — tabbed view */}
-          <div className="flex-[0_1_280px] min-h-[120px] rounded-lg glass-panel overflow-hidden flex flex-col">
+          <div className="flex-[0_1_480px] min-h-[240px] rounded-lg glass-panel overflow-hidden flex flex-col">
             {/* Tab bar */}
             <div className="flex items-center border-b border-gray-800 flex-shrink-0 px-2">
               <button
@@ -511,7 +675,7 @@ function PerformanceWorkspaceInner() {
             {/* Tab content */}
             <div className="flex-1 min-h-0 overflow-hidden">
               {timelineTab === 'timeline' ? (
-                <UnifiedTimeline />
+                <UnifiedTimeline highlightedStreamIds={highlightedStreamIds} />
               ) : (
                 <div className="h-full overflow-auto">
                   <WorkspacePatternStudio />
@@ -564,6 +728,7 @@ function PerformanceWorkspaceInner() {
                     preset={inspectorPreset.preset}
                     instance={inspectorPreset.instance}
                     onRemoveInstance={handleRemoveInstance}
+                    onMirrorInstance={handleMirrorInstance}
                   />
                 ) : (
                   <ActiveLayoutSummary />

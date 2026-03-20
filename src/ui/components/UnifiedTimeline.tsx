@@ -38,7 +38,12 @@ const HAND_COLORS: Record<string, { bg: string; text: string }> = {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function UnifiedTimeline() {
+interface UnifiedTimelineProps {
+  /** Stream IDs to highlight (e.g., from a selected placed preset instance). */
+  highlightedStreamIds?: Set<string>;
+}
+
+export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps = {}) {
   const { state, dispatch } = useProject();
   const { importFiles } = useLaneImport();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -455,6 +460,7 @@ export function UnifiedTimeline() {
               stream={stream}
               isEven={i % 2 === 0}
               isGlobalSelected={state.selectedStreamId === stream.id}
+              isInstanceHighlighted={highlightedStreamIds?.has(stream.id) ?? false}
               onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: stream.id })}
               onSolo={() => dispatch({ type: 'SOLO_STREAM', payload: stream.id })}
               onRename={(name) => dispatch({ type: 'RENAME_SOUND', payload: { streamId: stream.id, name } })}
@@ -515,21 +521,34 @@ export function UnifiedTimeline() {
               />
             ))}
 
-            {/* Lane dividers + alternating backgrounds */}
-            {visibleStreams.map((_, i) => (
-              <div key={`track-bg-${i}`}>
-                {i % 2 === 1 && (
+            {/* Lane dividers + alternating backgrounds + instance highlight */}
+            {visibleStreams.map((stream, i) => {
+              const isHighlighted = highlightedStreamIds?.has(stream.id) ?? false;
+              return (
+                <div key={`track-bg-${i}`}>
+                  {isHighlighted ? (
+                    <div
+                      className="absolute w-full"
+                      style={{
+                        top: TOTAL_HEADER_HEIGHT + i * TRACK_HEIGHT,
+                        height: TRACK_HEIGHT,
+                        backgroundColor: 'rgba(139, 92, 246, 0.08)',
+                        borderLeft: '2px solid rgba(139, 92, 246, 0.4)',
+                      }}
+                    />
+                  ) : i % 2 === 1 ? (
+                    <div
+                      className="absolute w-full bg-white/[0.015]"
+                      style={{ top: TOTAL_HEADER_HEIGHT + i * TRACK_HEIGHT, height: TRACK_HEIGHT }}
+                    />
+                  ) : null}
                   <div
-                    className="absolute w-full bg-white/[0.015]"
-                    style={{ top: TOTAL_HEADER_HEIGHT + i * TRACK_HEIGHT, height: TRACK_HEIGHT }}
+                    className="absolute w-full border-b border-gray-800/30"
+                    style={{ top: TOTAL_HEADER_HEIGHT + (i + 1) * TRACK_HEIGHT }}
                   />
-                )}
-                <div
-                  className="absolute w-full border-b border-gray-800/30"
-                  style={{ top: TOTAL_HEADER_HEIGHT + (i + 1) * TRACK_HEIGHT }}
-                />
-              </div>
-            ))}
+                </div>
+              );
+            })}
 
             {/* Playhead */}
             {state.currentTime > 0 && (
@@ -627,6 +646,7 @@ function VoiceRow({
   stream,
   isEven,
   isGlobalSelected,
+  isInstanceHighlighted = false,
   onToggleMute,
   onSolo,
   onRename,
@@ -634,6 +654,7 @@ function VoiceRow({
   stream: SoundStream;
   isEven: boolean;
   isGlobalSelected: boolean;
+  isInstanceHighlighted?: boolean;
   onToggleMute: () => void;
   onSolo: () => void;
   onRename: (name: string) => void;
@@ -660,7 +681,7 @@ function VoiceRow({
   return (
     <div
       className={`flex items-center gap-1.5 px-2 text-xs border-b border-gray-800/30 transition-colors
-        ${isGlobalSelected ? 'bg-blue-500/15 border-l-2 border-l-blue-400' : isEven ? '' : 'bg-white/[0.015]'}
+        ${isGlobalSelected ? 'bg-blue-500/15 border-l-2 border-l-blue-400' : isInstanceHighlighted ? 'bg-violet-500/10 border-l-2 border-l-violet-400' : isEven ? '' : 'bg-white/[0.015]'}
         ${stream.muted ? 'opacity-40' : ''}`}
       style={{ height: TRACK_HEIGHT }}
     >
