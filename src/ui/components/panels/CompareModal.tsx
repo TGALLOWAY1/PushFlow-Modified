@@ -79,9 +79,9 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
 
   const handlePromote = (candidate: CandidateSolution) => {
     if (candidate.id === '__active__') return; // Can't promote active to active
-    if (confirm('Promote this candidate to become the Active Layout?')) {
+    if (confirm('Promote this candidate to become the Active Layout? The current active layout will be auto-saved as a variant.')) {
       dispatch({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
-      onClose();
+      // Don't close — remaining candidates are preserved so the user can keep comparing
     }
   };
 

@@ -175,6 +175,9 @@ export function LayoutOptionsPanel({
                     dispatch({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
                   }
                 }}
+                onDelete={() => {
+                  dispatch({ type: 'DELETE_CANDIDATE', payload: { candidateId: candidate.id } });
+                }}
                 onToggleCompare={() => onToggleCompare(candidate.id)}
               />
             ))}
@@ -230,6 +233,9 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
                       dispatch({ type: 'SET_ANALYSIS_RESULT', payload: c });
                     }}
                     onPromote={() => {}}
+                    onDelete={() => {
+                      dispatch({ type: 'DELETE_CANDIDATE', payload: { candidateId: c.id } });
+                    }}
                     onToggleCompare={() => {}}
                   />
                 ))}

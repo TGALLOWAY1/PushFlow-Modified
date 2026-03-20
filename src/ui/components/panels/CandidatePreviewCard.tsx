@@ -17,6 +17,7 @@ interface CandidatePreviewCardProps {
   isCheckedForCompare: boolean;
   onSelect: () => void;
   onPromote: () => void;
+  onDelete: () => void;
   onToggleCompare: () => void;
 }
 
@@ -53,6 +54,7 @@ export function CandidatePreviewCard({
   isCheckedForCompare,
   onSelect,
   onPromote,
+  onDelete,
   onToggleCompare,
 }: CandidatePreviewCardProps) {
   const overall = candidate.difficultyAnalysis.overallScore;
@@ -84,24 +86,42 @@ export function CandidatePreviewCard({
         )}
       </button>
 
+      {/* Delete button */}
+      <button
+        className="absolute top-1.5 right-1.5 z-10 w-4 h-4 rounded flex items-center justify-center text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+        onClick={e => { e.stopPropagation(); onDelete(); }}
+        title="Delete candidate"
+      >
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06z" />
+        </svg>
+      </button>
+
       <div className="p-2.5">
         {/* Top row: rank + difficulty */}
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-1.5 ml-5">
             <span className="text-[10px] bg-gray-700/70 text-gray-400 px-1.5 py-0.5 rounded font-mono">
               #{rank}
             </span>
-            <span className="text-[10px] text-gray-400 truncate max-w-[60px]">
+            <span className="text-[10px] text-gray-400 truncate max-w-[80px]">
               {candidate.metadata.strategy ?? 'Candidate'}
             </span>
           </div>
           <span
-            className="text-[10px] font-mono font-medium"
+            className="text-[10px] font-mono font-medium mr-5"
             style={{ color: difficultyColor(overall) }}
           >
             {difficultyLabel(overall)}
           </span>
         </div>
+
+        {/* Optimization method */}
+        {(candidate.metadata.optimizationMode || candidate.metadata.optimizationSummary) && (
+          <div className="text-[9px] text-gray-500 ml-5 mb-1 truncate" title={candidate.metadata.optimizationSummary}>
+            {candidate.metadata.optimizationSummary ?? candidate.metadata.optimizationMode}
+          </div>
+        )}
 
         {/* Grid preview */}
         <div className="flex justify-center mb-2">
