@@ -194,10 +194,9 @@ export function ActiveLayoutSummary() {
           {currentPlan ? (
             <div className="grid grid-cols-4 gap-1.5">
               <QuickStat
-                label="Cost"
-                value={currentPlan.score.toFixed(1)}
-                quality={currentPlan.score < 5 ? 'good' : currentPlan.score < 50 ? 'ok' : 'bad'}
-                subtitle="lower = better"
+                label="Score"
+                value={`${currentPlan.score.toFixed(0)}%`}
+                quality={currentPlan.score >= 80 ? 'good' : currentPlan.score >= 50 ? 'ok' : 'bad'}
               />
               <QuickStat
                 label="Events"
