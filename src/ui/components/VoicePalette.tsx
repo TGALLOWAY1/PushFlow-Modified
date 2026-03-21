@@ -14,6 +14,13 @@ import { generateId } from '../../utils/idGenerator';
 import { FingerAssignmentInput, type FingerAssignmentValue } from './shared/FingerAssignmentInput';
 import { type FingerType } from '../../types/fingerModel';
 
+/** Format a pad key like "3,5" into "R3C5" to match Lanes panel format. */
+function formatPadKey(pk: string): string {
+  const parts = pk.split(',');
+  if (parts.length !== 2) return pk;
+  return `R${parts[0]}C${parts[1]}`;
+}
+
 const COLOR_PALETTE = [
   '#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6',
   '#3b82f6', '#8b5cf6', '#ec4899', '#f43f5e', '#6366f1',
@@ -590,22 +597,20 @@ function StreamRow({
 
       {/* Pad location(s) + lock indicator */}
       {padKeys.length > 0 && (
-        <span className="text-pf-xs text-[var(--text-tertiary)] font-mono flex-shrink-0 flex items-center gap-0.5 tabular-nums">
+        <span className="text-pf-xs text-[var(--text-secondary)] font-mono flex-shrink-0 flex items-center gap-0.5 tabular-nums">
           {isLocked && <span className="text-[8px] text-amber-400" title="Placement locked">&#x1F512;</span>}
-          [{padKeys[0]}]
+          {formatPadKey(padKeys[0])}
           {padKeys.length > 1 && `+${padKeys.length - 1}`}
         </span>
       )}
 
-      {/* Finger assignment — type L1, R5, etc. */}
+      {/* Finger assignment — only show explicit user constraints (not solver suggestions) */}
       <div onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
         <FingerAssignmentInput
           value={
             voiceConstraint?.hand && voiceConstraint?.finger
               ? { hand: voiceConstraint.hand, finger: voiceConstraint.finger as FingerType }
-              : solverAssignment?.hand && solverFinger
-                ? { hand: solverAssignment.hand as 'left' | 'right', finger: solverFinger as FingerType }
-                : null
+              : null
           }
           onChange={(assignment: FingerAssignmentValue | null) => {
             if (assignment) {
