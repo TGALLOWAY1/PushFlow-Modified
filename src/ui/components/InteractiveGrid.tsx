@@ -119,7 +119,10 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     return result;
   }, [layout, state.soundStreams]);
 
-  // Build per-pad summary from assignments, overlaying voiceConstraints
+  // Build per-pad summary from assignments, overlaying voiceConstraints.
+  // Per invariant 7 (no auto grid layout): finger labels only display when the user
+  // has explicitly set a voiceConstraint. Solver-computed fingers (a.assignedHand/a.finger)
+  // are used for hand coloring (glow) but NOT displayed as finger labels on pads.
   const padSummaries = useMemo(() => {
     const map = new Map<string, PadSummary>();
     if (!assignments) return map;
@@ -139,13 +142,18 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
         };
         map.set(key, summary);
       }
-      // Overlay voiceConstraints: if the user set a hand/finger for this voice, use it
+      // Use solver hand for glow coloring (visual feedback), but only show
+      // finger labels when the user has explicitly set a voiceConstraint.
       const voice = voiceByNote.get(a.noteNumber);
       const constraint = voice ? voiceConstraints[voice.id] : undefined;
       const effectiveHand = constraint?.hand ?? a.assignedHand;
-      const effectiveFinger = constraint?.finger ?? a.finger;
       summary.hands.add(effectiveHand);
-      if (effectiveFinger) summary.fingers.add(`${effectiveHand[0].toUpperCase()}${FINGER_ABBREV[effectiveFinger] ?? effectiveFinger}`);
+      // Only add finger label if user explicitly set a constraint
+      if (constraint?.hand && constraint?.finger) {
+        const handChar = constraint.hand === 'left' ? 'L' : 'R';
+        const fingerNum = FINGER_ABBREV[constraint.finger] ?? constraint.finger;
+        summary.fingers.add(`${handChar}${fingerNum}`);
+      }
       summary.hitCount++;
     }
     return map;
