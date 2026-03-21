@@ -120,36 +120,76 @@ export function WorkspacePatternStudio() {
     dispatch(action);
   }, []);
 
-  // Compute pad positions for each lane from the current layout
+  // Build a mapping from composer lane IDs → voice IDs in layout.padToVoice.
+  // Lanes and voices live in different ID spaces; this bridges them via name/MIDI note.
+  const laneToVoiceId = useMemo(() => {
+    const layout = getDisplayedLayout(projectState);
+    if (!layout) return {} as Record<string, string>;
+    const map: Record<string, string> = {};
+    const voices = Object.values(layout.padToVoice);
+    for (const lane of loopState.lanes) {
+      // Direct ID match (rare but possible)
+      let v = voices.find(v => v.id === lane.id);
+      // Name match
+      if (!v) v = voices.find(v => v.name === lane.name);
+      // MIDI note match
+      if (!v && lane.midiNote !== null) v = voices.find(v => v.originalMidiNote === lane.midiNote);
+      if (v) map[lane.id] = v.id;
+    }
+    return map;
+  }, [loopState.lanes, projectState]);
+
+  // Compute pad positions for each lane from the current layout, keyed by lane ID
   const lanePadPositions = useMemo(() => {
     const layout = getDisplayedLayout(projectState);
     if (!layout) return {};
-    const map: Record<string, string> = {};
+    // Build voice ID → pad key map
+    const voicePadMap: Record<string, string> = {};
     for (const [pk, voice] of Object.entries(layout.padToVoice)) {
-      if (!map[voice.id]) map[voice.id] = pk;
+      if (!voicePadMap[voice.id]) voicePadMap[voice.id] = pk;
+    }
+    // Map lane IDs to pad positions via the lane→voice bridge
+    const map: Record<string, string> = {};
+    for (const lane of loopState.lanes) {
+      const voiceId = laneToVoiceId[lane.id];
+      if (voiceId && voicePadMap[voiceId]) {
+        map[lane.id] = voicePadMap[voiceId];
+      }
     }
     return map;
-  }, [projectState]);
+  }, [loopState.lanes, laneToVoiceId, projectState]);
 
-  // Derive finger assignments from project voiceConstraints (single source of truth)
+  // Derive finger assignments from project voiceConstraints (single source of truth).
+  // Look up by both lane ID and the mapped voice ID to catch constraints set from any panel.
   const laneFingerAssignments = useMemo(() => {
     const assignments: Record<string, LaneFingerAssignment> = {};
     for (const lane of loopState.lanes) {
-      const vc = projectState.voiceConstraints[lane.id];
+      const voiceId = laneToVoiceId[lane.id];
+      const vc = projectState.voiceConstraints[lane.id]
+        ?? (voiceId ? projectState.voiceConstraints[voiceId] : undefined);
       if (vc?.hand && vc?.finger) {
         assignments[lane.id] = { hand: vc.hand, finger: vc.finger as FingerType };
       }
     }
     return assignments;
-  }, [loopState.lanes, projectState.voiceConstraints]);
+  }, [loopState.lanes, laneToVoiceId, projectState.voiceConstraints]);
 
-  // Finger assignment changes dispatch to project state (single source of truth)
+  // Finger assignment changes dispatch to project state for BOTH lane ID and voice ID,
+  // ensuring constraints are visible from all panels (Sounds panel uses voice ID, Composer uses lane ID).
   const handleFingerAssignmentChange = useCallback((laneId: string, assignment: LaneFingerAssignment) => {
     projectDispatch({
       type: 'SET_VOICE_CONSTRAINT',
       payload: { streamId: laneId, hand: assignment.hand, finger: assignment.finger },
     });
-  }, [projectDispatch]);
+    // Also set for the mapped voice ID so Sounds panel and Grid see it
+    const voiceId = laneToVoiceId[laneId];
+    if (voiceId && voiceId !== laneId) {
+      projectDispatch({
+        type: 'SET_VOICE_CONSTRAINT',
+        payload: { streamId: voiceId, hand: assignment.hand, finger: assignment.finger },
+      });
+    }
+  }, [projectDispatch, laneToVoiceId]);
 
   useEffect(() => {
     if (!loopState.isPlaying) {
@@ -269,7 +309,9 @@ export function WorkspacePatternStudio() {
 
     // Check if any lane has a finger assignment via voiceConstraints
     const hasFingerAssignments = loopState.lanes.some(l => {
-      const vc = projectState.voiceConstraints[l.id];
+      const voiceId = laneToVoiceId[l.id];
+      const vc = projectState.voiceConstraints[l.id]
+        ?? (voiceId ? projectState.voiceConstraints[voiceId] : undefined);
       return vc?.hand && vc?.finger;
     });
 
@@ -293,8 +335,11 @@ export function WorkspacePatternStudio() {
       const coord = parsePadKey(padKeyStr);
       if (!coord) continue;
 
-      // Primary: use voice constraint from project state
-      const vc = projectState.voiceConstraints[voice.id] ?? projectState.voiceConstraints[lane.id];
+      // Primary: use voice constraint from project state (try voice ID, lane ID, and mapped voice ID)
+      const mappedVoiceId = laneToVoiceId[lane.id];
+      const vc = projectState.voiceConstraints[voice.id]
+        ?? projectState.voiceConstraints[lane.id]
+        ?? (mappedVoiceId ? projectState.voiceConstraints[mappedVoiceId] : undefined);
       let hand: HandSide;
       let finger: FingerType;
 
