@@ -195,8 +195,8 @@ export function ActiveLayoutSummary() {
             <div className="grid grid-cols-4 gap-1.5">
               <QuickStat
                 label="Score"
-                value={currentPlan.score.toFixed(1)}
-                quality={currentPlan.score < 5 ? 'good' : currentPlan.score < 15 ? 'ok' : 'bad'}
+                value={`${currentPlan.score.toFixed(0)}%`}
+                quality={currentPlan.score >= 80 ? 'good' : currentPlan.score >= 50 ? 'ok' : 'bad'}
               />
               <QuickStat
                 label="Events"
@@ -372,10 +372,11 @@ export function ActiveLayoutSummary() {
   );
 }
 
-function QuickStat({ label, value, quality }: {
+function QuickStat({ label, value, quality, subtitle }: {
   label: string;
   value: string;
   quality?: 'good' | 'ok' | 'bad';
+  subtitle?: string;
 }) {
   const colors = {
     good: 'text-green-400 border-green-500/15 bg-green-500/5',
@@ -385,7 +386,7 @@ function QuickStat({ label, value, quality }: {
   const style = quality ? colors[quality] : 'text-[var(--text-primary)] border-[var(--border-default)] bg-[var(--bg-card)]';
 
   return (
-    <div className={`px-2 py-1.5 rounded-pf-md border text-center ${style}`}>
+    <div className={`px-2 py-1.5 rounded-pf-md border text-center ${style}`} title={subtitle}>
       <div className="text-pf-micro text-[var(--text-tertiary)] uppercase tracking-wider">{label}</div>
       <div className="text-pf-sm font-mono font-medium tabular-nums">{value}</div>
     </div>
