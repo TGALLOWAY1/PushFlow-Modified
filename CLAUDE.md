@@ -436,6 +436,12 @@ These rules protect against recurring regressions. Violating them requires expli
 - Do not treat temporary internal refactors as justification for dropping observability.
 - After optimizer runs complete, `isProcessing` must be reset to `false` on both success and error paths.
 
+### TEST MIDI 1 Verification Rule
+- Any code change that impacts any optimization method (beam, annealing, greedy) **must** be verified against TEST MIDI 1 (`archive/v1-reference/test-data/Scenario 1 Tests/TEST MIDI 1.mid`).
+- The integration test `test/engine/optimization/testMidi1Integration.test.ts` exercises all optimization paths on this file.
+- **Required outcome:** All optimization methods must produce results with **0 unplayable events** on TEST MIDI 1.
+- Run: `npx vitest run test/engine/optimization/testMidi1Integration.test.ts` after any optimizer change.
+
 ### Solver Change Checklist
 
 Any future change to solver or optimizer internals must verify:
@@ -445,6 +451,7 @@ Any future change to solver or optimizer internals must verify:
 4. Whether stochastic behavior / restart behavior was preserved
 5. Whether deterministic debug mode (seed=0) still works
 6. Whether `isProcessing` is correctly reset on all code paths
+7. Whether TEST MIDI 1 still produces 0 unplayable events across all methods
 
 ## Canonical Optimizer Output Contract
 

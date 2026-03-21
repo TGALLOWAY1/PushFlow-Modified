@@ -46,6 +46,11 @@ import {
   scorePlacement,
 } from './greedyEvaluation';
 import {
+  buildVoiceIdToPadIndex,
+  buildNoteToPadIndex,
+  resolveEventToPad,
+} from '../mapping/mappingResolver';
+import {
   type UpdatePolicy,
   type EvaluatedMove,
   type UpdateContext,
@@ -293,7 +298,7 @@ class GreedyOptimizer implements OptimizerMethod {
     );
 
     // Build ExecutionPlanResult for backward compatibility
-    const executionPlan = this.buildExecutionPlan(moments, layout, assignment, finalDiagnostics);
+    const executionPlan = this.buildExecutionPlan(moments, layout, assignment, finalDiagnostics, input.instrumentConfig);
 
     const wallClockMs = Date.now() - startTime;
     const telemetry: OptimizerTelemetry = {
@@ -578,21 +583,41 @@ class GreedyOptimizer implements OptimizerMethod {
 
   private buildExecutionPlan(
     moments: PerformanceMoment[],
-    _layout: Layout,
+    layout: Layout,
     assignment: PadFingerAssignment,
     diagnostics: PerformanceCostBreakdown,
+    instrumentConfig?: import('../../types/performance').InstrumentConfig,
   ): import('../../types/executionPlan').ExecutionPlanResult {
     // Build per-event finger assignments from moments + assignment
     const fingerAssignments: import('../../types/executionPlan').FingerAssignment[] = [];
     let unplayableCount = 0;
     let hardCount = 0;
 
+    // Build pad resolution indices from layout (handles voiceId and noteNumber lookups)
+    const voiceIdIndex = buildVoiceIdToPadIndex(layout.padToVoice);
+    const noteIndex = buildNoteToPadIndex(layout.padToVoice);
+
     for (const moment of moments) {
       for (const note of moment.notes) {
-        const padKey = note.padId;
-        const owner = assignment[padKey];
+        // Resolve pad from layout when padId is missing (seed layouts don't pre-populate padId)
+        let padKeyStr = note.padId;
+        if (!padKeyStr) {
+          const resolveConfig = instrumentConfig ?? { rows: 8, cols: 8, bottomLeftNote: 36, id: '', name: '', layoutMode: 'drum_64' as const };
+          const resolution = resolveEventToPad(
+            { noteNumber: note.noteNumber, voiceId: note.soundId },
+            voiceIdIndex,
+            noteIndex,
+            resolveConfig,
+            'allow-fallback',
+          );
+          if (resolution.source !== 'unmapped') {
+            padKeyStr = `${resolution.pad.row},${resolution.pad.col}`;
+          }
+        }
 
-        if (!owner || !padKey) {
+        const owner = padKeyStr ? assignment[padKeyStr] : undefined;
+
+        if (!owner || !padKeyStr) {
           fingerAssignments.push({
             noteNumber: note.noteNumber,
             voiceId: note.soundId,
@@ -606,7 +631,7 @@ class GreedyOptimizer implements OptimizerMethod {
           continue;
         }
 
-        const pad = parsePadKey(padKey);
+        const pad = parsePadKey(padKeyStr);
         fingerAssignments.push({
           noteNumber: note.noteNumber,
           voiceId: note.soundId,
@@ -617,7 +642,7 @@ class GreedyOptimizer implements OptimizerMethod {
           difficulty: 'Easy',
           row: pad.row,
           col: pad.col,
-          padId: padKey,
+          padId: padKeyStr,
         });
       }
     }

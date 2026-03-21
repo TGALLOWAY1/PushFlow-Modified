@@ -471,6 +471,14 @@ function buildVoiceMap(
   if (baseLayout) {
     for (const voice of Object.values(baseLayout.padToVoice)) {
       voices.set(voice.id, voice);
+      // Also index by noteNumber string so feature-based lookups work
+      // (features are keyed by event.voiceId ?? String(event.noteNumber))
+      if (voice.originalMidiNote != null) {
+        const noteKey = String(voice.originalMidiNote);
+        if (!voices.has(noteKey)) {
+          voices.set(noteKey, voice);
+        }
+      }
     }
   }
 
