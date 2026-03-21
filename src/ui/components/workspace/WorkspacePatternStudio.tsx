@@ -11,8 +11,6 @@ import { stepDuration, totalSteps } from '../../../types/loopEditor';
 import { generateId } from '../../../utils/idGenerator';
 import { LoopLaneSidebar } from '../loop-editor/LoopLaneSidebar';
 import { LoopGridCanvas } from '../loop-editor/LoopGridCanvas';
-import { RudimentEventStepper } from '../loop-editor/RudimentEventStepper';
-import { type Layout } from '../../../types/layout';
 import { saveComposerPreset } from '../../persistence/composerPresetStorage';
 import {
   type PresetPad,
@@ -25,12 +23,37 @@ import { type FingerType, type HandSide } from '../../../types/fingerModel';
 import { type LaneFingerAssignment } from '../loop-editor/LoopLaneRow';
 import { parsePadKey } from '../../../types/padGrid';
 import { getDisplayedLayout } from '../../state/projectState';
+import { saveLoopState, loadLoopState } from '../../persistence/loopStorage';
 
 const LANE_COLORS = ['#ef4444', '#f97316', '#22c55e', '#eab308', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6'];
 const DEFAULT_MIDI_NOTES = [36, 38, 42, 46, 48, 60, 62, 64];
 const WORKSPACE_PATTERN_SOURCE_ID = 'workspace_pattern_source';
 const WORKSPACE_PATTERN_GROUP_ID = 'workspace_pattern_group';
 const WORKSPACE_PATTERN_NAME = 'Workspace Pattern';
+
+/** Parse a constraint string like "L2" or "L-Ix" (legacy) into hand + finger. */
+function parseConstraintString(constraint: string): { hand: HandSide; finger: FingerType } | null {
+  // "L2" format (canonical)
+  const matchNum = constraint.match(/^([LlRr])([1-5])$/);
+  if (matchNum) {
+    const hand: HandSide = matchNum[1].toUpperCase() === 'L' ? 'left' : 'right';
+    const fingerNumMap: Record<string, FingerType> = {
+      '1': 'thumb', '2': 'index', '3': 'middle', '4': 'ring', '5': 'pinky',
+    };
+    return { hand, finger: fingerNumMap[matchNum[2]] };
+  }
+  // "L-Ix" format (legacy, still parsed for backward compatibility)
+  const FINGER_MAP: Record<string, FingerType> = {
+    Th: 'thumb', Ix: 'index', Md: 'middle', Rg: 'ring', Pk: 'pinky',
+  };
+  const matchDash = constraint.match(/^([LR])-(\w+)$/);
+  if (matchDash) {
+    const hand: HandSide = matchDash[1] === 'L' ? 'left' : 'right';
+    const finger = FINGER_MAP[matchDash[2]];
+    if (finger) return { hand, finger };
+  }
+  return null;
+}
 
 interface ProjectPatternMeta {
   existingGroupOrder: number;
@@ -39,11 +62,26 @@ interface ProjectPatternMeta {
 
 export function WorkspacePatternStudio() {
   const { state: projectState, dispatch: projectDispatch } = useProject();
-  const [loopState, dispatch] = useReducer(loopEditorReducer, undefined, createInitialLoopState);
-  const [activeEventIndex, setActiveEventIndex] = useState<number | null>(null);
-  const [hasTouchedComposer, setHasTouchedComposer] = useState(false);
-  const [laneFingerAssignments, setLaneFingerAssignments] = useState<Record<string, LaneFingerAssignment>>({});
+
+  // Load persisted loop state on mount, fall back to fresh state
+  const initialState = useMemo(() => {
+    const saved = loadLoopState(projectState.id);
+    return saved ?? createInitialLoopState();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only on mount
+
+  const [loopState, dispatch] = useReducer(loopEditorReducer, initialState, s => s);
+
+  // Initialize hasTouchedComposer from loaded state (if it has content, sync should run)
+  const [hasTouchedComposer, setHasTouchedComposer] = useState(
+    () => initialState.lanes.length > 0 && initialState.events.size > 0
+  );
+
+  // Track whether the user explicitly cleared the composer (vs loading empty state)
+  const userExplicitlyClearedRef = useRef(false);
+
   const syncTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const animFrameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
   const playheadRef = useRef<number>(loopState.playheadStep);
@@ -53,6 +91,15 @@ export function WorkspacePatternStudio() {
   });
 
   playheadRef.current = loopState.playheadStep;
+
+  // Persist loop state to localStorage on changes (debounced)
+  useEffect(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveLoopState(projectState.id, loopState);
+    }, 500);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [loopState, projectState.id]);
 
   useEffect(() => {
     const existingGroup = projectState.laneGroups.find(group => group.groupId === WORKSPACE_PATTERN_GROUP_ID);
@@ -69,19 +116,9 @@ export function WorkspacePatternStudio() {
 
   const dispatchComposer = useCallback((action: LoopEditorAction) => {
     setHasTouchedComposer(true);
+    userExplicitlyClearedRef.current = false;
     dispatch(action);
   }, []);
-
-  const activeResult = useMemo(() => {
-    if (loopState.rudimentResult) {
-      return {
-        fingerAssignments: loopState.rudimentResult.fingerAssignments,
-        complexity: loopState.rudimentResult.complexity,
-        padAssignments: loopState.rudimentResult.padAssignments,
-      };
-    }
-    return null;
-  }, [loopState.rudimentResult]);
 
   // Compute pad positions for each lane from the current layout
   const lanePadPositions = useMemo(() => {
@@ -94,6 +131,26 @@ export function WorkspacePatternStudio() {
     return map;
   }, [projectState]);
 
+  // Derive finger assignments from project voiceConstraints (single source of truth)
+  const laneFingerAssignments = useMemo(() => {
+    const assignments: Record<string, LaneFingerAssignment> = {};
+    for (const lane of loopState.lanes) {
+      const vc = projectState.voiceConstraints[lane.id];
+      if (vc?.hand && vc?.finger) {
+        assignments[lane.id] = { hand: vc.hand, finger: vc.finger as FingerType };
+      }
+    }
+    return assignments;
+  }, [loopState.lanes, projectState.voiceConstraints]);
+
+  // Finger assignment changes dispatch to project state (single source of truth)
+  const handleFingerAssignmentChange = useCallback((laneId: string, assignment: LaneFingerAssignment) => {
+    projectDispatch({
+      type: 'SET_VOICE_CONSTRAINT',
+      payload: { streamId: laneId, hand: assignment.hand, finger: assignment.finger },
+    });
+  }, [projectDispatch]);
+
   useEffect(() => {
     if (!loopState.isPlaying) {
       cancelAnimationFrame(animFrameRef.current);
@@ -101,8 +158,10 @@ export function WorkspacePatternStudio() {
       return;
     }
 
-    const stepDur = stepDuration(loopState.config);
-    const steps = totalSteps(loopState.config);
+    // Use project tempo for playback timing
+    const effectiveConfig = { ...loopState.config, bpm: projectState.tempo };
+    const stepDur = stepDuration(effectiveConfig);
+    const steps = totalSteps(effectiveConfig);
 
     const tick = (timestamp: number) => {
       if (lastTimeRef.current === 0) {
@@ -119,22 +178,32 @@ export function WorkspacePatternStudio() {
 
     animFrameRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animFrameRef.current);
-  }, [loopState.isPlaying, loopState.config]);
+  }, [loopState.isPlaying, loopState.config, projectState.tempo]);
 
+  // Sync composer state to performance lanes (debounced)
   useEffect(() => {
     if (!hasTouchedComposer) return;
 
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
       if (loopState.lanes.length === 0 || loopState.events.size === 0) {
-        projectDispatch({
-          type: 'REMOVE_LANE_SOURCE',
-          payload: { sourceFileId: WORKSPACE_PATTERN_SOURCE_ID, groupId: WORKSPACE_PATTERN_GROUP_ID },
-        });
+        // Only remove lane source if the user explicitly cleared — don't remove on empty load
+        if (userExplicitlyClearedRef.current) {
+          projectDispatch({
+            type: 'REMOVE_LANE_SOURCE',
+            payload: { sourceFileId: WORKSPACE_PATTERN_SOURCE_ID, groupId: WORKSPACE_PATTERN_GROUP_ID },
+          });
+        }
         return;
       }
 
-      const conversion = convertLoopToPerformanceLanes(loopState, WORKSPACE_PATTERN_NAME, {
+      // Use project tempo for conversion timing
+      const stateWithProjectTempo = {
+        ...loopState,
+        config: { ...loopState.config, bpm: projectState.tempo },
+      };
+
+      const conversion = convertLoopToPerformanceLanes(stateWithProjectTempo, WORKSPACE_PATTERN_NAME, {
         sourceFileId: WORKSPACE_PATTERN_SOURCE_ID,
         sourceFileName: WORKSPACE_PATTERN_NAME,
         groupId: WORKSPACE_PATTERN_GROUP_ID,
@@ -162,11 +231,7 @@ export function WorkspacePatternStudio() {
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [hasTouchedComposer, loopState, projectDispatch]);
-
-  const handleFingerAssignmentChange = useCallback((laneId: string, assignment: LaneFingerAssignment) => {
-    setLaneFingerAssignments(prev => ({ ...prev, [laneId]: assignment }));
-  }, []);
+  }, [hasTouchedComposer, loopState, projectState.tempo, projectDispatch]);
 
   const handleAddLane = useCallback(() => {
     const nextIndex = loopState.lanes.length;
@@ -193,8 +258,8 @@ export function WorkspacePatternStudio() {
 
   /**
    * Save current composer state as a ComposerPreset.
-   * Uses Composer finger assignments as the primary source.
-   * Falls back to layout finger constraints if no Composer assignments exist.
+   * Uses voice constraints from project state as the primary source of finger assignments.
+   * Falls back to layout finger constraints if no voice constraints exist.
    */
   const handleSaveComposerPreset = useCallback(() => {
     if (loopState.events.size === 0 || loopState.lanes.length === 0) return;
@@ -202,11 +267,14 @@ export function WorkspacePatternStudio() {
     const layout = getDisplayedLayout(projectState);
     if (!layout) return;
 
-    // Check if any lane has a finger assignment set in the Composer
-    const hasComposerFingerAssignments = loopState.lanes.some(l => laneFingerAssignments[l.id]);
+    // Check if any lane has a finger assignment via voiceConstraints
+    const hasFingerAssignments = loopState.lanes.some(l => {
+      const vc = projectState.voiceConstraints[l.id];
+      return vc?.hand && vc?.finger;
+    });
 
-    // If no Composer finger assignments and no pads on grid, require finger assignments
-    if (!hasComposerFingerAssignments && Object.keys(layout.padToVoice).length === 0) {
+    // If no finger assignments and no pads on grid, require finger assignments
+    if (!hasFingerAssignments && Object.keys(layout.padToVoice).length === 0) {
       window.alert('Set finger assignments for each lane before saving a Composer Preset.\nClick the ·· button next to each lane name to assign a hand + finger.');
       return;
     }
@@ -216,36 +284,35 @@ export function WorkspacePatternStudio() {
     const fingerConstraints = layout.fingerConstraints ?? {};
 
     for (const [padKeyStr, voice] of Object.entries(layout.padToVoice)) {
-      // Only include pads that belong to current composer lanes
-      const lane = loopState.lanes.find(l => l.id === voice.id);
+      // Match pads to composer lanes: try ID match, then name match, then MIDI note match
+      let lane = loopState.lanes.find(l => l.id === voice.id);
+      if (!lane) lane = loopState.lanes.find(l => l.name === voice.name);
+      if (!lane) lane = loopState.lanes.find(l => l.midiNote !== null && l.midiNote === voice.originalMidiNote);
       if (!lane) continue;
 
       const coord = parsePadKey(padKeyStr);
       if (!coord) continue;
 
-      // Primary: use Composer finger assignment for this lane
-      const composerFA = laneFingerAssignments[lane.id];
+      // Primary: use voice constraint from project state
+      const vc = projectState.voiceConstraints[voice.id] ?? projectState.voiceConstraints[lane.id];
       let hand: HandSide;
       let finger: FingerType;
 
-      if (composerFA) {
-        hand = composerFA.hand;
-        finger = composerFA.finger;
+      if (vc?.hand && vc?.finger) {
+        hand = vc.hand;
+        finger = vc.finger as FingerType;
       } else {
-        // Fallback: parse finger constraint from layout (format: "L2" = left index)
+        // Fallback: parse finger constraint from layout
         const constraint = fingerConstraints[padKeyStr];
         hand = coord.col <= 4 ? 'left' : 'right';
         finger = 'index';
 
         if (constraint) {
-          const handChar = constraint.charAt(0);
-          const fingerNum = parseInt(constraint.charAt(1), 10);
-          if (handChar === 'L' || handChar === 'l') hand = 'left';
-          else if (handChar === 'R' || handChar === 'r') hand = 'right';
-          const fingerMap: Record<number, FingerType> = {
-            1: 'thumb', 2: 'index', 3: 'middle', 4: 'ring', 5: 'pinky',
-          };
-          finger = fingerMap[fingerNum] ?? 'index';
+          const parsed = parseConstraintString(constraint);
+          if (parsed) {
+            hand = parsed.hand;
+            finger = parsed.finger;
+          }
         }
       }
 
@@ -272,7 +339,7 @@ export function WorkspacePatternStudio() {
     saveComposerPreset({
       name,
       pads: normalizedPads,
-      config: loopState.config,
+      config: { ...loopState.config, bpm: projectState.tempo },
       lanes: loopState.lanes,
       events: Array.from(loopState.events.entries()),
       handedness,
@@ -280,41 +347,23 @@ export function WorkspacePatternStudio() {
       boundingBox: computeBoundingBox(normalizedPads),
       tags: [],
     });
-  }, [loopState, projectState, laneFingerAssignments]);
+  }, [loopState, projectState]);
 
   const handleResetComposer = useCallback(() => {
     setHasTouchedComposer(true);
+    userExplicitlyClearedRef.current = true;
     dispatch({ type: 'LOAD_LOOP_STATE', payload: createInitialLoopState() });
-    setActiveEventIndex(null);
     projectDispatch({
       type: 'REMOVE_LANE_SOURCE',
       payload: { sourceFileId: WORKSPACE_PATTERN_SOURCE_ID, groupId: WORKSPACE_PATTERN_GROUP_ID },
     });
   }, [projectDispatch]);
 
-  // Sync pattern pad assignments to main grid layout
-  useEffect(() => {
-    if (!activeResult || activeResult.padAssignments.length === 0) return;
-    const padToVoice: Layout['padToVoice'] = {};
-    for (const pa of activeResult.padAssignments) {
-      const lane = loopState.lanes.find(l => l.id === pa.laneId);
-      padToVoice[`${pa.pad.row},${pa.pad.col}`] = {
-        id: pa.laneId,
-        name: pa.laneName,
-        sourceType: 'midi_track',
-        sourceFile: WORKSPACE_PATTERN_NAME,
-        originalMidiNote: lane?.midiNote ?? 0,
-        color: lane?.color ?? '#888',
-      };
-    }
-    projectDispatch({ type: 'BULK_ASSIGN_PADS', payload: padToVoice });
-  }, [activeResult, loopState.lanes, projectDispatch]);
-
-  const activeStepIndex = useMemo(() => {
-    if (activeEventIndex === null || !activeResult) return null;
-    const assignment = activeResult.fingerAssignments[activeEventIndex];
-    return assignment?.stepIndex ?? null;
-  }, [activeEventIndex, activeResult]);
+  // Use project tempo for grid display
+  const effectiveConfig = useMemo(
+    () => ({ ...loopState.config, bpm: projectState.tempo }),
+    [loopState.config, projectState.tempo],
+  );
 
   return (
     <div className="space-y-3">
@@ -371,21 +420,10 @@ export function WorkspacePatternStudio() {
           {loopState.isPlaying ? 'Stop' : 'Play'}
         </button>
 
+        {/* BPM display (read-only, uses project tempo) */}
         <div className="flex items-center gap-1">
-          <input
-            type="number"
-            min={20}
-            max={300}
-            value={loopState.config.bpm}
-            onChange={e => {
-              const next = Number(e.target.value);
-              if (!Number.isNaN(next)) {
-                dispatchComposer({ type: 'SET_BPM', payload: next });
-              }
-            }}
-            className="w-16 px-2 py-1 text-pf-sm bg-[var(--bg-card)] border border-[var(--border-default)] rounded-pf-sm text-[var(--text-primary)]"
-          />
-          <span className="text-pf-xs text-[var(--text-secondary)]">BPM</span>
+          <span className="text-pf-sm text-[var(--text-secondary)] font-mono">{projectState.tempo}</span>
+          <span className="text-pf-xs text-[var(--text-tertiary)]">BPM</span>
         </div>
 
         <div className="flex-1" />
@@ -415,16 +453,6 @@ export function WorkspacePatternStudio() {
         </button>
       </div>
 
-      {activeResult ? (
-        <RudimentEventStepper
-          fingerAssignments={activeResult.fingerAssignments}
-          complexity={activeResult.complexity}
-          activeEventIndex={activeEventIndex}
-          onSetActiveEvent={setActiveEventIndex}
-          lanes={loopState.lanes}
-        />
-      ) : null}
-
       <div className="flex gap-3 items-start">
         <div className="flex-1 min-w-0 flex rounded-pf-lg bg-[var(--bg-card)]/20 border border-[var(--border-default)] overflow-hidden" style={{ minHeight: 260 }}>
           <LoopLaneSidebar
@@ -436,17 +464,14 @@ export function WorkspacePatternStudio() {
             padPositions={lanePadPositions}
           />
           <LoopGridCanvas
-            config={loopState.config}
+            config={effectiveConfig}
             lanes={loopState.lanes}
             events={loopState.events}
             playheadStep={loopState.playheadStep}
             isPlaying={loopState.isPlaying}
             dispatch={dispatchComposer}
-            activeStepIndex={activeStepIndex}
           />
         </div>
-
-        {/* Pad assignments now sync to main InteractiveGrid via BULK_ASSIGN_PADS */}
       </div>
 
     </div>

@@ -323,6 +323,12 @@ These rules are non-negotiable and must be preserved across all changes:
 
 5. **MIDI pitch independence.** A sound's MIDI pitch (`originalMidiNote`) is metadata only — it must NEVER determine grid placement. `bottomLeftNote` must remain at the default (36/C1) and must not be auto-adjusted during MIDI import.
 
+6. **Finger assignment sync.** Finger assignment changes in any panel (Sounds panel, Grid Editor, Pattern Composer) must propagate to all other panels. `voiceConstraints` is the single source of truth for per-sound finger preferences. Pad-level `fingerConstraints` in the layout are derived from voice constraints and kept in sync automatically. Any change to one must update the others.
+
+7. **No automatic grid layout.** The system must NEVER automatically place sounds on the grid or assign fingers without explicit user action. Auto-layout on empty grids is forbidden. The user must manually place each sound.
+
+8. **Composer BPM is project BPM.** The Pattern Composer must always use the project's tempo (`projectState.tempo`). There must be no separate BPM control in the composer.
+
 ## Default Decision Handling
 
 If a still-open question blocks progress, use these defaults unless the user says otherwise:
