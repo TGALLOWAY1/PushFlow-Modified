@@ -16,9 +16,9 @@
   --bg-active: #2a2a30;     /* Active/pressed state */
 
   /* --- Text hierarchy: off-white scale for readability --- */
-  --text-primary: #e8e8ed;    /* Primary text — bright but not harsh */
-  --text-secondary: #8b8b96;  /* Secondary/metadata */
-  --text-tertiary: #55555e;   /* Subtle labels, placeholders */
+  --text-primary: #f0f0f5;    /* Primary text — near white, high contrast */
+  --text-secondary: #b0b0bc;  /* Secondary/metadata — clearly readable */
+  --text-tertiary: #7a7a88;   /* Subtle labels, placeholders — still legible */
   --text-warning: #f87171;    /* Errors/conflicts */
 
   /* --- Accent: restrained blue --- */
@@ -26,10 +26,10 @@
   --accent-hover: #6d9bf5;
   --accent-muted: rgba(91, 141, 239, 0.12);
 
-  /* --- Borders: delicate, low-contrast --- */
-  --border-subtle: #2a2a30;
-  --border-default: #333339;
-  --border-strong: #44444d;
+  /* --- Borders: visible structure --- */
+  --border-subtle: #33333a;
+  --border-default: #3e3e47;
+  --border-strong: #525260;
   --border-active: #5b8def;
   --border-focus: #5b8def;
 
@@ -105,9 +105,9 @@ body {
 
 /* Section headers */
 .section-header {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -162,9 +162,9 @@ button, a, [role="button"], select, input,
 .pf-tab {
   position: relative;
   padding: 8px 12px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   transition: color 120ms ease;
   border-bottom: 2px solid transparent;
 }
@@ -185,8 +185,8 @@ button, a, [role="button"], select, input,
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 5px 10px;
-  font-size: 11px;
+  padding: 6px 12px;
+  font-size: 13px;
   font-weight: 500;
   border-radius: var(--radius-md);
   transition: all 120ms ease;
@@ -240,7 +240,7 @@ button, a, [role="button"], select, input,
   border-radius: var(--radius-md);
   color: var(--text-primary);
   padding: 4px 8px;
-  font-size: 11px;
+  font-size: 13px;
   outline: none;
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
@@ -259,7 +259,7 @@ button, a, [role="button"], select, input,
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   padding: 4px 6px;
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
   outline: none;
   transition: border-color 120ms ease;
@@ -280,7 +280,7 @@ button, a, [role="button"], select, input,
   display: inline-flex;
   align-items: center;
   padding: 2px 6px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   border-radius: var(--radius-sm);
   white-space: nowrap;
