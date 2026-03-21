@@ -315,33 +315,33 @@ function generateId(): string {
   return `layout-${Date.now()}-${_nextId++}`;
 }
 
-/** Build a canonical finger constraint string like "L-Ix" from hand + finger. */
+/** Build a canonical finger constraint string like "L2" from hand + finger. */
 function buildFingerConstraintStr(hand: string, finger: string): string {
-  const FINGER_ABBREV: Record<string, string> = {
-    thumb: 'Th', index: 'Ix', middle: 'Md', ring: 'Rg', pinky: 'Pk',
+  const FINGER_NUM: Record<string, string> = {
+    thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
   };
   const h = hand === 'left' ? 'L' : 'R';
-  return `${h}-${FINGER_ABBREV[finger] ?? finger}`;
+  return `${h}${FINGER_NUM[finger] ?? finger}`;
 }
 
-/** Parse a constraint string like "L-Ix" or "L2" into { hand, finger }. */
+/** Parse a constraint string like "L2" or "L-Ix" (legacy) into { hand, finger }. */
 function parseFingerConstraintStr(constraint: string): { hand: 'left' | 'right'; finger: string } | null {
-  const FINGER_MAP: Record<string, string> = {
-    Th: 'thumb', Ix: 'index', Md: 'middle', Rg: 'ring', Pk: 'pinky',
-  };
-  // "L-Ix" format
-  const matchDash = constraint.match(/^([LR])-(\w+)$/);
-  if (matchDash) {
-    const hand = matchDash[1] === 'L' ? 'left' as const : 'right' as const;
-    const finger = FINGER_MAP[matchDash[2]];
-    if (finger) return { hand, finger };
-  }
-  // "L2" format (legacy)
+  // "L2" format (canonical)
   const matchNum = constraint.match(/^([LlRr])([1-5])$/);
   if (matchNum) {
     const hand = matchNum[1].toUpperCase() === 'L' ? 'left' as const : 'right' as const;
     const numMap: Record<string, string> = { '1': 'thumb', '2': 'index', '3': 'middle', '4': 'ring', '5': 'pinky' };
     return { hand, finger: numMap[matchNum[2]] };
+  }
+  // "L-Ix" format (legacy, still parsed for backward compatibility)
+  const FINGER_MAP: Record<string, string> = {
+    Th: 'thumb', Ix: 'index', Md: 'middle', Rg: 'ring', Pk: 'pinky',
+  };
+  const matchDash = constraint.match(/^([LR])-(\w+)$/);
+  if (matchDash) {
+    const hand = matchDash[1] === 'L' ? 'left' as const : 'right' as const;
+    const finger = FINGER_MAP[matchDash[2]];
+    if (finger) return { hand, finger };
   }
   return null;
 }

@@ -15,25 +15,36 @@ import { EventCostChart } from './EventCostChart';
 import { LearnMoreModal } from './LearnMoreModal';
 import { buildSelectedTransitionModel } from '../../analysis/selectionModel';
 
-/** Parse a constraint string like "L-Ix" into hand + finger. */
+/** Parse a constraint string like "L2" or "L-Ix" (legacy) into hand + finger. */
 function parseConstraint(constraint: string): { hand: 'left' | 'right'; finger: FingerType } | null {
+  // "L2" format (canonical)
+  const matchNum = constraint.match(/^([LlRr])([1-5])$/);
+  if (matchNum) {
+    const hand = matchNum[1].toUpperCase() === 'L' ? 'left' as const : 'right' as const;
+    const fingerMap: Record<string, FingerType> = {
+      '1': 'thumb', '2': 'index', '3': 'middle', '4': 'ring', '5': 'pinky',
+    };
+    return { hand, finger: fingerMap[matchNum[2]] };
+  }
+  // "L-Ix" format (legacy)
   const FINGER_MAP: Record<string, FingerType> = {
     Th: 'thumb', Ix: 'index', Md: 'middle', Rg: 'ring', Pk: 'pinky',
   };
-  const match = constraint.match(/^([LR])-(\w+)$/);
-  if (!match) return null;
-  const hand = match[1] === 'L' ? 'left' as const : 'right' as const;
-  const finger = FINGER_MAP[match[2]];
-  if (!finger) return null;
-  return { hand, finger };
+  const matchDash = constraint.match(/^([LR])-(\w+)$/);
+  if (matchDash) {
+    const hand = matchDash[1] === 'L' ? 'left' as const : 'right' as const;
+    const finger = FINGER_MAP[matchDash[2]];
+    if (finger) return { hand, finger };
+  }
+  return null;
 }
 
-/** Build a constraint string from hand + finger in canonical "L-Ix" format. */
+/** Build a constraint string from hand + finger in canonical "L2" format. */
 function buildConstraintStr(hand: 'left' | 'right', finger: FingerType): string {
   const FINGER_ABBREV: Record<FingerType, string> = {
-    thumb: 'Th', index: 'Ix', middle: 'Md', ring: 'Rg', pinky: 'Pk',
+    thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
   };
-  return `${hand === 'left' ? 'L' : 'R'}-${FINGER_ABBREV[finger]}`;
+  return `${hand === 'left' ? 'L' : 'R'}${FINGER_ABBREV[finger]}`;
 }
 
 export function ActiveLayoutSummary() {

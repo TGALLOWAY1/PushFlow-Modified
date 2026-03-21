@@ -31,19 +31,9 @@ const WORKSPACE_PATTERN_SOURCE_ID = 'workspace_pattern_source';
 const WORKSPACE_PATTERN_GROUP_ID = 'workspace_pattern_group';
 const WORKSPACE_PATTERN_NAME = 'Workspace Pattern';
 
-/** Parse a constraint string like "L-Ix" into hand + finger. */
+/** Parse a constraint string like "L2" or "L-Ix" (legacy) into hand + finger. */
 function parseConstraintString(constraint: string): { hand: HandSide; finger: FingerType } | null {
-  const FINGER_MAP: Record<string, FingerType> = {
-    Th: 'thumb', Ix: 'index', Md: 'middle', Rg: 'ring', Pk: 'pinky',
-  };
-  // Handle "L-Ix" format
-  const matchDash = constraint.match(/^([LR])-(\w+)$/);
-  if (matchDash) {
-    const hand: HandSide = matchDash[1] === 'L' ? 'left' : 'right';
-    const finger = FINGER_MAP[matchDash[2]];
-    if (finger) return { hand, finger };
-  }
-  // Handle "L2" format (legacy)
+  // "L2" format (canonical)
   const matchNum = constraint.match(/^([LlRr])([1-5])$/);
   if (matchNum) {
     const hand: HandSide = matchNum[1].toUpperCase() === 'L' ? 'left' : 'right';
@@ -51,6 +41,16 @@ function parseConstraintString(constraint: string): { hand: HandSide; finger: Fi
       '1': 'thumb', '2': 'index', '3': 'middle', '4': 'ring', '5': 'pinky',
     };
     return { hand, finger: fingerNumMap[matchNum[2]] };
+  }
+  // "L-Ix" format (legacy, still parsed for backward compatibility)
+  const FINGER_MAP: Record<string, FingerType> = {
+    Th: 'thumb', Ix: 'index', Md: 'middle', Rg: 'ring', Pk: 'pinky',
+  };
+  const matchDash = constraint.match(/^([LR])-(\w+)$/);
+  if (matchDash) {
+    const hand: HandSide = matchDash[1] === 'L' ? 'left' : 'right';
+    const finger = FINGER_MAP[matchDash[2]];
+    if (finger) return { hand, finger };
   }
   return null;
 }
