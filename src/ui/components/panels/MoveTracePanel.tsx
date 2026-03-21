@@ -61,27 +61,27 @@ export function MoveTracePanel({ moves, stopReason }: MoveTracePanelProps) {
     <div className="space-y-3">
       {/* Summary header */}
       <div className="flex items-center justify-between">
-        <h4 className="text-[11px] text-gray-400 font-medium uppercase tracking-wider">
+        <h4 className="section-header">
           Optimization Trace
         </h4>
-        <span className="text-[10px] text-gray-600">
+        <span className="text-pf-xs text-[var(--text-tertiary)]">
           {moves.length} step{moves.length !== 1 ? 's' : ''}
         </span>
       </div>
 
       {/* Summary stats */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="px-2 py-1.5 rounded bg-gray-800/50 border border-gray-700">
-          <div className="text-[9px] text-gray-500 uppercase">Placements</div>
-          <div className="text-[11px] font-mono text-gray-300">{phaseCounts['init-layout']}</div>
+        <div className="px-2 py-1.5 rounded-pf-sm bg-[var(--bg-card)] border border-[var(--border-subtle)]">
+          <div className="text-pf-micro text-[var(--text-tertiary)] uppercase">Placements</div>
+          <div className="text-pf-sm font-mono text-[var(--text-primary)]">{phaseCounts['init-layout']}</div>
         </div>
-        <div className="px-2 py-1.5 rounded bg-gray-800/50 border border-gray-700">
-          <div className="text-[9px] text-gray-500 uppercase">Improvements</div>
-          <div className="text-[11px] font-mono text-gray-300">{phaseCounts['hill-climb']}</div>
+        <div className="px-2 py-1.5 rounded-pf-sm bg-[var(--bg-card)] border border-[var(--border-subtle)]">
+          <div className="text-pf-micro text-[var(--text-tertiary)] uppercase">Improvements</div>
+          <div className="text-pf-sm font-mono text-[var(--text-primary)]">{phaseCounts['hill-climb']}</div>
         </div>
-        <div className="px-2 py-1.5 rounded bg-gray-800/50 border border-gray-700">
-          <div className="text-[9px] text-gray-500 uppercase">Cost Saved</div>
-          <div className="text-[11px] font-mono text-green-400">
+        <div className="px-2 py-1.5 rounded-pf-sm bg-[var(--bg-card)] border border-[var(--border-subtle)]">
+          <div className="text-pf-micro text-[var(--text-tertiary)] uppercase">Cost Saved</div>
+          <div className="text-pf-sm font-mono text-green-400">
             {totalImprovement > 0 ? `-${totalImprovement.toFixed(2)}` : '0'}
           </div>
         </div>
@@ -89,8 +89,8 @@ export function MoveTracePanel({ moves, stopReason }: MoveTracePanelProps) {
 
       {/* Stop reason */}
       {stopReason && (
-        <div className="text-[10px] text-gray-500 flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-gray-600" />
+        <div className="text-pf-xs text-[var(--text-tertiary)] flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-tertiary)]" />
           {STOP_REASON_LABELS[stopReason] ?? stopReason}
         </div>
       )}
@@ -119,7 +119,7 @@ export function MoveTracePanel({ moves, stopReason }: MoveTracePanelProps) {
       {/* Step-through controls */}
       <div className="flex items-center gap-2">
         <button
-          className="px-2 py-1 text-[10px] rounded bg-gray-800 hover:bg-gray-700 text-gray-400 disabled:opacity-30"
+          className="pf-btn-ghost px-2 py-1 text-pf-xs disabled:opacity-30"
           disabled={state.moveHistoryIndex === null || state.moveHistoryIndex <= 0}
           onClick={() => {
             const idx = state.moveHistoryIndex ?? 0;
@@ -128,13 +128,13 @@ export function MoveTracePanel({ moves, stopReason }: MoveTracePanelProps) {
         >
           &larr; Prev
         </button>
-        <span className="text-[10px] text-gray-500">
+        <span className="text-pf-xs text-[var(--text-tertiary)]">
           {state.moveHistoryIndex !== null
             ? `Step ${state.moveHistoryIndex + 1} / ${filteredMoves.length}`
             : 'Click a move to step through'}
         </span>
         <button
-          className="px-2 py-1 text-[10px] rounded bg-gray-800 hover:bg-gray-700 text-gray-400 disabled:opacity-30"
+          className="pf-btn-ghost px-2 py-1 text-pf-xs disabled:opacity-30"
           disabled={state.moveHistoryIndex === null || state.moveHistoryIndex >= filteredMoves.length - 1}
           onClick={() => {
             const idx = state.moveHistoryIndex ?? -1;
@@ -145,7 +145,7 @@ export function MoveTracePanel({ moves, stopReason }: MoveTracePanelProps) {
         </button>
         {state.moveHistoryIndex !== null && (
           <button
-            className="px-2 py-1 text-[10px] rounded bg-gray-800 hover:bg-gray-700 text-gray-400"
+            className="pf-btn-ghost px-2 py-1 text-pf-xs"
             onClick={() => dispatch({ type: 'SET_MOVE_HISTORY_INDEX', payload: null })}
           >
             Reset
@@ -187,39 +187,39 @@ function MoveRow({
     ? 'text-green-400'
     : move.costDelta > 0.01
       ? 'text-red-400'
-      : 'text-gray-500';
+      : 'text-[var(--text-tertiary)]';
 
   const phaseLabel = move.phase ? PHASE_LABELS[move.phase] ?? move.phase : '';
 
   return (
     <div
-      className={`rounded px-2 py-1.5 cursor-pointer transition-colors ${
+      className={`rounded-pf-sm px-2 py-1.5 cursor-pointer transition-colors ${
         isActive
           ? 'bg-cyan-600/15 border border-cyan-500/30'
-          : 'bg-gray-800/30 border border-transparent hover:bg-gray-800/60'
+          : 'bg-[var(--bg-card)] border border-transparent hover:bg-[var(--bg-hover)]'
       }`}
       onClick={onClick}
     >
       <div className="flex items-center gap-2">
         {/* Phase badge */}
         {phaseLabel && (
-          <span className={`text-[9px] px-1 py-0.5 rounded ${
+          <span className={`text-pf-micro px-1 py-0.5 rounded-pf-sm ${
             move.phase === 'hill-climb' ? 'bg-blue-500/15 text-blue-400'
               : move.phase === 'init-layout' ? 'bg-purple-500/15 text-purple-400'
-                : 'bg-gray-700 text-gray-500'
+                : 'bg-[var(--bg-hover)] text-[var(--text-tertiary)]'
           }`}>
             {phaseLabel}
           </span>
         )}
 
         {/* Description */}
-        <span className="text-[10px] text-gray-300 flex-1 truncate">
+        <span className="text-pf-xs text-[var(--text-primary)] flex-1 truncate">
           {move.description}
         </span>
 
         {/* Cost delta */}
         {move.costDelta !== 0 && (
-          <span className={`text-[10px] font-mono ${deltaColor}`}>
+          <span className={`text-pf-xs font-mono ${deltaColor}`}>
             {move.costDelta < 0 ? '' : '+'}{move.costDelta.toFixed(3)}
           </span>
         )}
@@ -227,19 +227,19 @@ function MoveRow({
 
       {/* Expanded detail */}
       {isExpanded && (
-        <div className="mt-1.5 pt-1.5 border-t border-gray-700/50 space-y-1 text-[10px] text-gray-500">
+        <div className="mt-1.5 pt-1.5 border-t border-[var(--border-subtle)] space-y-1 text-pf-xs text-[var(--text-tertiary)]">
           {move.affectedVoice && (
-            <div>Sound: <span className="text-gray-400">{move.affectedVoice}</span></div>
+            <div>Sound: <span className="text-[var(--text-secondary)]">{move.affectedVoice}</span></div>
           )}
           {move.affectedPad && (
-            <div>Pad: <span className="text-gray-400">{move.affectedPad}</span></div>
+            <div>Pad: <span className="text-[var(--text-secondary)]">{move.affectedPad}</span></div>
           )}
-          <div>Reason: <span className="text-gray-400">{move.reason}</span></div>
+          <div>Reason: <span className="text-[var(--text-secondary)]">{move.reason}</span></div>
           {move.rejectedAlternatives != null && move.rejectedAlternatives > 0 && (
-            <div>Alternatives considered: <span className="text-gray-400">{move.rejectedAlternatives}</span></div>
+            <div>Alternatives considered: <span className="text-[var(--text-secondary)]">{move.rejectedAlternatives}</span></div>
           )}
           {move.costBefore > 0 && (
-            <div>Cost: <span className="text-gray-400">{move.costBefore.toFixed(2)} → {move.costAfter.toFixed(2)}</span></div>
+            <div>Cost: <span className="text-[var(--text-secondary)]">{move.costBefore.toFixed(2)} → {move.costAfter.toFixed(2)}</span></div>
           )}
         </div>
       )}
@@ -260,10 +260,10 @@ function FilterChip({
 }) {
   return (
     <button
-      className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
+      className={`px-2 py-0.5 text-pf-xs rounded-pf-sm transition-colors ${
         active
           ? 'bg-cyan-600/20 border border-cyan-500/30 text-cyan-400'
-          : 'bg-gray-800 border border-gray-700 text-gray-500 hover:text-gray-300'
+          : 'bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
       }`}
       onClick={onClick}
     >

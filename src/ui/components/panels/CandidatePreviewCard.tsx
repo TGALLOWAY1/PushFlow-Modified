@@ -62,19 +62,19 @@ export function CandidatePreviewCard({
 
   return (
     <div
-      className={`rounded-lg border transition-all cursor-pointer relative ${
+      className={`rounded-pf-lg border transition-all cursor-pointer relative ${
         isSelected
           ? 'border-blue-500 bg-blue-500/5 ring-1 ring-blue-500/20'
-          : 'border-gray-700/60 bg-gray-800/30 hover:border-gray-600'
+          : 'border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--border-default)]'
       }`}
       onClick={onSelect}
     >
       {/* Compare checkbox */}
       <button
-        className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded border flex items-center justify-center transition-all ${
+        className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded-pf-sm border flex items-center justify-center transition-all ${
           isCheckedForCompare
             ? 'bg-purple-600 border-purple-500 text-white'
-            : 'bg-gray-800/80 border-gray-600 text-transparent hover:border-gray-400'
+            : 'bg-[var(--bg-card)] border-[var(--border-default)] text-transparent hover:border-[var(--border-strong)]'
         }`}
         onClick={e => { e.stopPropagation(); onToggleCompare(); }}
         title="Select for comparison"
@@ -88,7 +88,7 @@ export function CandidatePreviewCard({
 
       {/* Delete button */}
       <button
-        className="absolute top-1.5 right-1.5 z-10 w-4 h-4 rounded flex items-center justify-center text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+        className="absolute top-1.5 right-1.5 z-10 w-4 h-4 rounded-pf-sm flex items-center justify-center text-[var(--text-tertiary)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
         onClick={e => { e.stopPropagation(); onDelete(); }}
         title="Delete candidate"
       >
@@ -101,15 +101,15 @@ export function CandidatePreviewCard({
         {/* Top row: rank + difficulty */}
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-1.5 ml-5">
-            <span className="text-[10px] bg-gray-700/70 text-gray-400 px-1.5 py-0.5 rounded font-mono">
+            <span className="text-pf-xs bg-[var(--bg-hover)] text-[var(--text-secondary)] px-1.5 py-0.5 rounded-pf-sm font-mono">
               #{rank}
             </span>
-            <span className="text-[10px] text-gray-400 truncate max-w-[80px]">
+            <span className="text-pf-xs text-[var(--text-secondary)] truncate max-w-[80px]">
               {candidate.metadata.strategy ?? 'Candidate'}
             </span>
           </div>
           <span
-            className="text-[10px] font-mono font-medium mr-5"
+            className="text-pf-xs font-mono font-medium mr-5"
             style={{ color: difficultyColor(overall) }}
           >
             {difficultyLabel(overall)}
@@ -118,7 +118,7 @@ export function CandidatePreviewCard({
 
         {/* Optimization method */}
         {(candidate.metadata.optimizationMode || candidate.metadata.optimizationSummary) && (
-          <div className="text-[9px] text-gray-500 ml-5 mb-1 truncate" title={candidate.metadata.optimizationSummary}>
+          <div className="text-pf-micro text-[var(--text-tertiary)] ml-5 mb-1 truncate" title={candidate.metadata.optimizationSummary}>
             {candidate.metadata.optimizationSummary ?? candidate.metadata.optimizationMode}
           </div>
         )}
@@ -133,14 +133,14 @@ export function CandidatePreviewCard({
         </div>
 
         {/* Summary metadata */}
-        <div className="flex justify-between text-[10px] text-gray-500 mb-2 px-0.5">
+        <div className="flex justify-between text-pf-xs text-[var(--text-tertiary)] mb-2 px-0.5">
           <span>Score: {candidate.executionPlan.score.toFixed(1)}</span>
           <span>Top: {topDriver}</span>
         </div>
 
         {/* Feasibility warning */}
         {candidate.executionPlan.unplayableCount > 0 && (
-          <div className="text-[10px] text-red-400 bg-red-500/10 rounded px-1.5 py-0.5 mb-2">
+          <div className="text-pf-xs text-red-400 bg-red-500/10 rounded-pf-sm px-1.5 py-0.5 mb-2">
             {candidate.executionPlan.unplayableCount} unplayable
             {candidate.executionPlan.rejectionReasons && (() => {
               const counts: Record<string, number> = {};
@@ -161,13 +161,13 @@ export function CandidatePreviewCard({
         {/* Action buttons */}
         <div className="flex gap-1.5">
           <button
-            className="flex-1 px-2 py-1 text-[10px] rounded transition-colors bg-blue-600/15 border border-blue-500/30 text-blue-400 hover:bg-blue-600/25"
+            className="flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-blue-600/15 border border-blue-500/30 text-blue-400 hover:bg-blue-600/25"
             onClick={e => { e.stopPropagation(); onSelect(); }}
           >
             Load
           </button>
           <button
-            className="flex-1 px-2 py-1 text-[10px] rounded transition-colors bg-emerald-600/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/25"
+            className="flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-emerald-600/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/25"
             onClick={e => { e.stopPropagation(); onPromote(); }}
           >
             Promote

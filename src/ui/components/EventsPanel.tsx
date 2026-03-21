@@ -219,7 +219,7 @@ export function EventsPanel({
 
   if (moments.length === 0) {
     return (
-      <div className="py-6 text-center text-xs text-gray-500">
+      <div className="py-6 text-center text-pf-sm text-[var(--text-tertiary)]">
         No events. Import MIDI or compose a pattern.
       </div>
     );
@@ -228,13 +228,13 @@ export function EventsPanel({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between px-1">
-        <span className="text-[10px] text-gray-500">
+        <span className="text-pf-xs text-[var(--text-tertiary)]">
           {moments.length} events
         </span>
         <div className="flex items-center gap-1.5">
           <button
-            className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${
-              onionSkin ? 'text-sky-300 bg-sky-500/15' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-700/50'
+            className={`w-5 h-5 flex items-center justify-center rounded-pf-sm transition-colors ${
+              onionSkin ? 'text-sky-300 bg-sky-500/15' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
             }`}
             onClick={onToggleOnionSkin}
             title={onionSkin ? 'Disable onion skin' : 'Show previous/next event layers on grid'}
@@ -247,7 +247,7 @@ export function EventsPanel({
           </button>
           {selectedMomentIdx !== null && (
             <button
-              className="text-[10px] text-gray-500 hover:text-gray-300"
+              className="text-pf-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
               onClick={() => dispatch({ type: 'SELECT_EVENT', payload: null })}
             >
               Deselect
@@ -289,35 +289,35 @@ function MomentRow({
   // Cost severity color
   const costColor = costBreakdown
     ? costBreakdown.total > 10 ? 'text-red-400' : costBreakdown.total > 5 ? 'text-amber-400' : 'text-green-400'
-    : 'text-gray-600';
+    : 'text-[var(--text-tertiary)]';
 
   return (
     <button
       data-moment-index={moment.momentIndex}
       className={`
-        w-full text-left px-2 py-1.5 rounded-md text-xs transition-colors
+        w-full text-left px-2 py-1.5 rounded-pf-md text-pf-sm transition-colors
         ${isSelected
-          ? 'bg-blue-600/20 border border-blue-500/40 text-gray-100'
-          : 'hover:bg-gray-800/50 border border-transparent text-gray-300'
+          ? 'bg-blue-600/20 border border-blue-500/40 text-[var(--text-primary)]'
+          : 'hover:bg-[var(--bg-hover)] border border-transparent text-[var(--text-secondary)]'
         }
       `}
       onClick={onClick}
     >
       <div className="flex items-center gap-2">
         {/* Event label */}
-        <span className={`text-[10px] font-mono w-14 flex-shrink-0 ${isSelected ? 'text-blue-300' : 'text-gray-500'}`}>
+        <span className={`text-pf-xs font-mono w-14 flex-shrink-0 ${isSelected ? 'text-blue-300' : 'text-[var(--text-tertiary)]'}`}>
           Event {String(moment.momentIndex + 1).padStart(2, '0')}
         </span>
 
         {/* Beat position */}
-        <span className="text-[10px] font-mono flex-1 text-gray-400">
+        <span className="text-pf-xs font-mono flex-1 text-[var(--text-secondary)]">
           {moment.beatPosition}
         </span>
 
         {/* Cost badge */}
         {costBreakdown && (
           <span
-            className={`text-[10px] font-mono flex-shrink-0 cursor-pointer ${costColor}`}
+            className={`text-pf-xs font-mono flex-shrink-0 cursor-pointer ${costColor}`}
             onClick={e => { e.stopPropagation(); setExpanded(!expanded); }}
             title="Click for cost breakdown"
           >
@@ -326,8 +326,8 @@ function MomentRow({
         )}
 
         {/* Note count badge */}
-        <span className={`text-[10px] flex-shrink-0 ${
-          moment.noteCount > 3 ? 'text-amber-400' : 'text-gray-500'
+        <span className={`text-pf-xs flex-shrink-0 ${
+          moment.noteCount > 3 ? 'text-amber-400' : 'text-[var(--text-tertiary)]'
         }`}>
           {moment.noteCount}n
         </span>
@@ -335,15 +335,15 @@ function MomentRow({
 
       {/* Expanded cost breakdown */}
       {expanded && costBreakdown && (
-        <div className="mt-1 ml-14 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[9px]" onClick={e => e.stopPropagation()}>
-          <span className="text-gray-500">Transition</span>
-          <span className="text-gray-400 font-mono text-right">{costBreakdown.transitionCost.toFixed(2)}</span>
-          <span className="text-gray-500">Grip</span>
-          <span className="text-gray-400 font-mono text-right">{costBreakdown.handShapeDeviation.toFixed(2)}</span>
-          <span className="text-gray-500">Finger Pref</span>
-          <span className="text-gray-400 font-mono text-right">{costBreakdown.fingerPreference.toFixed(2)}</span>
-          <span className="text-gray-500">Hand Balance</span>
-          <span className="text-gray-400 font-mono text-right">{costBreakdown.handBalance.toFixed(2)}</span>
+        <div className="mt-1 ml-14 grid grid-cols-2 gap-x-3 gap-y-0.5 text-pf-micro" onClick={e => e.stopPropagation()}>
+          <span className="text-[var(--text-tertiary)]">Transition</span>
+          <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.transitionCost.toFixed(2)}</span>
+          <span className="text-[var(--text-tertiary)]">Grip</span>
+          <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.handShapeDeviation.toFixed(2)}</span>
+          <span className="text-[var(--text-tertiary)]">Finger Pref</span>
+          <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.fingerPreference.toFixed(2)}</span>
+          <span className="text-[var(--text-tertiary)]">Hand Balance</span>
+          <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.handBalance.toFixed(2)}</span>
           {costBreakdown.constraintPenalty > 0 && (
             <>
               <span className="text-red-400">Constraint</span>

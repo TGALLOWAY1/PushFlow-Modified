@@ -123,7 +123,7 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
   const chartContent = (height: number) => {
     if (eventBars.length === 0) {
       return (
-        <div className="flex items-center justify-center text-xs text-gray-600" style={{ height }}>
+        <div className="flex items-center justify-center text-pf-sm text-[var(--text-tertiary)]" style={{ height }}>
           No event data available
         </div>
       );
@@ -136,7 +136,7 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
         {/* Y-axis guide lines */}
         <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
           {[0, 0.25, 0.5, 0.75, 1].map(pct => (
-            <div key={pct} className="border-t border-gray-800/50 w-full" />
+            <div key={pct} className="border-t border-[var(--border-subtle)]/50 w-full" />
           ))}
         </div>
 
@@ -186,18 +186,18 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
 
         {/* Hover tooltip */}
         {hoveredEvent !== null && eventBars[hoveredEvent] && (
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-[10px] z-10 pointer-events-none shadow-lg whitespace-nowrap">
-            <div className="text-gray-300 font-medium mb-0.5">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-[var(--bg-panel)] border border-[var(--border-default)] rounded-pf-sm px-2 py-1 text-pf-xs z-10 pointer-events-none shadow-lg whitespace-nowrap">
+            <div className="text-[var(--text-primary)] font-medium mb-0.5">
               Event {hoveredEvent + 1} (t={eventBars[hoveredEvent].startTime.toFixed(3)}s)
             </div>
             {eventBars[hoveredEvent].segments.map(seg => (
               <div key={seg.key} className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: seg.color }} />
-                <span className="text-gray-500">{seg.label}:</span>
-                <span className="text-gray-300">{seg.value.toFixed(2)}</span>
+                <span className="text-[var(--text-secondary)]">{seg.label}:</span>
+                <span className="text-[var(--text-primary)]">{seg.value.toFixed(2)}</span>
               </div>
             ))}
-            <div className="text-gray-500 border-t border-gray-800 mt-0.5 pt-0.5">
+            <div className="text-[var(--text-secondary)] border-t border-[var(--border-subtle)] mt-0.5 pt-0.5">
               Total: {eventBars[hoveredEvent].total.toFixed(2)}
             </div>
           </div>
@@ -211,11 +211,11 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
       <div className="space-y-2">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h4 className="text-[11px] text-gray-400 font-medium uppercase tracking-wider">
+          <h4 className="text-pf-sm text-[var(--text-secondary)] font-medium uppercase tracking-wider">
             Stacked Difficulty Charts
           </h4>
           <button
-            className="text-[10px] text-cyan-400 hover:text-cyan-300 transition-colors"
+            className="text-pf-xs text-cyan-400 hover:text-cyan-300 transition-colors"
             onClick={() => setEnlarged(true)}
           >
             Enlarge
@@ -223,7 +223,7 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
         </div>
 
         {candidateLabel && (
-          <div className="text-[10px] text-gray-600">
+          <div className="text-pf-xs text-[var(--text-tertiary)]">
             Showing: {candidateLabel}
           </div>
         )}
@@ -235,10 +235,10 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
             return (
               <button
                 key={layer.key}
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors border ${
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded-pf-sm text-pf-xs transition-colors border ${
                   enabled
-                    ? 'border-gray-600 text-gray-300'
-                    : 'border-gray-800 text-gray-600'
+                    ? 'border-[var(--border-default)] text-[var(--text-primary)]'
+                    : 'border-[var(--border-subtle)] text-[var(--text-tertiary)]'
                 }`}
                 onClick={() => toggleLayer(layer.key)}
               >
@@ -257,7 +257,7 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
 
         {/* X-axis labels */}
         {eventBars.length > 0 && (
-          <div className="flex justify-between text-[9px] text-gray-600 px-px">
+          <div className="flex justify-between text-pf-micro text-[var(--text-tertiary)] px-px">
             <span>0</span>
             <span>{Math.floor(eventBars.length / 2)}</span>
             <span>{eventBars.length - 1}</span>
@@ -269,14 +269,14 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
       {enlarged && (
         <>
           <div className="fixed inset-0 z-[60] bg-black/60" onClick={() => setEnlarged(false)} />
-          <div className="fixed inset-8 z-[61] rounded-xl border border-gray-700 bg-gray-900 shadow-2xl flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800">
-              <h3 className="text-sm font-medium text-gray-200">
+          <div className="fixed inset-8 z-[61] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)]">
+              <h3 className="text-pf-md font-medium text-[var(--text-primary)]">
                 Per-Event Difficulty Breakdown
-                {candidateLabel && <span className="text-gray-500 ml-2">({candidateLabel})</span>}
+                {candidateLabel && <span className="text-[var(--text-secondary)] ml-2">({candidateLabel})</span>}
               </h3>
               <button
-                className="text-gray-500 hover:text-gray-300 text-lg"
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-lg"
                 onClick={() => setEnlarged(false)}
               >
                 &times;
@@ -290,10 +290,10 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
                   return (
                     <button
                       key={layer.key}
-                      className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors border ${
+                      className={`flex items-center gap-1.5 px-2 py-1 rounded-pf-sm text-pf-sm transition-colors border ${
                         enabled
-                          ? 'border-gray-600 text-gray-300'
-                          : 'border-gray-800 text-gray-600'
+                          ? 'border-[var(--border-default)] text-[var(--text-primary)]'
+                          : 'border-[var(--border-subtle)] text-[var(--text-tertiary)]'
                       }`}
                       onClick={() => toggleLayer(layer.key)}
                     >
@@ -308,7 +308,7 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
               </div>
               {chartContent(400)}
               {eventBars.length > 0 && (
-                <div className="flex justify-between text-[10px] text-gray-600 mt-1 px-px">
+                <div className="flex justify-between text-pf-xs text-[var(--text-tertiary)] mt-1 px-px">
                   <span>Event 0</span>
                   <span>Event {Math.floor(eventBars.length / 2)}</span>
                   <span>Event {eventBars.length - 1}</span>

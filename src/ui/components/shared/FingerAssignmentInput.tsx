@@ -85,14 +85,14 @@ export function FingerAssignmentInput({ value, onChange, size = 'sm' }: FingerAs
 
   const isSm = size === 'sm';
   const baseClass = isSm
-    ? 'text-[10px] font-mono w-6 h-5'
-    : 'text-[10px] font-mono w-8 h-5';
+    ? 'text-pf-xs font-mono w-6 h-5'
+    : 'text-pf-xs font-mono w-8 h-5';
 
   if (editing) {
     return (
       <input
         ref={inputRef}
-        className={`${baseClass} bg-gray-900 border border-gray-600 rounded px-0.5 text-center text-gray-200 outline-none focus:border-blue-500 flex-shrink-0`}
+        className={`${baseClass} bg-[var(--bg-input)] border border-[var(--border-default)] rounded-pf-sm px-0.5 text-center text-[var(--text-primary)] outline-none focus:border-[var(--accent-primary)] focus:shadow-[0_0_0_2px_rgba(91,141,239,0.15)] flex-shrink-0`}
         value={editText}
         onChange={e => setEditText(e.target.value.slice(0, 2))}
         onBlur={commit}
@@ -105,14 +105,14 @@ export function FingerAssignmentInput({ value, onChange, size = 'sm' }: FingerAs
 
   return (
     <button
-      className={`${baseClass} flex items-center justify-center rounded flex-shrink-0 transition-colors cursor-text`}
+      className={`${baseClass} flex items-center justify-center rounded-pf-sm flex-shrink-0 transition-colors cursor-text`}
       style={{
         backgroundColor: value
-          ? value.hand === 'left' ? 'rgba(0,136,255,0.2)' : 'rgba(255,68,0,0.2)'
-          : 'rgba(100,100,100,0.15)',
+          ? value.hand === 'left' ? 'rgba(59,130,246,0.15)' : 'rgba(249,115,22,0.15)'
+          : 'rgba(100,100,100,0.1)',
         color: value
-          ? value.hand === 'left' ? '#0088FF' : '#FF4400'
-          : '#666',
+          ? value.hand === 'left' ? '#6da3f5' : '#f09060'
+          : 'var(--text-tertiary)',
       }}
       onClick={() => {
         setEditText(displayValue);

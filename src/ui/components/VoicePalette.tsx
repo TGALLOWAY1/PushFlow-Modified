@@ -246,7 +246,7 @@ export function VoicePalette() {
   const hasGroups = sortedGroups.length > 0;
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-0.5">
 
       {hasGroups ? (
         <>
@@ -281,8 +281,8 @@ export function VoicePalette() {
 
           {/* Ungrouped unassigned streams */}
           {ungroupedUnassigned.length > 0 && (
-            <div className="space-y-1">
-              <span className="text-[10px] text-gray-500">
+            <div className="space-y-0.5 mt-2">
+              <span className="section-header px-2">
                 Unassigned ({ungroupedUnassigned.length})
               </span>
               {ungroupedUnassigned.map(s => renderStreamRow(s))}
@@ -291,8 +291,8 @@ export function VoicePalette() {
 
           {/* Ungrouped assigned streams */}
           {ungroupedAssigned.length > 0 && (
-            <div className="space-y-1">
-              <span className="text-[10px] text-gray-500">
+            <div className="space-y-0.5 mt-2">
+              <span className="section-header px-2">
                 On Grid ({ungroupedAssigned.length})
               </span>
               {ungroupedAssigned.map(s => renderStreamRow(s))}
@@ -305,12 +305,12 @@ export function VoicePalette() {
       )}
 
       {state.soundStreams.length === 0 && (
-        <p className="text-xs text-gray-500 py-2">No sounds loaded.</p>
+        <p className="text-pf-sm text-[var(--text-tertiary)] py-3 text-center">No sounds loaded.</p>
       )}
 
       {selectedStreamIds.size > 0 && (
-        <div className="text-[10px] text-blue-400 pt-1">
-          {selectedStreamIds.size} selected — press <kbd className="px-1 py-0.5 rounded bg-gray-800 text-gray-300 font-mono text-[9px]">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+G</kbd> to group
+        <div className="text-pf-xs text-[var(--accent-primary)] pt-2 px-2">
+          {selectedStreamIds.size} selected — press <kbd className="px-1 py-0.5 rounded-pf-sm bg-[var(--bg-card)] text-[var(--text-secondary)] font-mono text-pf-micro border border-[var(--border-subtle)]">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+G</kbd> to group
         </div>
       )}
     </div>
@@ -355,10 +355,10 @@ function GroupHeader({
   };
 
   return (
-    <div className="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-gray-800/40 transition-colors">
+    <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-pf-sm hover:bg-[var(--bg-hover)] transition-colors">
       {/* Collapse toggle */}
       <button
-        className="text-[10px] text-gray-500 hover:text-gray-300 w-3 flex-shrink-0"
+        className="text-[8px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] w-3 flex-shrink-0 transition-colors"
         onClick={onToggleCollapse}
       >
         {group.isCollapsed ? '\u25B8' : '\u25BE'}
@@ -367,17 +367,17 @@ function GroupHeader({
       {/* Group color swatch */}
       <div className="relative flex-shrink-0" ref={colorRef}>
         <button
-          className="w-2.5 h-2.5 rounded-sm cursor-pointer hover:ring-1 hover:ring-gray-400 transition-all"
+          className="w-2.5 h-2.5 rounded-sm cursor-pointer hover:ring-1 hover:ring-white/30 transition-all"
           style={{ backgroundColor: group.color }}
           onClick={e => { e.stopPropagation(); setShowGroupColor(!showGroupColor); }}
           title="Change group color"
         />
         {showGroupColor && (
-          <div className="absolute left-0 top-full mt-1 p-1.5 rounded-lg border border-gray-700 bg-gray-900 shadow-xl z-50 grid grid-cols-4 gap-1" style={{ width: 88 }}>
+          <div className="absolute left-0 top-full mt-1 p-1.5 rounded-pf-md border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl z-50 grid grid-cols-4 gap-1" style={{ width: 88 }}>
             {COLOR_PALETTE.map(c => (
               <button
                 key={c}
-                className={`w-4 h-4 rounded-sm cursor-pointer hover:scale-125 transition-transform ${c === group.color ? 'ring-1 ring-white' : ''}`}
+                className={`w-4 h-4 rounded-sm cursor-pointer hover:scale-110 transition-transform ${c === group.color ? 'ring-1 ring-white' : ''}`}
                 style={{ backgroundColor: c }}
                 onClick={e => { e.stopPropagation(); onChangeColor(c); setShowGroupColor(false); }}
               />
@@ -389,7 +389,7 @@ function GroupHeader({
       {/* Group name (double-click to edit) */}
       {editing ? (
         <input
-          className="flex-1 text-[10px] font-medium text-gray-200 bg-gray-800 border border-gray-600 rounded px-1 py-0.5 outline-none focus:border-blue-500 min-w-0"
+          className="pf-input flex-1 text-pf-xs font-medium min-w-0"
           value={draft}
           onChange={e => setDraft(e.target.value)}
           onBlur={commitName}
@@ -398,7 +398,7 @@ function GroupHeader({
         />
       ) : (
         <span
-          className="flex-1 text-[10px] font-medium text-gray-400 truncate cursor-pointer hover:text-gray-200"
+          className="flex-1 text-pf-xs font-medium text-[var(--text-secondary)] truncate editable-field"
           onDoubleClick={() => { setDraft(group.name); setEditing(true); }}
           title="Double-click to rename"
         >
@@ -407,11 +407,11 @@ function GroupHeader({
       )}
 
       {/* Count */}
-      <span className="text-[9px] text-gray-600 flex-shrink-0">{count}</span>
+      <span className="text-pf-micro text-[var(--text-tertiary)] flex-shrink-0">{count}</span>
 
       {/* Delete group */}
       <button
-        className="text-[10px] text-gray-600 hover:text-red-400 flex-shrink-0 transition-colors"
+        className="text-pf-xs text-[var(--text-tertiary)] hover:text-red-400 flex-shrink-0 transition-colors opacity-0 group-hover:opacity-100"
         onClick={e => { e.stopPropagation(); onDelete(); }}
         title="Delete group (sounds will be ungrouped)"
       >
@@ -492,12 +492,17 @@ function StreamRow({
   return (
     <div
       className={`
-        flex items-center gap-1.5 py-1.5 rounded-md text-xs
-        border hover:border-gray-700
-        cursor-grab active:cursor-grabbing active:scale-95 transition-transform duration-150
+        flex items-center gap-1.5 py-1.5 rounded-pf-sm text-pf-sm
+        border transition-all duration-fast
+        cursor-grab active:cursor-grabbing active:scale-[0.98]
         ${isGrouped ? 'pl-6 pr-2' : 'px-2'}
-        ${stream.muted ? 'opacity-40' : ''}
-        ${isGlobalSelected ? 'border-blue-400 bg-blue-500/20 ring-1 ring-blue-400/30' : isSelected ? 'border-blue-500/50 bg-blue-500/10' : 'border-transparent'}
+        ${stream.muted ? 'opacity-35' : ''}
+        ${isGlobalSelected
+          ? 'border-[var(--accent-primary)]/40 bg-[var(--accent-muted)] ring-1 ring-[var(--accent-primary)]/20'
+          : isSelected
+            ? 'border-[var(--accent-primary)]/25 bg-[var(--accent-muted)]'
+            : 'border-transparent hover:bg-[var(--bg-hover)]'
+        }
       `}
       draggable
       onDragStart={e => {
@@ -511,20 +516,20 @@ function StreamRow({
       {/* Color swatch (click to open color + group popover) */}
       <div className="relative flex-shrink-0" ref={colorRef}>
         <button
-          className="w-2.5 h-2.5 rounded-sm flex-shrink-0 cursor-pointer hover:ring-1 hover:ring-gray-400 transition-all"
+          className="w-2.5 h-2.5 rounded-sm flex-shrink-0 cursor-pointer hover:ring-1 hover:ring-white/30 transition-all"
           style={{ backgroundColor: stream.color }}
           onClick={e => { e.stopPropagation(); setShowColorPicker(!showColorPicker); }}
           onMouseDown={e => e.stopPropagation()}
           title="Color & group"
         />
         {showColorPicker && (
-          <div className="absolute left-0 top-full mt-1 rounded-lg border border-gray-700 bg-gray-900 shadow-xl z-50" style={{ width: 120 }}>
+          <div className="absolute left-0 top-full mt-1 rounded-pf-md border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl z-50" style={{ width: 120 }}>
             {/* Colors */}
             <div className="p-1.5 grid grid-cols-4 gap-1">
               {COLOR_PALETTE.map(c => (
                 <button
                   key={c}
-                  className={`w-4 h-4 rounded-sm cursor-pointer hover:scale-125 transition-transform ${c === stream.color ? 'ring-1 ring-white' : ''}`}
+                  className={`w-4 h-4 rounded-sm cursor-pointer hover:scale-110 transition-transform ${c === stream.color ? 'ring-1 ring-white' : ''}`}
                   style={{ backgroundColor: c }}
                   onClick={e => {
                     e.stopPropagation();
@@ -537,10 +542,10 @@ function StreamRow({
             </div>
             {/* Group assignment */}
             {groups.length > 0 && (
-              <div className="border-t border-gray-700 px-1.5 py-1.5">
-                <div className="text-[8px] text-gray-500 uppercase tracking-wider mb-1">Group</div>
+              <div className="border-t border-[var(--border-subtle)] px-1.5 py-1.5">
+                <div className="text-pf-micro text-[var(--text-tertiary)] uppercase tracking-wider mb-1">Group</div>
                 <select
-                  className="w-full bg-gray-800 border border-gray-700 text-[10px] text-gray-300 rounded px-1 py-1"
+                  className="pf-select w-full text-pf-xs"
                   value={currentGroupId ?? ''}
                   onChange={e => {
                     e.stopPropagation();
@@ -564,7 +569,7 @@ function StreamRow({
       {/* Name (double-click to edit) */}
       {editingName ? (
         <input
-          className="flex-1 text-xs font-medium text-gray-200 bg-gray-800 border border-gray-600 rounded px-1 py-0.5 outline-none focus:border-blue-500 min-w-0"
+          className="pf-input flex-1 text-pf-sm font-medium min-w-0"
           value={nameDraft}
           onChange={e => setNameDraft(e.target.value)}
           onBlur={commitName}
@@ -575,7 +580,7 @@ function StreamRow({
         />
       ) : (
         <span
-          className="flex-1 truncate text-gray-200 font-medium cursor-text"
+          className="flex-1 truncate text-[var(--text-primary)] font-medium cursor-text text-pf-sm"
           onDoubleClick={e => { e.stopPropagation(); setNameDraft(stream.name); setEditingName(true); }}
           title={stream.name}
         >
@@ -585,7 +590,7 @@ function StreamRow({
 
       {/* Pad location(s) + lock indicator */}
       {padKeys.length > 0 && (
-        <span className="text-[10px] text-gray-500 font-mono flex-shrink-0 flex items-center gap-0.5">
+        <span className="text-pf-xs text-[var(--text-tertiary)] font-mono flex-shrink-0 flex items-center gap-0.5 tabular-nums">
           {isLocked && <span className="text-[8px] text-amber-400" title="Placement locked">&#x1F512;</span>}
           [{padKeys[0]}]
           {padKeys.length > 1 && `+${padKeys.length - 1}`}
@@ -615,7 +620,7 @@ function StreamRow({
 
       {/* Solo */}
       <button
-        className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-[10px] transition-colors bg-gray-800 text-gray-400 hover:bg-amber-500/20 hover:text-amber-400"
+        className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-pf-sm text-pf-xs transition-colors bg-[var(--bg-card)] text-[var(--text-tertiary)] hover:bg-amber-500/15 hover:text-amber-400 border border-transparent hover:border-amber-500/20"
         onClick={e => {
           e.stopPropagation();
           onSolo();
@@ -628,11 +633,11 @@ function StreamRow({
       {/* Mute toggle */}
       <button
         className={`
-          flex-shrink-0 w-5 h-5 flex items-center justify-center rounded
-          text-[10px] transition-colors
+          flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-pf-sm
+          text-pf-xs transition-colors
           ${stream.muted
-            ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-            : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}
+            ? 'bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25'
+            : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border border-transparent hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]'}
         `}
         onClick={e => {
           e.stopPropagation();

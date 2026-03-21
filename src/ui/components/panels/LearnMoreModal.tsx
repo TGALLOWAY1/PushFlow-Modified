@@ -79,12 +79,12 @@ export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
   return (
     <>
       <div className="fixed inset-0 z-[60] bg-black/50" onClick={onClose} />
-      <div className="fixed inset-6 z-[61] max-w-3xl mx-auto rounded-xl border border-gray-700 bg-[#0f1724] shadow-2xl flex flex-col overflow-hidden">
+      <div className="fixed inset-6 z-[61] max-w-3xl mx-auto rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-app)] shadow-pf-xl flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800">
-          <h2 className="text-sm font-semibold text-gray-200">Learn More</h2>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)]">
+          <h2 className="text-pf-lg font-semibold text-[var(--text-primary)]">Learn More</h2>
           <button
-            className="text-gray-500 hover:text-gray-300 transition-colors text-lg"
+            className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors text-lg"
             onClick={onClose}
           >
             &times;
@@ -102,10 +102,10 @@ export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
           ]).map(t => (
             <button
               key={t.id}
-              className={`px-3 py-1.5 text-xs rounded-t transition-colors ${
+              className={`px-3 py-1.5 text-pf-sm rounded-t transition-colors ${
                 tab === t.id
-                  ? 'bg-gray-800 text-gray-200 border border-gray-700 border-b-[#0f1724]'
-                  : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'
+                  ? 'bg-[var(--bg-card)] text-[var(--text-primary)] border border-[var(--border-default)] border-b-[var(--bg-app)]'
+                  : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
               }`}
               onClick={() => setTab(t.id)}
             >
@@ -136,11 +136,11 @@ function OverviewInfographic() {
     <div className="space-y-5">
       {/* Title */}
       <div>
-        <h2 className="text-2xl font-bold text-gray-100 tracking-tight">PushFlow</h2>
-        <p className="text-sm text-gray-400 mt-0.5">
+        <h2 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">PushFlow</h2>
+        <p className="text-pf-lg text-[var(--text-secondary)] mt-0.5">
           Performance Layout Optimization and Event Analysis for Push-Style Grid Instruments
         </p>
-        <p className="text-xs text-gray-600 mt-1">
+        <p className="text-pf-sm text-[var(--text-tertiary)] mt-1">
           Design, inspect, and optimize playable sound layouts across time.
         </p>
       </div>
@@ -151,7 +151,7 @@ function OverviewInfographic() {
         <InfoCard step="1" category="Input Layer" title="Build or Import a Performance">
           <div className="flex items-center gap-4">
             <div className="flex flex-col items-center gap-1">
-              <div className="w-10 h-10 rounded-lg bg-gray-700/40 border border-gray-600/30 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-pf-lg bg-[var(--bg-hover)] border border-[var(--border-subtle)] flex items-center justify-center">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3 3 3-3"/></svg>
               </div>
               <span className="text-[9px] text-gray-500">MIDI Import</span>
@@ -235,8 +235,8 @@ function OverviewInfographic() {
                 { label: 'Movement Difficulty', icon: '' },
                 { label: 'Overall Playability', icon: '' },
               ].map((f, i) => (
-                <div key={i} className="bg-gray-800/50 rounded px-1 py-1 text-center border border-gray-700/30">
-                  {f.icon && <div className="text-[10px] text-gray-400 font-mono">{f.icon}</div>}
+                <div key={i} className="bg-[var(--bg-card)] rounded-pf-sm px-1 py-1 text-center border border-[var(--border-subtle)]">
+                  {f.icon && <div className="text-pf-xs text-[var(--text-secondary)] font-mono">{f.icon}</div>}
                   <div className="leading-tight">{f.label}</div>
                 </div>
               ))}
@@ -293,8 +293,8 @@ function OverviewInfographic() {
       </div>
 
       {/* Why PushFlow Matters */}
-      <div className="rounded-xl border border-gray-700/40 bg-gray-800/20 p-4">
-        <h3 className="text-sm font-semibold text-gray-200 mb-2">Why PushFlow Matters</h3>
+      <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4">
+        <h3 className="text-pf-lg font-semibold text-[var(--text-primary)] mb-2">Why PushFlow Matters</h3>
         <div className="space-y-1.5">
           {[
             'Turn MIDI patterns into playable performance layouts',
@@ -303,7 +303,7 @@ function OverviewInfographic() {
             'Improve ergonomics and execution',
             'Make layout decisions with visual feedback',
           ].map((item, i) => (
-            <div key={i} className="flex items-center gap-2 text-[11px] text-gray-400">
+            <div key={i} className="flex items-center gap-2 text-pf-sm text-[var(--text-secondary)]">
               <span className="text-cyan-500/60 text-xs">{'>'}</span>
               {item}
             </div>
@@ -313,25 +313,25 @@ function OverviewInfographic() {
 
       {/* FAQ section */}
       <div className="space-y-3">
-        <div className="text-sm text-gray-400 space-y-2">
+        <div className="text-pf-base text-[var(--text-secondary)] space-y-2">
           <p>
-            <strong className="text-gray-300">What are the charts?</strong> The stacked difficulty chart shows per-event cost,
+            <strong className="text-[var(--text-primary)]">What are the charts?</strong> The stacked difficulty chart shows per-event cost,
             broken down by factor. Taller bars mean harder moments. Use it to spot difficulty spikes.
           </p>
           <p>
-            <strong className="text-gray-300">What are candidates?</strong> Each candidate is a complete layout + execution plan proposal.
+            <strong className="text-[var(--text-primary)]">What are candidates?</strong> Each candidate is a complete layout + execution plan proposal.
             PushFlow generates multiple alternatives so you can compare tradeoffs.
           </p>
           <p>
-            <strong className="text-gray-300">What is the Greedy optimizer?</strong> It builds a layout step by step, then improves it
+            <strong className="text-[var(--text-primary)]">What is the Greedy optimizer?</strong> It builds a layout step by step, then improves it
             one move at a time. Every change is logged with a plain-English explanation so you can see exactly why each decision was made.
           </p>
           <p>
-            <strong className="text-gray-300">What are cost toggles?</strong> You can enable/disable individual cost factors in the
+            <strong className="text-[var(--text-primary)]">What are cost toggles?</strong> You can enable/disable individual cost factors in the
             Cost Evaluation section. This lets you evaluate a layout focusing on specific concerns (e.g., movement only, grip only).
           </p>
           <p>
-            <strong className="text-gray-300">What does Calculate Cost do?</strong> It evaluates your current layout and finger assignment
+            <strong className="text-[var(--text-primary)]">What does Calculate Cost do?</strong> It evaluates your current layout and finger assignment
             using the active cost toggles, without running a full optimization. Useful for manual assessment.
           </p>
         </div>
@@ -349,12 +349,12 @@ function InfoCard({ step, category, title, children }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-gray-700/40 bg-gray-800/15 p-3 space-y-2">
+    <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 space-y-2">
       <div>
-        <div className="text-[9px] text-gray-600 uppercase tracking-wider">{category}</div>
+        <div className="text-pf-micro text-[var(--text-tertiary)] uppercase tracking-wider">{category}</div>
         <div className="flex items-center gap-1.5 mt-0.5">
-          <span className="text-xs font-bold text-gray-300">{step}.</span>
-          <span className="text-xs font-medium text-gray-300">{title}</span>
+          <span className="text-pf-sm font-bold text-[var(--text-primary)]">{step}.</span>
+          <span className="text-pf-sm font-medium text-[var(--text-primary)]">{title}</span>
         </div>
       </div>
       {children}
@@ -412,23 +412,23 @@ function MiniGrid({ size = 1, seed = 0 }: { size?: number; seed?: number }) {
 function WorkflowSection() {
   return (
     <div className="space-y-3">
-      <p className="text-xs text-gray-500 mb-4">
+      <p className="text-pf-sm text-[var(--text-tertiary)] mb-4">
         PushFlow follows an iterative workflow. Each step builds on the last.
       </p>
       <div className="space-y-2">
         {WORKFLOW_STEPS.map((step, i) => (
           <div key={step.step} className="flex items-start gap-3">
             <div className="flex flex-col items-center">
-              <div className="w-6 h-6 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0 text-[11px] text-blue-400 font-medium">
+              <div className="w-6 h-6 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0 text-pf-sm text-blue-400 font-medium">
                 {step.step}
               </div>
               {i < WORKFLOW_STEPS.length - 1 && (
-                <div className="w-px h-4 bg-gray-700/50 mt-1" />
+                <div className="w-px h-4 bg-[var(--border-subtle)] mt-1" />
               )}
             </div>
             <div className="pt-0.5">
-              <div className="text-xs font-medium text-gray-300">{step.title}</div>
-              <div className="text-[11px] text-gray-500">{step.description}</div>
+              <div className="text-pf-sm font-medium text-[var(--text-primary)]">{step.title}</div>
+              <div className="text-pf-sm text-[var(--text-tertiary)]">{step.description}</div>
             </div>
           </div>
         ))}
@@ -444,7 +444,7 @@ function WorkflowSection() {
 function CostFactorsSection() {
   return (
     <div className="space-y-4">
-      <p className="text-xs text-gray-500">
+      <p className="text-pf-sm text-[var(--text-tertiary)]">
         PushFlow evaluates layouts using these difficulty factors. Lower values mean easier performance.
       </p>
       {COST_DEFINITIONS.map(cost => (
@@ -454,14 +454,14 @@ function CostFactorsSection() {
             style={{ backgroundColor: cost.color }}
           />
           <div>
-            <div className="text-sm font-medium text-gray-300 flex items-center gap-2">
+            <div className="text-pf-base font-medium text-[var(--text-primary)] flex items-center gap-2">
               <span
                 className="w-2 h-2 rounded-full"
                 style={{ backgroundColor: cost.color }}
               />
               {cost.name}
             </div>
-            <div className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+            <div className="text-pf-sm text-[var(--text-tertiary)] mt-0.5 leading-relaxed">
               {cost.description}
             </div>
           </div>
@@ -478,38 +478,38 @@ function CostFactorsSection() {
 function OptimizersSection() {
   return (
     <div className="space-y-4">
-      <p className="text-xs text-gray-500">
+      <p className="text-pf-sm text-[var(--text-tertiary)]">
         PushFlow supports multiple optimization methods. Select your preferred method from the toolbar dropdown before clicking Generate.
       </p>
       {OPTIMIZER_METHODS.map(method => (
         <div key={method.key} className="flex gap-3">
           <div className="w-1 rounded-full flex-shrink-0 bg-cyan-500/60" />
           <div>
-            <div className="text-sm font-medium text-gray-300 flex items-center gap-2">
+            <div className="text-pf-base font-medium text-[var(--text-primary)] flex items-center gap-2">
               {method.name}
-              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 border border-gray-700">
+              <span className="text-pf-micro font-mono px-1.5 py-0.5 rounded-pf-sm bg-[var(--bg-card)] text-[var(--text-tertiary)] border border-[var(--border-subtle)]">
                 {method.key}
               </span>
             </div>
-            <div className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+            <div className="text-pf-sm text-[var(--text-tertiary)] mt-0.5 leading-relaxed">
               {method.description}
             </div>
           </div>
         </div>
       ))}
 
-      <div className="rounded-xl border border-gray-700/40 bg-gray-800/20 p-3 mt-4">
-        <h4 className="text-xs font-medium text-gray-300 mb-2">Cost Toggles</h4>
-        <p className="text-[11px] text-gray-500 leading-relaxed">
+      <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 mt-4">
+        <h4 className="text-pf-sm font-medium text-[var(--text-primary)] mb-2">Cost Toggles</h4>
+        <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
           All cost factors can be individually toggled on/off in the Cost Evaluation section of the analysis panel.
           Disabled factors contribute zero to the total cost during both manual evaluation (Calculate Cost) and optimization.
           Disabling hard constraints enters experimental mode and is flagged in the UI.
         </p>
       </div>
 
-      <div className="rounded-xl border border-gray-700/40 bg-gray-800/20 p-3">
-        <h4 className="text-xs font-medium text-gray-300 mb-2">Calculate Cost</h4>
-        <p className="text-[11px] text-gray-500 leading-relaxed">
+      <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
+        <h4 className="text-pf-sm font-medium text-[var(--text-primary)] mb-2">Calculate Cost</h4>
+        <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
           The Calculate Cost button evaluates your current layout and finger assignment without running a full optimization.
           It shows total cost, static/temporal subtotals, per-factor breakdown, feasibility verdict, and event counts.
           The result uses the currently active cost toggles.
@@ -597,7 +597,7 @@ const HARD_CONSTRAINTS = [
 function ConstraintsSection() {
   return (
     <div className="space-y-5">
-      <p className="text-xs text-gray-500">
+      <p className="text-pf-sm text-[var(--text-tertiary)]">
         PushFlow enforces hard biomechanical constraints during solver execution. Violations result in infeasibility
         (the grip is rejected entirely), not soft penalties. These constraints model the physical limits of human hands
         on an 8&times;8 Push grid.
@@ -605,22 +605,22 @@ function ConstraintsSection() {
 
       {HARD_CONSTRAINTS.map(group => (
         <div key={group.category}>
-          <h4 className="text-[11px] text-gray-400 font-medium uppercase tracking-wider mb-2 flex items-center gap-2">
+          <h4 className="section-header mb-2 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: group.color }} />
             {group.category}
           </h4>
           <div className="space-y-1.5">
             {group.rules.map(rule => (
-              <div key={rule.key} className="flex gap-3 px-2 py-2 rounded bg-gray-800/40 border border-gray-700/30">
+              <div key={rule.key} className="flex gap-3 px-2 py-2 rounded-pf-sm bg-[var(--bg-card)] border border-[var(--border-subtle)]">
                 <div className="w-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: group.color }} />
                 <div>
-                  <div className="text-xs font-medium text-gray-300 flex items-center gap-2">
+                  <div className="text-pf-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
                     {rule.name}
-                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 border border-gray-700">
+                    <span className="text-pf-micro font-mono px-1.5 py-0.5 rounded-pf-sm bg-[var(--bg-panel)] text-[var(--text-tertiary)] border border-[var(--border-subtle)]">
                       {rule.key}
                     </span>
                   </div>
-                  <div className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+                  <div className="text-pf-sm text-[var(--text-tertiary)] mt-0.5 leading-relaxed">
                     {rule.description}
                   </div>
                 </div>
@@ -630,9 +630,9 @@ function ConstraintsSection() {
         </div>
       ))}
 
-      <div className="rounded-xl border border-gray-700/40 bg-gray-800/20 p-3">
-        <h4 className="text-xs font-medium text-gray-300 mb-1">Enforcement</h4>
-        <p className="text-[11px] text-gray-500 leading-relaxed">
+      <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
+        <h4 className="text-pf-sm font-medium text-[var(--text-primary)] mb-1">Enforcement</h4>
+        <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
           When any constraint is violated, the candidate grip is rejected entirely (returns infeasibility).
           The solver only considers grips that pass all hard constraints at the strict tier. Relaxed and fallback
           tiers widen limits slightly when no strict solution exists, flagged by the feasibility verdict.

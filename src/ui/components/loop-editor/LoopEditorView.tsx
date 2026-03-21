@@ -177,7 +177,7 @@ export function LoopEditorView() {
       {/* Step sequencer + pad grid side by side */}
       <div className="flex gap-3 items-start">
         {/* Step sequencer: sidebar + grid */}
-        <div className="flex-1 min-w-0 flex rounded-lg bg-gray-800/20 border border-gray-700 overflow-hidden" style={{ minHeight: 300 }}>
+        <div className="flex-1 min-w-0 flex rounded-pf-lg bg-[var(--bg-card)] border border-[var(--border-default)] overflow-hidden" style={{ minHeight: 300 }}>
           <LoopLaneSidebar lanes={loopState.lanes} dispatch={dispatch} />
           <LoopGridCanvas
             config={loopState.config}

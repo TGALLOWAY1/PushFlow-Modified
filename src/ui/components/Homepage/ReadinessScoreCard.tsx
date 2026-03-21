@@ -26,7 +26,7 @@ function CircularGauge({ score }: { score: number }) {
         cy={center}
         r={radius}
         fill="none"
-        stroke="#1f2937"
+        stroke="var(--bg-input)"
         strokeWidth={stroke}
       />
       {/* Foreground arc */}
@@ -63,7 +63,7 @@ function CircularGauge({ score }: { score: number }) {
         x={center}
         y={center + 18}
         textAnchor="middle"
-        className="fill-gray-500"
+        className="fill-[var(--text-tertiary)]"
         style={{ fontSize: 9 }}
       >
         Readiness Score
@@ -83,8 +83,8 @@ function StatRow({ icon, label, value }: StatRowProps) {
     <div className="flex items-center gap-2">
       <span>{icon}</span>
       <div className="min-w-0">
-        <p className="text-sm font-medium text-gray-200">{value}</p>
-        <p className="text-[10px] text-gray-500">{label}</p>
+        <p className="text-pf-base font-medium text-[var(--text-primary)]">{value}</p>
+        <p className="text-pf-xs text-[var(--text-tertiary)]">{label}</p>
       </div>
     </div>
   );
@@ -92,9 +92,9 @@ function StatRow({ icon, label, value }: StatRowProps) {
 
 export function ReadinessScoreCard({ data }: ReadinessScoreCardProps) {
   return (
-    <div className="glass-panel rounded-xl p-5 flex flex-col items-center">
+    <div className="glass-panel rounded-pf-lg p-5 flex flex-col items-center">
       <div className="flex items-center justify-between w-full mb-3">
-        <h3 className="text-sm font-medium text-gray-400">Performance Readiness Score</h3>
+        <h3 className="text-pf-base font-medium text-[var(--text-secondary)]">Performance Readiness Score</h3>
       </div>
 
       <CircularGauge score={data.score} />

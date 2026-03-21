@@ -34,11 +34,11 @@ export function ContinuePracticingHero({
   onOpenEditor,
 }: ContinuePracticingHeroProps) {
   const difficultyClass = project.difficulty
-    ? DIFFICULTY_COLORS[project.difficulty] ?? 'bg-gray-500/15 text-gray-400'
+    ? DIFFICULTY_COLORS[project.difficulty] ?? 'bg-[var(--bg-hover)] text-[var(--text-secondary)]'
     : null;
 
   return (
-    <div className="glass-panel-strong rounded-xl p-5 flex gap-5 glow-emerald">
+    <div className="glass-panel-strong rounded-pf-lg p-5 flex gap-5 glow-emerald">
       {/* Grid preview */}
       <div className="flex-shrink-0">
         {projectState ? (
@@ -50,7 +50,7 @@ export function ContinuePracticingHero({
           />
         ) : (
           <div
-            className="rounded-lg bg-gray-800/50 border border-gray-700/50"
+            className="rounded-pf-lg bg-[var(--bg-card)] border border-[var(--border-subtle)]"
             style={{ width: 284, height: 284 }}
           />
         )}
@@ -59,41 +59,41 @@ export function ContinuePracticingHero({
       {/* Content */}
       <div className="flex flex-col justify-between flex-1 min-w-0 py-1">
         <div>
-          <span className="text-[10px] uppercase tracking-widest text-emerald-400 font-medium">
+          <span className="text-pf-xs uppercase tracking-widest text-emerald-400 font-medium">
             Continue Practicing
           </span>
           <h2 className="text-xl font-bold mt-1 truncate">{project.name}</h2>
-          <p className="text-xs text-gray-500 mt-0.5">by Neon Pulse</p>
+          <p className="text-pf-sm text-[var(--text-tertiary)] mt-0.5">by Neon Pulse</p>
 
           <div className="flex items-center gap-2 mt-3">
-            <span className="text-xs text-gray-400">
+            <span className="text-pf-sm text-[var(--text-secondary)]">
               Last practiced section:{' '}
-              <span className="text-gray-200">{mockData.sectionLabel}</span>
+              <span className="text-[var(--text-primary)]">{mockData.sectionLabel}</span>
             </span>
           </div>
 
           <div className="flex items-center gap-2 mt-1.5">
-            <span className="text-xs text-gray-400">
+            <span className="text-pf-sm text-[var(--text-secondary)]">
               Current layout:{' '}
-              <span className="text-gray-200">Ergo Focus 3</span>
+              <span className="text-[var(--text-primary)]">Ergo Focus 3</span>
             </span>
           </div>
 
           {difficultyClass && (
             <div className="flex items-center gap-2 mt-1.5">
-              <span className="text-xs text-gray-400">Current difficulty:</span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${difficultyClass}`}>
+              <span className="text-pf-sm text-[var(--text-secondary)]">Current difficulty:</span>
+              <span className={`text-pf-xs px-1.5 py-0.5 rounded-pf-sm font-mono ${difficultyClass}`}>
                 {project.difficulty}
               </span>
             </div>
           )}
 
           {/* Practice insight */}
-          <div className="mt-4 p-2.5 rounded-lg bg-gray-800/40 border border-gray-700/50">
-            <p className="text-xs text-gray-400 italic">
+          <div className="mt-4 p-2.5 rounded-pf-lg bg-[var(--bg-card)] border border-[var(--border-subtle)]">
+            <p className="text-pf-sm text-[var(--text-secondary)] italic">
               Motivational supported
             </p>
-            <p className="text-xs text-gray-300 mt-0.5">
+            <p className="text-pf-sm text-[var(--text-primary)] mt-0.5">
               {mockData.practiceInsight}
             </p>
           </div>
@@ -103,14 +103,14 @@ export function ContinuePracticingHero({
         <div className="flex gap-2 mt-4">
           <button
             onClick={onResume}
-            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-medium text-white transition-colors"
+            className="pf-btn pf-btn-primary flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-pf-lg text-pf-base font-medium text-white transition-colors"
           >
             <Play size={14} />
             Resume Practice
           </button>
           <button
             onClick={onOpenEditor}
-            className="flex items-center gap-1.5 px-4 py-2 border border-gray-600 hover:border-gray-500 rounded-lg text-sm font-medium text-gray-300 hover:text-white transition-colors"
+            className="pf-btn pf-btn-ghost flex items-center gap-1.5 px-4 py-2 border border-[var(--border-default)] hover:border-[var(--border-strong)] rounded-pf-lg text-pf-base font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
           >
             <Pencil size={14} />
             Open Layout Editor

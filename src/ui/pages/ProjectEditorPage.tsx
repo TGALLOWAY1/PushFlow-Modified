@@ -51,7 +51,7 @@ export function ProjectEditorPage() {
   if (initialState === 'loading') {
     return (
       <div className="max-w-2xl mx-auto text-center py-12">
-        <p className="text-gray-400">Loading project...</p>
+        <p className="text-pf-sm text-[var(--text-secondary)]">Loading project...</p>
       </div>
     );
   }
@@ -59,9 +59,9 @@ export function ProjectEditorPage() {
   if (!initialState) {
     return (
       <div className="max-w-2xl mx-auto text-center py-12">
-        <p className="text-gray-400 mb-4">Project not found.</p>
+        <p className="text-pf-sm text-[var(--text-secondary)] mb-4">Project not found.</p>
         <button
-          className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm"
+          className="pf-btn pf-btn-subtle text-pf-sm"
           onClick={() => navigate('/')}
         >
           Back to Library

@@ -140,7 +140,7 @@ export function RudimentPadGrid({
           key={padKey}
           className={`
             relative flex flex-col items-center justify-center
-            w-10 h-10 rounded-md text-[8px] font-mono leading-tight
+            w-10 h-10 rounded-pf-md text-pf-micro font-mono leading-tight
             border-2 transition-all duration-100
             ${isActive ? 'ring-2 ring-yellow-400/60 z-10 scale-105' : ''}
             ${assignment ? '' : 'opacity-40'}
@@ -178,14 +178,14 @@ export function RudimentPadGrid({
               />
             </>
           ) : (
-            <span className="text-[6px] text-gray-600">{row},{col}</span>
+            <span className="text-[6px] text-[var(--text-tertiary)]">{row},{col}</span>
           )}
         </div>
       );
     }
     rows.push(
       <div key={row} className="flex gap-1 items-center">
-        <span className="w-3 text-[8px] text-gray-500 text-right mr-0.5 font-mono">{row}</span>
+        <span className="w-3 text-pf-micro text-[var(--text-secondary)] text-right mr-0.5 font-mono">{row}</span>
         {cells}
       </div>
     );
@@ -193,23 +193,23 @@ export function RudimentPadGrid({
 
   return (
     <div className="space-y-1">
-      <h3 className="text-xs font-medium text-gray-400">Pad Assignments</h3>
+      <h3 className="text-pf-sm font-medium text-[var(--text-secondary)]">Pad Assignments</h3>
       <div className="inline-block">
         <div className="flex flex-col gap-1">
           {rows}
           {/* Column labels */}
           <div className="flex gap-1 ml-4">
             {Array.from({ length: 8 }, (_, col) => (
-              <div key={col} className="w-10 text-center text-[8px] text-gray-500 font-mono">{col}</div>
+              <div key={col} className="w-10 text-center text-pf-micro text-[var(--text-secondary)] font-mono">{col}</div>
             ))}
           </div>
         </div>
         {/* Zone labels */}
         <div className="flex ml-4 mt-1 gap-1">
-          <div className="w-[calc(4*2.5rem+3*0.25rem)] text-center text-[8px] text-blue-400/70 border-t border-blue-500/20 pt-0.5">
+          <div className="w-[calc(4*2.5rem+3*0.25rem)] text-center text-pf-micro text-blue-400/70 border-t border-blue-500/20 pt-0.5">
             Left Hand
           </div>
-          <div className="w-[calc(4*2.5rem+3*0.25rem)] text-center text-[8px] text-purple-400/70 border-t border-purple-500/20 pt-0.5">
+          <div className="w-[calc(4*2.5rem+3*0.25rem)] text-center text-pf-micro text-purple-400/70 border-t border-purple-500/20 pt-0.5">
             Right Hand
           </div>
         </div>

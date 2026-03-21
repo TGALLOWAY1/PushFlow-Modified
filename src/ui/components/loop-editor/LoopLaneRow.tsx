@@ -65,7 +65,7 @@ export function LoopLaneRow({ lane, dispatch, fingerAssignment, onFingerAssignme
 
   return (
     <div
-      className="group flex items-center gap-1.5 px-2 hover:bg-gray-800/50 border-b border-gray-800/40"
+      className="group flex items-center gap-1.5 px-2 hover:bg-[var(--bg-hover)] border-b border-[var(--border-subtle)]"
       style={{ height: ROW_HEIGHT }}
     >
       {/* Color swatch */}
@@ -78,7 +78,7 @@ export function LoopLaneRow({ lane, dispatch, fingerAssignment, onFingerAssignme
       {isEditing ? (
         <input
           ref={inputRef}
-          className="flex-1 min-w-0 bg-gray-900 border border-gray-600 rounded px-1 py-0 text-xs text-gray-200"
+          className="flex-1 min-w-0 bg-[var(--bg-input)] border border-[var(--border-default)] rounded-pf-sm px-1 py-0 text-pf-sm text-[var(--text-primary)]"
           value={editValue}
           onChange={e => setEditValue(e.target.value)}
           onBlur={handleCommitName}
@@ -92,7 +92,7 @@ export function LoopLaneRow({ lane, dispatch, fingerAssignment, onFingerAssignme
         />
       ) : (
         <span
-          className="flex-1 min-w-0 truncate text-xs text-gray-200 cursor-text"
+          className="flex-1 min-w-0 truncate text-pf-sm text-[var(--text-primary)] cursor-text"
           onDoubleClick={() => {
             setEditValue(lane.name);
             setIsEditing(true);
@@ -111,16 +111,16 @@ export function LoopLaneRow({ lane, dispatch, fingerAssignment, onFingerAssignme
       />
 
       {/* Pad position label */}
-      <span className="text-[10px] text-gray-500 w-7 text-center flex-shrink-0" title={padPosition ? `Pad ${padPosition}` : 'Not assigned to pad'}>
+      <span className="text-pf-xs text-[var(--text-secondary)] w-7 text-center flex-shrink-0" title={padPosition ? `Pad ${padPosition}` : 'Not assigned to pad'}>
         {padPosition ? formatPadPosition(padPosition) : '--'}
       </span>
 
       {/* M/S buttons */}
       <button
-        className={`text-[10px] w-4 h-4 flex items-center justify-center rounded flex-shrink-0 ${
+        className={`text-pf-xs w-4 h-4 flex items-center justify-center rounded-pf-sm flex-shrink-0 ${
           lane.isMuted
             ? 'bg-red-500/30 text-red-400'
-            : 'text-gray-500 hover:text-gray-300'
+            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
         }`}
         onClick={() => dispatch({ type: 'TOGGLE_LANE_MUTE', payload: lane.id })}
         title="Mute"
@@ -128,10 +128,10 @@ export function LoopLaneRow({ lane, dispatch, fingerAssignment, onFingerAssignme
         M
       </button>
       <button
-        className={`text-[10px] w-4 h-4 flex items-center justify-center rounded flex-shrink-0 ${
+        className={`text-pf-xs w-4 h-4 flex items-center justify-center rounded-pf-sm flex-shrink-0 ${
           lane.isSolo
             ? 'bg-yellow-500/30 text-yellow-400'
-            : 'text-gray-500 hover:text-gray-300'
+            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
         }`}
         onClick={() => dispatch({ type: 'TOGGLE_LANE_SOLO', payload: lane.id })}
         title="Solo"
@@ -141,7 +141,7 @@ export function LoopLaneRow({ lane, dispatch, fingerAssignment, onFingerAssignme
 
       {/* Delete (visible on hover) */}
       <button
-        className="text-gray-600 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+        className="text-[var(--text-tertiary)] hover:text-red-400 text-pf-sm opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
         onClick={() => dispatch({ type: 'DELETE_LANE', payload: lane.id })}
         title="Delete lane"
       >
