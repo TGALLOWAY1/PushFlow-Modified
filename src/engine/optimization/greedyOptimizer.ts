@@ -45,6 +45,12 @@ import {
   getEmptyPadPositions,
   scorePlacement,
 } from './greedyEvaluation';
+import {
+  type UpdatePolicy,
+  type EvaluatedMove,
+  type UpdateContext,
+  strictGreedy,
+} from './updatePolicies';
 
 // ============================================================================
 // Constants
@@ -57,13 +63,24 @@ const MAX_MOVES_PER_ITERATION = 500;
 // Greedy Optimizer
 // ============================================================================
 
+/**
+ * Options for running the greedy optimizer with custom seed and update policy.
+ * Used by the greedy candidate pipeline for diverse candidate generation.
+ */
+export interface GreedyRunOptions {
+  /** Pre-built seed layout to use instead of greedyInitLayout(). */
+  seedLayout?: Layout;
+  /** Update policy for hill-climb move selection (defaults to strictGreedy). */
+  updatePolicy?: UpdatePolicy;
+}
+
 class GreedyOptimizer implements OptimizerMethod {
   readonly key = 'greedy' as const;
   readonly name = 'Greedy Hill Climb';
   readonly description = 'Interpretable step-by-step optimizer. Builds layout greedily, then improves via local moves.';
   readonly supportsStepHistory = true;
 
-  async optimize(input: OptimizerInput): Promise<OptimizerOutput> {
+  async optimize(input: OptimizerInput, options?: GreedyRunOptions): Promise<OptimizerOutput> {
     const startTime = Date.now();
     const restartCount = input.config.restartCount ?? 0;
 
@@ -74,7 +91,7 @@ class GreedyOptimizer implements OptimizerMethod {
     }
 
     // Run the initial attempt plus any restarts, keeping the best result
-    let bestResult = await this.runSingleAttempt(input, moments, 0);
+    let bestResult = await this.runSingleAttempt(input, moments, 0, options);
 
     for (let attempt = 1; attempt <= restartCount; attempt++) {
       await yieldControl();
@@ -86,7 +103,11 @@ class GreedyOptimizer implements OptimizerMethod {
           seed: (input.config.seed ?? 0) + attempt * 7919, // Prime offset for diversity
         },
       };
-      const result = await this.runSingleAttempt(restartInput, moments, attempt);
+      // Only use seedLayout for the first attempt; restarts use greedy init with different seeds
+      const restartOptions: GreedyRunOptions | undefined = options?.updatePolicy
+        ? { updatePolicy: options.updatePolicy }
+        : undefined;
+      const result = await this.runSingleAttempt(restartInput, moments, attempt, restartOptions);
 
       if (result.diagnostics.total < bestResult.diagnostics.total) {
         // Keep the better result but merge trace from all attempts
@@ -127,6 +148,7 @@ class GreedyOptimizer implements OptimizerMethod {
     input: OptimizerInput,
     moments: PerformanceMoment[],
     attemptIndex: number,
+    options?: GreedyRunOptions,
   ): Promise<OptimizerOutput> {
     const startTime = Date.now();
     const maxIterations = input.config.maxIterations ?? DEFAULT_MAX_ITERATIONS;
@@ -135,16 +157,21 @@ class GreedyOptimizer implements OptimizerMethod {
 
     // ── Phase A: Greedy Initial Layout ─────────────────────────
     let layout: Layout;
-    const hasExistingLayout = Object.keys(input.layout.padToVoice).length > 0;
 
-    if (hasExistingLayout && attemptIndex === 0) {
-      // Use existing layout as starting point (only for first attempt)
-      layout = deepCopyLayout(input.layout);
+    if (options?.seedLayout && attemptIndex === 0) {
+      // Use externally-provided seed layout (from candidate pipeline)
+      layout = deepCopyLayout(options.seedLayout);
     } else {
-      // Build layout from scratch using greedy placement
-      layout = await this.greedyInitLayout(
-        input, moments, moveHistory, attemptIndex,
-      );
+      const hasExistingLayout = Object.keys(input.layout.padToVoice).length > 0;
+      if (hasExistingLayout && attemptIndex === 0) {
+        // Use existing layout as starting point (only for first attempt)
+        layout = deepCopyLayout(input.layout);
+      } else {
+        // Build layout from scratch using greedy placement
+        layout = await this.greedyInitLayout(
+          input, moments, moveHistory, attemptIndex,
+        );
+      }
     }
 
     // Yield to prevent UI freeze
@@ -173,6 +200,9 @@ class GreedyOptimizer implements OptimizerMethod {
 
     // ── Phase C: Hill-Climbing Local Improvement ───────────────
     let stopReason: StopReason = 'iteration_cap';
+    const updatePolicy = options?.updatePolicy ?? strictGreedy;
+    const seed = input.config.seed ?? 0;
+    const hillClimbRng = createSeededRng(seed + 31337); // Separate RNG for policy
 
     for (let iter = 0; iter < maxIterations; iter++) {
       // Enumerate all candidate moves
@@ -183,8 +213,8 @@ class GreedyOptimizer implements OptimizerMethod {
       }
 
       // Evaluate each move
-      let bestMove: CandidateMove | null = null;
-      let bestCost = currentCost.total;
+      const evaluatedMoves: EvaluatedMove[] = [];
+      const moveMap: CandidateMove[] = [];
       let movesChecked = 0;
 
       for (const move of candidateMoves) {
@@ -200,31 +230,49 @@ class GreedyOptimizer implements OptimizerMethod {
           moments, newLayout, newAssignment, input.evaluationConfig, input.costToggles,
         );
 
-        if (newCostResult.total < bestCost) {
-          bestCost = newCostResult.total;
-          bestMove = { ...move, newLayout, newAssignment, costResult: newCostResult };
-        }
+        const idx = evaluatedMoves.length;
+        evaluatedMoves.push({
+          index: idx,
+          cost: newCostResult.total,
+          costDelta: newCostResult.total - currentCost.total,
+          breakdown: newCostResult,
+          moveType: move.type,
+          padKey: move.padKey,
+          targetPadKey: move.targetPadKey,
+        });
+        moveMap.push({ ...move, newLayout, newAssignment, costResult: newCostResult });
       }
 
-      // No improving move found → local minimum
-      if (!bestMove || bestCost >= currentCost.total) {
+      // Use update policy to select a move
+      const updateCtx: UpdateContext = {
+        currentCost: currentCost.total,
+        currentBreakdown: currentCost,
+        iteration: iter,
+        rng: hillClimbRng,
+        maxIterations,
+      };
+
+      const selected = updatePolicy.selectMove(evaluatedMoves, updateCtx);
+
+      if (!selected) {
         stopReason = 'no_improving_move';
         break;
       }
 
-      // Accept best move
-      const costDelta = bestCost - currentCost.total;
+      // Accept selected move
+      const bestMove = moveMap[selected.index];
+      const costDelta = selected.costDelta;
       const moveRecord: OptimizerMove = {
         iteration: iter,
         type: bestMove.type,
         description: bestMove.description,
         costBefore: currentCost.total,
-        costAfter: bestCost,
+        costAfter: selected.cost,
         costDelta,
         affectedVoice: bestMove.voiceName,
         affectedPad: bestMove.padKey,
         secondaryPad: bestMove.secondaryPadKey,
-        reason: `Total cost decreased by ${Math.abs(costDelta).toFixed(3)}`,
+        reason: `Total cost ${costDelta < 0 ? 'decreased' : 'changed'} by ${Math.abs(costDelta).toFixed(3)}`,
         rejectedAlternatives: movesChecked - 1,
         phase: 'hill-climb',
         attemptIndex,

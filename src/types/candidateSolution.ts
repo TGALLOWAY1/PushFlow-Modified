@@ -71,6 +71,26 @@ export interface CandidateMetadata {
   optimizationMode?: import('./engineConfig').OptimizationMode;
   /** Human-readable optimization summary. */
   optimizationSummary?: string;
+  /** Candidate family identity (for greedy diverse candidates). */
+  candidateFamily?: string;
+  /** Structured explanation of why this candidate was selected. */
+  explanation?: CandidateExplanation;
+}
+
+/**
+ * CandidateExplanation: Structured rationale for a finalist candidate.
+ *
+ * Provides a human-readable explanation card that the UI can display.
+ */
+export interface CandidateExplanation {
+  /** What this candidate is best for. E.g. "comfort and learnability". */
+  bestFor: string;
+  /** Top 2-3 reasons it was selected. */
+  wonBecause: string[];
+  /** Main tradeoff or downside. */
+  tradeoff: string;
+  /** How it differs from the nearest other candidate. */
+  distinctiveTrait: string;
 }
 
 /**

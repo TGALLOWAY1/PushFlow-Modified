@@ -1,0 +1,472 @@
+/**
+ * Pluggable Seed Generators for Greedy Candidate Diversity.
+ *
+ * Four seed generators produce fundamentally different starting layouts:
+ * A. Natural Pose  — comfort and finger dominance
+ * B. Cluster       — musically related sounds grouped together
+ * C. Coordination  — rhythmic motion patterns optimized
+ * D. Novelty       — stochastic exploration with minimal constraints
+ *
+ * Each generator uses the shared SoundFeatureMap and returns a valid Layout.
+ */
+
+import { type Layout } from '../../types/layout';
+import { type Voice } from '../../types/voice';
+import { type InstrumentConfig } from '../../types/performance';
+import { type PadCoord } from '../../types/padGrid';
+import { type SoundFeatureMap, rankByImportance } from '../structure/soundFeatures';
+import { adjacentPads } from '../surface/padGrid';
+import { generateId } from '../../utils/idGenerator';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface SeedGenerator {
+  key: string;
+  name: string;
+  generate(ctx: SeedContext): Layout;
+}
+
+export interface SeedContext {
+  /** Sound features for all voices. */
+  features: SoundFeatureMap;
+  /** Voice objects keyed by voiceId. */
+  voices: Map<string, Voice>;
+  /** Grid dimensions. */
+  instrumentConfig: InstrumentConfig;
+  /** Locked voice→pad assignments that must not change. */
+  placementLocks: Record<string, string>;
+  /** Seeded RNG returning [0, 1). */
+  rng: () => number;
+  /** Optional base layout for reference. */
+  baseLayout?: Layout;
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function padKey(row: number, col: number): string {
+  return `${row},${col}`;
+}
+
+function isOccupied(layout: Layout, row: number, col: number): boolean {
+  return padKey(row, col) in layout.padToVoice;
+}
+
+function createEmptyLayout(name: string, baseLayout?: Layout): Layout {
+  return {
+    id: generateId('layout'),
+    name,
+    padToVoice: {},
+    fingerConstraints: baseLayout?.fingerConstraints ?? {},
+    placementLocks: baseLayout?.placementLocks ?? {},
+    scoreCache: null,
+    layoutMode: 'optimized' as const,
+    role: 'working' as const,
+  };
+}
+
+function placeVoice(
+  layout: Layout,
+  row: number,
+  col: number,
+  voice: Voice,
+): void {
+  layout.padToVoice[padKey(row, col)] = voice;
+}
+
+/** Golden pads near the natural hand pose center (rows 2-4, all cols). */
+const GOLDEN_PADS: PadCoord[] = [
+  // Center area — most ergonomic
+  { row: 3, col: 3 }, { row: 3, col: 4 }, // index fingers
+  { row: 4, col: 2 }, { row: 4, col: 5 }, // middle fingers
+  { row: 4, col: 1 }, { row: 4, col: 6 }, // ring fingers
+  { row: 2, col: 3 }, { row: 2, col: 4 }, // thumbs
+  { row: 4, col: 0 }, { row: 4, col: 7 }, // pinkies
+  // Extended comfortable zone
+  { row: 3, col: 2 }, { row: 3, col: 5 },
+  { row: 2, col: 2 }, { row: 2, col: 5 },
+  { row: 3, col: 1 }, { row: 3, col: 6 },
+  { row: 5, col: 2 }, { row: 5, col: 5 },
+  { row: 5, col: 3 }, { row: 5, col: 4 },
+  { row: 5, col: 1 }, { row: 5, col: 6 },
+  { row: 2, col: 1 }, { row: 2, col: 6 },
+];
+
+function getFirstEmptyPad(
+  layout: Layout,
+  candidates: PadCoord[],
+): PadCoord | null {
+  for (const pad of candidates) {
+    if (!isOccupied(layout, pad.row, pad.col)) {
+      return pad;
+    }
+  }
+  return null;
+}
+
+/** Get all empty pads in row-major order. */
+function getAllEmptyPads(
+  layout: Layout,
+  rows: number,
+  cols: number,
+): PadCoord[] {
+  const empty: PadCoord[] = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (!isOccupied(layout, r, c)) {
+        empty.push({ row: r, col: c });
+      }
+    }
+  }
+  return empty;
+}
+
+/** Apply placement locks to layout (place locked voices first). */
+function applyPlacementLocks(
+  layout: Layout,
+  locks: Record<string, string>,
+  voices: Map<string, Voice>,
+): Set<string> {
+  const placedVoiceIds = new Set<string>();
+  for (const [voiceId, pk] of Object.entries(locks)) {
+    const voice = voices.get(voiceId);
+    if (voice) {
+      layout.padToVoice[pk] = voice;
+      placedVoiceIds.add(voiceId);
+    }
+  }
+  return placedVoiceIds;
+}
+
+// ============================================================================
+// Seed Generator A: Natural Pose
+// ============================================================================
+
+/**
+ * Natural Pose Anchor seed.
+ *
+ * Places sounds by weighted importance onto the most ergonomic
+ * "golden pads" near the natural hand pose center.
+ */
+export const naturalPoseSeed: SeedGenerator = {
+  key: 'natural-pose',
+  name: 'Natural Pose Anchor',
+
+  generate(ctx: SeedContext): Layout {
+    const layout = createEmptyLayout('Natural Pose Anchor', ctx.baseLayout);
+    const placedVoiceIds = applyPlacementLocks(layout, ctx.placementLocks, ctx.voices);
+
+    // Sort voices by weighted importance (highest first)
+    const ranked = rankByImportance(ctx.features)
+      .filter(f => !placedVoiceIds.has(f.voiceId));
+
+    // Place on golden pads in order of importance
+    for (const feat of ranked) {
+      const voice = ctx.voices.get(feat.voiceId);
+      if (!voice) continue;
+
+      // Try golden pads first, then any remaining empty pad
+      const pad = getFirstEmptyPad(layout, GOLDEN_PADS)
+        ?? getFirstEmptyPad(layout, getAllEmptyPads(layout, ctx.instrumentConfig.rows, ctx.instrumentConfig.cols));
+
+      if (!pad) break;
+      placeVoice(layout, pad.row, pad.col, voice);
+    }
+
+    return layout;
+  },
+};
+
+// ============================================================================
+// Seed Generator B: Cluster
+// ============================================================================
+
+/**
+ * Clustered Motif seed.
+ *
+ * Groups musically related sounds (co-occurrence + transitions) into
+ * compact physical regions on the grid.
+ */
+export const clusterSeed: SeedGenerator = {
+  key: 'cluster',
+  name: 'Clustered Motif Layout',
+
+  generate(ctx: SeedContext): Layout {
+    const layout = createEmptyLayout('Clustered Motif Layout', ctx.baseLayout);
+    const placedVoiceIds = applyPlacementLocks(layout, ctx.placementLocks, ctx.voices);
+    const rows = ctx.instrumentConfig.rows;
+    const cols = ctx.instrumentConfig.cols;
+
+    // Build relationship graph: voiceId → voiceId → strength
+    const relationships = new Map<string, Map<string, number>>();
+    for (const [voiceId, feat] of ctx.features) {
+      if (placedVoiceIds.has(voiceId)) continue;
+      const rels = new Map<string, number>();
+      // Co-occurrence neighbors contribute 1.0 per rank position
+      for (let i = 0; i < feat.cooccurrenceNeighbors.length; i++) {
+        const neighbor = feat.cooccurrenceNeighbors[i];
+        rels.set(neighbor, (rels.get(neighbor) ?? 0) + (5 - i));
+      }
+      // Transition neighbors contribute 0.8 per rank position
+      for (let i = 0; i < feat.transitionNeighbors.length; i++) {
+        const neighbor = feat.transitionNeighbors[i];
+        rels.set(neighbor, (rels.get(neighbor) ?? 0) + (5 - i) * 0.8);
+      }
+      relationships.set(voiceId, rels);
+    }
+
+    // Build clusters using greedy agglomeration
+    const unplaced = rankByImportance(ctx.features)
+      .filter(f => !placedVoiceIds.has(f.voiceId));
+
+    if (unplaced.length === 0) return layout;
+
+    // Start first cluster at center of grid
+    const startRow = Math.floor(rows / 2);
+    const startCol = Math.floor(cols / 2);
+
+    // Place first voice
+    const firstVoice = ctx.voices.get(unplaced[0].voiceId);
+    if (firstVoice) {
+      placeVoice(layout, startRow, startCol, firstVoice);
+    }
+    const placed = new Set([unplaced[0].voiceId]);
+
+    // Place remaining voices adjacent to their most related already-placed voice
+    for (let i = 1; i < unplaced.length; i++) {
+      const feat = unplaced[i];
+      const voice = ctx.voices.get(feat.voiceId);
+      if (!voice) continue;
+
+      // Find the best position: adjacent to the most related placed voice
+      let bestPad: PadCoord | null = null;
+      let bestScore = -Infinity;
+
+      const rels = relationships.get(feat.voiceId);
+
+      // Check all empty pads and score by adjacency to related voices
+      const emptyPads = getAllEmptyPads(layout, rows, cols);
+      for (const pad of emptyPads) {
+        let score = 0;
+        const neighbors = adjacentPads(pad);
+
+        for (const neighbor of neighbors) {
+          const nKey = padKey(neighbor.row, neighbor.col);
+          const neighborVoice = layout.padToVoice[nKey];
+          if (neighborVoice) {
+            const neighborId = neighborVoice.id;
+            const relStrength = rels?.get(neighborId) ?? 0;
+            score += relStrength + 1; // +1 for any adjacency to placed voice
+          }
+        }
+
+        // Small random tiebreaker
+        score += ctx.rng() * 0.01;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestPad = pad;
+        }
+      }
+
+      if (bestPad) {
+        placeVoice(layout, bestPad.row, bestPad.col, voice);
+        placed.add(feat.voiceId);
+      }
+    }
+
+    return layout;
+  },
+};
+
+// ============================================================================
+// Seed Generator C: Coordination
+// ============================================================================
+
+/**
+ * Coordination Pattern seed.
+ *
+ * Optimizes for rhythmic motion patterns:
+ * - Fast alternation pairs placed across hands
+ * - Simultaneous voices in same-hand clusters
+ * - Sequential patterns along natural motion paths
+ */
+export const coordinationSeed: SeedGenerator = {
+  key: 'coordination',
+  name: 'Coordination-Optimized',
+
+  generate(ctx: SeedContext): Layout {
+    const layout = createEmptyLayout('Coordination-Optimized', ctx.baseLayout);
+    const placedVoiceIds = applyPlacementLocks(layout, ctx.placementLocks, ctx.voices);
+    const rows = ctx.instrumentConfig.rows;
+    const cols = ctx.instrumentConfig.cols;
+
+    const ranked = rankByImportance(ctx.features)
+      .filter(f => !placedVoiceIds.has(f.voiceId));
+
+    if (ranked.length === 0) return layout;
+
+    // Identify alternation pairs and assign them to opposite hands
+    const leftVoices: string[] = [];
+    const rightVoices: string[] = [];
+    const assigned = new Set<string>();
+
+    // First pass: find strong alternation pairs and split across hands
+    for (const feat of ranked) {
+      if (assigned.has(feat.voiceId)) continue;
+
+      for (const partnerId of feat.alternationPartners) {
+        if (assigned.has(partnerId)) continue;
+        const partnerFeat = ctx.features.get(partnerId);
+        if (!partnerFeat) continue;
+
+        // Assign to opposite hands
+        leftVoices.push(feat.voiceId);
+        rightVoices.push(partnerId);
+        assigned.add(feat.voiceId);
+        assigned.add(partnerId);
+        break;
+      }
+    }
+
+    // Second pass: assign unassigned voices to the hand with fewer voices
+    for (const feat of ranked) {
+      if (assigned.has(feat.voiceId)) continue;
+
+      // Check if this voice has simultaneity partners already assigned
+      const leftPartners = feat.simultaneityPartners.filter(p => leftVoices.includes(p)).length;
+      const rightPartners = feat.simultaneityPartners.filter(p => rightVoices.includes(p)).length;
+
+      if (leftPartners > rightPartners) {
+        leftVoices.push(feat.voiceId);
+      } else if (rightPartners > leftPartners) {
+        rightVoices.push(feat.voiceId);
+      } else if (leftVoices.length <= rightVoices.length) {
+        leftVoices.push(feat.voiceId);
+      } else {
+        rightVoices.push(feat.voiceId);
+      }
+      assigned.add(feat.voiceId);
+    }
+
+    // Place left voices in left zone (cols 0-3), right in right zone (cols 4-7)
+    placeInZone(layout, leftVoices, ctx.voices, 0, 3, rows, ctx.rng);
+    placeInZone(layout, rightVoices, ctx.voices, 4, cols - 1, rows, ctx.rng);
+
+    return layout;
+  },
+};
+
+/**
+ * Place voices within a column range, centered vertically.
+ */
+function placeInZone(
+  layout: Layout,
+  voiceIds: string[],
+  voices: Map<string, Voice>,
+  colStart: number,
+  colEnd: number,
+  rows: number,
+  _rng: () => number,
+): void {
+  const zoneCols = colEnd - colStart + 1;
+  const zoneRows = Math.ceil(voiceIds.length / zoneCols);
+  const startRow = Math.max(0, Math.floor((rows - zoneRows) / 2));
+
+  let idx = 0;
+  for (let r = startRow; r < rows && idx < voiceIds.length; r++) {
+    for (let c = colStart; c <= colEnd && idx < voiceIds.length; c++) {
+      if (isOccupied(layout, r, c)) continue;
+      const voice = voices.get(voiceIds[idx]);
+      if (voice) {
+        placeVoice(layout, r, c, voice);
+        idx++;
+      }
+    }
+  }
+}
+
+// ============================================================================
+// Seed Generator D: Novelty
+// ============================================================================
+
+/**
+ * Novelty / Exploration seed.
+ *
+ * Semi-random placement with minimal constraints:
+ * - Pins top 2-3 backbone sounds to reasonable positions
+ * - Remaining sounds placed with probabilistic zone affinity
+ */
+export const noveltySeed: SeedGenerator = {
+  key: 'novelty',
+  name: 'Exploratory Variant',
+
+  generate(ctx: SeedContext): Layout {
+    const layout = createEmptyLayout('Exploratory Variant', ctx.baseLayout);
+    const placedVoiceIds = applyPlacementLocks(layout, ctx.placementLocks, ctx.voices);
+    const rows = ctx.instrumentConfig.rows;
+    const cols = ctx.instrumentConfig.cols;
+
+    const ranked = rankByImportance(ctx.features)
+      .filter(f => !placedVoiceIds.has(f.voiceId));
+
+    if (ranked.length === 0) return layout;
+
+    // Pin top 2-3 backbone sounds to golden pads
+    const backbones = ranked.filter(f => f.isBackbone).slice(0, 3);
+    const goldenPadsCopy = [...GOLDEN_PADS];
+
+    for (const feat of backbones) {
+      const voice = ctx.voices.get(feat.voiceId);
+      if (!voice) continue;
+
+      const pad = getFirstEmptyPad(layout, goldenPadsCopy);
+      if (pad) {
+        placeVoice(layout, pad.row, pad.col, voice);
+        placedVoiceIds.add(feat.voiceId);
+        // Remove this pad from golden pads
+        const idx = goldenPadsCopy.findIndex(p => p.row === pad.row && p.col === pad.col);
+        if (idx >= 0) goldenPadsCopy.splice(idx, 1);
+      }
+    }
+
+    // Place remaining voices randomly
+    const remaining = ranked.filter(f => !placedVoiceIds.has(f.voiceId));
+    const emptyPads = getAllEmptyPads(layout, rows, cols);
+
+    // Shuffle empty pads using RNG
+    for (let i = emptyPads.length - 1; i > 0; i--) {
+      const j = Math.floor(ctx.rng() * (i + 1));
+      [emptyPads[i], emptyPads[j]] = [emptyPads[j], emptyPads[i]];
+    }
+
+    for (let i = 0; i < remaining.length && i < emptyPads.length; i++) {
+      const voice = ctx.voices.get(remaining[i].voiceId);
+      if (voice) {
+        placeVoice(layout, emptyPads[i].row, emptyPads[i].col, voice);
+      }
+    }
+
+    return layout;
+  },
+};
+
+// ============================================================================
+// Registry
+// ============================================================================
+
+/** All available seed generators, indexed by key. */
+export const SEED_GENERATORS: Record<string, SeedGenerator> = {
+  'natural-pose': naturalPoseSeed,
+  'cluster': clusterSeed,
+  'coordination': coordinationSeed,
+  'novelty': noveltySeed,
+};
+
+/** Get a seed generator by key. */
+export function getSeedGenerator(key: string): SeedGenerator | undefined {
+  return SEED_GENERATORS[key];
+}
