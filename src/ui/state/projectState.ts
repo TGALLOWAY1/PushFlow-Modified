@@ -315,6 +315,37 @@ function generateId(): string {
   return `layout-${Date.now()}-${_nextId++}`;
 }
 
+/** Build a canonical finger constraint string like "L-Ix" from hand + finger. */
+function buildFingerConstraintStr(hand: string, finger: string): string {
+  const FINGER_ABBREV: Record<string, string> = {
+    thumb: 'Th', index: 'Ix', middle: 'Md', ring: 'Rg', pinky: 'Pk',
+  };
+  const h = hand === 'left' ? 'L' : 'R';
+  return `${h}-${FINGER_ABBREV[finger] ?? finger}`;
+}
+
+/** Parse a constraint string like "L-Ix" or "L2" into { hand, finger }. */
+function parseFingerConstraintStr(constraint: string): { hand: 'left' | 'right'; finger: string } | null {
+  const FINGER_MAP: Record<string, string> = {
+    Th: 'thumb', Ix: 'index', Md: 'middle', Rg: 'ring', Pk: 'pinky',
+  };
+  // "L-Ix" format
+  const matchDash = constraint.match(/^([LR])-(\w+)$/);
+  if (matchDash) {
+    const hand = matchDash[1] === 'L' ? 'left' as const : 'right' as const;
+    const finger = FINGER_MAP[matchDash[2]];
+    if (finger) return { hand, finger };
+  }
+  // "L2" format (legacy)
+  const matchNum = constraint.match(/^([LlRr])([1-5])$/);
+  if (matchNum) {
+    const hand = matchNum[1].toUpperCase() === 'L' ? 'left' as const : 'right' as const;
+    const numMap: Record<string, string> = { '1': 'thumb', '2': 'index', '3': 'middle', '4': 'ring', '5': 'pinky' };
+    return { hand, finger: numMap[matchNum[2]] };
+  }
+  return null;
+}
+
 /**
  * Ensure a working layout exists. If not, clone the active layout as a working draft.
  * Returns the state with a guaranteed non-null workingLayout.
@@ -514,7 +545,34 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       const next = { ...state.voiceConstraints };
       if (Object.keys(updated).length === 0) delete next[streamId];
       else next[streamId] = updated;
-      return { ...state, updatedAt: new Date().toISOString(), voiceConstraints: next, analysisStale: true };
+
+      // Cross-sync: update pad-level fingerConstraints for any pad holding this voice
+      let newState: ProjectState = { ...state, updatedAt: new Date().toISOString(), voiceConstraints: next, analysisStale: true };
+      const targetLayout = newState.workingLayout ?? newState.activeLayout;
+      const padsForVoice = Object.entries(targetLayout.padToVoice)
+        .filter(([, v]) => v.id === streamId)
+        .map(([pk]) => pk);
+
+      if (padsForVoice.length > 0 && updated.hand && updated.finger) {
+        const constraintStr = buildFingerConstraintStr(updated.hand, updated.finger);
+        newState = updateWorkingLayout(newState, layout => {
+          const newConstraints = { ...layout.fingerConstraints };
+          for (const pk of padsForVoice) {
+            newConstraints[pk] = constraintStr;
+          }
+          return { ...layout, fingerConstraints: newConstraints };
+        });
+      } else if (padsForVoice.length > 0 && Object.keys(updated).length === 0) {
+        // Voice constraint cleared — remove pad constraints for this voice's pads
+        newState = updateWorkingLayout(newState, layout => {
+          const newConstraints = { ...layout.fingerConstraints };
+          for (const pk of padsForVoice) {
+            delete newConstraints[pk];
+          }
+          return { ...layout, fingerConstraints: newConstraints };
+        });
+      }
+      return newState;
     }
 
     case 'SELECT_STREAM':
@@ -615,12 +673,34 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         }
       }
 
-      return updateWorkingLayout(state, layout => {
+      let newState = updateWorkingLayout(state, layout => {
         const newConstraints = { ...layout.fingerConstraints };
         if (constraint) newConstraints[constraintPadKey] = constraint;
         else delete newConstraints[constraintPadKey];
         return { ...layout, fingerConstraints: newConstraints };
       });
+
+      // Cross-sync: update voiceConstraints for the voice on this pad (if any)
+      const displayedLayout = newState.workingLayout ?? newState.activeLayout;
+      const voice = displayedLayout.padToVoice[constraintPadKey];
+      if (voice) {
+        const nextVC = { ...newState.voiceConstraints };
+        if (constraint) {
+          const parsed = parseFingerConstraintStr(constraint);
+          if (parsed) {
+            nextVC[voice.id] = { ...(nextVC[voice.id] ?? {}), hand: parsed.hand, finger: parsed.finger };
+          }
+        } else {
+          // Constraint cleared — remove voice constraint
+          if (nextVC[voice.id]) {
+            const { hand: _, finger: __, ...rest } = nextVC[voice.id] as Record<string, unknown>;
+            if (Object.keys(rest).length === 0) delete nextVC[voice.id];
+            else nextVC[voice.id] = rest as typeof nextVC[string];
+          }
+        }
+        newState = { ...newState, voiceConstraints: nextVC };
+      }
+      return newState;
     }
 
     // -- Placement locks --

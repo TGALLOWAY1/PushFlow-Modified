@@ -40,14 +40,15 @@ export function convertLoopToPerformanceLanes(
   const stepDur = stepDuration(loopState.config);
   const steps = totalSteps(loopState.config);
 
-  // Respect mute/solo
+  // Convert ALL lanes but mark muted/non-soloed ones as muted.
+  // Per product invariant: timeline MUST show ALL sound streams, even inactive ones.
   const soloActive = loopState.lanes.some(l => l.isSolo);
-  const activeLanes = loopState.lanes.filter(l => {
-    if (soloActive) return l.isSolo && !l.isMuted;
-    return !l.isMuted;
-  });
 
-  const lanes: PerformanceLane[] = activeLanes.map((loopLane, i) => {
+  const lanes: PerformanceLane[] = loopState.lanes.map((loopLane, i) => {
+    const isActive = soloActive
+      ? (loopLane.isSolo && !loopLane.isMuted)
+      : !loopLane.isMuted;
+
     const laneId = options.preserveLaneIds
       ? `${options.laneIdPrefix ?? ''}${loopLane.id}`
       : generateId('lane');
@@ -79,7 +80,7 @@ export function convertLoopToPerformanceLanes(
       colorMode: 'inherited' as const,
       events,
       isHidden: false,
-      isMuted: false,
+      isMuted: !isActive,
       isSolo: false,
     };
   });
@@ -87,7 +88,7 @@ export function convertLoopToPerformanceLanes(
   const group: LaneGroup = {
     groupId,
     name: options.groupName ?? sourceLabel,
-    color: activeLanes[0]?.color ?? '#3b82f6',
+    color: loopState.lanes[0]?.color ?? '#3b82f6',
     orderIndex: 0,
     isCollapsed: false,
   };

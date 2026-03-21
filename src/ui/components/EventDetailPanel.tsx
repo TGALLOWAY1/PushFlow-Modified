@@ -24,12 +24,12 @@ function parseConstraint(constraint: string): { hand: 'left' | 'right'; finger: 
   return { hand, finger };
 }
 
-/** Build a constraint string from hand + finger. */
+/** Build a constraint string from hand + finger in canonical "L-Ix" format. */
 function buildConstraint(hand: 'left' | 'right', finger: FingerType): string {
   const FINGER_ABBREV: Record<FingerType, string> = {
-    thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
+    thumb: 'Th', index: 'Ix', middle: 'Md', ring: 'Rg', pinky: 'Pk',
   };
-  return `${hand === 'left' ? 'L' : 'R'}${FINGER_ABBREV[finger]}`;
+  return `${hand === 'left' ? 'L' : 'R'}-${FINGER_ABBREV[finger]}`;
 }
 
 export function EventDetailPanel() {

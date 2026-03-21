@@ -16,7 +16,7 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getActivePerformance, getDisplayedLayout, getActiveStreams, type SoundStream } from '../state/projectState';
+import { getActivePerformance, getDisplayedLayout, getActiveStreams } from '../state/projectState';
 import { createBeamSolver } from '../../engine/solvers/beamSolver';
 import { type SolverConstraints } from '../../engine/solvers/types';
 import { analyzeDifficulty, computeTradeoffProfile, classifyOptimizationDifficulty } from '../../engine/evaluation/difficultyScoring';
@@ -34,10 +34,8 @@ import { type SolverConfig, type OptimizationMode } from '../../types/engineConf
 import { type Performance } from '../../types/performance';
 import { type FingerType } from '../../types/fingerModel';
 import { type Layout } from '../../types/layout';
-import { type Voice } from '../../types/voice';
 import { type CostToggles } from '../../types/costToggles';
 import { type PadFingerAssignment } from '../../types/executionPlan';
-import { seedLayoutFromPose0 } from '../../engine/mapping/seedFromPose';
 import { createDefaultPose0, getPose0PadsWithOffset, fingerIdToHandAndFingerType } from '../../engine/prior/naturalHandPose';
 import { type FingerId, type NaturalHandPose } from '../../types/ergonomicPrior';
 
@@ -152,47 +150,6 @@ function constraintsToManualAssignments(
   return prefs;
 }
 
-/**
- * Builds a Layout using the natural hand pose to place sounds on adjacent pads.
- *
- * Most-played sounds get the most dominant finger positions (index, middle, ring).
- * Overflow sounds fill adjacent remaining pads. This keeps all voices within
- * reachable hand zones and avoids the zone conflicts that chromatic mapping causes.
- *
- * Preserves voice identity: Voice.id = stream.id so the voiceId lookup chain works.
- */
-function buildAutoLayout(
-  soundStreams: SoundStream[],
-  performance: Performance,
-  existingLayout: Layout,
-): Layout {
-  const activeStreams = soundStreams.filter(s => !s.muted);
-  if (activeStreams.length === 0) return existingLayout;
-
-  // Build existingVoices map so seedLayoutFromPose0 preserves stream IDs
-  const existingVoices = new Map<number, Voice>();
-  for (const stream of activeStreams) {
-    existingVoices.set(stream.originalMidiNote, {
-      id: stream.id,
-      name: stream.name,
-      sourceType: 'midi_track',
-      sourceFile: '',
-      originalMidiNote: stream.originalMidiNote,
-      color: stream.color,
-    });
-  }
-
-  const defaultPose = createDefaultPose0();
-  const seeded = seedLayoutFromPose0(performance, defaultPose, 0, existingVoices);
-
-  return {
-    ...existingLayout,
-    padToVoice: seeded.padToVoice,
-    layoutMode: 'auto',
-    scoreCache: null,
-  };
-}
-
 export function useAutoAnalysis() {
   const { state, dispatch } = useProject();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -226,17 +183,13 @@ export function useAutoAnalysis() {
         setAnalysisPhase('analyzing');
         dispatch({ type: 'SET_PROCESSING', payload: true });
 
-        // If the layout has no pad assignments, auto-build from streams
-        // using the natural hand pose to place sounds on adjacent pads.
-        let effectiveLayout = layout;
+        // If the layout has no pad assignments, bail — user must place sounds manually.
+        const effectiveLayout = layout;
         if (Object.keys(layout.padToVoice).length === 0) {
-          effectiveLayout = buildAutoLayout(activeStreams, performance, layout);
-          if (Object.keys(effectiveLayout.padToVoice).length === 0) {
-            // Still empty after auto-build — bail
-            dispatch({ type: 'SET_PROCESSING', payload: false });
-            return;
-          }
-          dispatch({ type: 'BULK_ASSIGN_PADS', payload: effectiveLayout.padToVoice });
+          dispatch({ type: 'SET_PROCESSING', payload: false });
+          dispatch({ type: 'SET_ERROR', payload: 'Place sounds on the grid before running analysis.' });
+          setAnalysisPhase('idle');
+          return;
         }
 
         const defaultPose = createDefaultPose0();
@@ -304,11 +257,14 @@ export function useAutoAnalysis() {
     try {
       const performance = getActivePerformance(state);
 
-      // If the layout has no pad assignments yet, seed from the natural hand pose.
-      let effectiveLayout = layout;
+      // If the layout has no pad assignments, bail — user must place sounds manually.
+      const effectiveLayout = layout;
       if (Object.keys(layout.padToVoice).length === 0) {
-        effectiveLayout = buildAutoLayout(state.soundStreams, performance, layout);
-        dispatch({ type: 'BULK_ASSIGN_PADS', payload: effectiveLayout.padToVoice });
+        dispatch({ type: 'SET_PROCESSING', payload: false });
+        dispatch({ type: 'SET_ERROR', payload: 'Place sounds on the grid before running analysis.' });
+        setAnalysisPhase('idle');
+        setGenerationProgress(null);
+        return;
       }
 
       const method = state.optimizerMethod;
