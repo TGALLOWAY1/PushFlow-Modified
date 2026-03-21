@@ -45,6 +45,7 @@ import {
   buildGenerationSummary,
 } from '../analysis/diversityMeasurement';
 import { generateId } from '../../utils/idGenerator';
+import { generateGreedyCandidates } from './greedyCandidatePipeline';
 
 // ============================================================================
 // Helpers
@@ -124,6 +125,21 @@ export interface CandidateGenerationConfig {
    * trivial duplicates are filtered out.
    */
   activeLayout?: Layout;
+  /**
+   * Optimization method to use for candidate generation.
+   * - undefined / 'beam-annealing': existing beam/annealing path (default)
+   * - 'greedy': greedy candidate pipeline with diverse seed+update pairings
+   */
+  optimizationMethod?: 'beam-annealing' | 'greedy';
+  /**
+   * Evaluation config for methods that need direct canonical evaluator access.
+   * Required when optimizationMethod is 'greedy'.
+   */
+  evaluationConfig?: import('../../types/evaluationConfig').EvaluationConfig;
+  /**
+   * Cost toggles for the optimizer. Required when optimizationMethod is 'greedy'.
+   */
+  costToggles?: import('../../types/costToggles').CostToggles;
 }
 
 // ============================================================================
@@ -309,6 +325,21 @@ export async function generateCandidates(
   pose0: NaturalHandPose | null,
   config: CandidateGenerationConfig,
 ): Promise<CandidateGenerationResult> {
+  // Greedy candidate pipeline: diverse seed+update pairings
+  if (config.optimizationMethod === 'greedy' && config.evaluationConfig && config.costToggles) {
+    return generateGreedyCandidates({
+      performance,
+      instrumentConfig: config.instrumentConfig,
+      engineConfig: config.engineConfig,
+      evaluationConfig: config.evaluationConfig,
+      costToggles: config.costToggles,
+      baseLayout: config.baseLayout,
+      activeLayout: config.activeLayout,
+      sections: config.sections,
+      count: config.count ?? 4,
+    });
+  }
+
   const count = config.count ?? 3;
   const strategies = generateStrategies(pose0, count);
   const candidates: CandidateSolution[] = [];

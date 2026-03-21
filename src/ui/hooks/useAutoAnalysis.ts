@@ -22,7 +22,7 @@ import { type SolverConstraints } from '../../engine/solvers/types';
 import { analyzeDifficulty, computeTradeoffProfile, classifyOptimizationDifficulty } from '../../engine/evaluation/difficultyScoring';
 import { evaluatePerformance } from '../../engine/evaluation/canonicalEvaluator';
 import { generateCandidates } from '../../engine/optimization/multiCandidateGenerator';
-import { getOptimizer } from '../../engine/optimization/optimizerRegistry';
+import { generateGreedyCandidates } from '../../engine/optimization/greedyCandidatePipeline';
 // Import adapters to ensure they self-register
 import '../../engine/optimization/beamOptimizerAdapter';
 import '../../engine/optimization/annealingOptimizerAdapter';
@@ -269,66 +269,31 @@ export function useAutoAnalysis() {
 
       const method = state.optimizerMethod;
 
-      // ── Route: Greedy or other pluggable optimizer ───────────
+      // ── Route: Greedy diverse candidate pipeline ───────────
       if (method === 'greedy') {
-        const optimizer = getOptimizer('greedy');
-        const solverConstraints = buildSolverConstraints(performance, effectiveLayout);
         const neutralHandCenters = getNeutralHandCenters(effectiveLayout, state.instrumentConfig);
 
-        const seeds = [0, 1, 2]; // 3 candidates with different seeds for diversity
-        const candidates = [];
+        setGenerationProgress('Greedy optimization: generating 4 diverse candidates...');
 
-        for (const seed of seeds) {
-          setGenerationProgress(`Greedy optimization: candidate ${seed + 1}/${seeds.length}...`);
-
-          const result = await optimizer.optimize({
-            performance,
-            layout: effectiveLayout,
-            costToggles: state.costToggles,
-            constraints: solverConstraints,
-            config: {
-              engineConfig: state.engineConfig,
-              sections: state.sections,
-              seed,
-              restartCount: seed === 0 ? 0 : 2, // Baseline is single-pass; variants get 2 restarts
-            },
-            evaluationConfig: {
-              restingPose: state.engineConfig.restingPose,
-              stiffness: state.engineConfig.stiffness,
-              instrumentConfig: state.instrumentConfig,
-              neutralHandCenters,
-            },
+        const generationResult = await generateGreedyCandidates({
+          performance,
+          instrumentConfig: state.instrumentConfig,
+          engineConfig: state.engineConfig,
+          evaluationConfig: {
+            restingPose: state.engineConfig.restingPose,
+            stiffness: state.engineConfig.stiffness,
             instrumentConfig: state.instrumentConfig,
-          });
-
-          // Store move history for the first candidate (shown in trace panel)
-          if (seed === 0 && result.moveHistory) {
-            dispatch({ type: 'SET_MOVE_HISTORY', payload: { moves: result.moveHistory, stopReason: result.stopReason } });
-          }
-
-          const difficultyAnalysis = analyzeDifficulty(result.executionPlan, state.sections);
-          const tradeoffProfile = computeTradeoffProfile(result.executionPlan, difficultyAnalysis);
-          candidates.push({
-            id: generateId('greedy'),
-            layout: result.layout,
-            executionPlan: result.executionPlan,
-            difficultyAnalysis,
-            tradeoffProfile,
-            metadata: {
-              strategy: 'greedy-hill-climb',
-              seed,
-              optimizationMode: undefined,
-              optimizationSummary: `Greedy #${seed + 1}: ${result.telemetry.iterationsCompleted} improvements, ${result.telemetry.wallClockMs}ms`,
-            },
-          });
-        }
-
-        // Sort by total cost (best first)
-        candidates.sort((a, b) => {
-          const aCost = a.executionPlan.averageMetrics?.total ?? Infinity;
-          const bCost = b.executionPlan.averageMetrics?.total ?? Infinity;
-          return aCost - bCost;
+            neutralHandCenters,
+          },
+          costToggles: state.costToggles,
+          constraints: buildSolverConstraints(performance, effectiveLayout),
+          baseLayout: effectiveLayout,
+          activeLayout: effectiveLayout,
+          sections: state.sections,
+          count: 4,
         });
+
+        const candidates = generationResult.candidates;
 
         dispatch({ type: 'SET_CANDIDATES', payload: candidates });
         if (candidates.length > 0) {

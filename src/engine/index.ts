@@ -136,7 +136,13 @@ export {
 // Import adapters to trigger self-registration
 export { beamAdapter } from './optimization/beamOptimizerAdapter';
 export { annealingAdapter } from './optimization/annealingOptimizerAdapter';
-export { greedyOptimizer, GreedyOptimizer } from './optimization/greedyOptimizer';
+export { greedyOptimizer, GreedyOptimizer, type GreedyRunOptions } from './optimization/greedyOptimizer';
+
+// Greedy candidate diversity pipeline
+export { generateGreedyCandidates, type GreedyCandidateInput } from './optimization/greedyCandidatePipeline';
+export { SEED_GENERATORS, getSeedGenerator, type SeedGenerator, type SeedContext } from './optimization/seedGenerators';
+export { UPDATE_POLICIES, getUpdatePolicy, type UpdatePolicy, type EvaluatedMove, type UpdateContext } from './optimization/updatePolicies';
+export { extractSoundFeatures, rankByImportance, type SoundFeatures, type SoundFeatureMap } from './structure/soundFeatures';
 
 // Pattern generation (rudiment/ostinato candidate generator)
 export { RudimentGenerator } from './rudiment/patternGenerator';

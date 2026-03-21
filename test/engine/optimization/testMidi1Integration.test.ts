@@ -19,11 +19,15 @@ import { type Voice } from '../../../src/types/voice';
 import { seedLayoutFromPose0 } from '../../../src/engine/mapping/seedFromPose';
 import { createDefaultPose0, getPose0PadsWithOffset, fingerIdToHandAndFingerType } from '../../../src/engine/prior/naturalHandPose';
 import { generateCandidates } from '../../../src/engine/optimization/multiCandidateGenerator';
+import { generateGreedyCandidates } from '../../../src/engine/optimization/greedyCandidatePipeline';
 import { createBeamSolver } from '../../../src/engine/solvers/beamSolver';
 import { type SolverConfig } from '../../../src/types/engineConfig';
+import { ALL_COSTS_ENABLED } from '../../../src/types/costToggles';
+import { resolveNeutralPadPositions, computeNeutralHandCenters } from '../../../src/engine/prior/handPose';
 import {
   DEFAULT_TEST_INSTRUMENT_CONFIG,
   DEFAULT_ENGINE_CONFIG,
+  DEFAULT_RESTING_POSE,
   countHandUsage,
 } from '../../helpers/testHelpers';
 
@@ -280,5 +284,76 @@ describe('TEST MIDI 1.mid end-to-end', () => {
     // Zero unplayable — this is the exit criterion
     expect(usage.unplayable).toBe(0);
     expect(usage.left + usage.right).toBe(total);
+  });
+
+  it('should produce candidates with 0 unplayable events via greedy candidate pipeline', { timeout: 30000 }, async () => {
+    const performance: Performance = {
+      events: midiData.events,
+      tempo: midiData.tempo,
+      name: 'TEST MIDI 1',
+    };
+
+    const existingVoices = new Map<number, Voice>();
+    midiData.uniqueNotes.forEach((noteNumber) => {
+      existingVoices.set(noteNumber, {
+        id: `stream-${noteNumber}`,
+        name: `Note ${noteNumber}`,
+        sourceType: 'midi_track',
+        sourceFile: 'TEST MIDI 1.mid',
+        originalMidiNote: noteNumber,
+        color: '#444',
+      });
+    });
+
+    const pose0 = createDefaultPose0();
+    const layout = seedLayoutFromPose0(performance, pose0, 0, existingVoices);
+
+    // Build evaluation config (same as auto-analysis path)
+    const neutralPads = resolveNeutralPadPositions(layout, DEFAULT_TEST_INSTRUMENT_CONFIG);
+    const neutralHandCenters = computeNeutralHandCenters(neutralPads);
+
+    const result = await generateGreedyCandidates({
+      performance,
+      instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG,
+      engineConfig: DEFAULT_ENGINE_CONFIG,
+      evaluationConfig: {
+        restingPose: DEFAULT_RESTING_POSE,
+        stiffness: DEFAULT_ENGINE_CONFIG.stiffness,
+        instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG,
+        neutralHandCenters,
+      },
+      costToggles: ALL_COSTS_ENABLED,
+      baseLayout: layout,
+      activeLayout: layout,
+      count: 4,
+    });
+
+    expect(result.candidates.length).toBeGreaterThan(0);
+    console.log(`  Greedy pipeline generated ${result.candidates.length} candidates`);
+
+    for (let i = 0; i < result.candidates.length; i++) {
+      const candidate = result.candidates[i];
+      const usage = countHandUsage(candidate.executionPlan);
+      const total = usage.left + usage.right + usage.unplayable;
+
+      const family = candidate.metadata.candidateFamily ?? candidate.metadata.strategy;
+      console.log(`  Greedy #${i + 1} (${family}): L=${usage.left} R=${usage.right} Unplayable=${usage.unplayable} / ${total} total, Score=${candidate.executionPlan.score.toFixed(1)}`);
+
+      if (candidate.metadata.explanation) {
+        console.log(`    Best for: ${candidate.metadata.explanation.bestFor}`);
+        console.log(`    Won because: ${candidate.metadata.explanation.wonBecause.join(', ')}`);
+      }
+
+      // KEY ASSERTION: 0 unplayable events on TEST MIDI 1
+      expect(usage.unplayable).toBe(0);
+    }
+
+    // All candidates should have explanation cards
+    for (const candidate of result.candidates) {
+      expect(candidate.metadata.candidateFamily).toBeDefined();
+      expect(candidate.metadata.explanation).toBeDefined();
+      expect(candidate.metadata.explanation!.bestFor).toBeTruthy();
+      expect(candidate.metadata.explanation!.wonBecause.length).toBeGreaterThan(0);
+    }
   });
 });

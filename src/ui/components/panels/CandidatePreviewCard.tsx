@@ -132,11 +132,38 @@ export function CandidatePreviewCard({
           />
         </div>
 
+        {/* Candidate family tag */}
+        {candidate.metadata.candidateFamily && (
+          <div className="text-pf-micro text-[var(--text-tertiary)] bg-[var(--bg-hover)] rounded-pf-sm px-1.5 py-0.5 mb-1.5 ml-0.5 inline-block">
+            {candidate.metadata.candidateFamily}
+          </div>
+        )}
+
         {/* Summary metadata */}
         <div className="flex justify-between text-pf-xs text-[var(--text-tertiary)] mb-2 px-0.5">
           <span>Score: {candidate.executionPlan.score.toFixed(1)}</span>
           <span>Top: {topDriver}</span>
         </div>
+
+        {/* Explanation card */}
+        {candidate.metadata.explanation && (
+          <div className="text-pf-micro text-[var(--text-tertiary)] bg-[var(--bg-hover)] rounded-pf-sm px-1.5 py-1 mb-2 space-y-0.5">
+            <div>
+              <span className="text-[var(--text-secondary)]">Best for: </span>
+              {candidate.metadata.explanation.bestFor}
+            </div>
+            {candidate.metadata.explanation.wonBecause.length > 0 && (
+              <div>
+                <span className="text-[var(--text-secondary)]">Why: </span>
+                {candidate.metadata.explanation.wonBecause.join(', ')}
+              </div>
+            )}
+            <div>
+              <span className="text-[var(--text-secondary)]">Tradeoff: </span>
+              {candidate.metadata.explanation.tradeoff}
+            </div>
+          </div>
+        )}
 
         {/* Feasibility warning */}
         {candidate.executionPlan.unplayableCount > 0 && (
