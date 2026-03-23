@@ -48,7 +48,7 @@ export function EventDetailPanel() {
 
   const activeStreams = getActiveStreams(state);
   const layout = getDisplayedLayout(state);
-  const assignments = state.analysisResult?.executionPlan.fingerAssignments;
+  const assignments = state.analysisResult?.executionPlan?.fingerAssignments;
 
   // Find selected assignment
   const assignment = useMemo(() => {

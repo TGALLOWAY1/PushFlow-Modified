@@ -4,7 +4,7 @@ import { buildSelectedTransitionModel } from '../../analysis/selectionModel';
 
 export function TransitionDetailPanel() {
   const { state } = useProject();
-  const assignments = state.analysisResult?.executionPlan.fingerAssignments ?? null;
+  const assignments = state.analysisResult?.executionPlan?.fingerAssignments ?? null;
 
   const transition = useMemo(
     () => buildSelectedTransitionModel(assignments, state.selectedEventIndex),

@@ -15,6 +15,19 @@ import { useState } from 'react';
 import { useProject } from '../../state/ProjectContext';
 import { type OptimizerMove, type OptimizationIteration, type StopReason } from '../../../engine/optimization/optimizerInterface';
 
+/** Safe number formatter to handle NaN/Infinity from the optimizer. */
+const formatNum = (val: number, decimals: number = 2): string => {
+  if (val === undefined || val === null || isNaN(val)) return '0';
+  if (!isFinite(val)) return val > 0 ? '+∞' : '-∞';
+  return val.toFixed(decimals);
+};
+
+const formatDelta = (val: number, decimals: number = 2): string => {
+  const s = formatNum(val, decimals);
+  if (val > 0 && isFinite(val)) return `+${s}`;
+  return s;
+};
+
 interface MoveTracePanelProps {
   moves?: OptimizerMove[] | null;
   trace?: OptimizationIteration[] | null;
@@ -103,7 +116,7 @@ export function MoveTracePanel({ moves, trace, stopReason }: MoveTracePanelProps
         <div className="px-2 py-1.5 rounded-pf-sm bg-[var(--bg-card)] border border-[var(--border-subtle)]">
           <div className="text-pf-micro text-[var(--text-tertiary)] uppercase">Cost Saved</div>
           <div className="text-pf-sm font-mono text-green-400">
-            {totalImprovement > 0 ? `-${totalImprovement.toFixed(2)}` : '0'}
+            {totalImprovement > 0 ? `-${formatNum(totalImprovement)}` : '0'}
           </div>
         </div>
       </div>
@@ -254,7 +267,7 @@ function TraceRow({
         {/* Cost delta */}
         {iteration.netDelta !== 0 && (
           <span className={`text-pf-xs font-mono whitespace-nowrap ${deltaColor}`}>
-            {iteration.netDelta < 0 ? '' : '+'}{iteration.netDelta.toFixed(3)}
+            {formatDelta(iteration.netDelta, 3)}
           </span>
         )}
       </div>
@@ -267,11 +280,11 @@ function TraceRow({
           <div className="grid grid-cols-2 gap-2 mb-2">
             <div className="bg-[var(--bg-panel)] p-1.5 rounded-sm">
               <span className="text-[var(--text-tertiary)] block text-pf-micro">Cost Before</span>
-              <span className="font-mono text-pf-xs text-amber-500/90">{iteration.scoreBefore.toFixed(2)}</span>
+              <span className="font-mono text-pf-xs text-amber-500/90">{formatNum(iteration.scoreBefore)}</span>
             </div>
             <div className="bg-[var(--bg-panel)] p-1.5 rounded-sm">
               <span className="text-[var(--text-tertiary)] block text-pf-micro">Cost After</span>
-              <span className="font-mono text-pf-xs text-green-500/90">{iteration.scoreAfter.toFixed(2)}</span>
+              <span className="font-mono text-pf-xs text-green-500/90">{formatNum(iteration.scoreAfter)}</span>
             </div>
           </div>
           
@@ -284,7 +297,7 @@ function TraceRow({
               <div key={i} className={`flex items-center justify-between p-1 rounded-sm ${c.accepted ? 'bg-blue-500/10 text-blue-300' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}>
                 <span className="truncate pr-2">{c.description}</span>
                 <span className={`font-mono ${c.accepted ? 'font-bold' : ''}`}>
-                  {c.deltaTotal < 0 ? '' : '+'}{c.deltaTotal.toFixed(2)}
+                  {formatDelta(c.deltaTotal)}
                 </span>
               </div>
             ))}
@@ -348,7 +361,7 @@ function MoveRow({
         {/* Cost delta */}
         {move.costDelta !== 0 && (
           <span className={`text-pf-xs font-mono ${deltaColor}`}>
-            {move.costDelta < 0 ? '' : '+'}{move.costDelta.toFixed(3)}
+            {formatDelta(move.costDelta, 3)}
           </span>
         )}
       </div>
@@ -367,7 +380,7 @@ function MoveRow({
             <div>Alternatives considered: <span className="text-[var(--text-secondary)]">{move.rejectedAlternatives}</span></div>
           )}
           {move.costBefore > 0 && (
-            <div>Cost: <span className="text-[var(--text-secondary)]">{move.costBefore.toFixed(2)} → {move.costAfter.toFixed(2)}</span></div>
+            <div>Cost: <span className="text-[var(--text-secondary)]">{formatNum(move.costBefore)} → {formatNum(move.costAfter)}</span></div>
           )}
         </div>
       )}

@@ -145,16 +145,18 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
         };
         map.set(key, summary);
       }
-      // Use solver hand for glow coloring (visual feedback), but only show
-      // finger labels when the user has explicitly set a voiceConstraint.
+      // Use solver hand for glow coloring (visual feedback)
+      // For finger labels: prefer user constraint, fall back to solver assignment
       const voice = voiceByNote.get(a.noteNumber);
       const constraint = voice ? voiceConstraints[voice.id] : undefined;
       const effectiveHand = constraint?.hand ?? a.assignedHand;
       summary.hands.add(effectiveHand);
-      // Only add finger label if user explicitly set a constraint
-      if (constraint?.hand && constraint?.finger) {
-        const handChar = constraint.hand === 'left' ? 'L' : 'R';
-        const fingerNum = FINGER_ABBREV[constraint.finger] ?? constraint.finger;
+      // Add finger label from constraint (priority) or from solver assignment
+      const displayHand = constraint?.hand ?? (a.assignedHand !== 'Unplayable' ? a.assignedHand : null);
+      const displayFinger = constraint?.finger ?? (a.finger ? a.finger : null);
+      if (displayHand && displayFinger) {
+        const handChar = displayHand === 'left' ? 'L' : 'R';
+        const fingerNum = FINGER_ABBREV[displayFinger] ?? displayFinger;
         summary.fingers.add(`${handChar}${fingerNum}`);
       }
       summary.hitCount++;
@@ -253,8 +255,23 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
   const debuggerPaths = useMemo(() => {
     if (!debuggerIteration) return [];
     
-    return debuggerIteration.candidateMoves
-      .filter(move => move.fromPadKey && move.toPadKey && move.fromPadKey !== move.toPadKey)
+    const allMoves = debuggerIteration.candidateMoves
+      .filter(move => move.fromPadKey && move.toPadKey && move.fromPadKey !== move.toPadKey);
+
+    // Filter to best 3 (lowest delta) + worst 3 (highest delta) + accepted
+    let filteredMoves: typeof allMoves;
+    if (allMoves.length <= 7) {
+      filteredMoves = allMoves;
+    } else {
+      const sorted = [...allMoves].sort((a, b) => a.deltaTotal - b.deltaTotal);
+      const best3 = sorted.slice(0, 3);
+      const worst3 = sorted.slice(-3);
+      const accepted = allMoves.filter(m => m.accepted);
+      const selectedSet = new Set([...best3, ...worst3, ...accepted]);
+      filteredMoves = [...selectedSet];
+    }
+
+    return filteredMoves
       .map(move => {
         const [fromRow, fromCol] = move.fromPadKey!.split(',').map(Number);
         const [toRow, toCol] = move.toPadKey!.split(',').map(Number);
