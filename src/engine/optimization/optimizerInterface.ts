@@ -87,44 +87,88 @@ export interface OptimizerInput {
 // ============================================================================
 
 /** Types of local moves in interpretable optimizers. */
-export type MoveType = 'pad_move' | 'pad_swap' | 'finger_reassignment';
+export type MoveType = 'pad_move' | 'pad_swap' | 'finger_reassignment' | 'other';
 
 /**
- * OptimizerMove: A single recorded optimization step.
- *
- * Each move explains what changed and why, in plain language.
- * The UI can step through these to replay the optimization.
+ * CandidateMoveRecord: Information about a single move evaluated by the optimizer.
  */
-export interface OptimizerMove {
-  /** Iteration number (0-indexed). */
-  iteration: number;
-  /** Type of local modification. */
-  type: MoveType;
-  /** Plain-English description: "Moved Snare from (3,4) to (3,3)". */
+export interface CandidateMoveRecord {
+  moveType: MoveType;
+  /** Description for UI (e.g. "Moved Snare from (3,4) to (3,3)") */
   description: string;
-  /** Total cost before this move. */
-  costBefore: number;
-  /** Total cost after this move. */
-  costAfter: number;
-  /** Cost change (negative = improvement). */
-  costDelta: number;
-  /** Name of the affected voice/sound. */
-  affectedVoice?: string;
-  /** Pad key of the primary affected pad. */
-  affectedPad?: string;
-  /** Secondary pad key (for swaps: the other pad). */
-  secondaryPad?: string;
-  /** Why this move was chosen. */
-  reason: string;
-  /** How many alternative moves were evaluated this iteration. */
-  rejectedAlternatives?: number;
-  /** Phase of the optimization (init-layout, init-fingers, hill-climb). */
+  /** Pad key where the move originates */
+  fromPadKey: string | null;
+  /** Pad key where the move targets */
+  toPadKey: string | null;
+  /** Secondary pad key (for swaps) */
+  secondaryPadKey?: string;
+  /** The voice or assignment being moved */
+  targetId?: string;
+  /** Voice name for UI */
+  voiceName?: string;
+  /** Total cost difference (negative = improvement) */
+  deltaTotal: number;
+  /** Full evaluation breakdown for the candidate state */
+  costBreakdown?: PerformanceCostBreakdown;
+  /** Whether the optimizer chose this move */
+  accepted: boolean;
+  /** (Optional) why this move was chosen or rejected */
+  reason?: string;
+}
+
+/**
+ * OptimizationIteration: A single step in an interpretable optimization run.
+ * Captures before/after state and all candidate moves considered.
+ */
+export interface OptimizationIteration {
+  iterationIndex: number;
   phase?: 'init-layout' | 'init-fingers' | 'hill-climb';
-  /** Which restart attempt produced this move (0 = initial, when restarts are used). */
   attemptIndex?: number;
-  /** Layout snapshot after this move (optional, for step-through replay). */
+  
+  /** Score before any move is applied */
+  scoreBefore: number;
+  /** Score after the chosen move is applied */
+  scoreAfter: number;
+  
+  /** Detailed delta (scoreAfter - scoreBefore) */
+  netDelta: number;
+  
+  /** The full layout and assignment state before the move */
+  stateBefore: {
+    layout: Layout;
+    assignment: PadFingerAssignment;
+  };
+  /** The full layout and assignment state after the move */
+  stateAfter?: {
+    layout: Layout;
+    assignment: PadFingerAssignment;
+  };
+  
+  /** All valid moves considered in this iteration */
+  candidateMoves: CandidateMoveRecord[];
+  /** The single move actually selected (null if local minimum reached) */
+  chosenMove: CandidateMoveRecord | null;
+  
+  /** Plain English summary */
+  summary: string;
+}
+
+/** Legacy record type for backwards compatibility (optional, being phased out). */
+export interface OptimizerMove {
+  iteration: number;
+  type: MoveType;
+  description: string;
+  costBefore: number;
+  costAfter: number;
+  costDelta: number;
+  affectedVoice?: string;
+  affectedPad?: string;
+  secondaryPad?: string;
+  reason: string;
+  rejectedAlternatives?: number;
+  phase?: 'init-layout' | 'init-fingers' | 'hill-climb';
+  attemptIndex?: number;
   layoutSnapshot?: Layout;
-  /** Assignment snapshot after this move (optional). */
   assignmentSnapshot?: PadFingerAssignment;
 }
 
@@ -190,8 +234,10 @@ export interface OptimizerOutput {
   diagnostics: PerformanceCostBreakdown;
   /** Echo back which cost toggles were active during this run. */
   costTogglesUsed: CostToggles;
-  /** Move-by-move history (only for interpretable methods like greedy). */
+  /** Move-by-move history (legacy format, optional). */
   moveHistory?: OptimizerMove[];
+  /** Detailed iteration-by-iteration trace for Visual Debugger. */
+  iterationTrace?: OptimizationIteration[];
   /** Why the optimizer stopped. */
   stopReason: StopReason;
   /** Performance telemetry. */

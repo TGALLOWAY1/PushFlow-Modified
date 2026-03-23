@@ -13,10 +13,11 @@
 
 import { useState } from 'react';
 import { useProject } from '../../state/ProjectContext';
-import { type OptimizerMove, type StopReason } from '../../../engine/optimization/optimizerInterface';
+import { type OptimizerMove, type OptimizationIteration, type StopReason } from '../../../engine/optimization/optimizerInterface';
 
 interface MoveTracePanelProps {
-  moves: OptimizerMove[];
+  moves?: OptimizerMove[] | null;
+  trace?: OptimizationIteration[] | null;
   stopReason?: StopReason;
 }
 
@@ -35,25 +36,45 @@ const PHASE_LABELS: Record<string, string> = {
   'hill-climb': 'Hill Climb',
 };
 
-export function MoveTracePanel({ moves, stopReason }: MoveTracePanelProps) {
+export function MoveTracePanel({ moves, trace, stopReason }: MoveTracePanelProps) {
   const { state, dispatch } = useProject();
   const [expandedMove, setExpandedMove] = useState<number | null>(null);
   const [filterPhase, setFilterPhase] = useState<string | null>(null);
 
-  if (moves.length === 0) return null;
+  if (!moves?.length && !trace?.length) return null;
 
-  const filteredMoves = filterPhase
-    ? moves.filter(m => m.phase === filterPhase)
-    : moves;
+  const validTrace = trace ?? [];
+  const validMoves = moves ?? [];
+  const isUsingTrace = validTrace.length > 0;
 
-  const hillClimbMoves = moves.filter(m => m.phase === 'hill-climb');
-  const initMoves = moves.filter(m => m.phase === 'init-layout');
-  const totalImprovement = hillClimbMoves.reduce((sum, m) => sum + Math.abs(m.costDelta), 0);
+  const filteredTrace = isUsingTrace
+    ? (filterPhase ? validTrace.filter(t => t.phase === filterPhase) : validTrace)
+    : [];
+
+  const filteredMoves = !isUsingTrace
+    ? (filterPhase ? validMoves.filter(m => m.phase === filterPhase) : validMoves)
+    : [];
+
+  const totalSteps = isUsingTrace ? filteredTrace.length : filteredMoves.length;
+
+  const hillClimbMoves = isUsingTrace 
+    ? validTrace.filter(t => t.phase === 'hill-climb')
+    : validMoves.filter(m => m.phase === 'hill-climb');
+
+  const initMoves = isUsingTrace
+    ? validTrace.filter(t => t.phase === 'init-layout')
+    : validMoves.filter(m => m.phase === 'init-layout');
+
+  const totalImprovement = isUsingTrace
+    ? (hillClimbMoves as OptimizationIteration[]).reduce((sum, t) => sum + Math.abs(t.netDelta), 0)
+    : (hillClimbMoves as OptimizerMove[]).reduce((sum, m) => sum + Math.abs(m.costDelta), 0);
 
   // Phase counts
   const phaseCounts = {
     'init-layout': initMoves.length,
-    'init-fingers': moves.filter(m => m.phase === 'init-fingers').length,
+    'init-fingers': isUsingTrace 
+      ? validTrace.filter(t => t.phase === 'init-fingers').length
+      : validMoves.filter(m => m.phase === 'init-fingers').length,
     'hill-climb': hillClimbMoves.length,
   };
 
@@ -65,7 +86,7 @@ export function MoveTracePanel({ moves, stopReason }: MoveTracePanelProps) {
           Optimization Trace
         </h4>
         <span className="text-pf-xs text-[var(--text-tertiary)]">
-          {moves.length} step{moves.length !== 1 ? 's' : ''}
+          {isUsingTrace ? validTrace.length : validMoves.length} step{(isUsingTrace ? validTrace.length : validMoves.length) !== 1 ? 's' : ''}
         </span>
       </div>
 
@@ -128,17 +149,17 @@ export function MoveTracePanel({ moves, stopReason }: MoveTracePanelProps) {
         >
           &larr; Prev
         </button>
-        <span className="text-pf-xs text-[var(--text-tertiary)]">
+        <span className="text-pf-xs text-[var(--text-tertiary)] flex-1 text-center truncate px-2">
           {state.moveHistoryIndex !== null
-            ? `Step ${state.moveHistoryIndex + 1} / ${filteredMoves.length}`
-            : 'Click a move to step through'}
+            ? `Step ${state.moveHistoryIndex + 1} / ${totalSteps}`
+            : 'Click a iteration to trace logic on grid'}
         </span>
         <button
           className="pf-btn-ghost px-2 py-1 text-pf-xs disabled:opacity-30"
-          disabled={state.moveHistoryIndex === null || state.moveHistoryIndex >= filteredMoves.length - 1}
+          disabled={state.moveHistoryIndex === null || state.moveHistoryIndex >= totalSteps - 1}
           onClick={() => {
             const idx = state.moveHistoryIndex ?? -1;
-            dispatch({ type: 'SET_MOVE_HISTORY_INDEX', payload: Math.min(filteredMoves.length - 1, idx + 1) });
+            dispatch({ type: 'SET_MOVE_HISTORY_INDEX', payload: Math.max(0, Math.min(totalSteps - 1, idx + 1)) });
           }}
         >
           Next &rarr;
@@ -155,19 +176,126 @@ export function MoveTracePanel({ moves, stopReason }: MoveTracePanelProps) {
 
       {/* Move list */}
       <div className="max-h-[300px] overflow-y-auto space-y-1">
-        {filteredMoves.map((move, idx) => (
-          <MoveRow
-            key={idx}
-            move={move}
-            isActive={state.moveHistoryIndex === idx}
-            isExpanded={expandedMove === idx}
-            onClick={() => {
-              setExpandedMove(expandedMove === idx ? null : idx);
-              dispatch({ type: 'SET_MOVE_HISTORY_INDEX', payload: idx });
-            }}
-          />
-        ))}
+        {isUsingTrace
+          ? filteredTrace.map((iteration, idx) => (
+              <TraceRow
+                key={`trace-${idx}`}
+                iteration={iteration}
+                isActive={state.moveHistoryIndex === idx}
+                isExpanded={expandedMove === idx}
+                onClick={() => {
+                  setExpandedMove(expandedMove === idx ? null : idx);
+                  dispatch({ type: 'SET_MOVE_HISTORY_INDEX', payload: idx });
+                }}
+              />
+            ))
+          : filteredMoves.map((move, idx) => (
+              <MoveRow
+                key={`move-${idx}`}
+                move={move}
+                isActive={state.moveHistoryIndex === idx}
+                isExpanded={expandedMove === idx}
+                onClick={() => {
+                  setExpandedMove(expandedMove === idx ? null : idx);
+                  dispatch({ type: 'SET_MOVE_HISTORY_INDEX', payload: idx });
+                }}
+              />
+            ))}
       </div>
+    </div>
+  );
+}
+
+function TraceRow({
+  iteration,
+  isActive,
+  isExpanded,
+  onClick,
+}: {
+  iteration: OptimizationIteration;
+  isActive: boolean;
+  isExpanded: boolean;
+  onClick: () => void;
+}) {
+  const deltaColor = iteration.netDelta < -0.01
+    ? 'text-green-400'
+    : iteration.netDelta > 0.01
+      ? 'text-red-400'
+      : 'text-[var(--text-tertiary)]';
+
+  const phaseLabel = iteration.phase ? PHASE_LABELS[iteration.phase] ?? iteration.phase : '';
+
+  return (
+    <div
+      className={`rounded-pf-sm px-2 py-1.5 cursor-pointer transition-colors ${
+        isActive
+          ? 'bg-cyan-600/15 border border-cyan-500/30 ring-1 ring-cyan-500/50'
+          : 'bg-[var(--bg-card)] border border-transparent hover:bg-[var(--bg-hover)]'
+      }`}
+      onClick={onClick}
+    >
+      <div className="flex items-center gap-2">
+        {/* Phase badge */}
+        {phaseLabel && (
+          <span className={`text-pf-micro px-1 py-0.5 rounded-pf-sm ${
+            iteration.phase === 'hill-climb' ? 'bg-blue-500/15 text-blue-400'
+              : iteration.phase === 'init-layout' ? 'bg-purple-500/15 text-purple-400'
+                : 'bg-[var(--bg-hover)] text-[var(--text-tertiary)]'
+          }`}>
+            {phaseLabel}
+          </span>
+        )}
+
+        {/* Description */}
+        <span className="text-pf-xs text-[var(--text-primary)] flex-1 truncate">
+          {iteration.summary}
+        </span>
+
+        {/* Cost delta */}
+        {iteration.netDelta !== 0 && (
+          <span className={`text-pf-xs font-mono whitespace-nowrap ${deltaColor}`}>
+            {iteration.netDelta < 0 ? '' : '+'}{iteration.netDelta.toFixed(3)}
+          </span>
+        )}
+      </div>
+
+      {/* Expanded detail */}
+      {isExpanded && (
+        <div className="mt-2 pt-2 border-t border-[var(--border-subtle)] space-y-2 text-pf-xs">
+          <div className="text-[var(--text-tertiary)] font-medium uppercase text-pf-micro">Move Evaluation Details</div>
+          
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <div className="bg-[var(--bg-panel)] p-1.5 rounded-sm">
+              <span className="text-[var(--text-tertiary)] block text-pf-micro">Cost Before</span>
+              <span className="font-mono text-pf-xs text-amber-500/90">{iteration.scoreBefore.toFixed(2)}</span>
+            </div>
+            <div className="bg-[var(--bg-panel)] p-1.5 rounded-sm">
+              <span className="text-[var(--text-tertiary)] block text-pf-micro">Cost After</span>
+              <span className="font-mono text-pf-xs text-green-500/90">{iteration.scoreAfter.toFixed(2)}</span>
+            </div>
+          </div>
+          
+          <div className="text-[var(--text-tertiary)] font-medium uppercase text-pf-micro mt-3 mb-1">Top Candidate Moves</div>
+          <div className="space-y-1">
+            {[...iteration.candidateMoves]
+              .sort((a,b) => a.deltaTotal - b.deltaTotal)
+              .slice(0, 4)
+              .map((c, i) => (
+              <div key={i} className={`flex items-center justify-between p-1 rounded-sm ${c.accepted ? 'bg-blue-500/10 text-blue-300' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}>
+                <span className="truncate pr-2">{c.description}</span>
+                <span className={`font-mono ${c.accepted ? 'font-bold' : ''}`}>
+                  {c.deltaTotal < 0 ? '' : '+'}{c.deltaTotal.toFixed(2)}
+                </span>
+              </div>
+            ))}
+            {iteration.candidateMoves.length > 4 && (
+              <div className="text-center text-pf-micro text-[var(--text-tertiary)] pt-1">
+                + {iteration.candidateMoves.length - 4} more evaluated...
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

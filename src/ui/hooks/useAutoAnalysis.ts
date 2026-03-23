@@ -244,7 +244,7 @@ export function useAutoAnalysis() {
 
     dispatch({ type: 'SET_ERROR', payload: null });
     dispatch({ type: 'SET_PROCESSING', payload: true });
-    dispatch({ type: 'SET_MOVE_HISTORY', payload: { moves: null } }); // Clear previous trace
+    dispatch({ type: 'SET_MOVE_HISTORY', payload: { moves: null, trace: null } }); // Clear previous trace
     setAnalysisPhase('generating');
     setGenerationProgress('Preparing layout...');
 
@@ -336,7 +336,10 @@ export function useAutoAnalysis() {
   // Calculate Cost: evaluate current layout + assignment with given toggles
   const calculateCost = useCallback(async (costToggles: CostToggles) => {
     const layout = getDisplayedLayout(state);
-    if (!layout || Object.keys(layout.padToVoice).length === 0) return;
+    if (!layout || Object.keys(layout.padToVoice).length === 0) {
+      dispatch({ type: 'SET_ERROR', payload: 'Place sounds on the grid before calculating cost.' });
+      return;
+    }
 
     const performance = getActivePerformance(state);
     if (performance.events.length === 0) return;

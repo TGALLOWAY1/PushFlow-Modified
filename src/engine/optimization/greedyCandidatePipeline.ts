@@ -226,6 +226,7 @@ export async function generateGreedyCandidates(
           difficultyAnalysis,
           tradeoffProfile,
           metadata,
+          iterationTrace: result.iterationTrace,
         };
 
         const qualityScore = compositeScore(tradeoffProfile);

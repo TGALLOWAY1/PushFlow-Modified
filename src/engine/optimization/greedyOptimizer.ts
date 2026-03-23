@@ -19,6 +19,8 @@ import {
   type OptimizerInput,
   type OptimizerOutput,
   type OptimizerMove,
+  type OptimizationIteration,
+  type CandidateMoveRecord,
   type OptimizerTelemetry,
   type StopReason,
 } from './optimizerInterface';
@@ -129,6 +131,10 @@ class GreedyOptimizer implements OptimizerMethod {
             ...(bestResult.moveHistory ?? []),
             ...(result.moveHistory ?? []),
           ],
+          iterationTrace: [
+            ...(bestResult.iterationTrace ?? []),
+            ...(result.iterationTrace ?? []),
+          ],
         };
       }
     }
@@ -158,6 +164,7 @@ class GreedyOptimizer implements OptimizerMethod {
     const startTime = Date.now();
     const maxIterations = input.config.maxIterations ?? DEFAULT_MAX_ITERATIONS;
     const moveHistory: OptimizerMove[] = [];
+    const iterationTrace: OptimizationIteration[] = [];
     let movesEvaluated = 0;
 
     // ── Phase A: Greedy Initial Layout ─────────────────────────
@@ -174,7 +181,7 @@ class GreedyOptimizer implements OptimizerMethod {
       } else {
         // Build layout from scratch using greedy placement
         layout = await this.greedyInitLayout(
-          input, moments, moveHistory, attemptIndex,
+          input, moments, moveHistory, iterationTrace, attemptIndex,
         );
       }
     }
@@ -265,6 +272,8 @@ class GreedyOptimizer implements OptimizerMethod {
       }
 
       // Accept selected move
+      const stateBefore = { layout: deepCopyLayout(layout), assignment: { ...assignment } };
+
       const bestMove = moveMap[selected.index];
       const costDelta = selected.costDelta;
       const moveRecord: OptimizerMove = {
@@ -283,6 +292,38 @@ class GreedyOptimizer implements OptimizerMethod {
         attemptIndex,
       };
       moveHistory.push(moveRecord);
+
+      // Build CandidateMoveRecords for the Visual Debugger
+      const candidateMovesRecords: CandidateMoveRecord[] = evaluatedMoves.map(em => {
+        const mappedOrig = moveMap[em.index];
+        return {
+          moveType: em.moveType as any,
+          description: mappedOrig.description,
+          fromPadKey: em.padKey ?? null,
+          toPadKey: em.targetPadKey ?? null,
+          secondaryPadKey: mappedOrig.secondaryPadKey,
+          targetId: mappedOrig.voiceId,
+          voiceName: mappedOrig.voiceName,
+          deltaTotal: em.costDelta,
+          costBreakdown: em.breakdown,
+          accepted: em.index === selected.index,
+          reason: em.index === selected.index ? moveRecord.reason : undefined,
+        };
+      });
+
+      iterationTrace.push({
+        iterationIndex: iterationTrace.length,
+        phase: 'hill-climb',
+        attemptIndex,
+        scoreBefore: currentCost.total,
+        scoreAfter: selected.cost,
+        netDelta: costDelta,
+        stateBefore,
+        stateAfter: { layout: bestMove.newLayout!, assignment: bestMove.newAssignment! },
+        candidateMoves: candidateMovesRecords,
+        chosenMove: candidateMovesRecords.find(m => m.accepted) ?? null,
+        summary: moveRecord.description,
+      });
 
       layout = bestMove.newLayout!;
       assignment = bestMove.newAssignment!;
@@ -319,6 +360,7 @@ class GreedyOptimizer implements OptimizerMethod {
       diagnostics: finalDiagnostics,
       costTogglesUsed: input.costToggles,
       moveHistory,
+      iterationTrace,
       stopReason,
       telemetry,
     };
@@ -332,6 +374,7 @@ class GreedyOptimizer implements OptimizerMethod {
     input: OptimizerInput,
     _moments: PerformanceMoment[],
     moveHistory: OptimizerMove[],
+    iterationTrace: OptimizationIteration[],
     attemptIndex: number = 0,
   ): Promise<Layout> {
     const layout: Layout = {
@@ -391,6 +434,9 @@ class GreedyOptimizer implements OptimizerMethod {
       let bestPad = emptyPads[0];
       let bestScore = Infinity;
 
+      const stateBefore = { layout: deepCopyLayout(layout), assignment: {} };
+      const candidateMoves: CandidateMoveRecord[] = [];
+
       for (const pad of emptyPads) {
         let score = scorePlacement(
           pad, soundId, layout, cooccurrence, input.costToggles,
@@ -399,6 +445,19 @@ class GreedyOptimizer implements OptimizerMethod {
         if (noiseScale > 0) {
           score += (rng() - 0.5) * noiseScale * Math.max(1, Math.abs(score));
         }
+
+        const padKey = `${pad.row},${pad.col}`;
+        candidateMoves.push({
+          moveType: 'pad_move',
+          description: `Place ${voice.name ?? soundId} at (${pad.row},${pad.col})`,
+          fromPadKey: null,
+          toPadKey: padKey,
+          targetId: voice.id,
+          voiceName: voice.name ?? soundId,
+          deltaTotal: score, // greedy init score proxy
+          accepted: false,
+        });
+
         if (score < bestScore) {
           bestScore = score;
           bestPad = pad;
@@ -408,6 +467,26 @@ class GreedyOptimizer implements OptimizerMethod {
       // Place the sound
       const padKey = `${bestPad.row},${bestPad.col}`;
       layout.padToVoice[padKey] = voice;
+      
+      const chosenMove = candidateMoves.find(m => m.toPadKey === padKey);
+      if (chosenMove) {
+        chosenMove.accepted = true;
+        chosenMove.reason = `Best placement score: ${bestScore.toFixed(2)}`;
+      }
+
+      iterationTrace.push({
+        iterationIndex: iterationTrace.length,
+        phase: 'init-layout',
+        attemptIndex,
+        scoreBefore: 0,
+        scoreAfter: 0, // In init, we don't eval full performance yet
+        netDelta: bestScore,
+        stateBefore,
+        stateAfter: { layout: deepCopyLayout(layout), assignment: {} },
+        candidateMoves,
+        chosenMove: chosenMove ?? null,
+        summary: `Placed ${voice.name ?? soundId} at (${bestPad.row},${bestPad.col})`
+      });
 
       moveHistory.push({
         iteration: moveHistory.length,

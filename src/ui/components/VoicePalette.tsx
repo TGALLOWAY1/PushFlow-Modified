@@ -96,64 +96,6 @@ export function VoicePalette() {
     return map;
   }, [layout]);
 
-  // Build per-stream solver assignment summary from analysisResult
-  const solverSummary = useMemo(() => {
-    const map = new Map<string, { label: string; hand: string; finger: string }>();
-    const fa = state.analysisResult?.executionPlan.fingerAssignments;
-    if (!fa || fa.length === 0) return map;
-
-    const noteToStreamId = new Map<number, string>();
-    for (const s of state.soundStreams) {
-      noteToStreamId.set(s.originalMidiNote, s.id);
-    }
-
-    const counts = new Map<string, Map<string, number>>();
-    for (const a of fa) {
-      const streamId = noteToStreamId.get(a.noteNumber);
-      if (!streamId || a.assignedHand === 'Unplayable') continue;
-      const handChar = a.assignedHand === 'left' ? 'L' : 'R';
-      const FINGER_SHORT: Record<string, string> = {
-        thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
-      };
-      const fingerStr = a.finger ? FINGER_SHORT[a.finger] ?? '' : '';
-      const key = fingerStr ? `${handChar}${fingerStr}` : handChar;
-
-      const streamCounts = counts.get(streamId) ?? new Map<string, number>();
-      streamCounts.set(key, (streamCounts.get(key) ?? 0) + 1);
-      counts.set(streamId, streamCounts);
-    }
-
-    // Also track which raw finger name is most common per stream
-    const fingerCounts = new Map<string, Map<string, number>>();
-    for (const a of fa) {
-      const streamId = noteToStreamId.get(a.noteNumber);
-      if (!streamId || a.assignedHand === 'Unplayable' || !a.finger) continue;
-      const sc = fingerCounts.get(streamId) ?? new Map<string, number>();
-      sc.set(a.finger, (sc.get(a.finger) ?? 0) + 1);
-      fingerCounts.set(streamId, sc);
-    }
-
-    for (const [streamId, streamCounts] of counts) {
-      let best = '';
-      let bestCount = 0;
-      for (const [key, count] of streamCounts) {
-        if (count > bestCount) { best = key; bestCount = count; }
-      }
-      // Find most common raw finger name
-      let bestFinger = '';
-      let bestFingerCount = 0;
-      const fc = fingerCounts.get(streamId);
-      if (fc) {
-        for (const [finger, count] of fc) {
-          if (count > bestFingerCount) { bestFinger = finger; bestFingerCount = count; }
-        }
-      }
-      if (best) {
-        map.set(streamId, { label: best, hand: best.startsWith('L') ? 'left' : 'right', finger: bestFinger });
-      }
-    }
-    return map;
-  }, [state.analysisResult, state.soundStreams]);
 
   // Build streamId → groupId map from performanceLanes
   const streamGroupMap = useMemo(() => {
@@ -219,7 +161,6 @@ export function VoicePalette() {
       padKeys={streamPadLocations.get(stream.id) ?? []}
       isLocked={(streamPadLocations.get(stream.id) ?? []).some(pk => !!layout?.placementLocks[pk])}
       voiceConstraint={state.voiceConstraints[stream.id]}
-      solverAssignment={solverSummary.get(stream.id)}
       groups={state.laneGroups}
       currentGroupId={streamGroupMap.get(stream.id) ?? null}
       isSelected={selectedStreamIds.has(stream.id)}
@@ -433,7 +374,6 @@ function StreamRow({
   padKeys,
   isLocked,
   voiceConstraint,
-  solverAssignment,
   groups,
   currentGroupId,
   isSelected,
@@ -455,7 +395,6 @@ function StreamRow({
   padKeys: string[];
   isLocked: boolean;
   voiceConstraint?: { hand?: 'left' | 'right'; finger?: string };
-  solverAssignment?: { label: string; hand: string; finger: string };
   isSelected: boolean;
   isGlobalSelected: boolean;
   isGrouped: boolean;
@@ -473,7 +412,6 @@ function StreamRow({
   onReorderDrop: () => void;
   isReorderTarget: boolean;
 }) {
-  const solverFinger = solverAssignment?.finger ?? null;
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(stream.name);

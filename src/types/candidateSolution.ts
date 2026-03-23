@@ -111,6 +111,8 @@ export interface CandidateSolution {
    * Explains what changed and how different this candidate is.
    */
   baselineDiff?: BaselineDiffSummary;
+  /** Detailed iteration-by-iteration trace for the Visual Debugger. */
+  iterationTrace?: import('../engine/optimization/optimizerInterface').OptimizationIteration[];
 }
 
 // ============================================================================
