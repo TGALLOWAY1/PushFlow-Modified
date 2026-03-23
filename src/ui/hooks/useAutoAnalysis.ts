@@ -183,14 +183,8 @@ export function useAutoAnalysis() {
         setAnalysisPhase('analyzing');
         dispatch({ type: 'SET_PROCESSING', payload: true });
 
-        // If the layout has no pad assignments, bail — user must place sounds manually.
+        // If the layout has no pad assignments, the solver will handle initial placement.
         const effectiveLayout = layout;
-        if (Object.keys(layout.padToVoice).length === 0) {
-          dispatch({ type: 'SET_PROCESSING', payload: false });
-          dispatch({ type: 'SET_ERROR', payload: 'Place sounds on the grid before running analysis.' });
-          setAnalysisPhase('idle');
-          return;
-        }
 
         const defaultPose = createDefaultPose0();
         const solverConfig: SolverConfig = {
@@ -250,22 +244,15 @@ export function useAutoAnalysis() {
 
     dispatch({ type: 'SET_ERROR', payload: null });
     dispatch({ type: 'SET_PROCESSING', payload: true });
-    dispatch({ type: 'SET_MOVE_HISTORY', payload: { moves: null } }); // Clear previous trace
+    dispatch({ type: 'SET_MOVE_HISTORY', payload: { moves: null, trace: null } }); // Clear previous trace
     setAnalysisPhase('generating');
     setGenerationProgress('Preparing layout...');
 
     try {
       const performance = getActivePerformance(state);
 
-      // If the layout has no pad assignments, bail — user must place sounds manually.
+      // If the layout has no pad assignments, the solver will handle initial placement.
       const effectiveLayout = layout;
-      if (Object.keys(layout.padToVoice).length === 0) {
-        dispatch({ type: 'SET_PROCESSING', payload: false });
-        dispatch({ type: 'SET_ERROR', payload: 'Place sounds on the grid before running analysis.' });
-        setAnalysisPhase('idle');
-        setGenerationProgress(null);
-        return;
-      }
 
       const method = state.optimizerMethod;
 
@@ -349,7 +336,10 @@ export function useAutoAnalysis() {
   // Calculate Cost: evaluate current layout + assignment with given toggles
   const calculateCost = useCallback(async (costToggles: CostToggles) => {
     const layout = getDisplayedLayout(state);
-    if (!layout || Object.keys(layout.padToVoice).length === 0) return;
+    if (!layout || Object.keys(layout.padToVoice).length === 0) {
+      dispatch({ type: 'SET_ERROR', payload: 'Place sounds on the grid before calculating cost.' });
+      return;
+    }
 
     const performance = getActivePerformance(state);
     if (performance.events.length === 0) return;

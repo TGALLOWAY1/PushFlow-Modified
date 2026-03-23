@@ -45,6 +45,8 @@ interface InteractiveGridProps {
   onGridDragOver?: (anchorRow: number, anchorCol: number) => void;
   /** Callback when drag leaves the grid. */
   onGridDragLeave?: () => void;
+  /** Current optimization iteration for visual debugging overlays. */
+  debuggerIteration?: import('../../engine/optimization/optimizerInterface').OptimizationIteration;
 }
 
 /** Abbreviated finger names for display (numbered: thumb=1 through pinky=5) */
@@ -86,7 +88,7 @@ function safeColorAlpha(color: string | null | undefined, alpha: number, fallbac
 /** Physical reach threshold: pads farther apart than this are flagged as impossible. */
 const IMPOSSIBLE_REACH_THRESHOLD = 5;
 
-export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave }: InteractiveGridProps) {
+export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave, debuggerIteration }: InteractiveGridProps) {
   const { state, dispatch } = useProject();
   const layout = layoutOverride ?? getDisplayedLayout(state);
   const [dragOverPad, setDragOverPad] = useState<string | null>(null);
@@ -246,6 +248,55 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
         };
       });
   }, [selectedTransition, showTransitionArrows]);
+
+  // Visual Debugger Overlays: Candidate Moves
+  const debuggerPaths = useMemo(() => {
+    if (!debuggerIteration) return [];
+    
+    return debuggerIteration.candidateMoves
+      .filter(move => move.fromPadKey && move.toPadKey && move.fromPadKey !== move.toPadKey)
+      .map(move => {
+        const [fromRow, fromCol] = move.fromPadKey!.split(',').map(Number);
+        const [toRow, toCol] = move.toPadKey!.split(',').map(Number);
+        
+        const startX = GRID_OFFSET_X + toGridX(fromCol);
+        const startY = toGridY(fromRow);
+        const endX = GRID_OFFSET_X + toGridX(toCol);
+        const endY = toGridY(toRow);
+        
+        // Add a slight curve so bidirectional overlaps are visible
+        const dx = endX - startX;
+        const dy = endY - startY;
+        const midX = startX + dx / 2;
+        const midY = startY + dy / 2;
+        const normalX = -dy * 0.15;
+        const normalY = dx * 0.15;
+        
+        const isChosen = move.accepted;
+        const isImprovement = move.deltaTotal < -0.01;
+        
+        let color = '#94a3b8'; // slate-400 (neutral/worse)
+        if (isChosen) {
+          color = '#3b82f6'; // blue-500 (chosen)
+        } else if (isImprovement) {
+          color = '#10b981'; // emerald-500 (good but not chosen)
+        }
+        
+        return {
+          id: `debug-${move.fromPadKey}-${move.toPadKey}-${move.moveType}`,
+          isChosen,
+          color,
+          d: `M ${startX} ${startY} Q ${midX + normalX} ${midY + normalY} ${endX} ${endY}`,
+          labelX: midX + normalX,
+          labelY: midY + normalY,
+          delta: move.deltaTotal,
+          endX,
+          endY,
+        };
+      })
+      // sort so chosen move is drawn last (on top)
+      .sort((a, b) => (a.isChosen === b.isChosen ? 0 : a.isChosen ? 1 : -1));
+  }, [debuggerIteration]);
 
   // Active playing pads — with blink tracking for repeated hits
   const BLINK_DURATION_MS = 120; // how long the flash lasts
@@ -674,13 +725,24 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       </div>
 
       <div className="inline-block relative">
-        {transitionPaths.length > 0 && (
+        {(transitionPaths.length > 0 || debuggerPaths.length > 0) && (
           <svg
             className="absolute inset-0 pointer-events-none overflow-visible z-20"
             style={{ width: GRID_OFFSET_X + (GRID_STEP * 8), height: GRID_STEP * 8 }}
             viewBox={`0 0 ${GRID_OFFSET_X + (GRID_STEP * 8)} ${GRID_STEP * 8}`}
             aria-hidden="true"
           >
+            <defs>
+              <marker id="arrowhead-chosen" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto">
+                <polygon points="0 0, 6 2, 0 4" fill="#3b82f6" />
+              </marker>
+              <marker id="arrowhead-neutral" markerWidth="5" markerHeight="3.5" refX="4" refY="1.75" orient="auto">
+                <polygon points="0 0, 5 1.75, 0 3.5" fill="#94a3b8" />
+              </marker>
+              <marker id="arrowhead-good" markerWidth="5" markerHeight="3.5" refX="4" refY="1.75" orient="auto">
+                <polygon points="0 0, 5 1.75, 0 3.5" fill="#10b981" />
+              </marker>
+            </defs>
             {transitionPaths.map(path => (
               <g key={path.id}>
                 <path
@@ -694,6 +756,47 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                 <circle cx={path.endX} cy={path.endY} r="3" fill={path.color} fillOpacity="0.9" />
               </g>
             ))}
+            {/* Visual Debugger Arrow Overlays */}
+            {debuggerPaths.map(path => {
+              const markerId = path.isChosen ? 'arrowhead-chosen' : path.delta < -0.01 ? 'arrowhead-good' : 'arrowhead-neutral';
+              return (
+                <g key={path.id}>
+                  <path
+                    d={path.d}
+                    fill="none"
+                    stroke={path.color}
+                    strokeWidth={path.isChosen ? "3.5" : "1.5"}
+                    strokeLinecap="round"
+                    strokeOpacity={path.isChosen ? "0.9" : "0.5"}
+                    strokeDasharray={path.isChosen ? "none" : "4,3"}
+                    markerEnd={`url(#${markerId})`}
+                  />
+                  {/* Delta Label */}
+                  <rect
+                    x={path.labelX - 12}
+                    y={path.labelY - 8}
+                    width="24"
+                    height="16"
+                    rx="4"
+                    fill="var(--bg-panel)"
+                    fillOpacity="0.8"
+                    stroke={path.color}
+                    strokeWidth="1"
+                  />
+                  <text
+                    x={path.labelX}
+                    y={path.labelY + 3.5}
+                    fontSize="9"
+                    fontWeight={path.isChosen ? "bold" : "normal"}
+                    fontFamily="monospace"
+                    textAnchor="middle"
+                    fill={path.color}
+                  >
+                    {path.delta > 0 ? '+' : ''}{path.delta.toFixed(1)}
+                  </text>
+                </g>
+              );
+            })}
           </svg>
         )}
         <div className="flex flex-col gap-1">

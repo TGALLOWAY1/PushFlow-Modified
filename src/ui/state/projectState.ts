@@ -22,7 +22,7 @@ import { type PerformanceLane, type LaneGroup, type SourceFile } from '../../typ
 import { type LaneAction, isLaneAction, lanesReducer } from './lanesReducer';
 import { type CostToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
 import { type PerformanceCostBreakdown } from '../../types/costBreakdown';
-import { type OptimizerMethodKey, type OptimizerMove } from '../../engine/optimization/optimizerInterface';
+import { type OptimizerMethodKey, type OptimizerMove, type OptimizationIteration } from '../../engine/optimization/optimizerInterface';
 
 // ============================================================================
 // Sound Stream Model
@@ -140,6 +140,8 @@ export interface ProjectState {
   manualCostResult: PerformanceCostBreakdown | null;
   /** Move history from interpretable optimizers (greedy). */
   moveHistory: OptimizerMove[] | null;
+  /** Detailed iteration traces for the visual debugger. */
+  iterationTrace: OptimizationIteration[] | null;
   /** Why the optimizer stopped (stored alongside moveHistory). */
   moveHistoryStopReason: string | null;
   /** Current index in move history for step-through replay. */
@@ -269,7 +271,7 @@ export type ProjectAction =
   | { type: 'SET_OPTIMIZER_METHOD'; payload: OptimizerMethodKey }
   | { type: 'SET_COST_TOGGLES'; payload: CostToggles }
   | { type: 'SET_MANUAL_COST_RESULT'; payload: PerformanceCostBreakdown | null }
-  | { type: 'SET_MOVE_HISTORY'; payload: { moves: OptimizerMove[] | null; stopReason?: string } }
+  | { type: 'SET_MOVE_HISTORY'; payload: { moves: OptimizerMove[] | null; trace: OptimizationIteration[] | null; stopReason?: string } }
   | { type: 'SET_MOVE_HISTORY_INDEX'; payload: number | null }
 
   // Transport
@@ -948,6 +950,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return {
         ...state,
         moveHistory: action.payload.moves,
+        iterationTrace: action.payload.trace,
         moveHistoryStopReason: action.payload.stopReason ?? null,
         moveHistoryIndex: null,
       };
@@ -1012,6 +1015,7 @@ export function createEmptyProjectState(): ProjectState {
     analysisStale: false,
     manualCostResult: null,
     moveHistory: null,
+    iterationTrace: null,
     moveHistoryStopReason: null,
     moveHistoryIndex: null,
     currentTime: 0,

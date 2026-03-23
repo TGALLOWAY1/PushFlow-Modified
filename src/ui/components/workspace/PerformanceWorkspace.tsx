@@ -469,6 +469,16 @@ function PerformanceWorkspaceInner() {
   const assignments = state.analysisResult?.executionPlan.fingerAssignments;
   const selectedCandidate = state.candidates.find(c => c.id === state.selectedCandidateId) ?? null;
 
+  // Active trace for Visual Debugger
+  const activeTrace = state.iterationTrace ?? selectedCandidate?.iterationTrace;
+  const debuggerIteration = (activeTrace && state.moveHistoryIndex !== null)
+    ? activeTrace[state.moveHistoryIndex]
+    : undefined;
+
+  const currentLayoutOverride = debuggerIteration
+    ? debuggerIteration.stateBefore.layout
+    : selectedCandidate?.layout;
+
   // Wrap generateFull to auto-open analysis after generation
   const handleGenerate = useCallback(async (mode?: Parameters<typeof generateFull>[0]) => {
     await generateFull(mode);
@@ -619,7 +629,7 @@ function PerformanceWorkspaceInner() {
               <div style={{ transform: `scale(${gridScale})`, transformOrigin: 'center' }}>
                 <InteractiveGrid
                   assignments={assignments}
-                  layoutOverride={selectedCandidate?.layout}
+                  layoutOverride={currentLayoutOverride}
                   selectedEventIndex={state.selectedEventIndex}
                   onEventClick={idx => dispatch({ type: 'SELECT_EVENT', payload: idx })}
                   onionSkin={onionSkin}
@@ -630,6 +640,7 @@ function PerformanceWorkspaceInner() {
                   dragPreview={dragPreview}
                   onGridDragOver={handleGridDragOver}
                   onGridDragLeave={handleGridDragLeave}
+                  debuggerIteration={debuggerIteration}
                 />
               </div>
             </div>
@@ -712,10 +723,11 @@ function PerformanceWorkspaceInner() {
                     onToggleCompare={handleToggleCompare}
                     onCompare={handleOpenCompare}
                   />
-                  {state.moveHistory && state.moveHistory.length > 0 && (
+                  {((state.moveHistory && state.moveHistory.length > 0) || (activeTrace && activeTrace.length > 0)) && (
                     <div className="p-2.5">
                       <MoveTracePanel
                         moves={state.moveHistory}
+                        trace={activeTrace}
                         stopReason={state.moveHistoryStopReason as any}
                       />
                     </div>
