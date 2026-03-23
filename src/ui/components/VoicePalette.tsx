@@ -14,6 +14,10 @@ import { generateId } from '../../utils/idGenerator';
 import { FingerAssignmentInput, type FingerAssignmentValue } from './shared/FingerAssignmentInput';
 import { type FingerType } from '../../types/fingerModel';
 
+const FINGER_ABBREV: Record<string, string> = {
+  thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
+};
+
 /** Format a pad key like "3,5" into "R3C5" to match Lanes panel format. */
 function formatPadKey(pk: string): string {
   const parts = pk.split(',');
@@ -96,8 +100,7 @@ export function VoicePalette() {
     return map;
   }, [layout]);
 
-
-  // Build streamId → groupId map from performanceLanes
+  // Build a map of which group each stream belongs to
   const streamGroupMap = useMemo(() => {
     const map = new Map<string, string | null>();
     for (const lane of state.performanceLanes) {
@@ -105,6 +108,24 @@ export function VoicePalette() {
     }
     return map;
   }, [state.performanceLanes]);
+  
+  // Build solver finger summary
+  const solverSummary = useMemo(() => {
+    const map = new Map<string, { label: string; hand: string; finger: string }>();
+    if (!state.analysisResult?.executionPlan) return map;
+    const { fingerAssignments } = state.analysisResult.executionPlan;
+    // Map voiceId to its first assignment's finger info
+    for (const fa of fingerAssignments) {
+      if (fa.voiceId && !map.has(fa.voiceId) && fa.assignedHand !== 'Unplayable' && fa.finger) {
+        map.set(fa.voiceId, {
+          label: `${fa.assignedHand[0].toUpperCase()}${FINGER_ABBREV[fa.finger] ?? fa.finger}`,
+          hand: fa.assignedHand,
+          finger: fa.finger,
+        });
+      }
+    }
+    return map;
+  }, [state.analysisResult]);
 
   // Organize streams by group, then by grid assignment
   const { groupedStreams, ungroupedAssigned, ungroupedUnassigned } = useMemo(() => {
@@ -161,6 +182,7 @@ export function VoicePalette() {
       padKeys={streamPadLocations.get(stream.id) ?? []}
       isLocked={(streamPadLocations.get(stream.id) ?? []).some(pk => !!layout?.placementLocks[pk])}
       voiceConstraint={state.voiceConstraints[stream.id]}
+      solverAssignment={solverSummary.get(stream.id)}
       groups={state.laneGroups}
       currentGroupId={streamGroupMap.get(stream.id) ?? null}
       isSelected={selectedStreamIds.has(stream.id)}
@@ -374,6 +396,7 @@ function StreamRow({
   padKeys,
   isLocked,
   voiceConstraint,
+  solverAssignment,
   groups,
   currentGroupId,
   isSelected,
@@ -395,6 +418,7 @@ function StreamRow({
   padKeys: string[];
   isLocked: boolean;
   voiceConstraint?: { hand?: 'left' | 'right'; finger?: string };
+  solverAssignment?: { label: string; hand: string; finger: string };
   isSelected: boolean;
   isGlobalSelected: boolean;
   isGrouped: boolean;
@@ -412,6 +436,7 @@ function StreamRow({
   onReorderDrop: () => void;
   isReorderTarget: boolean;
 }) {
+  const solverFinger = solverAssignment?.label ?? null;
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(stream.name);
@@ -539,6 +564,9 @@ function StreamRow({
           {isLocked && <span className="text-[8px] text-amber-400" title="Placement locked">&#x1F512;</span>}
           {formatPadKey(padKeys[0])}
           {padKeys.length > 1 && `+${padKeys.length - 1}`}
+          {solverFinger && !voiceConstraint && (
+            <span className="ml-1 text-[8px] opacity-60">({solverFinger})</span>
+          )}
         </span>
       )}
 
