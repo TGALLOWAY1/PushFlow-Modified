@@ -16,7 +16,13 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getActivePerformance, getDisplayedLayout, getActiveStreams } from '../state/projectState';
+import {
+  getActivePerformance,
+  getAnalysisForLayout,
+  getDisplayedCandidate,
+  getDisplayedLayout,
+  getActiveStreams,
+} from '../state/projectState';
 import { createBeamSolver } from '../../engine/solvers/beamSolver';
 import { type SolverConstraints } from '../../engine/solvers/types';
 import { analyzeDifficulty, computeTradeoffProfile, classifyOptimizationDifficulty } from '../../engine/evaluation/difficultyScoring';
@@ -38,6 +44,7 @@ import { type CostToggles } from '../../types/costToggles';
 import { type PadFingerAssignment } from '../../types/executionPlan';
 import { createDefaultPose0, getPose0PadsWithOffset, fingerIdToHandAndFingerType } from '../../engine/prior/naturalHandPose';
 import { type FingerId, type NaturalHandPose } from '../../types/ergonomicPrior';
+import { parseFingerConstraint } from '../../utils/fingerConstraints';
 
 /**
  * Compute initial pad ownership from pose0 + layout.
@@ -71,18 +78,6 @@ export type GenerationMode = OptimizationMode | 'auto';
 
 const AUTO_ANALYSIS_DEBOUNCE_MS = 1000;
 
-/** Parse constraint like "L-Ix" → { hand, finger }. */
-function parseConstraint(c: string): { hand: 'left' | 'right'; finger: FingerType } | null {
-  const FINGER_MAP: Record<string, FingerType> = {
-    Th: 'thumb', Ix: 'index', Md: 'middle', Rg: 'ring', Pk: 'pinky',
-  };
-  const m = c.match(/^([LR])-(\w+)$/);
-  if (!m) return null;
-  const hand = m[1] === 'L' ? 'left' as const : 'right' as const;
-  const finger = FINGER_MAP[m[2]];
-  return finger ? { hand, finger } : null;
-}
-
 /**
  * Build separated solver constraints from layout finger constraints.
  *
@@ -107,7 +102,7 @@ function buildSolverConstraints(
   for (const [padKey, constraintStr] of Object.entries(constraints)) {
     const voice = layout.padToVoice[padKey];
     if (!voice) continue;
-    const parsed = parseConstraint(constraintStr);
+    const parsed = parseFingerConstraint(constraintStr);
     if (!parsed) continue;
     if (voice.id) {
       voiceIdConstraints.set(voice.id, parsed);
@@ -336,6 +331,8 @@ export function useAutoAnalysis() {
   // Calculate Cost: evaluate current layout + assignment with given toggles
   const calculateCost = useCallback(async (costToggles: CostToggles) => {
     const layout = getDisplayedLayout(state);
+    const displayedCandidate = getDisplayedCandidate(state)
+      ?? getAnalysisForLayout(state, layout);
     if (!layout || Object.keys(layout.padToVoice).length === 0) {
       dispatch({ type: 'SET_ERROR', payload: 'Place sounds on the grid before calculating cost.' });
       return;
@@ -351,12 +348,12 @@ export function useAutoAnalysis() {
       const moments = buildPerformanceMoments(performance.events);
       if (moments.length === 0) return;
 
-      // Get pad-finger assignment from latest analysis result, or extract from solver output
+      // Get pad-finger assignment from the currently displayed analysis context.
       let padFingerAssignment: PadFingerAssignment = {};
-      if (state.analysisResult?.executionPlan?.padFingerOwnership) {
-        padFingerAssignment = state.analysisResult.executionPlan.padFingerOwnership;
-      } else if (state.analysisResult?.executionPlan?.fingerAssignments) {
-        const { ownership } = extractPadOwnership(state.analysisResult.executionPlan.fingerAssignments);
+      if (displayedCandidate?.executionPlan?.padFingerOwnership) {
+        padFingerAssignment = displayedCandidate.executionPlan.padFingerOwnership;
+      } else if (displayedCandidate?.executionPlan?.fingerAssignments) {
+        const { ownership } = extractPadOwnership(displayedCandidate.executionPlan.fingerAssignments);
         padFingerAssignment = ownership;
       }
 

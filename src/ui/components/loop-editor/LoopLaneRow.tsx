@@ -9,6 +9,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { type LoopLane } from '../../../types/loopEditor';
 import { type LoopEditorAction } from '../../state/loopEditorReducer';
 import { type FingerType, type HandSide } from '../../../types/fingerModel';
+import { formatPadPosition } from '../../../utils/padPosition';
 import { FingerAssignmentInput, type FingerAssignmentValue } from '../shared/FingerAssignmentInput';
 
 /** A hand+finger assignment for a lane. */
@@ -26,13 +27,6 @@ interface LoopLaneRowProps {
   onFingerAssignmentChange?: (laneId: string, assignment: LaneFingerAssignment) => void;
   /** Pad position string (e.g. "3,5") if lane is assigned to a pad. */
   padPosition?: string;
-}
-
-/** Format a pad key like "3,5" into a compact label like "R3C5". */
-function formatPadPosition(pk: string): string {
-  const parts = pk.split(',');
-  if (parts.length !== 2) return pk;
-  return `R${parts[0]}C${parts[1]}`;
 }
 
 const ROW_HEIGHT = 32;

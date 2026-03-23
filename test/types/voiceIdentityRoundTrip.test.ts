@@ -153,7 +153,7 @@ describe('Voice identity through promote simulation', () => {
       id: 'promoted-1',
       role: 'active' as const,
       baselineId: undefined,
-      placementLocks: { ...active.placementLocks },
+      placementLocks: { ...candidateLayout.placementLocks },
     };
     return { newActive, savedVariant };
   }
@@ -188,16 +188,28 @@ describe('Voice identity through promote simulation', () => {
     expect(getVoiceMap(savedVariant)).toEqual(getVoiceMap(active));
   });
 
-  it('should carry forward placement locks from active to promoted layout', () => {
+  it('should preserve the candidate placement locks on the promoted layout', () => {
     const active = makePopulatedLayout('active-1', 'Active');
     const candidateLayout: Layout = {
       ...createEmptyLayout('cand-1', 'Candidate', 'active'),
       padToVoice: { ...active.padToVoice },
-      placementLocks: {}, // Candidate has no locks
+      placementLocks: { 'v-snare': '0,2' },
     };
 
     const { newActive } = simulatePromote(active, candidateLayout);
-    expect(newActive.placementLocks).toEqual(active.placementLocks);
+    expect(newActive.placementLocks).toEqual(candidateLayout.placementLocks);
+  });
+
+  it('should not inherit obsolete active locks when the candidate has none', () => {
+    const active = makePopulatedLayout('active-1', 'Active');
+    const candidateLayout: Layout = {
+      ...createEmptyLayout('cand-1', 'Candidate', 'active'),
+      padToVoice: { ...active.padToVoice },
+      placementLocks: {},
+    };
+
+    const { newActive } = simulatePromote(active, candidateLayout);
+    expect(newActive.placementLocks).toEqual({});
   });
 
   it('should keep voice IDs stable across double promote', () => {

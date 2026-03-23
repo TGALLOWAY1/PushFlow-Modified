@@ -211,7 +211,7 @@ export interface ExecutionPlanLayoutBinding {
  * Formerly EngineResult in Version1.
  */
 export interface ExecutionPlanResult {
-  /** Total score. Beam solver: 0–100 (higher = better). Greedy solver: accumulated cost (lower = better). */
+  /** Total score on a normalized 0–100 scale (higher = better). */
   score: number;
   /** Count of events classified as Unplayable. */
   unplayableCount: number;

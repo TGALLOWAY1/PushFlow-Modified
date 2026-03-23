@@ -290,7 +290,7 @@ export async function generateGreedyCandidates(
 
   const finalCandidates = valid.length > 0
     ? valid
-    : [...filtered].sort((a, b) => a.executionPlan.score - b.executionPlan.score).slice(0, 1);
+    : [...filtered].sort((a, b) => b.executionPlan.score - a.executionPlan.score).slice(0, 1);
 
   const summary = input.activeLayout
     ? buildGenerationSummary(

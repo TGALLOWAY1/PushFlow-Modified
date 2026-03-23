@@ -28,15 +28,27 @@ import { registerOptimizer } from './optimizerRegistry';
 import { evaluatePerformance } from '../evaluation/canonicalEvaluator';
 import { buildPerformanceMoments } from '../structure/momentBuilder';
 import { type Layout } from '../../types/layout';
-import { type PadFingerAssignment } from '../../types/executionPlan';
+import {
+  type DifficultyLevel,
+  type ExecutionPlanResult,
+  type FingerAssignment,
+  type FingerUsageStats,
+  type MomentAssignment,
+  type NoteAssignmentInfo,
+  type PadFingerAssignment,
+} from '../../types/executionPlan';
 import { type PerformanceMoment } from '../../types/performanceEvent';
 import { type Voice } from '../../types/voice';
 import { type FingerType, type HandSide } from '../../types/fingerModel';
 import { type CostToggles } from '../../types/costToggles';
 import { type EvaluationConfig } from '../../types/evaluationConfig';
-import { type PerformanceCostBreakdown } from '../../types/costBreakdown';
+import { type CostDimensions, type PerformanceCostBreakdown } from '../../types/costBreakdown';
 import { generateId } from '../../utils/idGenerator';
 import { createSeededRng } from '../../utils/seededRng';
+import {
+  type DiagnosticsPayload,
+  computeTopContributors,
+} from '../../types/diagnostics';
 import {
   buildCooccurrenceMatrix,
   buildSoundFrequency,
@@ -50,6 +62,7 @@ import {
 import {
   buildVoiceIdToPadIndex,
   buildNoteToPadIndex,
+  hashLayout,
   resolveEventToPad,
 } from '../mapping/mappingResolver';
 import {
@@ -339,7 +352,13 @@ class GreedyOptimizer implements OptimizerMethod {
     );
 
     // Build ExecutionPlanResult for backward compatibility
-    const executionPlan = this.buildExecutionPlan(moments, layout, assignment, finalDiagnostics, input.instrumentConfig);
+    const executionPlan = this.buildExecutionPlan(
+      moments,
+      layout,
+      assignment,
+      finalDiagnostics,
+      input.instrumentConfig,
+    );
 
     const wallClockMs = Date.now() - startTime;
     const telemetry: OptimizerTelemetry = {
@@ -666,17 +685,34 @@ class GreedyOptimizer implements OptimizerMethod {
     assignment: PadFingerAssignment,
     diagnostics: PerformanceCostBreakdown,
     instrumentConfig?: import('../../types/performance').InstrumentConfig,
-  ): import('../../types/executionPlan').ExecutionPlanResult {
+  ): ExecutionPlanResult {
     // Build per-event finger assignments from moments + assignment
-    const fingerAssignments: import('../../types/executionPlan').FingerAssignment[] = [];
+    const fingerAssignments: FingerAssignment[] = [];
+    const momentAssignments: MomentAssignment[] = [];
     let unplayableCount = 0;
     let hardCount = 0;
 
     // Build pad resolution indices from layout (handles voiceId and noteNumber lookups)
     const voiceIdIndex = buildVoiceIdToPadIndex(layout.padToVoice);
     const noteIndex = buildNoteToPadIndex(layout.padToVoice);
+    const transitionByMoment = new Map(
+      diagnostics.transitionCosts.map(transition => [transition.toMomentIndex, transition.dimensions]),
+    );
+    const fingerUsageStats: FingerUsageStats = {};
+    let unplayableMomentCount = 0;
+    let hardMomentCount = 0;
+    let totalDrift = 0;
+    let driftCount = 0;
 
     for (const moment of moments) {
+      const eventDimensions = diagnostics.eventCosts[moment.momentIndex]?.dimensions;
+      const transitionDimensions = transitionByMoment.get(moment.momentIndex);
+      const momentDimensions = combineMomentDimensions(eventDimensions, transitionDimensions);
+      const momentCostBreakdown = canonicalDimensionsToV1Breakdown(momentDimensions);
+      const momentCost = momentCostBreakdown.total;
+      const momentDifficulty = getDifficulty(momentCost);
+      const noteAssignments: NoteAssignmentInfo[] = [];
+
       for (const note of moment.notes) {
         // Resolve pad from layout when padId is missing (seed layouts don't pre-populate padId)
         let padKeyStr = note.padId;
@@ -703,60 +739,116 @@ class GreedyOptimizer implements OptimizerMethod {
             startTime: moment.startTime,
             assignedHand: 'Unplayable',
             finger: null,
-            cost: 0,
+            cost: Infinity,
+            costBreakdown: { ...momentCostBreakdown, total: Infinity },
             difficulty: 'Unplayable',
+            eventIndex: moment.momentIndex,
+            eventKey: note.noteKey,
           });
           unplayableCount++;
           continue;
         }
 
         const pad = parsePadKey(padKeyStr);
+        const fingerKey = `${owner.hand === 'left' ? 'L' : 'R'}-${capitalizeFinger(owner.finger)}`;
+        fingerUsageStats[fingerKey] = (fingerUsageStats[fingerKey] ?? 0) + 1;
+        totalDrift += computePadDrift(owner.hand, pad.row, pad.col);
+        driftCount++;
+
+        noteAssignments.push({
+          noteNumber: note.noteNumber,
+          soundId: note.soundId,
+          padId: padKeyStr,
+          row: pad.row,
+          col: pad.col,
+          hand: owner.hand,
+          finger: owner.finger,
+          noteKey: note.noteKey,
+        });
+
         fingerAssignments.push({
           noteNumber: note.noteNumber,
           voiceId: note.soundId,
           startTime: moment.startTime,
           assignedHand: owner.hand,
           finger: owner.finger,
-          cost: 0,
-          difficulty: 'Easy',
+          cost: momentCost,
+          costBreakdown: momentCostBreakdown,
+          difficulty: momentDifficulty,
           row: pad.row,
           col: pad.col,
           padId: padKeyStr,
+          eventIndex: moment.momentIndex,
+          eventKey: note.noteKey,
         });
       }
+
+      if (momentDifficulty === 'Unplayable') {
+        unplayableMomentCount++;
+      } else if (momentDifficulty === 'Hard') {
+        hardMomentCount++;
+      }
+
+      if (momentDifficulty === 'Hard') {
+        hardCount += noteAssignments.length;
+      }
+
+      momentAssignments.push({
+        momentIndex: moment.momentIndex,
+        startTime: moment.startTime,
+        noteAssignments,
+        cost: momentDifficulty === 'Unplayable' ? Infinity : momentCost,
+        difficulty: momentDifficulty,
+        costBreakdown: momentDifficulty === 'Unplayable'
+          ? { ...momentCostBreakdown, total: Infinity }
+          : momentCostBreakdown,
+      });
     }
 
-    // Build finger usage stats
-    const fingerUsageStats: Record<string, number> = {};
-    for (const fa of fingerAssignments) {
-      if (fa.finger) {
-        const key = `${fa.assignedHand}:${fa.finger}`;
-        fingerUsageStats[key] = (fingerUsageStats[key] ?? 0) + 1;
-      }
-    }
+    const score = clampScore(100 - (5 * hardMomentCount) - (20 * unplayableMomentCount));
+    const diagnosticsPayload = buildDiagnosticsPayload(diagnostics);
 
     return {
-      score: diagnostics.total,
+      score,
       unplayableCount,
       hardCount,
       fingerAssignments,
       padFingerOwnership: assignment,
+      momentAssignments,
+      unplayableMomentCount,
+      hardMomentCount,
       fingerUsageStats,
       fatigueMap: {},
-      averageDrift: 0,
+      averageDrift: driftCount > 0 ? totalDrift / driftCount : 0,
       averageMetrics: {
         fingerPreference: diagnostics.dimensions.poseNaturalness,
         handShapeDeviation: 0,
-        transitionCost: diagnostics.dimensions.transitionCost,
+        transitionCost: diagnostics.dimensions.transitionCost + diagnostics.dimensions.alternation,
         handBalance: diagnostics.dimensions.handBalance,
         constraintPenalty: diagnostics.dimensions.constraintPenalty,
         total: diagnostics.total,
       },
+      layoutBinding: {
+        layoutId: layout.id,
+        layoutHash: hashLayout(layout),
+        layoutRole: layout.role ?? 'active',
+      },
+      diagnostics: diagnosticsPayload,
       metadata: {
+        layoutIdUsed: layout.id,
+        layoutHashUsed: hashLayout(layout),
         layoutCoverage: {
           totalNotes: fingerAssignments.length,
           unmappedNotesCount: unplayableCount,
           fallbackNotesCount: 0,
+        },
+        objectiveTotal: diagnostics.total,
+        objectiveComponentsSummary: {
+          transition: diagnostics.dimensions.transitionCost,
+          gripNaturalness: diagnostics.dimensions.poseNaturalness,
+          alternation: diagnostics.dimensions.alternation,
+          handBalance: diagnostics.dimensions.handBalance,
+          constraintPenalty: diagnostics.dimensions.constraintPenalty,
         },
       },
     };
@@ -816,6 +908,75 @@ async function yieldControl(): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, 0));
 }
 
+function getDifficulty(cost: number): DifficultyLevel {
+  if (!Number.isFinite(cost) || cost > 100) return 'Unplayable';
+  if (cost > 10) return 'Hard';
+  if (cost > 3) return 'Medium';
+  return 'Easy';
+}
+
+function combineMomentDimensions(
+  eventDimensions?: CostDimensions,
+  transitionDimensions?: CostDimensions,
+): CostDimensions {
+  const poseNaturalness = (eventDimensions?.poseNaturalness ?? 0) + (transitionDimensions?.poseNaturalness ?? 0);
+  const transitionCost = (eventDimensions?.transitionCost ?? 0) + (transitionDimensions?.transitionCost ?? 0);
+  const constraintPenalty = (eventDimensions?.constraintPenalty ?? 0) + (transitionDimensions?.constraintPenalty ?? 0);
+  const alternation = (eventDimensions?.alternation ?? 0) + (transitionDimensions?.alternation ?? 0);
+  const handBalance = (eventDimensions?.handBalance ?? 0) + (transitionDimensions?.handBalance ?? 0);
+  return {
+    poseNaturalness,
+    transitionCost,
+    constraintPenalty,
+    alternation,
+    handBalance,
+    total: poseNaturalness + transitionCost + constraintPenalty + alternation + handBalance,
+  };
+}
+
+function canonicalDimensionsToV1Breakdown(dimensions: CostDimensions) {
+  return {
+    fingerPreference: dimensions.poseNaturalness,
+    handShapeDeviation: 0,
+    transitionCost: dimensions.transitionCost + dimensions.alternation,
+    handBalance: dimensions.handBalance,
+    constraintPenalty: dimensions.constraintPenalty,
+    total: dimensions.total,
+  };
+}
+
+function buildDiagnosticsPayload(diagnostics: PerformanceCostBreakdown): DiagnosticsPayload {
+  const factors = {
+    transition: diagnostics.dimensions.transitionCost,
+    gripNaturalness: diagnostics.dimensions.poseNaturalness,
+    alternation: diagnostics.dimensions.alternation,
+    handBalance: diagnostics.dimensions.handBalance,
+    constraintPenalty: diagnostics.dimensions.constraintPenalty,
+    total: diagnostics.total,
+  };
+
+  return {
+    feasibility: diagnostics.feasibility,
+    factors,
+    topContributors: computeTopContributors(factors),
+  };
+}
+
+function capitalizeFinger(finger: FingerType): string {
+  return finger.charAt(0).toUpperCase() + finger.slice(1);
+}
+
+function computePadDrift(hand: 'left' | 'right', row: number, col: number): number {
+  const home = hand === 'left' ? { x: 2, y: 2 } : { x: 5, y: 2 };
+  return Math.sqrt(
+    Math.pow(col - home.x, 2) + Math.pow(row - home.y, 2),
+  );
+}
+
+function clampScore(score: number): number {
+  return Math.max(0, Math.min(100, score));
+}
+
 function buildEmptyOutput(input: OptimizerInput, startTime: number): OptimizerOutput {
   return {
     layout: input.layout,
@@ -825,12 +986,45 @@ function buildEmptyOutput(input: OptimizerInput, startTime: number): OptimizerOu
       unplayableCount: 0,
       hardCount: 0,
       fingerAssignments: [],
+      momentAssignments: [],
+      unplayableMomentCount: 0,
+      hardMomentCount: 0,
       fingerUsageStats: {},
       fatigueMap: {},
       averageDrift: 0,
       averageMetrics: {
         fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0,
         handBalance: 0, constraintPenalty: 0, total: 0,
+      },
+      layoutBinding: {
+        layoutId: input.layout.id,
+        layoutHash: hashLayout(input.layout),
+        layoutRole: input.layout.role ?? 'active',
+      },
+      diagnostics: {
+        feasibility: {
+          level: 'feasible',
+          summary: 'No events to evaluate',
+          reasons: [],
+        },
+        factors: {
+          transition: 0,
+          gripNaturalness: 0,
+          alternation: 0,
+          handBalance: 0,
+          constraintPenalty: 0,
+          total: 0,
+        },
+        topContributors: [],
+      },
+      metadata: {
+        layoutIdUsed: input.layout.id,
+        layoutHashUsed: hashLayout(input.layout),
+        layoutCoverage: {
+          totalNotes: 0,
+          unmappedNotesCount: 0,
+          fallbackNotesCount: 0,
+        },
       },
     },
     diagnostics: {

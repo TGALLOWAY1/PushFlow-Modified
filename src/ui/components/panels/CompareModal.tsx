@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 import { useProject } from '../../state/ProjectContext';
+import { getAnalysisForLayout } from '../../state/projectState';
 import { CompareGridView } from '../CompareGridView';
 import { CandidateCompare } from '../CandidateCompare';
 import { type CandidateSolution } from '../../../types/candidateSolution';
@@ -21,7 +22,8 @@ interface CompareModalProps {
  * Uses the latest analysis result if available, otherwise builds a minimal stub.
  */
 function buildActiveCandidate(state: ReturnType<typeof useProject>['state']): CandidateSolution {
-  const plan = state.analysisResult?.executionPlan ?? {
+  const activeAnalysis = getAnalysisForLayout(state, state.activeLayout);
+  const plan = activeAnalysis?.executionPlan ?? {
     score: 0, unplayableCount: 0, hardCount: 0,
     fingerAssignments: [], fingerUsageStats: {}, fatigueMap: {},
     averageDrift: 0, averageMetrics: {
@@ -29,10 +31,10 @@ function buildActiveCandidate(state: ReturnType<typeof useProject>['state']): Ca
       handBalance: 0, constraintPenalty: 0, total: 0,
     },
   };
-  const diffAnalysis = state.analysisResult?.difficultyAnalysis ?? {
+  const diffAnalysis = activeAnalysis?.difficultyAnalysis ?? {
     overallScore: 0, passages: [], bindingConstraints: [],
   };
-  const tradeoff = state.analysisResult?.tradeoffProfile ?? {
+  const tradeoff = activeAnalysis?.tradeoffProfile ?? {
     playability: 0, compactness: 0, handBalance: 0, transitionEfficiency: 0,
   };
   return {

@@ -174,6 +174,95 @@ test/
   golden/              # End-to-end golden scenario tests
 ```
 
+### Pipeline and Dataflow
+
+For a code-level graph, see [docs/dataflow-diagram.md](docs/dataflow-diagram.md). The runtime pipeline breaks down into these stages:
+
+| Stage | Main entrypoints | What happens | Models / functions called | Artifacts created |
+|-------|------------------|--------------|----------------------------|-------------------|
+| **1. Source ingestion** | `src/import/midiImport.ts`, Pattern Composer / loop editor surfaces | MIDI notes or composed patterns are converted into canonical musical data | `@tonejs/midi`, `parseMidiProject()`, composer preset + loop editors | `Performance`, `PerformanceEvent[]`, `PerformanceMoment[]`, `Voice[]`, empty `Layout` |
+| **2. Project state normalization** | `ProjectContext`, `projectReducer`, serializer | Imported or loaded data is normalized into the editor's single state model | `projectSerializer.ts`, `projectState.ts`, `lanesReducer.ts` | `ProjectState`, `SoundStream[]`, `activeLayout`, `workingLayout`, `savedVariants` |
+| **3. Derived-performance build** | `getActivePerformance()`, `getDisplayedLayout()` | Muted streams are filtered out, current layout context is selected, and solver-facing performance data is rebuilt on demand | `getActiveStreams()`, `getActivePerformance()`, layout/display selectors in `projectState.ts` | current `Performance`, displayed `Layout`, displayed `ExecutionPlanResult` context |
+| **4. Constraint projection** | `useAutoAnalysis.ts` | User intent is projected from UI state onto solver inputs | `buildSolverConstraints()`, `constraintsToManualAssignments()`, `computeInitialOwnership()` | `SolverConstraints`, legacy manual assignments, initial pad ownership |
+| **5. Solver / optimizer execution** | auto-analysis or manual Generate | PushFlow computes either a single fast analysis plan or a multi-candidate search result | `createBeamSolver()`, `generateCandidates()`, `generateGreedyCandidates()`, optimizer registry, `BeamSolver`, `AnnealingSolver`, `GreedyOptimizer` | `ExecutionPlanResult`, `OptimizerOutput`, candidate `Layout`s, greedy move trace |
+| **6. Canonical evaluation and ranking** | post-solve engine pipeline | Layouts and assignments are rescored with the canonical evaluator, then ranked and filtered | `evaluatePerformance()`, `difficultyScoring.ts`, `candidateRanker.ts`, `diversityMeasurement.ts`, `baselineCompare.ts` | `PerformanceCostBreakdown`, `DiagnosticsPayload`, `DifficultyAnalysis`, `TradeoffProfile`, filtered `CandidateSolution[]` |
+| **7. Workflow materialization** | reducer promotion / save actions | Results are committed into workflow artifacts the user can keep | `PROMOTE_WORKING_LAYOUT`, `PROMOTE_CANDIDATE`, `SAVE_AS_VARIANT`, `LOAD_SAVED_VARIANT` | new `activeLayout`, `workingLayout`, durable `savedVariants` |
+| **8. Persistence** | autosave + explicit save | Durable state is serialized and written to browser storage | `useAutoSave.ts`, `projectStorage.ts`, `indexedDbStore.ts`, `projectSerializer.ts` | persisted `ProjectState` snapshot |
+
+### Runtime Paths
+
+#### Auto-analysis path
+This is the fast, always-available inspection path.
+
+1. UI changes mark the project `analysisStale`.
+2. `useAutoAnalysis()` debounces a rerun.
+3. The hook builds a displayed `Layout`, active `Performance`, and projected solver constraints.
+4. `createBeamSolver()` runs a single-candidate beam search.
+5. The returned `ExecutionPlanResult` is wrapped into a `CandidateSolution` with `DifficultyAnalysis` and `TradeoffProfile`.
+6. The reducer stores it in `analysisResult`, which drives the grid, timeline, costs panel, and summaries.
+
+#### Manual Generate path
+This is the exploration path for alternative layouts.
+
+1. The toolbar dispatches `generateFull()`.
+2. The selected optimizer method decides the branch:
+   - `greedy` -> `generateGreedyCandidates()`
+   - `beam` / `annealing` -> `generateCandidates()`
+3. Candidate generation produces one or more `Layout` seeds.
+4. A solver/optimizer computes assignments and normalized execution plans.
+5. PushFlow re-evaluates each result with `evaluatePerformance()`.
+6. Difficulty scoring, tradeoff scoring, baseline diffing, and duplicate filtering produce the final `CandidateSolution[]`.
+7. The reducer stores candidates and selects one for inspection.
+
+#### Pattern / composer path
+This is the authoring/testing path for creating playable material, not just importing it.
+
+1. Composer and loop-editor surfaces create pattern/preset data.
+2. Rudiment and pattern utilities convert those structures into event timelines.
+3. Those events feed the exact same `Performance` -> solver -> evaluation -> candidate pipeline as imported MIDI.
+
+### Core Artifacts
+
+| Artifact | Type definition | Created by | Consumed by |
+|---------|------------------|------------|-------------|
+| **Sound identity** | `SoundStream`, `Voice` | MIDI import, project load, composer preset placement | grid, sounds panel, layout models, solver mapping |
+| **Performance timeline** | `Performance`, `PerformanceEvent`, `PerformanceMoment` | import, composer generation, `buildPerformanceMoments()` | solvers, evaluator, timeline UI |
+| **Static pad mapping** | `Layout` | import bootstrap, manual editing, seeding, optimization, workflow promotion | grid, candidate previews, solver mapping, persistence |
+| **Execution artifact** | `ExecutionPlanResult` | beam / annealing / greedy solver paths | timeline, costs panel, summaries, compare surfaces |
+| **Canonical scoring artifact** | `PerformanceCostBreakdown` | `evaluatePerformance()` | diagnostics, ranking, manual cost calculation |
+| **User-facing candidate** | `CandidateSolution` | auto-analysis wrapper or candidate generation | layouts panel, compare mode, promotion flow |
+| **Workflow state** | `ProjectState` | serializer + reducer | the entire UI shell and persistence layer |
+
+### Models Called
+
+PushFlow does not call remote AI/LLM services. The "models" in this repo are local computational models:
+
+| Model | Purpose | Primary code |
+|------|---------|--------------|
+| **MIDI parse model** | turn `.mid` bytes into canonical note events | `@tonejs/midi`, `src/import/midiImport.ts` |
+| **Biomechanical feasibility model** | reject impossible grips and pad combinations | `src/engine/prior/feasibility.ts`, `src/engine/prior/biomechanicalModel.ts` |
+| **Hand-zone / surface model** | reason about left/right zones and pad distances | `src/engine/surface/handZone.ts`, `src/engine/surface/padGrid.ts` |
+| **Beam search model** | compute hand/finger assignments for a fixed layout | `src/engine/solvers/beamSolver.ts` |
+| **Annealing model** | globally optimize layouts and assignments | `src/engine/optimization/annealingSolver.ts` |
+| **Greedy hill-climb model** | interpretable local optimization with move traces | `src/engine/optimization/greedyOptimizer.ts` |
+| **Canonical evaluation model** | compute cost dimensions for events, transitions, and full performances | `src/engine/evaluation/canonicalEvaluator.ts`, `src/engine/evaluation/costFunction.ts` |
+| **Difficulty / ranking model** | turn raw plans into user-facing candidate scores and tradeoffs | `src/engine/evaluation/difficultyScoring.ts`, `src/engine/optimization/candidateRanker.ts` |
+| **Diversity / baseline compare model** | keep generated candidates meaningfully different from the baseline | `src/engine/analysis/diversityMeasurement.ts`, `src/engine/analysis/baselineCompare.ts` |
+
+### Artifact Lifecycle
+
+The intended artifact progression is:
+
+`MIDI / Composer Input`
+-> `SoundStream[] + Performance`
+-> `Layout`
+-> `ExecutionPlanResult`
+-> `PerformanceCostBreakdown + DiagnosticsPayload`
+-> `CandidateSolution`
+-> `Active Layout / Working Layout / Saved Variant`
+
+That progression is the core contract of the product: PushFlow starts with musical material, creates a pad mapping, evaluates whether that mapping is physically playable, and then turns the best outcomes into durable workflow artifacts the user can inspect, promote, save, or discard.
+
 ---
 
 ## Development

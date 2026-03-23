@@ -8,44 +8,19 @@
 
 import { useState, useMemo } from 'react';
 import { useProject } from '../../state/ProjectContext';
-import { getDisplayedLayout, getDisplayedLayoutRole, getActiveStreams } from '../../state/projectState';
+import {
+  getDisplayedCandidate,
+  getDisplayedLayout,
+  getDisplayedLayoutRole,
+  getActiveStreams,
+} from '../../state/projectState';
 import { type FingerType, ALL_FINGERS } from '../../../types/fingerModel';
 import { CostBreakdownBars } from './CostBreakdownBars';
 import { EventCostChart } from './EventCostChart';
 import { LearnMoreModal } from './LearnMoreModal';
 import { buildSelectedTransitionModel } from '../../analysis/selectionModel';
-
-/** Parse a constraint string like "L2" or "L-Ix" (legacy) into hand + finger. */
-function parseConstraint(constraint: string): { hand: 'left' | 'right'; finger: FingerType } | null {
-  // "L2" format (canonical)
-  const matchNum = constraint.match(/^([LlRr])([1-5])$/);
-  if (matchNum) {
-    const hand = matchNum[1].toUpperCase() === 'L' ? 'left' as const : 'right' as const;
-    const fingerMap: Record<string, FingerType> = {
-      '1': 'thumb', '2': 'index', '3': 'middle', '4': 'ring', '5': 'pinky',
-    };
-    return { hand, finger: fingerMap[matchNum[2]] };
-  }
-  // "L-Ix" format (legacy)
-  const FINGER_MAP: Record<string, FingerType> = {
-    Th: 'thumb', Ix: 'index', Md: 'middle', Rg: 'ring', Pk: 'pinky',
-  };
-  const matchDash = constraint.match(/^([LR])-(\w+)$/);
-  if (matchDash) {
-    const hand = matchDash[1] === 'L' ? 'left' as const : 'right' as const;
-    const finger = FINGER_MAP[matchDash[2]];
-    if (finger) return { hand, finger };
-  }
-  return null;
-}
-
-/** Build a constraint string from hand + finger in canonical "L2" format. */
-function buildConstraintStr(hand: 'left' | 'right', finger: FingerType): string {
-  const FINGER_ABBREV: Record<FingerType, string> = {
-    thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
-  };
-  return `${hand === 'left' ? 'L' : 'R'}${FINGER_ABBREV[finger]}`;
-}
+import { formatPlanScore, getPlanScoreQuality, getPlanScoreSummary } from '../../analysis/planScore';
+import { formatFingerConstraint, parseFingerConstraint } from '../../../utils/fingerConstraints';
 
 export function ActiveLayoutSummary() {
   const { state, dispatch } = useProject();
@@ -55,9 +30,10 @@ export function ActiveLayoutSummary() {
   const [nameDraft, setNameDraft] = useState('');
 
   const displayedLayout = getDisplayedLayout(state);
+  const displayedCandidate = getDisplayedCandidate(state);
   const layoutRole = getDisplayedLayoutRole(state);
   const activeStreams = getActiveStreams(state);
-  const currentPlan = state.analysisResult?.executionPlan;
+  const currentPlan = displayedCandidate?.executionPlan;
   const assignments = currentPlan?.fingerAssignments;
 
   // Selected event data
@@ -112,13 +88,13 @@ export function ActiveLayoutSummary() {
     ? `${assignment.row},${assignment.col}`
     : null;
   const currentConstraint = padKey && displayedLayout ? displayedLayout.fingerConstraints[padKey] : undefined;
-  const parsed = currentConstraint ? parseConstraint(currentConstraint) : null;
+  const parsed = currentConstraint ? parseFingerConstraint(currentConstraint) : null;
   const effectiveHand = parsed?.hand ?? (assignment?.assignedHand === 'Unplayable' ? null : assignment?.assignedHand ?? null);
   const effectiveFinger = parsed?.finger ?? assignment?.finger ?? null;
 
   const handleSetConstraint = (hand: 'left' | 'right', finger: FingerType) => {
     if (!padKey) return;
-    dispatch({ type: 'SET_FINGER_CONSTRAINT', payload: { padKey, constraint: buildConstraintStr(hand, finger) } });
+    dispatch({ type: 'SET_FINGER_CONSTRAINT', payload: { padKey, constraint: formatFingerConstraint(hand, finger) } });
   };
 
   const handleClearConstraint = () => {
@@ -135,7 +111,7 @@ export function ActiveLayoutSummary() {
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-subtle)] flex-shrink-0">
           <div className="flex items-center gap-2">
             <h3 className="section-header">Layout Summary</h3>
-            {state.analysisStale && currentPlan && (
+            {state.analysisStale && !state.selectedCandidateId && currentPlan && (
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" title="Analysis outdated" />
             )}
           </div>
@@ -191,44 +167,30 @@ export function ActiveLayoutSummary() {
           </div>
 
           {/* Quick stats */}
-          {currentPlan ? (() => {
-            // Derive a meaningful quality score from feasibility + ergonomic cost
-            const totalEvents = currentPlan.fingerAssignments.length;
-            const playableEvents = totalEvents - currentPlan.unplayableCount;
-            const feasibilityPct = totalEvents > 0 ? (playableEvents / totalEvents) * 100 : 100;
-            // Average cost per event, clamped: lower cost = higher quality
-            const avgCost = totalEvents > 0 ? currentPlan.averageMetrics.total : 0;
-            // Map avg cost 0→100%, ≥5→0% (cost above 5 is very poor ergonomics)
-            const ergoPct = Math.max(0, Math.min(100, (1 - avgCost / 5) * 100));
-            // Combined: feasibility dominates (60%) + ergonomics (40%)
-            const qualityScore = Math.round(feasibilityPct * 0.6 + ergoPct * 0.4);
-            const qualityLabel = qualityScore >= 80 ? 'good' as const : qualityScore >= 50 ? 'ok' as const : 'bad' as const;
-
-            return (
-              <div className="grid grid-cols-4 gap-1.5">
-                <QuickStat
-                  label="Quality"
-                  value={`${qualityScore}%`}
-                  quality={qualityLabel}
-                  subtitle={`Feasibility: ${feasibilityPct.toFixed(0)}% | Ergo: ${ergoPct.toFixed(0)}% | Raw cost: ${currentPlan.score.toFixed(1)}`}
-                />
-                <QuickStat
-                  label="Events"
-                  value={String(new Set(currentPlan.fingerAssignments.map(a => a.startTime)).size)}
-                />
-                <QuickStat
-                  label="Hard"
-                  value={String(currentPlan.hardCount)}
-                  quality={currentPlan.hardCount === 0 ? 'good' : 'bad'}
-                />
-                <QuickStat
-                  label="Unplay"
-                  value={String(currentPlan.unplayableCount)}
-                  quality={currentPlan.unplayableCount === 0 ? 'good' : 'bad'}
-                />
-              </div>
-            );
-          })() : (
+          {currentPlan ? (
+            <div className="grid grid-cols-4 gap-1.5">
+              <QuickStat
+                label="Score"
+                value={formatPlanScore(currentPlan.score)}
+                quality={getPlanScoreQuality(currentPlan.score)}
+                subtitle={getPlanScoreSummary(currentPlan.score)}
+              />
+              <QuickStat
+                label="Events"
+                value={String(new Set(currentPlan.fingerAssignments.map(a => a.startTime)).size)}
+              />
+              <QuickStat
+                label="Hard"
+                value={String(currentPlan.hardCount)}
+                quality={currentPlan.hardCount === 0 ? 'good' : 'bad'}
+              />
+              <QuickStat
+                label="Unplay"
+                value={String(currentPlan.unplayableCount)}
+                quality={currentPlan.unplayableCount === 0 ? 'good' : 'bad'}
+              />
+            </div>
+          ) : (
             <div className="grid grid-cols-2 gap-1.5">
               <QuickStat label="Mapped" value={`${mappedCount} pads`} />
               <QuickStat label="Sounds" value={String(activeStreams.length)} />

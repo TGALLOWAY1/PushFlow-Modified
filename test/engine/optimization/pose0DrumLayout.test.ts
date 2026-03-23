@@ -100,6 +100,26 @@ describe('Pose0-seeded drum layout', () => {
     expect(voiceIds).toContain('stream-hihat');
   });
 
+  it('uses performance voiceIds when seeding without an existing voice map', () => {
+    const perf: Performance = {
+      name: 'VoiceId Seed',
+      tempo: 120,
+      events: [
+        { noteNumber: 36, startTime: 0.0, voiceId: 'stream-kick' },
+        { noteNumber: 38, startTime: 0.5, voiceId: 'stream-snare' },
+        { noteNumber: 42, startTime: 1.0, voiceId: 'stream-hihat' },
+      ],
+    };
+
+    const pose0 = createDefaultPose0();
+    const layout = seedLayoutFromPose0(perf, pose0, 0);
+
+    const voiceIds = Object.values(layout.padToVoice).map(v => v.id);
+    expect(voiceIds).toContain('stream-kick');
+    expect(voiceIds).toContain('stream-snare');
+    expect(voiceIds).toContain('stream-hihat');
+  });
+
   it('generates playable candidates for a simple drum pattern', async () => {
     // Typical drum groove: kick+hihat together, snare alone, hihat alone
     const perf = createTestPerformance([

@@ -509,10 +509,10 @@ export async function generateCandidates(
     return unplayableRatio <= 0.25;
   });
 
-  // If all candidates were filtered, keep the best one (lowest score = best)
+  // If all candidates were filtered, keep the best normalized plan score.
   const finalCandidates = valid.length > 0
     ? valid
-    : [...filtered].sort((a, b) => a.executionPlan.score - b.executionPlan.score).slice(0, 1);
+    : [...filtered].sort((a, b) => b.executionPlan.score - a.executionPlan.score).slice(0, 1);
 
   // Build generation summary (includes low-diversity explanation)
   const summary = buildGenerationSummary(

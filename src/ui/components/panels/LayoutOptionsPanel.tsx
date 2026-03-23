@@ -25,7 +25,6 @@ export function LayoutOptionsPanel({
   const [viewAllOpen, setViewAllOpen] = useState(false);
   const [editingLayoutName, setEditingLayoutName] = useState(false);
   const [layoutNameDraft, setLayoutNameDraft] = useState('');
-  const [confirmDeleteVariantId, setConfirmDeleteVariantId] = useState<string | null>(null);
 
   const hasCandidates = state.candidates.length > 0;
   const compareCount = selectedForCompare.size;
@@ -36,7 +35,7 @@ export function LayoutOptionsPanel({
       <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border-subtle)] flex-shrink-0">
         <div className="flex items-center gap-2">
           <h3 className="section-header">
-            Layout Options
+            Layouts
           </h3>
           {hasCandidates && (
             <span className="text-pf-xs text-[var(--text-tertiary)]">{state.candidates.length}</span>
@@ -51,7 +50,7 @@ export function LayoutOptionsPanel({
               Compare ({compareCount})
             </button>
           )}
-          {state.candidates.length > 4 && (
+          {(state.candidates.length > 4 || state.savedVariants.length > 3) && (
             <button
               className="text-pf-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
               onClick={() => setViewAllOpen(true)}
@@ -185,52 +184,22 @@ export function LayoutOptionsPanel({
 
         {/* Saved variants */}
         {state.savedVariants.length > 0 && (
-          <div className="pt-3 mt-3 border-t border-[var(--border-subtle)]">
-            <span className="section-header px-0.5 mb-2 block">
-              Saved Variants ({state.savedVariants.length})
-            </span>
+          <div className="pt-3 mt-3 border-t border-[var(--border-subtle)] space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="section-header">
+                Saved Variants ({state.savedVariants.length})
+              </span>
+            </div>
             <div className="flex flex-col gap-2">
-              {state.savedVariants.map((variant) => (
-                <div key={variant.id} className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-2.5">
-                  <div className="text-pf-sm text-[var(--text-primary)] font-medium mb-1 truncate">{variant.name}</div>
-                  <div className="text-pf-xs text-[var(--text-tertiary)] mb-2">
-                    {Object.keys(variant.padToVoice).length} pads assigned
-                  </div>
-                  <div className="flex gap-1.5">
-                    <div className="flex gap-1.5 items-center">
-                      <VariantPromoteButton
-                        onPromote={() => dispatch({ type: 'PROMOTE_VARIANT', payload: { variantId: variant.id } })}
-                      />
-                      {confirmDeleteVariantId === variant.id ? (
-                        <div className="flex gap-1 animate-in fade-in zoom-in duration-200">
-                          <button
-                            className="px-2 py-1 text-pf-xs rounded-pf-sm bg-red-600 text-white hover:bg-red-500"
-                            onClick={() => {
-                              dispatch({ type: 'DELETE_VARIANT', payload: { variantId: variant.id } });
-                              setConfirmDeleteVariantId(null);
-                            }}
-                          >
-                            Del
-                          </button>
-                          <button
-                            className="px-2 py-1 text-pf-xs rounded-pf-sm bg-[var(--bg-hover)] text-[var(--text-tertiary)]"
-                            onClick={() => setConfirmDeleteVariantId(null)}
-                          >
-                            Esc
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          className="px-2 py-1 text-pf-xs rounded-pf-sm transition-colors text-[var(--text-tertiary)] hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20"
-                          onClick={() => setConfirmDeleteVariantId(variant.id)}
-                          title="Delete variant"
-                        >
-                          &times;
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
+              {state.savedVariants.slice(-3).reverse().map((variant) => (
+                <SavedVariantCard
+                  key={variant.id}
+                  variant={variant}
+                  soundStreams={state.soundStreams}
+                  onLoad={() => dispatch({ type: 'LOAD_SAVED_VARIANT', payload: { variantId: variant.id } })}
+                  onPromote={() => dispatch({ type: 'PROMOTE_VARIANT', payload: { variantId: variant.id } })}
+                  onDelete={() => dispatch({ type: 'DELETE_VARIANT', payload: { variantId: variant.id } })}
+                />
               ))}
             </div>
           </div>
@@ -299,36 +268,17 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
               </h4>
               <div className="flex flex-col gap-3">
                 {state.savedVariants.map((variant) => (
-                  <div key={variant.id} className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
-                    <div className="text-pf-sm text-[var(--text-primary)] font-medium mb-1 truncate">{variant.name}</div>
-                    <div className="text-pf-xs text-[var(--text-tertiary)]">
-                      {Object.keys(variant.padToVoice).length} pads assigned
-                    </div>
-                    {variant.savedAt && (
-                      <div className="text-pf-xs text-[var(--text-tertiary)]">
-                        Saved: {new Date(variant.savedAt).toLocaleDateString()}
-                      </div>
-                    )}
-                    <div className="flex gap-1.5 mt-2">
-                      <button
-                        className="flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-emerald-600/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/25"
-                        onClick={() => {
-                          if (confirm('Promote this variant to become the Active Layout?')) {
-                            dispatch({ type: 'PROMOTE_VARIANT', payload: { variantId: variant.id } });
-                          }
-                        }}
-                      >
-                        Promote
-                      </button>
-                      <button
-                        className="px-2 py-1 text-pf-xs rounded-pf-sm transition-colors text-[var(--text-tertiary)] hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20"
-                        onClick={() => dispatch({ type: 'DELETE_VARIANT', payload: { variantId: variant.id } })}
-                        title="Delete variant"
-                      >
-                        &times;
-                      </button>
-                    </div>
-                  </div>
+                  <SavedVariantCard
+                    key={variant.id}
+                    variant={variant}
+                    soundStreams={state.soundStreams}
+                    onLoad={() => {
+                      dispatch({ type: 'LOAD_SAVED_VARIANT', payload: { variantId: variant.id } });
+                      onClose();
+                    }}
+                    onPromote={() => dispatch({ type: 'PROMOTE_VARIANT', payload: { variantId: variant.id } })}
+                    onDelete={() => dispatch({ type: 'DELETE_VARIANT', payload: { variantId: variant.id } })}
+                  />
                 ))}
               </div>
             </div>
@@ -336,6 +286,83 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </>
+  );
+}
+
+function SavedVariantCard({
+  variant,
+  soundStreams,
+  onLoad,
+  onPromote,
+  onDelete,
+}: {
+  variant: import('../../../types/layout').Layout;
+  soundStreams: import('../../state/projectState').SoundStream[];
+  onLoad: () => void;
+  onPromote: () => void;
+  onDelete: () => void;
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  return (
+    <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="min-w-0">
+          <div className="text-pf-sm text-[var(--text-primary)] font-medium truncate">{variant.name}</div>
+          <div className="text-pf-xs text-[var(--text-tertiary)]">
+            {Object.keys(variant.padToVoice).length} pads assigned
+          </div>
+          {variant.savedAt && (
+            <div className="text-pf-xs text-[var(--text-tertiary)]">
+              Saved {new Date(variant.savedAt).toLocaleDateString()}
+            </div>
+          )}
+        </div>
+        <div className="flex-shrink-0">
+          <MiniGridPreview
+            layout={variant}
+            soundStreams={soundStreams}
+            size={0.8}
+          />
+        </div>
+      </div>
+      <div className="flex items-center justify-end gap-1.5">
+        <button
+          className="px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-blue-600/15 border border-blue-500/30 text-blue-400 hover:bg-blue-600/25"
+          onClick={onLoad}
+        >
+          Load Draft
+        </button>
+        <VariantPromoteButton onPromote={onPromote} />
+        {confirmDelete ? (
+          <>
+            <button
+              className="px-2 py-1 text-pf-xs rounded-pf-sm bg-red-600 text-white hover:bg-red-500"
+              onClick={() => {
+                onDelete();
+                setConfirmDelete(false);
+              }}
+            >
+              Del
+            </button>
+            <button
+              className="px-2 py-1 text-pf-xs rounded-pf-sm bg-[var(--bg-hover)] text-[var(--text-tertiary)]"
+              onClick={() => setConfirmDelete(false)}
+            >
+              Esc
+            </button>
+          </>
+        ) : (
+          <button
+            className="px-2 py-1 text-pf-xs rounded-pf-sm transition-colors text-[var(--text-tertiary)] hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20"
+            onClick={() => setConfirmDelete(true)}
+            title="Delete variant"
+          >
+            &times;
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

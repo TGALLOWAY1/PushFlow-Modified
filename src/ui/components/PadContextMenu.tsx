@@ -36,6 +36,7 @@ export function PadContextMenu({ padKey, x, y, onClose }: PadContextMenuProps) {
 
   const voice = layout?.padToVoice[padKey];
   const currentConstraint = layout?.fingerConstraints[padKey];
+  const isLocked = !!voice && layout?.placementLocks[voice.id] === padKey;
 
   // Clamp position to viewport bounds
   const [position, setPosition] = useState({ left: x, top: y });
@@ -95,6 +96,19 @@ export function PadContextMenu({ padKey, x, y, onClose }: PadContextMenuProps) {
           }}
         >
           Remove from pad
+        </button>
+      )}
+
+      {/* Placement lock */}
+      {voice && (
+        <button
+          className="w-full px-3 py-1.5 text-left text-pf-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+          onClick={() => {
+            dispatch({ type: 'TOGGLE_PLACEMENT_LOCK', payload: { voiceId: voice.id, padKey } });
+            onClose();
+          }}
+        >
+          {isLocked ? 'Unlock placement' : 'Lock to this pad'}
         </button>
       )}
 

@@ -36,9 +36,9 @@ const COLORS = [
 /**
  * Creates a minimal Voice for a note number.
  */
-function createVoiceForNote(noteNumber: number, index: number): Voice {
+function createVoiceForNote(noteNumber: number, index: number, voiceId?: string): Voice {
   return {
-    id: generateId('sound'),
+    id: voiceId ?? generateId('sound'),
     name: `${getNoteName(noteNumber)} (${noteNumber})`,
     sourceType: 'midi_track',
     sourceFile: 'seed',
@@ -86,6 +86,13 @@ export function seedLayoutFromPose0(
     return a - b;
   });
 
+  const voiceIdByNote = new Map<number, string>();
+  for (const event of performance.events) {
+    if (event.voiceId && !voiceIdByNote.has(event.noteNumber)) {
+      voiceIdByNote.set(event.noteNumber, event.voiceId);
+    }
+  }
+
   // Get Pose0 pads with offset, ordered by finger priority
   const posePads = getPose0PadsWithOffset(pose0, offsetRow, true);
   const orderedPosePads = FINGER_PRIORITY_ORDER.flatMap((fid) => {
@@ -117,7 +124,8 @@ export function seedLayoutFromPose0(
     const noteNumber = sortedNotes[i];
     const pad = padOrder[i];
     const key = padKey(pad.row, pad.col);
-    const voice = existingVoices?.get(noteNumber) ?? createVoiceForNote(noteNumber, i);
+    const voice = existingVoices?.get(noteNumber)
+      ?? createVoiceForNote(noteNumber, i, voiceIdByNote.get(noteNumber));
     padToVoice[key] = { ...voice, originalMidiNote: noteNumber };
   }
 

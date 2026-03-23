@@ -24,8 +24,6 @@ interface WorkspaceToolbarProps {
   generateDisabledReason: string | null;
   compareCount: number;
   onCompare: () => void;
-  composerOpen: boolean;
-  onToggleComposer: () => void;
   onCalculateCost?: () => void;
   hasAssignment?: boolean;
   saveStatus?: SaveStatus;
@@ -41,8 +39,6 @@ export function WorkspaceToolbar({
   generateDisabledReason,
   compareCount,
   onCompare,
-  composerOpen,
-  onToggleComposer,
   onCalculateCost,
   hasAssignment,
   saveStatus = 'saved',
@@ -316,21 +312,6 @@ export function WorkspaceToolbar({
         title={compareCount >= 2 ? `Compare ${compareCount} selected layouts` : 'Select 2+ candidates to compare'}
       >
         Compare{compareCount >= 2 ? ` (${compareCount})` : ''}
-      </button>
-
-      <div className="pf-divider-v" />
-
-      {/* Pattern Composer toggle */}
-      <button
-        className={`pf-btn text-pf-sm ${
-          composerOpen
-            ? 'bg-[var(--bg-active)] text-[var(--text-primary)] border border-[var(--border-default)]'
-            : 'pf-btn-subtle'
-        }`}
-        onClick={onToggleComposer}
-        title="Toggle Pattern Composer"
-      >
-        Composer
       </button>
 
       {/* Settings gear */}

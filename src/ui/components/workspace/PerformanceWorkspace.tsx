@@ -20,6 +20,7 @@ import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
 import { useAutoSave } from '../../hooks/useAutoSave';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useViewSettings, ViewSettingsProvider } from '../../state/viewSettings';
+import { getDisplayedCandidate, getSelectedCandidate } from '../../state/projectState';
 
 import { WorkspaceToolbar } from './WorkspaceToolbar';
 import { VoicePalette } from '../VoicePalette';
@@ -28,6 +29,7 @@ import { InteractiveGrid } from '../InteractiveGrid';
 import { UnifiedTimeline } from '../UnifiedTimeline';
 import { WorkspacePatternStudio } from './WorkspacePatternStudio';
 import { ActiveLayoutSummary } from '../panels/ActiveLayoutSummary';
+import { PerformanceCostsPanel } from '../panels/PerformanceCostsPanel';
 import { LayoutOptionsPanel } from '../panels/LayoutOptionsPanel';
 import { CompareModal } from '../panels/CompareModal';
 import { MoveTracePanel } from '../panels/MoveTracePanel';
@@ -88,7 +90,7 @@ function PerformanceWorkspaceInner() {
 
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [leftTab, setLeftTab] = useState<LeftPanelTab>(initialView === 'presets' ? 'presets' : 'sounds');
-  const [rightTab, setRightTab] = useState<RightPanelTab>('costs');
+  const [rightTab, setRightTab] = useState<RightPanelTab>(initialView === 'presets' ? 'costs' : 'layouts');
   const [rightCollapsed, setRightCollapsed] = useState(initialView === 'presets');
   const [onionSkin, setOnionSkin] = useState(false);
   const [timelineTab, setTimelineTab] = useState<TimelineTab>(initialView === 'presets' ? 'composer' : 'timeline');
@@ -474,8 +476,9 @@ function PerformanceWorkspaceInner() {
     return ids;
   }, [composerWorkspace.selectedInstanceId, composerWorkspace.placedInstances]);
 
-  const assignments = state.analysisResult?.executionPlan?.fingerAssignments;
-  const selectedCandidate = state.candidates.find(c => c.id === state.selectedCandidateId) ?? null;
+  const displayedCandidate = getDisplayedCandidate(state);
+  const assignments = displayedCandidate?.executionPlan.fingerAssignments;
+  const selectedCandidate = getSelectedCandidate(state);
 
   // Active trace for Visual Debugger
   const activeTrace = state.iterationTrace ?? selectedCandidate?.iterationTrace;
@@ -522,10 +525,8 @@ function PerformanceWorkspaceInner() {
         generateDisabledReason={generateDisabledReason ?? null}
         compareCount={selectedForCompare.size}
         onCompare={handleOpenCompare}
-        composerOpen={timelineTab === 'composer'}
-        onToggleComposer={() => setTimelineTab(timelineTab === 'composer' ? 'timeline' : 'composer')}
         onCalculateCost={() => calculateCost(state.costToggles)}
-        hasAssignment={!!(state.analysisResult?.executionPlan?.fingerAssignments?.length)}
+        hasAssignment={!!assignments?.length}
         saveStatus={saveStatus}
         onSave={saveNow}
       />
@@ -741,10 +742,11 @@ function PerformanceWorkspaceInner() {
                       onMirrorInstance={handleMirrorInstance}
                     />
                   ) : (
-                    <ActiveLayoutSummary />
+                    <PerformanceCostsPanel />
                   )
                 ) : (
                   <div className="flex flex-col gap-2.5">
+                    <ActiveLayoutSummary />
                     <LayoutOptionsPanel
                       selectedForCompare={selectedForCompare}
                       onToggleCompare={handleToggleCompare}
@@ -777,4 +779,3 @@ function PerformanceWorkspaceInner() {
     </div>
   );
 }
-

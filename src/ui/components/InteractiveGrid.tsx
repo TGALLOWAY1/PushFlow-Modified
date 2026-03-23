@@ -12,12 +12,13 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import chroma from 'chroma-js';
 import { useProject } from '../state/ProjectContext';
-import { getDisplayedLayout, getDisplayedLayoutRole, type SoundStream } from '../state/projectState';
+import { getDisplayedLayout, getDisplayedLayoutRole } from '../state/projectState';
 import { PadContextMenu } from './PadContextMenu';
 import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { type GridLabelSettings } from '../state/viewSettings';
 import { buildSelectedTransitionModel } from '../analysis/selectionModel';
+import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
 import { midiNoteToName } from '../../utils/midiNotes';
 import { COMPOSER_PRESET_DRAG_TYPE } from './composer/PresetCard';
 import { type PresetDragPreview } from '../../types/composerPreset';
@@ -96,31 +97,32 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
   const [contextMenu, setContextMenu] = useState<{ padKey: string; x: number; y: number } | null>(null);
   const [showTransitionArrows, setShowTransitionArrows] = useState(true);
 
-  // Voice lookup by noteNumber
-  const voiceByNote = useMemo(() => {
-    const map = new Map<number, SoundStream>();
-    for (const s of state.soundStreams) {
-      map.set(s.originalMidiNote, s);
-    }
-    return map;
-  }, [state.soundStreams]);
+  const soundStreamLookup = useMemo(
+    () => buildSoundStreamLookup(state.soundStreams),
+    [state.soundStreams],
+  );
 
   // Build a live padToVoice that reflects current stream names/colors
   // (safety net: reducer should already sync, but this ensures display is always fresh)
   const livePadToVoice = useMemo(() => {
     if (!layout) return {};
-    const streamById = new Map(state.soundStreams.map(s => [s.id, s]));
     const result: Record<string, typeof layout.padToVoice[string]> = {};
     for (const [key, voice] of Object.entries(layout.padToVoice)) {
-      const stream = streamById.get(voice.id);
+      const stream = soundStreamLookup.forVoice(voice);
       if (stream) {
-        result[key] = { ...voice, name: stream.name, color: stream.color };
+        result[key] = {
+          ...voice,
+          id: stream.id,
+          name: stream.name,
+          color: stream.color,
+          originalMidiNote: stream.originalMidiNote,
+        };
       } else {
         result[key] = voice;
       }
     }
     return result;
-  }, [layout, state.soundStreams]);
+  }, [layout, soundStreamLookup]);
 
   // Build per-pad summary from assignments, overlaying voiceConstraints.
   // Per invariant 7 (no auto grid layout): finger labels only display when the user
@@ -134,7 +136,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const key = `${a.row},${a.col}`;
       let summary = map.get(key);
       if (!summary) {
-        const voice = voiceByNote.get(a.noteNumber);
+        const voice = soundStreamLookup.forAssignment(a.voiceId, a.noteNumber);
         summary = {
           voiceName: voice?.name ?? `N${a.noteNumber}`,
           voiceColor: voice?.color ?? null,
@@ -145,24 +147,22 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
         };
         map.set(key, summary);
       }
-      // Use solver hand for glow coloring (visual feedback)
-      // For finger labels: prefer user constraint, fall back to solver assignment
-      const voice = voiceByNote.get(a.noteNumber);
+      // Use solver hand for glow coloring (visual feedback), but only show
+      // finger labels when the user has explicitly set a voiceConstraint.
+      const voice = soundStreamLookup.forAssignment(a.voiceId, a.noteNumber);
       const constraint = voice ? voiceConstraints[voice.id] : undefined;
       const effectiveHand = constraint?.hand ?? a.assignedHand;
       summary.hands.add(effectiveHand);
-      // Add finger label from constraint (priority) or from solver assignment
-      const displayHand = constraint?.hand ?? (a.assignedHand !== 'Unplayable' ? a.assignedHand : null);
-      const displayFinger = constraint?.finger ?? (a.finger ? a.finger : null);
-      if (displayHand && displayFinger) {
-        const handChar = displayHand === 'left' ? 'L' : 'R';
-        const fingerNum = FINGER_ABBREV[displayFinger] ?? displayFinger;
+      // Only add finger label if user explicitly set a constraint
+      if (constraint?.hand && constraint?.finger) {
+        const handChar = constraint.hand === 'left' ? 'L' : 'R';
+        const fingerNum = FINGER_ABBREV[constraint.finger] ?? constraint.finger;
         summary.fingers.add(`${handChar}${fingerNum}`);
       }
       summary.hitCount++;
     }
     return map;
-  }, [assignments, voiceByNote, voiceConstraints]);
+  }, [assignments, soundStreamLookup, voiceConstraints]);
 
   // Selected pads: all assignments at the same start time as the selected event
   // Also builds a map of padKey → finger label for the selected event
@@ -509,7 +509,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const isInstanceHighlighted = highlightedInstancePads?.has(padKey) ?? false;
       const ghostInfo = ghostPads?.get(padKey);
       const constraint = layout?.fingerConstraints[padKey];
-      const isLocked = !!layout?.placementLocks[padKey];
+      const isLocked = !!voice && layout?.placementLocks[voice.id] === padKey;
       const isGreyedOut = hasEventSelected && !isSelected;
       const selectedFingerInfo = selectedPadFingers.get(padKey);
 
@@ -556,7 +556,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const fingerList = summary ? [...summary.fingers].slice(0, 2) : [];
 
       // Check if stream is muted
-      const streamForVoice = voice ? state.soundStreams.find(s => s.id === voice.id) : null;
+      const streamForVoice = soundStreamLookup.forVoice(voice);
       const isMuted = streamForVoice?.muted ?? false;
 
       // Active/selected states override glow level, but keep the color if we have one
