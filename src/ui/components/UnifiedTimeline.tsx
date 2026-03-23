@@ -69,7 +69,7 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
   // ─── Derived Data ────────────────────────────────────────────────────────
 
   const activeStreams = getActiveStreams(state);
-  const assignments = state.analysisResult?.executionPlan.fingerAssignments;
+  const assignments = state.analysisResult?.executionPlan?.fingerAssignments;
 
   const visibleStreams = activeStreams;
 
@@ -474,7 +474,7 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
           className="flex-1 min-w-0 overflow-auto"
           onScroll={handleTimelineScroll}
         >
-          <div className="relative" style={{ width: timelineWidth, minHeight: totalHeight + TOTAL_HEADER_HEIGHT }}>
+          <div className="relative" style={{ width: timelineWidth, minWidth: '100%', minHeight: totalHeight + TOTAL_HEADER_HEIGHT }}>
             {/* ─── Sticky Beat Header ──────────────────────────────── */}
             {/* Row 1: Bar numbers */}
             <div className="sticky top-0 z-40 bg-[var(--bg-app)] border-b border-[var(--border-default)]" style={{ height: BAR_HEADER_HEIGHT, width: timelineWidth }}>
@@ -582,7 +582,7 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
                     const x = (a.startTime - minTime) * zoom;
                     const eventDuration = durationByTime.get(a.startTime) ?? 0.1;
                     const w = Math.max(eventDuration * zoom, 6);
-                    const style = HAND_COLORS[a.assignedHand] ?? HAND_COLORS.raw;
+
                     const hand = a.assignedHand as string;
                     const finger = a.finger as string | null;
                     const isRaw = hand === 'raw' || finger === 'unassigned';
@@ -591,8 +591,9 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
                     const handPrefix = a.assignedHand === 'left' ? 'L' : a.assignedHand === 'right' ? 'R' : '';
 
                     const isUnplayable = hand === 'Unplayable';
-                    const pillBg = isRaw ? stream.color : style.bg;
-                    const pillText = isRaw ? '#ffffff' : style.text;
+                    // Always use sound color for pill background; only override for unplayable
+                    const pillBg = isUnplayable ? '#ef4444' : stream.color;
+                    const pillText = isRaw ? '#ffffff' : (HAND_COLORS[a.assignedHand] ?? HAND_COLORS.raw).text;
 
                     // Difficulty indicator: colored bottom border for analyzed events
                     const difficulty = a.difficulty as string;

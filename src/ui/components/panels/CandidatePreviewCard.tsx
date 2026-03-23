@@ -5,6 +5,7 @@
  * summary metadata, selection checkbox for compare, and action buttons.
  */
 
+import { useState } from 'react';
 import { type CandidateSolution } from '../../../types/candidateSolution';
 import { type SoundStream } from '../../state/projectState';
 import { MiniGridPreview } from './MiniGridPreview';
@@ -57,6 +58,8 @@ export function CandidatePreviewCard({
   onDelete,
   onToggleCompare,
 }: CandidatePreviewCardProps) {
+  const [confirmPromote, setConfirmPromote] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const overall = candidate.difficultyAnalysis.overallScore;
   const topDriver = topCostDriver(candidate.executionPlan.averageMetrics);
 
@@ -87,15 +90,36 @@ export function CandidatePreviewCard({
       </button>
 
       {/* Delete button */}
-      <button
-        className="absolute top-1.5 right-1.5 z-10 w-4 h-4 rounded-pf-sm flex items-center justify-center text-[var(--text-tertiary)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
-        onClick={e => { e.stopPropagation(); onDelete(); }}
-        title="Delete candidate"
-      >
-        <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06z" />
-        </svg>
-      </button>
+      <div className="absolute top-1.5 right-1.5 z-10 flex gap-1">
+        {confirmDelete ? (
+          <div className="flex gap-1 animate-in fade-in zoom-in duration-200">
+            <button
+              className="w-4 h-4 rounded-pf-sm flex items-center justify-center bg-red-600 text-white hover:bg-red-500"
+              onClick={e => { e.stopPropagation(); onDelete(); setConfirmDelete(false); }}
+              title="Confirm Delete"
+            >
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z" /></svg>
+            </button>
+            <button
+              className="w-4 h-4 rounded-pf-sm flex items-center justify-center bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+              onClick={e => { e.stopPropagation(); setConfirmDelete(false); }}
+              title="Cancel"
+            >
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06z" /></svg>
+            </button>
+          </div>
+        ) : (
+          <button
+            className="w-4 h-4 rounded-pf-sm flex items-center justify-center text-[var(--text-tertiary)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            onClick={e => { e.stopPropagation(); setConfirmDelete(true); }}
+            title="Delete candidate"
+          >
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06z" />
+            </svg>
+          </button>
+        )}
+      </div>
 
       <div className="p-2.5">
         {/* Top row: rank + difficulty */}
@@ -141,7 +165,7 @@ export function CandidatePreviewCard({
 
         {/* Summary metadata */}
         <div className="flex justify-between text-pf-xs text-[var(--text-tertiary)] mb-2 px-0.5">
-          <span>Score: {candidate.executionPlan.score.toFixed(1)}</span>
+          <span>Score: {isNaN(candidate.executionPlan.score) ? '0' : candidate.executionPlan.score.toFixed(1)}</span>
           <span>Top: {topDriver}</span>
         </div>
 
@@ -194,10 +218,29 @@ export function CandidatePreviewCard({
             Load
           </button>
           <button
-            className="flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-emerald-600/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/25"
-            onClick={e => { e.stopPropagation(); onPromote(); }}
+            className={`flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-all ${
+              confirmPromote 
+                ? 'bg-emerald-600 text-white shadow-inner flex items-center justify-center gap-1.5 scale-[1.02] border-emerald-400' 
+                : 'bg-emerald-600/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/25'
+            }`}
+            onClick={e => { 
+              e.stopPropagation(); 
+              if (confirmPromote) {
+                onPromote();
+                setConfirmPromote(false);
+              } else {
+                setConfirmPromote(true);
+                // Auto-reset after 3s
+                setTimeout(() => setConfirmPromote(false), 3000);
+              }
+            }}
           >
-            Promote
+            {confirmPromote ? (
+              <>
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z" /></svg>
+                Confirm?
+              </>
+            ) : 'Promote'}
           </button>
         </div>
       </div>

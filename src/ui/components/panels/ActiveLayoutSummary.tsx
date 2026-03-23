@@ -191,29 +191,44 @@ export function ActiveLayoutSummary() {
           </div>
 
           {/* Quick stats */}
-          {currentPlan ? (
-            <div className="grid grid-cols-4 gap-1.5">
-              <QuickStat
-                label="Score"
-                value={`${currentPlan.score.toFixed(0)}%`}
-                quality={currentPlan.score >= 80 ? 'good' : currentPlan.score >= 50 ? 'ok' : 'bad'}
-              />
-              <QuickStat
-                label="Events"
-                value={String(new Set(currentPlan.fingerAssignments.map(a => a.startTime)).size)}
-              />
-              <QuickStat
-                label="Hard"
-                value={String(currentPlan.hardCount)}
-                quality={currentPlan.hardCount === 0 ? 'good' : 'bad'}
-              />
-              <QuickStat
-                label="Unplay"
-                value={String(currentPlan.unplayableCount)}
-                quality={currentPlan.unplayableCount === 0 ? 'good' : 'bad'}
-              />
-            </div>
-          ) : (
+          {currentPlan ? (() => {
+            // Derive a meaningful quality score from feasibility + ergonomic cost
+            const totalEvents = currentPlan.fingerAssignments.length;
+            const playableEvents = totalEvents - currentPlan.unplayableCount;
+            const feasibilityPct = totalEvents > 0 ? (playableEvents / totalEvents) * 100 : 100;
+            // Average cost per event, clamped: lower cost = higher quality
+            const avgCost = totalEvents > 0 ? currentPlan.averageMetrics.total : 0;
+            // Map avg cost 0→100%, ≥5→0% (cost above 5 is very poor ergonomics)
+            const ergoPct = Math.max(0, Math.min(100, (1 - avgCost / 5) * 100));
+            // Combined: feasibility dominates (60%) + ergonomics (40%)
+            const qualityScore = Math.round(feasibilityPct * 0.6 + ergoPct * 0.4);
+            const qualityLabel = qualityScore >= 80 ? 'good' as const : qualityScore >= 50 ? 'ok' as const : 'bad' as const;
+
+            return (
+              <div className="grid grid-cols-4 gap-1.5">
+                <QuickStat
+                  label="Quality"
+                  value={`${qualityScore}%`}
+                  quality={qualityLabel}
+                  subtitle={`Feasibility: ${feasibilityPct.toFixed(0)}% | Ergo: ${ergoPct.toFixed(0)}% | Raw cost: ${currentPlan.score.toFixed(1)}`}
+                />
+                <QuickStat
+                  label="Events"
+                  value={String(new Set(currentPlan.fingerAssignments.map(a => a.startTime)).size)}
+                />
+                <QuickStat
+                  label="Hard"
+                  value={String(currentPlan.hardCount)}
+                  quality={currentPlan.hardCount === 0 ? 'good' : 'bad'}
+                />
+                <QuickStat
+                  label="Unplay"
+                  value={String(currentPlan.unplayableCount)}
+                  quality={currentPlan.unplayableCount === 0 ? 'good' : 'bad'}
+                />
+              </div>
+            );
+          })() : (
             <div className="grid grid-cols-2 gap-1.5">
               <QuickStat label="Mapped" value={`${mappedCount} pads`} />
               <QuickStat label="Sounds" value={String(activeStreams.length)} />

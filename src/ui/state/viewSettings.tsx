@@ -48,7 +48,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
   gridLabels: {
     showNoteLabels: false,
     showPositionLabels: false,
-    showFingerAssignment: false,
+    showFingerAssignment: true,
     showSoundNames: true,
   },
   layoutDisplay: {

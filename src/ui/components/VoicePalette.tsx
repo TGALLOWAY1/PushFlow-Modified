@@ -112,12 +112,20 @@ export function VoicePalette() {
   // Build solver finger summary
   const solverSummary = useMemo(() => {
     const map = new Map<string, { label: string; hand: string; finger: string }>();
-    if (!state.analysisResult?.executionPlan) return map;
-    const { fingerAssignments } = state.analysisResult.executionPlan;
-    // Map voiceId to its first assignment's finger info
+    const fingerAssignments = state.analysisResult?.executionPlan?.fingerAssignments;
+    if (!fingerAssignments) return map;
+
+    // Build noteNumber → streamId lookup for fallback matching
+    const noteToStreamId = new Map<number, string>();
+    for (const s of state.soundStreams) {
+      noteToStreamId.set(s.originalMidiNote, s.id);
+    }
+
+    // Map voiceId (or noteNumber fallback) to its first assignment's finger info
     for (const fa of fingerAssignments) {
-      if (fa.voiceId && !map.has(fa.voiceId) && fa.assignedHand !== 'Unplayable' && fa.finger) {
-        map.set(fa.voiceId, {
+      const streamId = fa.voiceId ?? noteToStreamId.get(fa.noteNumber);
+      if (streamId && !map.has(streamId) && fa.assignedHand !== 'Unplayable' && fa.finger) {
+        map.set(streamId, {
           label: `${fa.assignedHand[0].toUpperCase()}${FINGER_ABBREV[fa.finger] ?? fa.finger}`,
           hand: fa.assignedHand,
           finger: fa.finger,
@@ -125,7 +133,7 @@ export function VoicePalette() {
       }
     }
     return map;
-  }, [state.analysisResult]);
+  }, [state.analysisResult, state.soundStreams]);
 
   // Organize streams by group, then by grid assignment
   const { groupedStreams, ungroupedAssigned, ungroupedUnassigned } = useMemo(() => {

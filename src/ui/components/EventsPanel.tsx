@@ -135,7 +135,7 @@ export function EventsPanel({
   // Determine which moment is currently selected based on selectedEventIndex
   const selectedMomentIdx = useMemo(() => {
     if (state.selectedEventIndex === null) return null;
-    const assignments = state.analysisResult?.executionPlan.fingerAssignments;
+    const assignments = state.analysisResult?.executionPlan?.fingerAssignments;
     if (!assignments) return null;
     const selected = assignments.find(a => a.eventIndex === state.selectedEventIndex);
     if (!selected) return null;
@@ -144,7 +144,7 @@ export function EventsPanel({
   }, [state.selectedEventIndex, state.analysisResult, moments]);
 
   const handleMomentClick = useCallback((moment: PerformanceMomentSummary) => {
-    const assignments = state.analysisResult?.executionPlan.fingerAssignments;
+    const assignments = state.analysisResult?.executionPlan?.fingerAssignments;
     if (assignments) {
       const match = assignments.find(
         a => Math.abs(a.startTime - moment.startTime) < MOMENT_EPSILON
@@ -191,7 +191,7 @@ export function EventsPanel({
   // Build per-moment cost from finger assignments
   const momentCosts = useMemo(() => {
     const map = new Map<number, V1CostBreakdown>();
-    const assignments = state.analysisResult?.executionPlan.fingerAssignments;
+    const assignments = state.analysisResult?.executionPlan?.fingerAssignments;
     if (!assignments || moments.length === 0) return map;
 
     for (const moment of moments) {

@@ -10,7 +10,7 @@ import { useCallback } from 'react';
 import { parseMidiFileToProject } from '../../import/midiImport';
 import { generateId } from '../../utils/idGenerator';
 import { useProject } from '../state/ProjectContext';
-import { type PerformanceLane, type LaneEvent, type LaneGroup, type SourceFile } from '../../types/performanceLane';
+import { type PerformanceLane, type LaneEvent, type SourceFile } from '../../types/performanceLane';
 
 /** Color palette for auto-assigned group colors. */
 const GROUP_COLORS = [
@@ -40,7 +40,6 @@ export function useLaneImport() {
         const projectData = await parseMidiFileToProject(file);
 
         const sourceFileId = generateId('src');
-        const groupId = generateId('grp');
         const displayName = fileNameToDisplayName(file.name);
 
         // Group events by unique MIDI pitch
@@ -61,7 +60,7 @@ export function useLaneImport() {
         const groupColorIndex = state.laneGroups.length % GROUP_COLORS.length;
         const groupColor = GROUP_COLORS[groupColorIndex];
 
-        // Create lanes — one per unique pitch
+        // Create lanes — one per unique pitch (no group by default)
         const lanes: PerformanceLane[] = sortedNotes.map((noteNumber, i) => {
           const laneId = generateId('lane');
           const rawEvents = byNote.get(noteNumber) ?? [];
@@ -86,7 +85,7 @@ export function useLaneImport() {
             name: laneName,
             sourceFileId,
             sourceFileName: file.name,
-            groupId,
+            groupId: null,
             orderIndex: currentMaxOrder + 1 + i,
             color: groupColor,
             colorMode: 'inherited' as const,
@@ -96,15 +95,6 @@ export function useLaneImport() {
             isSolo: false,
           };
         });
-
-        // Create group named after the file
-        const group: LaneGroup = {
-          groupId,
-          name: displayName,
-          color: groupColor,
-          orderIndex: state.laneGroups.length,
-          isCollapsed: false,
-        };
 
         // Create source file record
         const sourceFile: SourceFile = {
@@ -116,7 +106,7 @@ export function useLaneImport() {
 
         dispatch({
           type: 'IMPORT_LANES',
-          payload: { lanes, sourceFile, group },
+          payload: { lanes, sourceFile },
         });
 
         // bottomLeftNote stays at default (36/C1). MIDI pitch is metadata

@@ -18,7 +18,7 @@ export function TimelinePanel() {
   const [collapsed, setCollapsed] = useState(false);
 
   const activeStreams = getActiveStreams(state);
-  const assignments = state.analysisResult?.executionPlan.fingerAssignments;
+  const assignments = state.analysisResult?.executionPlan?.fingerAssignments;
 
   // Build Voice[] from active streams for the timeline
   const voices: Voice[] = useMemo(() =>
