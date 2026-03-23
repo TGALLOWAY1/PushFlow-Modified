@@ -92,6 +92,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
   const [dragOverPad, setDragOverPad] = useState<string | null>(null);
   const [dragSourcePad, setDragSourcePad] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ padKey: string; x: number; y: number } | null>(null);
+  const [showTransitionArrows, setShowTransitionArrows] = useState(true);
 
   // Voice lookup by noteNumber
   const voiceByNote = useMemo(() => {
@@ -205,11 +206,26 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
   }, [selectedTransition, onionSkin]);
 
   const transitionPaths = useMemo(() => {
-    if (!selectedTransition) return [];
+    if (!selectedTransition || !showTransitionArrows) return [];
 
-    return selectedTransition.fingerMoves
+    const movesWithDistance = selectedTransition.fingerMoves
       .filter(move => move.fromPad && move.toPad && !move.isHold)
-      .map(move => {
+      .map(move => ({ move, distance: move.rawDistance ?? 0 }));
+
+    // Filter to best 3 (shortest) and worst 3 (longest) by distance
+    let filteredMoves: typeof movesWithDistance;
+    if (movesWithDistance.length <= 6) {
+      filteredMoves = movesWithDistance;
+    } else {
+      const sorted = [...movesWithDistance].sort((a, b) => a.distance - b.distance);
+      const best3 = sorted.slice(0, 3);
+      const worst3 = sorted.slice(-3);
+      // Deduplicate in case of overlap
+      const selectedSet = new Set([...best3, ...worst3]);
+      filteredMoves = [...selectedSet];
+    }
+
+    return filteredMoves.map(({ move }) => {
         const [fromRow, fromCol] = move.fromPad!.split(',').map(Number);
         const [toRow, toCol] = move.toPad!.split(',').map(Number);
         const startX = GRID_OFFSET_X + toGridX(fromCol);
@@ -229,7 +245,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           endY,
         };
       });
-  }, [selectedTransition]);
+  }, [selectedTransition, showTransitionArrows]);
 
   // Active playing pads — with blink tracking for repeated hits
   const BLINK_DURATION_MS = 120; // how long the flash lasts
@@ -702,12 +718,25 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
 
       {/* Transition preview */}
       {selectedTransition?.next && (
-        <div className="text-pf-xs text-sky-300/70 mt-1.5">
-          Transition preview: {selectedTransition.timeDelta?.toFixed(3)}s to next event
-          {' · '}
-          {selectedTransition.sharedPadKeys.size} shared pad{selectedTransition.sharedPadKeys.size === 1 ? '' : 's'}
-          {' · '}
-          {selectedTransition.fingerMoves.filter(move => !move.isHold && move.fromPad && move.toPad).length} finger move{selectedTransition.fingerMoves.filter(move => !move.isHold && move.fromPad && move.toPad).length === 1 ? '' : 's'}
+        <div className="flex items-center gap-3 mt-1.5">
+          <div className="text-pf-xs text-sky-300/70">
+            Transition preview: {selectedTransition.timeDelta?.toFixed(3)}s to next event
+            {' · '}
+            {selectedTransition.sharedPadKeys.size} shared pad{selectedTransition.sharedPadKeys.size === 1 ? '' : 's'}
+            {' · '}
+            {selectedTransition.fingerMoves.filter(move => !move.isHold && move.fromPad && move.toPad).length} finger move{selectedTransition.fingerMoves.filter(move => !move.isHold && move.fromPad && move.toPad).length === 1 ? '' : 's'}
+          </div>
+          <button
+            className={`text-pf-xs px-1.5 py-0.5 rounded-pf-sm transition-colors ${
+              showTransitionArrows
+                ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30'
+                : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border border-[var(--border-subtle)]'
+            }`}
+            onClick={() => setShowTransitionArrows(prev => !prev)}
+            title={showTransitionArrows ? 'Hide transition arrows' : 'Show transition arrows'}
+          >
+            {showTransitionArrows ? 'Arrows On' : 'Arrows Off'}
+          </button>
         </div>
       )}
 
