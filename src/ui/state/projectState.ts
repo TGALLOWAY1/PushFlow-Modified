@@ -387,6 +387,36 @@ function updateWorkingLayout(
   };
 }
 
+function buildLayoutFingerConstraints(
+  padToVoice: Layout['padToVoice'],
+  voiceConstraints: ProjectState['voiceConstraints'],
+): Layout['fingerConstraints'] {
+  const nextConstraints: Layout['fingerConstraints'] = {};
+  for (const [padKey, voice] of Object.entries(padToVoice)) {
+    const constraint = voiceConstraints[voice.id];
+    if (constraint?.hand && constraint.finger) {
+      nextConstraints[padKey] = formatFingerConstraint(
+        constraint.hand,
+        constraint.finger as Parameters<typeof formatFingerConstraint>[1],
+      );
+    }
+  }
+  return nextConstraints;
+}
+
+function prunePlacementLocks(
+  padToVoice: Layout['padToVoice'],
+  placementLocks: Layout['placementLocks'],
+): Layout['placementLocks'] {
+  const nextLocks: Layout['placementLocks'] = {};
+  for (const [voiceId, lockedPadKey] of Object.entries(placementLocks)) {
+    if (padToVoice[lockedPadKey]?.id === voiceId) {
+      nextLocks[voiceId] = lockedPadKey;
+    }
+  }
+  return nextLocks;
+}
+
 // ============================================================================
 // Reducer
 // ============================================================================
@@ -606,6 +636,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
         // Strip out existing assignments of this stream (acts as Move instead of Copy)
         const newPadToVoice = { ...layout.padToVoice };
+        const replacedVoice = newPadToVoice[padKey];
         for (const [key, v] of Object.entries(newPadToVoice)) {
           if (v.id === stream.id) {
             delete newPadToVoice[key];
@@ -621,9 +652,18 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
           color: stream.color,
         };
         newPadToVoice[padKey] = voice;
+        const nextLocks = { ...layout.placementLocks };
+        if (nextLocks[stream.id]) {
+          nextLocks[stream.id] = padKey;
+        }
+        if (replacedVoice && replacedVoice.id !== stream.id) {
+          delete nextLocks[replacedVoice.id];
+        }
         return {
           ...layout,
           padToVoice: newPadToVoice,
+          fingerConstraints: buildLayoutFingerConstraints(newPadToVoice, state.voiceConstraints),
+          placementLocks: prunePlacementLocks(newPadToVoice, nextLocks),
           layoutMode: 'manual',
         };
       });
@@ -632,20 +672,38 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return updateWorkingLayout(state, layout => ({
         ...layout,
         padToVoice: action.payload,
+        fingerConstraints: buildLayoutFingerConstraints(action.payload, state.voiceConstraints),
+        placementLocks: prunePlacementLocks(action.payload, layout.placementLocks),
         layoutMode: 'auto',
       }));
 
     case 'MERGE_ASSIGN_PADS':
-      return updateWorkingLayout(state, layout => ({
-        ...layout,
-        padToVoice: { ...layout.padToVoice, ...action.payload },
-        layoutMode: 'manual',
-      }));
+      return updateWorkingLayout(state, layout => {
+        const nextPadToVoice = { ...layout.padToVoice, ...action.payload };
+        return {
+          ...layout,
+          padToVoice: nextPadToVoice,
+          fingerConstraints: buildLayoutFingerConstraints(nextPadToVoice, state.voiceConstraints),
+          placementLocks: prunePlacementLocks(nextPadToVoice, layout.placementLocks),
+          layoutMode: 'manual',
+        };
+      });
 
     case 'REMOVE_VOICE_FROM_PAD':
       return updateWorkingLayout(state, layout => {
+        const removedVoice = layout.padToVoice[action.payload.padKey];
         const { [action.payload.padKey]: _, ...rest } = layout.padToVoice;
-        return { ...layout, padToVoice: rest, layoutMode: 'manual' };
+        const nextLocks = { ...layout.placementLocks };
+        if (removedVoice) {
+          delete nextLocks[removedVoice.id];
+        }
+        return {
+          ...layout,
+          padToVoice: rest,
+          fingerConstraints: buildLayoutFingerConstraints(rest, state.voiceConstraints),
+          placementLocks: prunePlacementLocks(rest, nextLocks),
+          layoutMode: 'manual',
+        };
       });
 
     case 'SWAP_PADS':
@@ -658,7 +716,20 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         else delete newPadToVoice[padKeyB];
         if (voiceB) newPadToVoice[padKeyA] = voiceB;
         else delete newPadToVoice[padKeyA];
-        return { ...layout, padToVoice: newPadToVoice, layoutMode: 'manual' };
+        const nextLocks = { ...layout.placementLocks };
+        if (voiceA && nextLocks[voiceA.id] === padKeyA) {
+          nextLocks[voiceA.id] = padKeyB;
+        }
+        if (voiceB && nextLocks[voiceB.id] === padKeyB) {
+          nextLocks[voiceB.id] = padKeyA;
+        }
+        return {
+          ...layout,
+          padToVoice: newPadToVoice,
+          fingerConstraints: buildLayoutFingerConstraints(newPadToVoice, state.voiceConstraints),
+          placementLocks: prunePlacementLocks(newPadToVoice, nextLocks),
+          layoutMode: 'manual',
+        };
       });
 
     case 'SET_FINGER_CONSTRAINT': {
@@ -678,18 +749,11 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         }
       }
 
-      let newState = updateWorkingLayout(state, layout => {
-        const newConstraints = { ...layout.fingerConstraints };
-        if (constraint) newConstraints[constraintPadKey] = constraint;
-        else delete newConstraints[constraintPadKey];
-        return { ...layout, fingerConstraints: newConstraints };
-      });
-
       // Cross-sync: update voiceConstraints for the voice on this pad (if any)
-      const displayedLayout = newState.workingLayout ?? newState.activeLayout;
+      const displayedLayout = state.workingLayout ?? state.activeLayout;
       const voice = displayedLayout.padToVoice[constraintPadKey];
+      const nextVC = { ...state.voiceConstraints };
       if (voice) {
-        const nextVC = { ...newState.voiceConstraints };
         if (constraint) {
           const parsed = parseFingerConstraint(constraint);
           if (parsed) {
@@ -703,9 +767,12 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
             else nextVC[voice.id] = rest as typeof nextVC[string];
           }
         }
-        newState = { ...newState, voiceConstraints: nextVC };
       }
-      return newState;
+      const newState = updateWorkingLayout(state, layout => ({
+        ...layout,
+        fingerConstraints: buildLayoutFingerConstraints(layout.padToVoice, nextVC),
+      }));
+      return { ...newState, voiceConstraints: nextVC };
     }
 
     // -- Placement locks --
