@@ -29,6 +29,7 @@ import { InteractiveGrid } from '../InteractiveGrid';
 import { UnifiedTimeline } from '../UnifiedTimeline';
 import { WorkspacePatternStudio } from './WorkspacePatternStudio';
 import { ActiveLayoutSummary } from '../panels/ActiveLayoutSummary';
+import { PerformanceCostsPanel } from '../panels/PerformanceCostsPanel';
 import { LayoutOptionsPanel } from '../panels/LayoutOptionsPanel';
 import { CompareModal } from '../panels/CompareModal';
 import { MoveTracePanel } from '../panels/MoveTracePanel';
@@ -82,7 +83,7 @@ function PerformanceWorkspaceInner() {
 
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [leftTab, setLeftTab] = useState<LeftPanelTab>('sounds');
-  const [rightTab, setRightTab] = useState<RightPanelTab>('costs');
+  const [rightTab, setRightTab] = useState<RightPanelTab>('layouts');
   const [onionSkin, setOnionSkin] = useState(false);
   const [timelineTab, setTimelineTab] = useState<TimelineTab>('timeline');
 
@@ -516,8 +517,6 @@ function PerformanceWorkspaceInner() {
         generateDisabledReason={generateDisabledReason ?? null}
         compareCount={selectedForCompare.size}
         onCompare={handleOpenCompare}
-        composerOpen={timelineTab === 'composer'}
-        onToggleComposer={() => setTimelineTab(timelineTab === 'composer' ? 'timeline' : 'composer')}
         onCalculateCost={() => calculateCost(state.costToggles)}
         hasAssignment={!!assignments?.length}
         saveStatus={saveStatus}
@@ -716,10 +715,11 @@ function PerformanceWorkspaceInner() {
                     onMirrorInstance={handleMirrorInstance}
                   />
                 ) : (
-                  <ActiveLayoutSummary />
+                  <PerformanceCostsPanel />
                 )
               ) : (
                 <div className="flex flex-col gap-2.5">
+                  <ActiveLayoutSummary />
                   <LayoutOptionsPanel
                     selectedForCompare={selectedForCompare}
                     onToggleCompare={handleToggleCompare}

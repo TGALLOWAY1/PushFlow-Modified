@@ -8,6 +8,7 @@
 import { type CandidateSolution } from '../../../types/candidateSolution';
 import { type SoundStream } from '../../state/projectState';
 import { MiniGridPreview } from './MiniGridPreview';
+import { formatPlanScore, getPlanScoreSummary } from '../../analysis/planScore';
 
 interface CandidatePreviewCardProps {
   candidate: CandidateSolution;
@@ -141,7 +142,7 @@ export function CandidatePreviewCard({
 
         {/* Summary metadata */}
         <div className="flex justify-between text-pf-xs text-[var(--text-tertiary)] mb-2 px-0.5">
-          <span>Score: {candidate.executionPlan.score.toFixed(1)}</span>
+          <span title={getPlanScoreSummary(candidate.executionPlan.score)}>Score: {formatPlanScore(candidate.executionPlan.score)}</span>
           <span>Top: {topDriver}</span>
         </div>
 
@@ -191,7 +192,7 @@ export function CandidatePreviewCard({
             className="flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-blue-600/15 border border-blue-500/30 text-blue-400 hover:bg-blue-600/25"
             onClick={e => { e.stopPropagation(); onSelect(); }}
           >
-            Load
+            Preview
           </button>
           <button
             className="flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-emerald-600/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/25"

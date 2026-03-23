@@ -19,6 +19,7 @@ import { CostBreakdownBars } from './CostBreakdownBars';
 import { EventCostChart } from './EventCostChart';
 import { LearnMoreModal } from './LearnMoreModal';
 import { buildSelectedTransitionModel } from '../../analysis/selectionModel';
+import { formatPlanScore, getPlanScoreQuality, getPlanScoreSummary } from '../../analysis/planScore';
 import { formatFingerConstraint, parseFingerConstraint } from '../../../utils/fingerConstraints';
 
 export function ActiveLayoutSummary() {
@@ -170,8 +171,9 @@ export function ActiveLayoutSummary() {
             <div className="grid grid-cols-4 gap-1.5">
               <QuickStat
                 label="Score"
-                value={`${currentPlan.score.toFixed(0)}%`}
-                quality={currentPlan.score >= 80 ? 'good' : currentPlan.score >= 50 ? 'ok' : 'bad'}
+                value={formatPlanScore(currentPlan.score)}
+                quality={getPlanScoreQuality(currentPlan.score)}
+                subtitle={getPlanScoreSummary(currentPlan.score)}
               />
               <QuickStat
                 label="Events"

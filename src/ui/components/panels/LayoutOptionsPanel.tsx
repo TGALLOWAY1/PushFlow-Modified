@@ -35,7 +35,7 @@ export function LayoutOptionsPanel({
       <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border-subtle)] flex-shrink-0">
         <div className="flex items-center gap-2">
           <h3 className="section-header">
-            Layout Options
+            Layouts
           </h3>
           {hasCandidates && (
             <span className="text-pf-xs text-[var(--text-tertiary)]">{state.candidates.length}</span>
