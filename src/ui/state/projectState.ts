@@ -282,6 +282,8 @@ export type ProjectAction =
   | { type: 'PROMOTE_WORKING_LAYOUT' }
   | { type: 'PROMOTE_CANDIDATE'; payload: { candidateId: string } }
   | { type: 'DELETE_CANDIDATE'; payload: { candidateId: string } }
+  | { type: 'PROMOTE_VARIANT'; payload: { variantId: string } }
+  | { type: 'DELETE_VARIANT'; payload: { variantId: string } }
   | { type: 'SAVE_AS_VARIANT'; payload: { name: string; source: 'working' | 'candidate'; candidateId?: string } }
   | { type: 'LOAD_SAVED_VARIANT'; payload: { variantId: string } }
   | { type: 'RENAME_LAYOUT'; payload: { target: 'active' | 'working'; name: string } }
@@ -326,8 +328,6 @@ const EPHEMERAL_ACTIONS = new Set<ProjectAction['type']>([
   'SET_PROCESSING',
   'SET_ERROR',
   'MARK_ANALYSIS_STALE',
-  'SET_ANALYSIS_RESULT',
-  'SET_CANDIDATES',
   'SELECT_CANDIDATE',
   'TOGGLE_LANE_GROUP_COLLAPSE',
   'SET_CURRENT_TIME',
@@ -897,7 +897,8 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         workingLayout: null,
         savedVariants: autoSavedVariants,
         updatedAt: now,
-        analysisStale: true,
+        analysisResult: candidate, // Preserve finger assignments for the promoted layout
+        analysisStale: false,
         candidates: remainingCandidates,
         selectedCandidateId: null,
         compareCandidateId: null,
@@ -953,6 +954,51 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       };
     }
 
+    case 'PROMOTE_VARIANT': {
+      const variant = state.savedVariants.find(v => v.id === action.payload.variantId);
+      if (!variant) return state;
+      const now = new Date().toISOString();
+
+      // Auto-save the replaced active layout as a variant
+      const autoSavedVariants = [...state.savedVariants.filter(v => v.id !== action.payload.variantId)];
+      if (Object.keys(state.activeLayout.padToVoice).length > 0) {
+        const replaced = cloneLayout(
+          state.activeLayout,
+          generateId(),
+          `${state.activeLayout.name} (replaced ${new Date().toLocaleDateString()})`,
+          'variant',
+        );
+        autoSavedVariants.push(replaced);
+      }
+
+      const promoted: Layout = {
+        ...variant,
+        role: 'active',
+        baselineId: undefined,
+        savedAt: now,
+      };
+
+      return {
+        ...state,
+        activeLayout: promoted,
+        workingLayout: null,
+        savedVariants: autoSavedVariants,
+        updatedAt: now,
+        analysisStale: true,
+        analysisResult: null,
+        selectedCandidateId: null,
+        compareCandidateId: null,
+      };
+    }
+
+    case 'DELETE_VARIANT': {
+      return {
+        ...state,
+        savedVariants: state.savedVariants.filter(v => v.id !== action.payload.variantId),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
     case 'RENAME_LAYOUT': {
       const { target, name: newName } = action.payload;
       if (target === 'active') {
@@ -975,7 +1021,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     // -- Analysis --
 
     case 'SET_ANALYSIS_RESULT':
-      return { ...state, analysisResult: action.payload, analysisStale: false };
+      return { ...state, analysisResult: action.payload, analysisStale: false, updatedAt: new Date().toISOString() };
 
     case 'SET_CANDIDATES':
       return {
@@ -984,6 +1030,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         selectedCandidateId: action.payload[0]?.id ?? null,
         compareCandidateId: null,
         isProcessing: false,
+        updatedAt: new Date().toISOString(),
       };
 
     case 'SELECT_CANDIDATE':

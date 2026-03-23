@@ -49,7 +49,8 @@ export function MiniGridPreview({ layout, soundStreams, size = 1, highlighted = 
           const row = 7 - Math.floor(i / 8);
           const col = i % 8;
           const padKey = `${row},${col}`;
-          const voice = layout.padToVoice[padKey];
+          const padToVoice = layout?.padToVoice || (layout as any)?.cells || {};
+          const voice = padToVoice[padKey];
           const stream = soundStreamLookup.forVoice(voice);
           const color = stream?.color ?? voice?.color ?? '#4b5563';
 

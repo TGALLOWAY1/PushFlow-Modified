@@ -79,7 +79,7 @@ export function LaneSidebar({ selectedLaneIds, onSelectLane, searchQuery, showIn
   }, []);
 
   return (
-    <div className="w-64 flex-shrink-0 border-r border-gray-700 flex flex-col overflow-hidden bg-gray-900/30">
+    <div className="w-full flex-shrink-0 border-r border-gray-700 flex flex-col overflow-hidden bg-gray-900/30">
       {/* Column header — matches timeline time axis height (h-6 = 24px) */}
       <div className="flex items-center justify-between px-3 h-6 border-b border-gray-700 text-[10px] text-gray-500 uppercase tracking-wider flex-shrink-0">
         <span>Lane Name</span>

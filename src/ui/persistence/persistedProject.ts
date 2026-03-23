@@ -2,8 +2,7 @@
  * Persisted Project Shape.
  *
  * Defines the exact durable fields stored in IndexedDB.
- * Intentionally excludes computed/derived data (costs, analysis results,
- * difficulty scores) which are recomputed after load.
+ * Includes generated candidates and analysis results so they survive refresh.
  */
 
 import { type Layout } from '../../types/layout';
@@ -14,6 +13,7 @@ import { type EngineConfiguration } from '../../types/engineConfig';
 import { type CostToggles } from '../../types/costToggles';
 import { type OptimizerMethodKey } from '../../engine/optimization/optimizerInterface';
 import { type SoundStream } from '../state/projectState';
+import { type CandidateSolution } from '../../types/candidateSolution';
 
 // ============================================================================
 // Schema Version
@@ -69,6 +69,12 @@ export interface PersistedProject {
   engineConfig: EngineConfiguration;
   optimizerMethod: OptimizerMethodKey;
   costToggles: CostToggles;
+
+  // --- Analysis / Candidates (persisted so they survive refresh) ---
+  /** Solver candidates generated during analysis. */
+  candidates?: CandidateSolution[];
+  /** Currently displayed analysis result. */
+  analysisResult?: CandidateSolution | null;
 
   // --- Metadata ---
   createdAt: string;

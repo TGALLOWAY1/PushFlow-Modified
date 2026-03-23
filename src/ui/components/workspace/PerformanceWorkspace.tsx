@@ -14,7 +14,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect, useReducer, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useProject } from '../../state/ProjectContext';
 import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
 import { useAutoSave } from '../../hooks/useAutoSave';
@@ -60,7 +60,7 @@ type TimelineTab = 'timeline' | 'composer';
 // Panel width constraints
 const LEFT_MIN = 200;
 const LEFT_MAX = 500;
-const LEFT_DEFAULT = 280;
+const LEFT_DEFAULT = 320;
 const RIGHT_MIN = 280;
 const RIGHT_MAX = 600;
 const RIGHT_DEFAULT = 340;
@@ -81,11 +81,19 @@ function PerformanceWorkspaceInner() {
   useKeyboardShortcuts();
   const { settings: viewSettings } = useViewSettings();
 
+  // Handle ?view=presets query param
+  const [searchParams] = useSearchParams();
+  const initialView = searchParams.get('view');
+  if (initialView === 'presets') {
+    console.log('[PushFlow] View Presets mode detected in URL');
+  }
+
   const [leftCollapsed, setLeftCollapsed] = useState(false);
-  const [leftTab, setLeftTab] = useState<LeftPanelTab>('sounds');
-  const [rightTab, setRightTab] = useState<RightPanelTab>('layouts');
+  const [leftTab, setLeftTab] = useState<LeftPanelTab>(initialView === 'presets' ? 'presets' : 'sounds');
+  const [rightTab, setRightTab] = useState<RightPanelTab>(initialView === 'presets' ? 'costs' : 'layouts');
+  const [rightCollapsed, setRightCollapsed] = useState(initialView === 'presets');
   const [onionSkin, setOnionSkin] = useState(false);
-  const [timelineTab, setTimelineTab] = useState<TimelineTab>('timeline');
+  const [timelineTab, setTimelineTab] = useState<TimelineTab>(initialView === 'presets' ? 'composer' : 'timeline');
 
   // Composer preset library state
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
@@ -686,58 +694,78 @@ function PerformanceWorkspaceInner() {
         </div>
 
         {/* Right Column: Tabbed Costs / Layouts */}
-        <div className="flex-shrink-0 flex flex-col min-h-0" style={{ width: rightWidth }}>
-          <div className="glass-panel flex flex-col flex-1 min-h-0">
-            {/* Tab header */}
-            <div className="flex items-center border-b border-[var(--border-subtle)] flex-shrink-0">
-              <button
-                className={`pf-tab flex-1 text-center ${rightTab === 'costs' ? 'active' : ''}`}
-                onClick={() => setRightTab('costs')}
-              >
-                Costs
-              </button>
-              <button
-                className={`pf-tab flex-1 text-center ${rightTab === 'layouts' ? 'active' : ''}`}
-                onClick={() => setRightTab('layouts')}
-              >
-                Layouts
-              </button>
-            </div>
+        <div className="flex-shrink-0 flex flex-col min-h-0 transition-all" style={{ width: rightCollapsed ? 36 : rightWidth }}>
+          {rightCollapsed ? (
+            <button
+              className="flex flex-col items-center gap-3 py-4 w-full cursor-pointer hover:bg-[var(--bg-hover)] rounded-pf-lg transition-colors h-full"
+              onClick={() => setRightCollapsed(false)}
+              title="Expand sidebar"
+            >
+              <span className="text-pf-xs text-[var(--text-tertiary)]" style={{ writingMode: 'vertical-lr' }}>
+                {rightTab === 'costs' ? 'Costs' : 'Layouts'}
+              </span>
+              <span className="text-pf-xs text-[var(--text-tertiary)]">&#9666;</span>
+            </button>
+          ) : (
+            <div className="glass-panel flex flex-col flex-1 min-h-0">
+              {/* Tab header */}
+              <div className="flex items-center border-b border-[var(--border-subtle)] flex-shrink-0">
+                <button
+                  className={`pf-tab flex-1 text-center ${rightTab === 'costs' ? 'active' : ''}`}
+                  onClick={() => setRightTab('costs')}
+                >
+                  Costs
+                </button>
+                <button
+                  className={`pf-tab flex-1 text-center ${rightTab === 'layouts' ? 'active' : ''}`}
+                  onClick={() => setRightTab('layouts')}
+                >
+                  Layouts
+                </button>
+                <button
+                  className="w-7 h-7 flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors text-pf-xs flex-shrink-0 rounded-pf-sm"
+                  onClick={() => setRightCollapsed(true)}
+                  title="Collapse sidebar"
+                >
+                  &#9656;
+                </button>
+              </div>
 
-            {/* Tab content */}
-            <div className="overflow-y-auto flex-1 min-h-0">
-              {rightTab === 'costs' ? (
-                inspectorPreset ? (
-                  <PresetInspector
-                    preset={inspectorPreset.preset}
-                    instance={inspectorPreset.instance}
-                    onRemoveInstance={handleRemoveInstance}
-                    onMirrorInstance={handleMirrorInstance}
-                  />
+              {/* Tab content */}
+              <div className="overflow-y-auto flex-1 min-h-0">
+                {rightTab === 'costs' ? (
+                  inspectorPreset ? (
+                    <PresetInspector
+                      preset={inspectorPreset.preset}
+                      instance={inspectorPreset.instance}
+                      onRemoveInstance={handleRemoveInstance}
+                      onMirrorInstance={handleMirrorInstance}
+                    />
+                  ) : (
+                    <PerformanceCostsPanel />
+                  )
                 ) : (
-                  <PerformanceCostsPanel />
-                )
-              ) : (
-                <div className="flex flex-col gap-2.5">
-                  <ActiveLayoutSummary />
-                  <LayoutOptionsPanel
-                    selectedForCompare={selectedForCompare}
-                    onToggleCompare={handleToggleCompare}
-                    onCompare={handleOpenCompare}
-                  />
-                  {((state.moveHistory && state.moveHistory.length > 0) || (activeTrace && activeTrace.length > 0)) && (
-                    <div className="p-2.5">
-                      <MoveTracePanel
-                        moves={state.moveHistory}
-                        trace={activeTrace}
-                        stopReason={state.moveHistoryStopReason as any}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
+                  <div className="flex flex-col gap-2.5">
+                    <ActiveLayoutSummary />
+                    <LayoutOptionsPanel
+                      selectedForCompare={selectedForCompare}
+                      onToggleCompare={handleToggleCompare}
+                      onCompare={handleOpenCompare}
+                    />
+                    {((state.moveHistory && state.moveHistory.length > 0) || (activeTrace && activeTrace.length > 0)) && (
+                      <div className="p-2.5">
+                        <MoveTracePanel
+                          moves={state.moveHistory}
+                          trace={activeTrace}
+                          stopReason={state.moveHistoryStopReason as any}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 

@@ -128,7 +128,6 @@ export function VoicePalette() {
     }
     return map;
   }, [displayedCandidate, soundStreamLookup]);
-
   // Organize streams by group, then by grid assignment
   const { groupedStreams, ungroupedAssigned, ungroupedUnassigned } = useMemo(() => {
     const grouped = new Map<string, SoundStream[]>();

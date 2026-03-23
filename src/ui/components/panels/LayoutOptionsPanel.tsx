@@ -50,7 +50,7 @@ export function LayoutOptionsPanel({
               Compare ({compareCount})
             </button>
           )}
-          {state.candidates.length > 4 && (
+          {(state.candidates.length > 4 || state.savedVariants.length > 3) && (
             <button
               className="text-pf-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
               onClick={() => setViewAllOpen(true)}
@@ -171,9 +171,7 @@ export function LayoutOptionsPanel({
                   dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidate });
                 }}
                 onPromote={() => {
-                  if (confirm('Promote this candidate to become the Active Layout? The current active layout will be auto-saved as a variant.')) {
-                    dispatch({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
-                  }
+                  dispatch({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
                 }}
                 onDelete={() => {
                   dispatch({ type: 'DELETE_CANDIDATE', payload: { candidateId: candidate.id } });
@@ -199,6 +197,8 @@ export function LayoutOptionsPanel({
                   variant={variant}
                   soundStreams={state.soundStreams}
                   onLoad={() => dispatch({ type: 'LOAD_SAVED_VARIANT', payload: { variantId: variant.id } })}
+                  onPromote={() => dispatch({ type: 'PROMOTE_VARIANT', payload: { variantId: variant.id } })}
+                  onDelete={() => dispatch({ type: 'DELETE_VARIANT', payload: { variantId: variant.id } })}
                 />
               ))}
             </div>
@@ -246,7 +246,11 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
                       dispatch({ type: 'SELECT_CANDIDATE', payload: c.id });
                       dispatch({ type: 'SET_ANALYSIS_RESULT', payload: c });
                     }}
-                    onPromote={() => {}}
+                    onPromote={() => {
+                      if (confirm('Promote this candidate to become the Active Layout?')) {
+                        dispatch({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: c.id } });
+                      }
+                    }}
                     onDelete={() => {
                       dispatch({ type: 'DELETE_CANDIDATE', payload: { candidateId: c.id } });
                     }}
@@ -272,6 +276,8 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
                       dispatch({ type: 'LOAD_SAVED_VARIANT', payload: { variantId: variant.id } });
                       onClose();
                     }}
+                    onPromote={() => dispatch({ type: 'PROMOTE_VARIANT', payload: { variantId: variant.id } })}
+                    onDelete={() => dispatch({ type: 'DELETE_VARIANT', payload: { variantId: variant.id } })}
                   />
                 ))}
               </div>
@@ -287,11 +293,17 @@ function SavedVariantCard({
   variant,
   soundStreams,
   onLoad,
+  onPromote,
+  onDelete,
 }: {
   variant: import('../../../types/layout').Layout;
   soundStreams: import('../../state/projectState').SoundStream[];
   onLoad: () => void;
+  onPromote: () => void;
+  onDelete: () => void;
 }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
   return (
     <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
       <div className="flex items-start justify-between gap-3 mb-2">
@@ -314,14 +326,68 @@ function SavedVariantCard({
           />
         </div>
       </div>
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-1.5">
         <button
           className="px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-blue-600/15 border border-blue-500/30 text-blue-400 hover:bg-blue-600/25"
           onClick={onLoad}
         >
           Load Draft
         </button>
+        <VariantPromoteButton onPromote={onPromote} />
+        {confirmDelete ? (
+          <>
+            <button
+              className="px-2 py-1 text-pf-xs rounded-pf-sm bg-red-600 text-white hover:bg-red-500"
+              onClick={() => {
+                onDelete();
+                setConfirmDelete(false);
+              }}
+            >
+              Del
+            </button>
+            <button
+              className="px-2 py-1 text-pf-xs rounded-pf-sm bg-[var(--bg-hover)] text-[var(--text-tertiary)]"
+              onClick={() => setConfirmDelete(false)}
+            >
+              Esc
+            </button>
+          </>
+        ) : (
+          <button
+            className="px-2 py-1 text-pf-xs rounded-pf-sm transition-colors text-[var(--text-tertiary)] hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20"
+            onClick={() => setConfirmDelete(true)}
+            title="Delete variant"
+          >
+            &times;
+          </button>
+        )}
       </div>
     </div>
+  );
+}
+
+function VariantPromoteButton({ onPromote }: { onPromote: () => void }) {
+  const [confirmMode, setConfirmMode] = useState(false);
+  
+  return (
+    <button
+      className={`flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-all ${
+        confirmMode 
+          ? 'bg-emerald-600 text-white shadow-inner flex items-center justify-center gap-1.5 border-emerald-400' 
+          : 'bg-emerald-600/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/25'
+      }`}
+      onClick={e => { 
+        e.stopPropagation(); 
+        if (confirmMode) {
+          onPromote();
+          setConfirmMode(false);
+        } else {
+          setConfirmMode(true);
+          setTimeout(() => setConfirmMode(false), 3000);
+        }
+      }}
+    >
+      {confirmMode ? 'Confirm?' : 'Promote'}
+    </button>
   );
 }

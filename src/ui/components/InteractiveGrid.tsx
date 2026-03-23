@@ -255,8 +255,23 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
   const debuggerPaths = useMemo(() => {
     if (!debuggerIteration) return [];
     
-    return debuggerIteration.candidateMoves
-      .filter(move => move.fromPadKey && move.toPadKey && move.fromPadKey !== move.toPadKey)
+    const allMoves = debuggerIteration.candidateMoves
+      .filter(move => move.fromPadKey && move.toPadKey && move.fromPadKey !== move.toPadKey);
+
+    // Filter to best 3 (lowest delta) + worst 3 (highest delta) + accepted
+    let filteredMoves: typeof allMoves;
+    if (allMoves.length <= 7) {
+      filteredMoves = allMoves;
+    } else {
+      const sorted = [...allMoves].sort((a, b) => a.deltaTotal - b.deltaTotal);
+      const best3 = sorted.slice(0, 3);
+      const worst3 = sorted.slice(-3);
+      const accepted = allMoves.filter(m => m.accepted);
+      const selectedSet = new Set([...best3, ...worst3, ...accepted]);
+      filteredMoves = [...selectedSet];
+    }
+
+    return filteredMoves
       .map(move => {
         const [fromRow, fromCol] = move.fromPadKey!.split(',').map(Number);
         const [toRow, toCol] = move.toPadKey!.split(',').map(Number);

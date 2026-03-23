@@ -4,8 +4,7 @@
  * Public API for project persistence. Uses IndexedDB as the primary store.
  * Migrates existing localStorage projects on first access.
  *
- * Costs and analysis results are intentionally NOT persisted.
- * They are recomputed after load.
+ * Candidates and analysis results are persisted so they survive refresh.
  */
 
 import { type ProjectState } from '../state/projectState';

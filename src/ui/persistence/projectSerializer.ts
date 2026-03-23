@@ -4,8 +4,8 @@
  * Converts between in-memory ProjectState and the persisted PersistedProject shape.
  * Centralizes all serialization/deserialization, validation, and default-filling.
  *
- * Key invariant: costs and analysis results are NEVER persisted.
- * They are recomputed after load.
+ * Key invariant: ephemeral UI state (selection, playback) is NEVER persisted.
+ * Candidates and analysis results ARE persisted so they survive refresh.
  */
 
 import {
@@ -18,6 +18,7 @@ import {
   PROJECT_STATE_VERSION,
 } from '../state/projectState';
 import { type Layout } from '../../types/layout';
+import { type Voice } from '../../types/voice';
 import { type CostToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
 import { type OptimizerMethodKey } from '../../engine/optimization/optimizerInterface';
 import { buildLegacySourceFile, buildPerformanceLanesFromStreams } from '../state/streamsToLanes';
@@ -36,8 +37,10 @@ export function serializeProject(state: ProjectState): PersistedProject {
     name: state.name,
     bpm: state.tempo,
 
-    // Layouts
-    activeLayout: state.activeLayout,
+    // Layouts — merge workingLayout into activeLayout so edits survive refresh
+    // The workingLayout contains uncommitted pad edits; if it exists, it's what
+    // the user is actually looking at, so persist it as the active layout.
+    activeLayout: state.workingLayout ?? state.activeLayout,
     savedVariants: state.savedVariants,
 
     // Sound state
@@ -65,6 +68,10 @@ export function serializeProject(state: ProjectState): PersistedProject {
     createdAt: state.createdAt,
     updatedAt: new Date().toISOString(),
     schemaVersion: PERSISTED_SCHEMA_VERSION,
+
+    // Analysis / Candidates
+    candidates: state.candidates.length > 0 ? state.candidates : undefined,
+    analysisResult: state.analysisResult ?? undefined,
   };
 }
 
@@ -75,7 +82,7 @@ export function serializeProject(state: ProjectState): PersistedProject {
 /**
  * Reconstruct a full ProjectState from persisted data.
  * Fills in defaults for missing fields and resets all ephemeral state.
- * Costs and analysis are NOT loaded — they must be recomputed.
+ * Candidates and analysis are restored if present in the persisted data.
  */
 export function deserializeProject(persisted: PersistedProject): ProjectState {
   const base = createEmptyProjectState();
@@ -141,9 +148,16 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
       ? persisted.costToggles
       : ALL_COSTS_ENABLED,
 
-    // Analysis — always empty on load, recompute as needed
-    analysisResult: null,
-    candidates: [],
+    // Analysis — restore if present in persisted data
+    analysisResult: persisted.analysisResult 
+      ? { ...persisted.analysisResult, layout: ensureLayoutDefaults(persisted.analysisResult.layout, 'variant') }
+      : null,
+    candidates: Array.isArray(persisted.candidates) 
+      ? persisted.candidates.map(c => ({
+          ...c,
+          layout: ensureLayoutDefaults(c.layout, 'variant')
+        }))
+      : [],
     selectedCandidateId: null,
 
     // Ephemeral — always reset
@@ -153,7 +167,7 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
     compareCandidateId: null,
     isProcessing: false,
     error: null,
-    analysisStale: true,
+    analysisStale: !persisted.analysisResult,
     manualCostResult: null,
     moveHistory: null,
     moveHistoryStopReason: null,
@@ -194,11 +208,27 @@ export function validateAndMigrateRaw(parsed: unknown): PersistedProject {
 // Internal Helpers
 // ============================================================================
 
-function ensureLayoutDefaults(layout: Layout, role: Layout['role']): Layout {
+function ensureLayoutDefaults(layout: any, role: Layout['role']): Layout {
+  // Migrate legacy 'cells' to 'padToVoice'
+  const padToVoiceRaw = layout.padToVoice ?? layout.cells ?? {};
+  const padToVoice: Record<string, Voice> = {};
+
+  // Migrate internal Voice objects (field rename: voiceId -> id)
+  for (const [key, voice] of Object.entries(padToVoiceRaw)) {
+    if (voice && typeof voice === 'object') {
+      const v = voice as any;
+      padToVoice[key] = {
+        ...v,
+        id: v.id ?? v.voiceId,
+      } as Voice;
+    }
+  }
+
   return {
     ...layout,
     role: layout.role ?? role,
     placementLocks: layout.placementLocks ?? {},
+    padToVoice,
   };
 }
 

@@ -13,11 +13,13 @@ import {
   Shield,
   Clock,
   History,
+  Sparkles,
 } from 'lucide-react';
 
 interface QuickActionsCardProps {
-  onNewProject: () => void;
+  onNewProject: (queryParams?: string) => void;
   onNavigate: (path: string) => void;
+  heroProjectId?: string;
 }
 
 interface ActionDef {
@@ -28,6 +30,12 @@ interface ActionDef {
 }
 
 const ACTIONS: ActionDef[] = [
+  {
+    icon: <Sparkles size={14} />,
+    label: 'View Presets',
+    onClick: (p) => p.heroProjectId ? p.onNavigate(`/project/${p.heroProjectId}?view=presets`) : p.onNewProject('?view=presets'),
+    accent: 'text-cyan-400',
+  },
   {
     icon: <Plus size={14} />,
     label: 'New Performance',

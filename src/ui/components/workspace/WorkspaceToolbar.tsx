@@ -120,14 +120,15 @@ export function WorkspaceToolbar({
           />
         ) : (
           <span
-            className="text-pf-base font-semibold text-[var(--text-primary)] truncate editable-field hover:text-white transition-colors"
-            onDoubleClick={() => {
+            className="text-pf-base font-semibold text-[var(--text-primary)] truncate editable-field hover:text-white transition-colors cursor-pointer"
+            onClick={() => {
               setNameDraft(state.name || 'Untitled');
               setEditingName(true);
             }}
-            title="Double-click to rename"
+            title="Click to rename"
           >
             {state.name || 'Untitled'}
+
           </span>
         )}
       </div>
@@ -135,27 +136,31 @@ export function WorkspaceToolbar({
       {/* BPM */}
       {editingBpm ? (
         <input
-          className="pf-input w-14 text-pf-sm tabular-nums"
-          type="number"
-          min={20}
-          max={999}
+          className="pf-input w-14 text-pf-sm tabular-nums text-center"
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
           value={bpmDraft}
-          onChange={e => setBpmDraft(e.target.value)}
+          onChange={e => {
+            const v = e.target.value.replace(/[^0-9]/g, '');
+            setBpmDraft(v);
+          }}
           onBlur={commitBpm}
           onKeyDown={e => {
             if (e.key === 'Enter') commitBpm();
             if (e.key === 'Escape') setEditingBpm(false);
           }}
           autoFocus
+          onFocus={e => e.target.select()}
         />
       ) : (
         <span
           className="text-pf-sm text-[var(--text-tertiary)] cursor-pointer hover:text-[var(--text-secondary)] transition-colors tabular-nums editable-field"
-          onDoubleClick={() => {
+          onClick={() => {
             setBpmDraft(String(state.tempo));
             setEditingBpm(true);
           }}
-          title="Double-click to change BPM"
+          title="Click to change BPM"
         >
           {state.tempo} BPM
         </span>

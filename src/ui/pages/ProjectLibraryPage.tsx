@@ -78,7 +78,7 @@ export function ProjectLibraryPage() {
 
   // ---- Handlers ----
 
-  const handleNewProject = useCallback(async () => {
+  const handleNewProject = useCallback(async (queryParams: string = '') => {
     const now = new Date().toISOString();
     const id = generateId('proj');
     const state: ProjectState = {
@@ -89,7 +89,7 @@ export function ProjectLibraryPage() {
       updatedAt: now,
     };
     await saveProjectAsync(state);
-    navigate(`/project/${id}`);
+    navigate(`/project/${id}${queryParams}`);
   }, [navigate]);
 
   const handleRemoveFromHistory = useCallback(async (id: string) => {
@@ -125,7 +125,7 @@ export function ProjectLibraryPage() {
             />
           </div>
           <button
-            onClick={handleNewProject}
+            onClick={() => handleNewProject()}
             className="pf-btn pf-btn-primary text-pf-sm gap-1.5"
             style={{ background: '#059669' }}
           >
@@ -157,7 +157,7 @@ export function ProjectLibraryPage() {
             Create your first performance to get started with layout optimization.
           </p>
           <button
-            onClick={handleNewProject}
+            onClick={() => handleNewProject()}
             className="pf-btn text-pf-sm font-medium text-white px-5 py-2"
             style={{ background: '#059669' }}
           >
@@ -194,7 +194,7 @@ export function ProjectLibraryPage() {
               {/* Add placeholder if fewer than 6 */}
               {gridProjects.length < 6 && (
                 <button
-                  onClick={handleNewProject}
+                  onClick={() => handleNewProject()}
                   className="rounded-pf-lg border border-dashed border-[var(--border-default)] bg-[var(--bg-panel)] flex items-center justify-center min-h-[180px] hover:border-[var(--border-strong)] transition-colors group"
                 >
                   <div className="text-center">
@@ -217,7 +217,11 @@ export function ProjectLibraryPage() {
 
         {/* Sidebar */}
         <div className="flex flex-col gap-4">
-          <QuickActionsCard onNewProject={handleNewProject} onNavigate={navigate} />
+          <QuickActionsCard 
+            onNewProject={handleNewProject} 
+            onNavigate={navigate} 
+            heroProjectId={heroProject?.id}
+          />
         </div>
       </div>
     </div>
