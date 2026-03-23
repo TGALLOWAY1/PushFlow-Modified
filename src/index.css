@@ -255,21 +255,24 @@ button, a, [role="button"], select, input,
 /* Select styling */
 .pf-select {
   background: var(--bg-card);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   color: var(--text-secondary);
-  padding: 4px 6px;
+  padding: 3px 6px;
   font-size: 13px;
   cursor: pointer;
   outline: none;
-  transition: border-color 120ms ease;
+  transition: border-color 120ms ease, background-color 120ms ease;
+  appearance: none; /* Remove default arrow for a flatter look if desired, or keep for UX */
 }
 .pf-select:hover {
-  border-color: var(--border-strong);
+  background: var(--bg-hover);
+  border-color: var(--border-default);
   color: var(--text-primary);
 }
 .pf-select:focus {
   border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(91, 141, 239, 0.1);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

@@ -183,14 +183,8 @@ export function useAutoAnalysis() {
         setAnalysisPhase('analyzing');
         dispatch({ type: 'SET_PROCESSING', payload: true });
 
-        // If the layout has no pad assignments, bail — user must place sounds manually.
+        // If the layout has no pad assignments, the solver will handle initial placement.
         const effectiveLayout = layout;
-        if (Object.keys(layout.padToVoice).length === 0) {
-          dispatch({ type: 'SET_PROCESSING', payload: false });
-          dispatch({ type: 'SET_ERROR', payload: 'Place sounds on the grid before running analysis.' });
-          setAnalysisPhase('idle');
-          return;
-        }
 
         const defaultPose = createDefaultPose0();
         const solverConfig: SolverConfig = {
@@ -257,15 +251,8 @@ export function useAutoAnalysis() {
     try {
       const performance = getActivePerformance(state);
 
-      // If the layout has no pad assignments, bail — user must place sounds manually.
+      // If the layout has no pad assignments, the solver will handle initial placement.
       const effectiveLayout = layout;
-      if (Object.keys(layout.padToVoice).length === 0) {
-        dispatch({ type: 'SET_PROCESSING', payload: false });
-        dispatch({ type: 'SET_ERROR', payload: 'Place sounds on the grid before running analysis.' });
-        setAnalysisPhase('idle');
-        setGenerationProgress(null);
-        return;
-      }
 
       const method = state.optimizerMethod;
 
