@@ -10,20 +10,15 @@ import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { getDisplayedCandidate, getDisplayedLayout, type SoundStream } from '../state/projectState';
 import type { LaneGroup } from '../../types/performanceLane';
+import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
 import { generateId } from '../../utils/idGenerator';
+import { formatPadPosition } from '../../utils/padPosition';
 import { FingerAssignmentInput, type FingerAssignmentValue } from './shared/FingerAssignmentInput';
 import { type FingerType } from '../../types/fingerModel';
 
 const FINGER_ABBREV: Record<string, string> = {
   thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
 };
-
-/** Format a pad key like "3,5" into "R3C5" to match Lanes panel format. */
-function formatPadKey(pk: string): string {
-  const parts = pk.split(',');
-  if (parts.length !== 2) return pk;
-  return `R${parts[0]}C${parts[1]}`;
-}
 
 const COLOR_PALETTE = [
   '#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6',
@@ -37,6 +32,10 @@ export function VoicePalette() {
   const layout = getDisplayedLayout(state);
   const displayedCandidate = getDisplayedCandidate(state);
   const [selectedStreamIds, setSelectedStreamIds] = useState<Set<string>>(new Set());
+  const soundStreamLookup = useMemo(
+    () => buildSoundStreamLookup(state.soundStreams),
+    [state.soundStreams],
+  );
 
   // Cmd+G to group selected streams
   useEffect(() => {
@@ -94,12 +93,14 @@ export function VoicePalette() {
     const map = new Map<string, string[]>();
     if (!layout) return map;
     for (const [padKey, voice] of Object.entries(layout.padToVoice)) {
-      const existing = map.get(voice.id) ?? [];
+      const stream = soundStreamLookup.forVoice(voice);
+      if (!stream) continue;
+      const existing = map.get(stream.id) ?? [];
       existing.push(padKey);
-      map.set(voice.id, existing);
+      map.set(stream.id, existing);
     }
     return map;
-  }, [layout]);
+  }, [layout, soundStreamLookup]);
 
   // Build a map of which group each stream belongs to
   const streamGroupMap = useMemo(() => {
@@ -117,16 +118,16 @@ export function VoicePalette() {
     if (!fingerAssignments) return map;
     // Map voiceId to its first assignment's finger info
     for (const fa of fingerAssignments) {
-      if (fa.voiceId && !map.has(fa.voiceId) && fa.assignedHand !== 'Unplayable' && fa.finger) {
-        map.set(fa.voiceId, {
+      const stream = soundStreamLookup.forAssignment(fa.voiceId, fa.noteNumber);
+      if (!stream || map.has(stream.id) || fa.assignedHand === 'Unplayable' || !fa.finger) continue;
+      map.set(stream.id, {
           label: `${fa.assignedHand[0].toUpperCase()}${FINGER_ABBREV[fa.finger] ?? fa.finger}`,
           hand: fa.assignedHand,
           finger: fa.finger,
-        });
-      }
+      });
     }
     return map;
-  }, [displayedCandidate]);
+  }, [displayedCandidate, soundStreamLookup]);
 
   // Organize streams by group, then by grid assignment
   const { groupedStreams, ungroupedAssigned, ungroupedUnassigned } = useMemo(() => {
@@ -563,7 +564,7 @@ function StreamRow({
       {padKeys.length > 0 && (
         <span className="text-pf-xs text-[var(--text-secondary)] font-mono flex-shrink-0 flex items-center gap-0.5 tabular-nums">
           {isLocked && <span className="text-[8px] text-amber-400" title="Placement locked">&#x1F512;</span>}
-          {formatPadKey(padKeys[0])}
+          {formatPadPosition(padKeys[0])}
           {padKeys.length > 1 && `+${padKeys.length - 1}`}
           {solverFinger && !voiceConstraint && (
             <span className="ml-1 text-[8px] opacity-60">({solverFinger})</span>

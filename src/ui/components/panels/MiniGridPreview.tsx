@@ -7,6 +7,7 @@
 
 import { type Layout } from '../../../types/layout';
 import { type SoundStream } from '../../state/projectState';
+import { buildSoundStreamLookup } from '../../analysis/soundStreamLookup';
 
 interface MiniGridPreviewProps {
   layout: Layout;
@@ -21,12 +22,7 @@ export function MiniGridPreview({ layout, soundStreams, size = 1, highlighted = 
   const cellSize = Math.round(18 * size);
   const gap = 1;
   const gridSize = cellSize * 8 + gap * 7;
-
-  // Build color lookup from sound streams
-  const colorByVoiceId = new Map<string, string>();
-  for (const stream of soundStreams) {
-    if (stream.color) colorByVoiceId.set(stream.id, stream.color);
-  }
+  const soundStreamLookup = buildSoundStreamLookup(soundStreams);
 
   return (
     <div
@@ -54,7 +50,8 @@ export function MiniGridPreview({ layout, soundStreams, size = 1, highlighted = 
           const col = i % 8;
           const padKey = `${row},${col}`;
           const voice = layout.padToVoice[padKey];
-          const color = voice ? (colorByVoiceId.get(voice.id) ?? '#4b5563') : undefined;
+          const stream = soundStreamLookup.forVoice(voice);
+          const color = stream?.color ?? voice?.color ?? '#4b5563';
 
           return (
             <div
