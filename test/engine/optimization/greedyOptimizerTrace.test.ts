@@ -290,4 +290,22 @@ describe('Greedy Optimizer — Output Contract', () => {
     expect(result.executionPlan.fingerAssignments).toBeDefined();
     expect(result.executionPlan.fingerAssignments.length).toBeGreaterThan(0);
   });
+
+  it('normalizes greedy execution plans to the shared UI contract', async () => {
+    const optimizer = getOptimizer('greedy');
+    const result = await optimizer.optimize(makeTestInput());
+
+    expect(result.executionPlan.score).toBeGreaterThanOrEqual(0);
+    expect(result.executionPlan.score).toBeLessThanOrEqual(100);
+    expect(result.executionPlan.layoutBinding).toBeDefined();
+    expect(result.executionPlan.layoutBinding?.layoutId).toBe(result.layout.id);
+    expect(result.executionPlan.momentAssignments).toBeDefined();
+    expect(result.executionPlan.momentAssignments!.length).toBeGreaterThan(0);
+
+    const playableAssignments = result.executionPlan.fingerAssignments.filter(
+      assignment => assignment.assignedHand !== 'Unplayable',
+    );
+    expect(playableAssignments.length).toBeGreaterThan(0);
+    expect(playableAssignments.some(assignment => (assignment.costBreakdown?.total ?? 0) > 0)).toBe(true);
+  });
 });
