@@ -17,12 +17,15 @@ import { type Performance, type InstrumentConfig } from '../../types/performance
 import { type EngineConfiguration } from '../../types/engineConfig';
 import { type CandidateSolution } from '../../types/candidateSolution';
 import { type Layout, type LayoutRole, cloneLayout, createEmptyLayout } from '../../types/layout';
+import { type ExecutionPlanResult } from '../../types/executionPlan';
 import { type Section, type VoiceProfile } from '../../types/performanceStructure';
 import { type PerformanceLane, type LaneGroup, type SourceFile } from '../../types/performanceLane';
 import { type LaneAction, isLaneAction, lanesReducer } from './lanesReducer';
 import { type CostToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
 import { type PerformanceCostBreakdown } from '../../types/costBreakdown';
 import { type OptimizerMethodKey, type OptimizerMove, type OptimizationIteration } from '../../engine/optimization/optimizerInterface';
+import { checkPlanFreshness } from '../../engine/evaluation/executionPlanValidation';
+import { formatFingerConstraint, parseFingerConstraint } from '../../utils/fingerConstraints';
 
 // ============================================================================
 // Sound Stream Model
@@ -211,6 +214,37 @@ export function getActiveStreams(state: ProjectState): SoundStream[] {
   return state.soundStreams.filter(s => !s.muted);
 }
 
+export function getCandidateById(
+  state: ProjectState,
+  candidateId: string | null,
+): CandidateSolution | null {
+  if (!candidateId) return null;
+  return state.candidates.find(candidate => candidate.id === candidateId) ?? null;
+}
+
+export function getSelectedCandidate(state: ProjectState): CandidateSolution | null {
+  return getCandidateById(state, state.selectedCandidateId);
+}
+
+export function getAnalysisForLayout(
+  state: ProjectState,
+  layout: Layout | null,
+): CandidateSolution | null {
+  if (!layout || !state.analysisResult) return null;
+  if (state.analysisResult.layout.id === layout.id) return state.analysisResult;
+  return checkPlanFreshness(state.analysisResult.executionPlan, layout).isFresh
+    ? state.analysisResult
+    : null;
+}
+
+export function getDisplayedCandidate(state: ProjectState): CandidateSolution | null {
+  return getSelectedCandidate(state) ?? getAnalysisForLayout(state, getDisplayedLayout(state));
+}
+
+export function getDisplayedExecutionPlan(state: ProjectState): ExecutionPlanResult | null {
+  return getDisplayedCandidate(state)?.executionPlan ?? null;
+}
+
 // ============================================================================
 // Actions
 // ============================================================================
@@ -315,37 +349,6 @@ export function isEphemeralAction(action: ProjectAction): boolean {
 let _nextId = 0;
 function generateId(): string {
   return `layout-${Date.now()}-${_nextId++}`;
-}
-
-/** Build a canonical finger constraint string like "L2" from hand + finger. */
-function buildFingerConstraintStr(hand: string, finger: string): string {
-  const FINGER_NUM: Record<string, string> = {
-    thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
-  };
-  const h = hand === 'left' ? 'L' : 'R';
-  return `${h}${FINGER_NUM[finger] ?? finger}`;
-}
-
-/** Parse a constraint string like "L2" or "L-Ix" (legacy) into { hand, finger }. */
-function parseFingerConstraintStr(constraint: string): { hand: 'left' | 'right'; finger: string } | null {
-  // "L2" format (canonical)
-  const matchNum = constraint.match(/^([LlRr])([1-5])$/);
-  if (matchNum) {
-    const hand = matchNum[1].toUpperCase() === 'L' ? 'left' as const : 'right' as const;
-    const numMap: Record<string, string> = { '1': 'thumb', '2': 'index', '3': 'middle', '4': 'ring', '5': 'pinky' };
-    return { hand, finger: numMap[matchNum[2]] };
-  }
-  // "L-Ix" format (legacy, still parsed for backward compatibility)
-  const FINGER_MAP: Record<string, string> = {
-    Th: 'thumb', Ix: 'index', Md: 'middle', Rg: 'ring', Pk: 'pinky',
-  };
-  const matchDash = constraint.match(/^([LR])-(\w+)$/);
-  if (matchDash) {
-    const hand = matchDash[1] === 'L' ? 'left' as const : 'right' as const;
-    const finger = FINGER_MAP[matchDash[2]];
-    if (finger) return { hand, finger };
-  }
-  return null;
 }
 
 /**
@@ -556,7 +559,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         .map(([pk]) => pk);
 
       if (padsForVoice.length > 0 && updated.hand && updated.finger) {
-        const constraintStr = buildFingerConstraintStr(updated.hand, updated.finger);
+        const constraintStr = formatFingerConstraint(updated.hand, updated.finger as Parameters<typeof formatFingerConstraint>[1]);
         newState = updateWorkingLayout(newState, layout => {
           const newConstraints = { ...layout.fingerConstraints };
           for (const pk of padsForVoice) {
@@ -688,7 +691,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       if (voice) {
         const nextVC = { ...newState.voiceConstraints };
         if (constraint) {
-          const parsed = parseFingerConstraintStr(constraint);
+          const parsed = parseFingerConstraint(constraint);
           if (parsed) {
             nextVC[voice.id] = { ...(nextVC[voice.id] ?? {}), hand: parsed.hand, finger: parsed.finger };
           }

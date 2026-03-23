@@ -20,6 +20,7 @@ import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
 import { useAutoSave } from '../../hooks/useAutoSave';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useViewSettings, ViewSettingsProvider } from '../../state/viewSettings';
+import { getDisplayedCandidate, getSelectedCandidate } from '../../state/projectState';
 
 import { WorkspaceToolbar } from './WorkspaceToolbar';
 import { VoicePalette } from '../VoicePalette';
@@ -466,8 +467,9 @@ function PerformanceWorkspaceInner() {
     return ids;
   }, [composerWorkspace.selectedInstanceId, composerWorkspace.placedInstances]);
 
-  const assignments = state.analysisResult?.executionPlan.fingerAssignments;
-  const selectedCandidate = state.candidates.find(c => c.id === state.selectedCandidateId) ?? null;
+  const displayedCandidate = getDisplayedCandidate(state);
+  const assignments = displayedCandidate?.executionPlan.fingerAssignments;
+  const selectedCandidate = getSelectedCandidate(state);
 
   // Active trace for Visual Debugger
   const activeTrace = state.iterationTrace ?? selectedCandidate?.iterationTrace;
@@ -517,7 +519,7 @@ function PerformanceWorkspaceInner() {
         composerOpen={timelineTab === 'composer'}
         onToggleComposer={() => setTimelineTab(timelineTab === 'composer' ? 'timeline' : 'composer')}
         onCalculateCost={() => calculateCost(state.costToggles)}
-        hasAssignment={!!(state.analysisResult?.executionPlan?.fingerAssignments?.length)}
+        hasAssignment={!!assignments?.length}
         saveStatus={saveStatus}
         onSave={saveNow}
       />
@@ -749,4 +751,3 @@ function PerformanceWorkspaceInner() {
     </div>
   );
 }
-

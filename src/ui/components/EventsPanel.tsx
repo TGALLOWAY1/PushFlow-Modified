@@ -16,7 +16,7 @@
 
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getActiveStreams, type SoundStream } from '../state/projectState';
+import { getActiveStreams, getDisplayedExecutionPlan, type SoundStream } from '../state/projectState';
 import { type V1CostBreakdown } from '../../types/diagnostics';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -135,16 +135,16 @@ export function EventsPanel({
   // Determine which moment is currently selected based on selectedEventIndex
   const selectedMomentIdx = useMemo(() => {
     if (state.selectedEventIndex === null) return null;
-    const assignments = state.analysisResult?.executionPlan.fingerAssignments;
+    const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
     if (!assignments) return null;
     const selected = assignments.find(a => a.eventIndex === state.selectedEventIndex);
     if (!selected) return null;
     const idx = moments.findIndex(m => Math.abs(m.startTime - selected.startTime) < MOMENT_EPSILON);
     return idx >= 0 ? idx : null;
-  }, [state.selectedEventIndex, state.analysisResult, moments]);
+  }, [state, moments]);
 
   const handleMomentClick = useCallback((moment: PerformanceMomentSummary) => {
-    const assignments = state.analysisResult?.executionPlan.fingerAssignments;
+    const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
     if (assignments) {
       const match = assignments.find(
         a => Math.abs(a.startTime - moment.startTime) < MOMENT_EPSILON
@@ -156,7 +156,7 @@ export function EventsPanel({
     }
     // Fallback: move playhead to the moment's time for timeline scrolling
     dispatch({ type: 'SET_CURRENT_TIME', payload: moment.startTime });
-  }, [state.analysisResult, dispatch]);
+  }, [state, dispatch]);
 
   // Keyboard navigation (V1 pattern: ArrowUp/Down, j/k)
   useEffect(() => {
@@ -191,7 +191,7 @@ export function EventsPanel({
   // Build per-moment cost from finger assignments
   const momentCosts = useMemo(() => {
     const map = new Map<number, V1CostBreakdown>();
-    const assignments = state.analysisResult?.executionPlan.fingerAssignments;
+    const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
     if (!assignments || moments.length === 0) return map;
 
     for (const moment of moments) {
@@ -215,7 +215,7 @@ export function EventsPanel({
       map.set(moment.momentIndex, avg);
     }
     return map;
-  }, [state.analysisResult, moments]);
+  }, [state, moments]);
 
   if (moments.length === 0) {
     return (

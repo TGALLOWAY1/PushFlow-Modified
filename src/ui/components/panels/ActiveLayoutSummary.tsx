@@ -8,44 +8,18 @@
 
 import { useState, useMemo } from 'react';
 import { useProject } from '../../state/ProjectContext';
-import { getDisplayedLayout, getDisplayedLayoutRole, getActiveStreams } from '../../state/projectState';
+import {
+  getDisplayedCandidate,
+  getDisplayedLayout,
+  getDisplayedLayoutRole,
+  getActiveStreams,
+} from '../../state/projectState';
 import { type FingerType, ALL_FINGERS } from '../../../types/fingerModel';
 import { CostBreakdownBars } from './CostBreakdownBars';
 import { EventCostChart } from './EventCostChart';
 import { LearnMoreModal } from './LearnMoreModal';
 import { buildSelectedTransitionModel } from '../../analysis/selectionModel';
-
-/** Parse a constraint string like "L2" or "L-Ix" (legacy) into hand + finger. */
-function parseConstraint(constraint: string): { hand: 'left' | 'right'; finger: FingerType } | null {
-  // "L2" format (canonical)
-  const matchNum = constraint.match(/^([LlRr])([1-5])$/);
-  if (matchNum) {
-    const hand = matchNum[1].toUpperCase() === 'L' ? 'left' as const : 'right' as const;
-    const fingerMap: Record<string, FingerType> = {
-      '1': 'thumb', '2': 'index', '3': 'middle', '4': 'ring', '5': 'pinky',
-    };
-    return { hand, finger: fingerMap[matchNum[2]] };
-  }
-  // "L-Ix" format (legacy)
-  const FINGER_MAP: Record<string, FingerType> = {
-    Th: 'thumb', Ix: 'index', Md: 'middle', Rg: 'ring', Pk: 'pinky',
-  };
-  const matchDash = constraint.match(/^([LR])-(\w+)$/);
-  if (matchDash) {
-    const hand = matchDash[1] === 'L' ? 'left' as const : 'right' as const;
-    const finger = FINGER_MAP[matchDash[2]];
-    if (finger) return { hand, finger };
-  }
-  return null;
-}
-
-/** Build a constraint string from hand + finger in canonical "L2" format. */
-function buildConstraintStr(hand: 'left' | 'right', finger: FingerType): string {
-  const FINGER_ABBREV: Record<FingerType, string> = {
-    thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
-  };
-  return `${hand === 'left' ? 'L' : 'R'}${FINGER_ABBREV[finger]}`;
-}
+import { formatFingerConstraint, parseFingerConstraint } from '../../../utils/fingerConstraints';
 
 export function ActiveLayoutSummary() {
   const { state, dispatch } = useProject();
@@ -55,9 +29,10 @@ export function ActiveLayoutSummary() {
   const [nameDraft, setNameDraft] = useState('');
 
   const displayedLayout = getDisplayedLayout(state);
+  const displayedCandidate = getDisplayedCandidate(state);
   const layoutRole = getDisplayedLayoutRole(state);
   const activeStreams = getActiveStreams(state);
-  const currentPlan = state.analysisResult?.executionPlan;
+  const currentPlan = displayedCandidate?.executionPlan;
   const assignments = currentPlan?.fingerAssignments;
 
   // Selected event data
@@ -112,13 +87,13 @@ export function ActiveLayoutSummary() {
     ? `${assignment.row},${assignment.col}`
     : null;
   const currentConstraint = padKey && displayedLayout ? displayedLayout.fingerConstraints[padKey] : undefined;
-  const parsed = currentConstraint ? parseConstraint(currentConstraint) : null;
+  const parsed = currentConstraint ? parseFingerConstraint(currentConstraint) : null;
   const effectiveHand = parsed?.hand ?? (assignment?.assignedHand === 'Unplayable' ? null : assignment?.assignedHand ?? null);
   const effectiveFinger = parsed?.finger ?? assignment?.finger ?? null;
 
   const handleSetConstraint = (hand: 'left' | 'right', finger: FingerType) => {
     if (!padKey) return;
-    dispatch({ type: 'SET_FINGER_CONSTRAINT', payload: { padKey, constraint: buildConstraintStr(hand, finger) } });
+    dispatch({ type: 'SET_FINGER_CONSTRAINT', payload: { padKey, constraint: formatFingerConstraint(hand, finger) } });
   };
 
   const handleClearConstraint = () => {
@@ -135,7 +110,7 @@ export function ActiveLayoutSummary() {
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-subtle)] flex-shrink-0">
           <div className="flex items-center gap-2">
             <h3 className="section-header">Layout Summary</h3>
-            {state.analysisStale && currentPlan && (
+            {state.analysisStale && !state.selectedCandidateId && currentPlan && (
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" title="Analysis outdated" />
             )}
           </div>

@@ -11,7 +11,7 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getActiveStreams, type SoundStream } from '../state/projectState';
+import { getActiveStreams, getDisplayedExecutionPlan, type SoundStream } from '../state/projectState';
 import { useLaneImport } from '../hooks/useLaneImport';
 import { type FingerAssignment } from '../../types/executionPlan';
 
@@ -69,7 +69,7 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
   // ─── Derived Data ────────────────────────────────────────────────────────
 
   const activeStreams = getActiveStreams(state);
-  const assignments = state.analysisResult?.executionPlan.fingerAssignments;
+  const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
 
   const visibleStreams = activeStreams;
 

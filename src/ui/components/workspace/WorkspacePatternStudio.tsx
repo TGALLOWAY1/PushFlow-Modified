@@ -24,36 +24,13 @@ import { type LaneFingerAssignment } from '../loop-editor/LoopLaneRow';
 import { parsePadKey } from '../../../types/padGrid';
 import { getDisplayedLayout } from '../../state/projectState';
 import { saveLoopState, loadLoopState } from '../../persistence/loopStorage';
+import { parseFingerConstraint } from '../../../utils/fingerConstraints';
 
 const LANE_COLORS = ['#ef4444', '#f97316', '#22c55e', '#eab308', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6'];
 const DEFAULT_MIDI_NOTES = [36, 38, 42, 46, 48, 60, 62, 64];
 const WORKSPACE_PATTERN_SOURCE_ID = 'workspace_pattern_source';
 const WORKSPACE_PATTERN_GROUP_ID = 'workspace_pattern_group';
 const WORKSPACE_PATTERN_NAME = 'Workspace Pattern';
-
-/** Parse a constraint string like "L2" or "L-Ix" (legacy) into hand + finger. */
-function parseConstraintString(constraint: string): { hand: HandSide; finger: FingerType } | null {
-  // "L2" format (canonical)
-  const matchNum = constraint.match(/^([LlRr])([1-5])$/);
-  if (matchNum) {
-    const hand: HandSide = matchNum[1].toUpperCase() === 'L' ? 'left' : 'right';
-    const fingerNumMap: Record<string, FingerType> = {
-      '1': 'thumb', '2': 'index', '3': 'middle', '4': 'ring', '5': 'pinky',
-    };
-    return { hand, finger: fingerNumMap[matchNum[2]] };
-  }
-  // "L-Ix" format (legacy, still parsed for backward compatibility)
-  const FINGER_MAP: Record<string, FingerType> = {
-    Th: 'thumb', Ix: 'index', Md: 'middle', Rg: 'ring', Pk: 'pinky',
-  };
-  const matchDash = constraint.match(/^([LR])-(\w+)$/);
-  if (matchDash) {
-    const hand: HandSide = matchDash[1] === 'L' ? 'left' : 'right';
-    const finger = FINGER_MAP[matchDash[2]];
-    if (finger) return { hand, finger };
-  }
-  return null;
-}
 
 interface ProjectPatternMeta {
   existingGroupOrder: number;
@@ -353,7 +330,7 @@ export function WorkspacePatternStudio() {
         finger = 'index';
 
         if (constraint) {
-          const parsed = parseConstraintString(constraint);
+          const parsed = parseFingerConstraint(constraint);
           if (parsed) {
             hand = parsed.hand;
             finger = parsed.finger;

@@ -8,7 +8,7 @@
 
 import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getDisplayedLayout, type SoundStream } from '../state/projectState';
+import { getDisplayedCandidate, getDisplayedLayout, type SoundStream } from '../state/projectState';
 import type { LaneGroup } from '../../types/performanceLane';
 import { generateId } from '../../utils/idGenerator';
 import { FingerAssignmentInput, type FingerAssignmentValue } from './shared/FingerAssignmentInput';
@@ -35,6 +35,7 @@ const COLOR_PALETTE = [
 export function VoicePalette() {
   const { state, dispatch } = useProject();
   const layout = getDisplayedLayout(state);
+  const displayedCandidate = getDisplayedCandidate(state);
   const [selectedStreamIds, setSelectedStreamIds] = useState<Set<string>>(new Set());
 
   // Cmd+G to group selected streams
@@ -112,8 +113,8 @@ export function VoicePalette() {
   // Build solver finger summary
   const solverSummary = useMemo(() => {
     const map = new Map<string, { label: string; hand: string; finger: string }>();
-    if (!state.analysisResult?.executionPlan) return map;
-    const { fingerAssignments } = state.analysisResult.executionPlan;
+    const { fingerAssignments } = displayedCandidate?.executionPlan ?? {};
+    if (!fingerAssignments) return map;
     // Map voiceId to its first assignment's finger info
     for (const fa of fingerAssignments) {
       if (fa.voiceId && !map.has(fa.voiceId) && fa.assignedHand !== 'Unplayable' && fa.finger) {
@@ -125,7 +126,7 @@ export function VoicePalette() {
       }
     }
     return map;
-  }, [state.analysisResult]);
+  }, [displayedCandidate]);
 
   // Organize streams by group, then by grid assignment
   const { groupedStreams, ungroupedAssigned, ungroupedUnassigned } = useMemo(() => {
@@ -180,7 +181,7 @@ export function VoicePalette() {
       stream={stream}
       isGrouped={!!isGrouped}
       padKeys={streamPadLocations.get(stream.id) ?? []}
-      isLocked={(streamPadLocations.get(stream.id) ?? []).some(pk => !!layout?.placementLocks[pk])}
+      isLocked={!!layout?.placementLocks[stream.id] && (streamPadLocations.get(stream.id) ?? []).includes(layout.placementLocks[stream.id])}
       voiceConstraint={state.voiceConstraints[stream.id]}
       solverAssignment={solverSummary.get(stream.id)}
       groups={state.laneGroups}
@@ -622,4 +623,3 @@ function StreamRow({
     </div>
   );
 }
-
