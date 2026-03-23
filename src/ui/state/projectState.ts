@@ -283,6 +283,7 @@ export type ProjectAction =
   | { type: 'PROMOTE_CANDIDATE'; payload: { candidateId: string } }
   | { type: 'DELETE_CANDIDATE'; payload: { candidateId: string } }
   | { type: 'SAVE_AS_VARIANT'; payload: { name: string; source: 'working' | 'candidate'; candidateId?: string } }
+  | { type: 'LOAD_SAVED_VARIANT'; payload: { variantId: string } }
   | { type: 'RENAME_LAYOUT'; payload: { target: 'active' | 'working'; name: string } }
 
   // Analysis
@@ -934,6 +935,21 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         ...state,
         savedVariants: [...state.savedVariants, variant],
         updatedAt: new Date().toISOString(),
+      };
+    }
+
+    case 'LOAD_SAVED_VARIANT': {
+      const variant = state.savedVariants.find(layout => layout.id === action.payload.variantId);
+      if (!variant) return state;
+      return {
+        ...state,
+        updatedAt: new Date().toISOString(),
+        workingLayout: cloneLayout(variant, generateId(), variant.name, 'working'),
+        selectedCandidateId: null,
+        compareCandidateId: null,
+        selectedEventIndex: null,
+        selectedMomentIndex: null,
+        analysisStale: true,
       };
     }
 

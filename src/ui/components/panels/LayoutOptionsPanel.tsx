@@ -186,8 +186,22 @@ export function LayoutOptionsPanel({
 
         {/* Saved variants */}
         {state.savedVariants.length > 0 && (
-          <div className="text-pf-xs text-[var(--text-tertiary)] pt-3 mt-3 border-t border-[var(--border-subtle)]">
-            {state.savedVariants.length} saved variant{state.savedVariants.length !== 1 ? 's' : ''}
+          <div className="pt-3 mt-3 border-t border-[var(--border-subtle)] space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="section-header">
+                Saved Variants ({state.savedVariants.length})
+              </span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {state.savedVariants.slice(-3).reverse().map((variant) => (
+                <SavedVariantCard
+                  key={variant.id}
+                  variant={variant}
+                  soundStreams={state.soundStreams}
+                  onLoad={() => dispatch({ type: 'LOAD_SAVED_VARIANT', payload: { variantId: variant.id } })}
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -250,17 +264,15 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
               </h4>
               <div className="flex flex-col gap-3">
                 {state.savedVariants.map((variant) => (
-                  <div key={variant.id} className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
-                    <div className="text-pf-sm text-[var(--text-primary)] font-medium mb-1 truncate">{variant.name}</div>
-                    <div className="text-pf-xs text-[var(--text-tertiary)]">
-                      {Object.keys(variant.padToVoice).length} pads assigned
-                    </div>
-                    {variant.savedAt && (
-                      <div className="text-pf-xs text-[var(--text-tertiary)]">
-                        Saved: {new Date(variant.savedAt).toLocaleDateString()}
-                      </div>
-                    )}
-                  </div>
+                  <SavedVariantCard
+                    key={variant.id}
+                    variant={variant}
+                    soundStreams={state.soundStreams}
+                    onLoad={() => {
+                      dispatch({ type: 'LOAD_SAVED_VARIANT', payload: { variantId: variant.id } });
+                      onClose();
+                    }}
+                  />
                 ))}
               </div>
             </div>
@@ -268,5 +280,48 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </>
+  );
+}
+
+function SavedVariantCard({
+  variant,
+  soundStreams,
+  onLoad,
+}: {
+  variant: import('../../../types/layout').Layout;
+  soundStreams: import('../../state/projectState').SoundStream[];
+  onLoad: () => void;
+}) {
+  return (
+    <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="min-w-0">
+          <div className="text-pf-sm text-[var(--text-primary)] font-medium truncate">{variant.name}</div>
+          <div className="text-pf-xs text-[var(--text-tertiary)]">
+            {Object.keys(variant.padToVoice).length} pads assigned
+          </div>
+          {variant.savedAt && (
+            <div className="text-pf-xs text-[var(--text-tertiary)]">
+              Saved {new Date(variant.savedAt).toLocaleDateString()}
+            </div>
+          )}
+        </div>
+        <div className="flex-shrink-0">
+          <MiniGridPreview
+            layout={variant}
+            soundStreams={soundStreams}
+            size={0.8}
+          />
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <button
+          className="px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-blue-600/15 border border-blue-500/30 text-blue-400 hover:bg-blue-600/25"
+          onClick={onLoad}
+        >
+          Load Draft
+        </button>
+      </div>
+    </div>
   );
 }
