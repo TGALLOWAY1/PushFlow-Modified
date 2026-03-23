@@ -492,7 +492,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const isInstanceHighlighted = highlightedInstancePads?.has(padKey) ?? false;
       const ghostInfo = ghostPads?.get(padKey);
       const constraint = layout?.fingerConstraints[padKey];
-      const isLocked = !!layout?.placementLocks[padKey];
+      const isLocked = !!voice && layout?.placementLocks[voice.id] === padKey;
       const isGreyedOut = hasEventSelected && !isSelected;
       const selectedFingerInfo = selectedPadFingers.get(padKey);
 

@@ -816,7 +816,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         id: generateId(),
         role: 'active',
         baselineId: undefined,
-        placementLocks: state.activeLayout.placementLocks, // Preserve locks from active
+        placementLocks: { ...candidate.layout.placementLocks },
         savedAt: now,
       };
 
