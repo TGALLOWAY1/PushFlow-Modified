@@ -498,6 +498,26 @@ When an optimizer supports restarts, the output must include:
 
 This contract is implementation-agnostic. Types may change, but the semantic obligations remain.
 
+## UI Non-Regression Rules
+
+These rules protect against recurring UI regressions. Violating them requires explicit user approval.
+
+### Timeline Rules
+- The timeline must always fill its container width in auto-fit mode. After MIDI import, the timeline must recalculate its width to fill the container. Do not use a fixed/default width that ignores container size.
+- Timeline note pills must display hand+finger (e.g., "L2"), never just the finger number alone (e.g., "2").
+- Clicking any note in the timeline must highlight ALL notes at the same time position (same moment/event). Single-note-only selection is a regression.
+
+### Finger Assignment Display Rules
+- The Sounds panel `FingerAssignmentInput` must show solver suggestions (at reduced opacity) when no user constraint is set. The `(XX)` parenthesized text format must NOT be used for finger display next to pad positions.
+- When the "Show Finger Assignment" toggle is enabled in grid settings, the grid must display finger assignments from solver analysis, not just user-set constraints. This toggle must always produce visible results when analysis data exists, regardless of whether user constraints are set.
+
+### Project Library Rules
+- Project cards in the library must display actual project data (BPM, sound count, bar length, event count, created date, last visited date). Mock/placeholder data must not appear on project cards.
+
+### Sound Grouping Rules
+- When groups exist, ungrouped sounds must be labeled "Ungrouped", not "On Grid" (which is confusing since grouped sounds are also on the grid).
+- Cmd+G (Ctrl+G) must toggle: group selected ungrouped sounds, or ungroup if all selected sounds are in the same group.
+
 ## Final Reminder
 
 Do not let legacy docs, current file structure, or existing engine internals define the product by accident.
