@@ -13,7 +13,7 @@ import { TemporalEvaluatorPage } from './pages/TemporalEvaluatorPage';
 
 export function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
       <Routes>
         {/* Editor route: full-viewport app shell, no padding */}
         <Route path="/project/:id" element={
