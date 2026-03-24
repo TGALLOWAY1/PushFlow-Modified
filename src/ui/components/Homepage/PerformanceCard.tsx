@@ -2,48 +2,59 @@
  * PerformanceCard.
  *
  * Compact card for the Active Performances grid.
- * Shows pad-grid thumbnail, title, improvement score, progress, and metadata.
+ * Shows pad-grid thumbnail, title, and real project metadata.
  */
 
 import { type ProjectLibraryEntry } from '../../persistence/projectStorage';
 import { type ProjectState } from '../../state/projectState';
-import { type ProjectMockData } from './homepageDemoData';
 import { MiniGridPreview } from '../panels/MiniGridPreview';
-import { ImprovementBadge } from './ImprovementBadge';
 
 interface PerformanceCardProps {
   project: ProjectLibraryEntry;
   projectState: ProjectState | null;
-  mockData: ProjectMockData;
   onOpen: () => void;
   onDelete: () => void;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  'in-progress': 'bg-blue-500/15 text-blue-400',
-  'needs-review': 'bg-amber-500/15 text-amber-400',
-  'practice-ready': 'bg-green-500/15 text-green-400',
-  'mostly-mastered': 'bg-purple-500/15 text-purple-400',
-  'archived': 'bg-[var(--bg-hover)] text-[var(--text-secondary)]',
-};
+/** Format an ISO date string as a relative label. */
+function relativeDate(iso: string): string {
+  try {
+    const date = new Date(iso);
+    const now = Date.now();
+    const diffMs = now - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'Just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDays = Math.floor(diffHr / 24);
+    if (diffDays < 30) return `${diffDays}d ago`;
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return '';
+  }
+}
 
-const PROGRESS_COLORS: Record<string, string> = {
-  'in-progress': 'bg-blue-500',
-  'needs-review': 'bg-amber-500',
-  'practice-ready': 'bg-green-500',
-  'mostly-mastered': 'bg-purple-500',
-  'archived': 'bg-gray-500',
-};
+/** Format an ISO date string as a short date. */
+function shortDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return '';
+  }
+}
 
 export function PerformanceCard({
   project,
   projectState,
-  mockData,
   onOpen,
   onDelete,
 }: PerformanceCardProps) {
-  const statusClass = STATUS_COLORS[mockData.status] ?? 'bg-[var(--bg-hover)] text-[var(--text-secondary)]';
-  const progressColor = PROGRESS_COLORS[mockData.status] ?? 'bg-gray-500';
+  // Derive real data from project index entry and loaded state
+  const tempo = (projectState?.tempo ?? (project as any).tempo) || 120;
+  const soundCount = projectState?.soundStreams.length ?? project.soundCount;
+  const eventCount = project.eventCount;
+  const durationBars = (project as any).durationBars ?? 0;
 
   return (
     <div
@@ -77,37 +88,23 @@ export function PerformanceCard({
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <h3 className="text-pf-base font-medium text-[var(--text-primary)] truncate">{project.name}</h3>
-            <ImprovementBadge score={mockData.improvementScore} />
-          </div>
+          <h3 className="text-pf-base font-medium text-[var(--text-primary)] truncate">{project.name}</h3>
 
-          {/* Status */}
-          <span className={`inline-block text-pf-micro px-1.5 py-0.5 rounded-pf-sm mt-1 font-medium ${statusClass}`}>
-            {mockData.statusLabel}
+          {/* BPM badge */}
+          <span className="inline-block text-pf-micro px-1.5 py-0.5 rounded-pf-sm mt-1 font-medium bg-[var(--bg-hover)] text-[var(--text-secondary)]">
+            {tempo} BPM
           </span>
 
-          {/* Practice status label */}
-          <p className="text-pf-xs text-[var(--text-tertiary)] mt-1.5">
-            Practice status
-          </p>
-
-          {/* Metadata */}
-          <div className="text-pf-xs text-[var(--text-tertiary)] mt-1 space-y-0.5">
-            <p>Sections: <span className="text-[var(--text-secondary)]">{mockData.sectionsCount}</span></p>
-            <p>Hours practiced: <span className="text-[var(--text-secondary)]">{mockData.minHours}</span></p>
-            <p>Last opened: <span className="text-[var(--text-secondary)]">{mockData.lastPracticedLabel}</span></p>
+          {/* Real metadata */}
+          <div className="text-pf-xs text-[var(--text-tertiary)] mt-2 space-y-0.5">
+            <p>Sounds: <span className="text-[var(--text-secondary)]">{soundCount}</span></p>
+            {durationBars > 0 && (
+              <p>Length: <span className="text-[var(--text-secondary)]">{durationBars} bar{durationBars !== 1 ? 's' : ''}</span></p>
+            )}
+            <p>Events: <span className="text-[var(--text-secondary)]">{eventCount}</span></p>
+            <p>Created: <span className="text-[var(--text-secondary)]">{shortDate(project.createdAt)}</span></p>
+            <p>Last visited: <span className="text-[var(--text-secondary)]">{relativeDate(project.updatedAt)}</span></p>
           </div>
-        </div>
-      </div>
-
-      {/* Progress bar */}
-      <div className="mt-2.5">
-        <div className="h-1 bg-[var(--bg-input)] rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full ${progressColor}`}
-            style={{ width: `${mockData.progressPercent}%` }}
-          />
         </div>
       </div>
     </div>

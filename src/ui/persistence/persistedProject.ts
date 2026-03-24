@@ -93,4 +93,6 @@ export interface ProjectIndexEntry {
   updatedAt: string;
   soundCount: number;
   eventCount: number;
+  tempo: number;
+  durationBars: number;
 }

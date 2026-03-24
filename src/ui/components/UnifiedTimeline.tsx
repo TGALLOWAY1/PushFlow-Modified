@@ -131,16 +131,19 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
   }, [state.isPlaying, state.currentTime, dispatch]);
 
   // Auto-fit zoom: measure container width and fill it with the clip
+  // Re-measure when totalDuration changes (e.g. after MIDI import)
   const [containerWidth, setContainerWidth] = useState(0);
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
     const measure = () => setContainerWidth(el.clientWidth);
     measure();
+    // Re-measure after a frame to catch layout shifts from content changes
+    const raf = requestAnimationFrame(measure);
     const observer = new ResizeObserver(measure);
     observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+    return () => { observer.disconnect(); cancelAnimationFrame(raf); };
+  }, [totalDuration]);
 
   // Auto-fit: scale so full bar-snapped duration fills the container width exactly
   const autoFitZoom = containerWidth > 0 && totalDuration > 0
@@ -314,6 +317,14 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
     }
   }, [state.selectedEventIndex, streamAssignments, minTime, zoom]);
 
+  // ─── Selected moment time (for multi-note highlighting) ─────────────────
+  const selectedMomentTime = useMemo(() => {
+    if (state.selectedEventIndex === null) return null;
+    const allA = Array.from(streamAssignments.values()).flat();
+    const sel = allA.find(a => a.eventIndex === state.selectedEventIndex);
+    return sel?.startTime ?? null;
+  }, [state.selectedEventIndex, streamAssignments]);
+
   // ─── Handlers ────────────────────────────────────────────────────────────
 
   const handleImportClick = useCallback(() => {
@@ -337,7 +348,19 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
 
   const handleEventClick = useCallback((eventIndex: number) => {
     dispatch({ type: 'SELECT_EVENT', payload: eventIndex });
-  }, [dispatch]);
+    // Also select the moment so all simultaneous notes highlight
+    const allAssignments = Array.from(streamAssignments.values()).flat();
+    const clicked = allAssignments.find(a => a.eventIndex === eventIndex);
+    if (clicked) {
+      // Find moment index: count distinct start times up to this one
+      const uniqueTimes = [...new Set(allAssignments.map(a => a.startTime))].sort((a, b) => a - b);
+      const EPSILON = 0.001;
+      const momentIdx = uniqueTimes.findIndex(t => Math.abs(t - clicked.startTime) < EPSILON);
+      if (momentIdx >= 0) {
+        dispatch({ type: 'SELECT_MOMENT', payload: momentIdx });
+      }
+    }
+  }, [dispatch, streamAssignments]);
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
@@ -587,7 +610,8 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
                     const finger = a.finger as string | null;
                     const isRaw = hand === 'raw' || finger === 'unassigned';
                     const fingerLabel = (finger && finger !== 'unassigned') ? FINGER_ABBREV[finger] ?? finger : '';
-                    const isSelected = a.eventIndex === state.selectedEventIndex;
+                    const isSelected = a.eventIndex === state.selectedEventIndex
+                      || (selectedMomentTime !== null && Math.abs(a.startTime - selectedMomentTime) < 0.001);
                     const handPrefix = a.assignedHand === 'left' ? 'L' : a.assignedHand === 'right' ? 'R' : '';
 
                     const isUnplayable = hand === 'Unplayable';
@@ -625,7 +649,7 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
                       >
                         {fingerLabel && (
                           <span className="text-[7px] font-bold leading-none" style={{ color: pillText }}>
-                            {fingerLabel}
+                            {handPrefix}{fingerLabel}
                           </span>
                         )}
                       </button>

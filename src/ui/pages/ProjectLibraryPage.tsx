@@ -186,7 +186,6 @@ export function ProjectLibraryPage() {
                   key={entry.id}
                   project={entry}
                   projectState={projectStates.get(entry.id) ?? null}
-                  mockData={getProjectMockData(entry.id)}
                   onOpen={() => navigate(`/project/${entry.id}`)}
                   onDelete={() => handleRemoveFromHistory(entry.id)}
                 />

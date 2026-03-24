@@ -256,7 +256,15 @@ export function EventsPanel({
         </div>
       </div>
 
-      <div ref={listRef} className="overflow-y-auto space-y-0.5" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+      {/* Column header */}
+      <div className="flex items-center gap-2 px-2 py-1 text-pf-micro font-mono text-[var(--text-tertiary)] uppercase tracking-wider border-b border-[var(--border-subtle)]/30">
+        <span className="w-8 flex-shrink-0">#</span>
+        <span className="flex-1">Beat</span>
+        <span className="flex-shrink-0 w-10 text-right">Cost</span>
+        <span className="flex-shrink-0 w-8 text-right">Notes</span>
+      </div>
+
+      <div ref={listRef} className="overflow-y-auto space-y-0.5" style={{ maxHeight: 'calc(100vh - 310px)' }}>
         {moments.map((moment) => (
           <MomentRow
             key={moment.momentIndex}
@@ -305,8 +313,8 @@ function MomentRow({
     >
       <div className="flex items-center gap-2">
         {/* Event label */}
-        <span className={`text-pf-xs font-mono w-14 flex-shrink-0 ${isSelected ? 'text-blue-300' : 'text-[var(--text-tertiary)]'}`}>
-          Event {String(moment.momentIndex + 1).padStart(2, '0')}
+        <span className={`text-pf-xs font-mono w-8 flex-shrink-0 ${isSelected ? 'text-blue-300' : 'text-[var(--text-tertiary)]'}`}>
+          {String(moment.momentIndex + 1).padStart(2, '0')}
         </span>
 
         {/* Beat position */}
