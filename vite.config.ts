@@ -6,10 +6,8 @@ import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-const isProduction = process.env.NODE_ENV === 'production'
-
-export default defineConfig({
-  base: isProduction ? '/pushflow-modified/' : '/',
+export default defineConfig(({ command }) => ({
+  base: command === 'build' ? '/pushflow-modified/' : '/',
   plugins: [
     react(),
     VitePWA({
@@ -53,4 +51,4 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-})
+}))
