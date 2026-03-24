@@ -318,8 +318,6 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
   }, [state.selectedEventIndex, streamAssignments, minTime, zoom]);
 
   // ─── Selected moment time (for multi-note highlighting) ─────────────────
-  // When an event is selected, compute its startTime so all pills at that same
-  // start time highlight together (a "moment" = all notes with coincident starts).
   const selectedMomentTime = useMemo(() => {
     if (state.selectedEventIndex === null) return null;
     const allA = Array.from(streamAssignments.values()).flat();
@@ -350,7 +348,19 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
 
   const handleEventClick = useCallback((eventIndex: number) => {
     dispatch({ type: 'SELECT_EVENT', payload: eventIndex });
-  }, [dispatch]);
+    // Also select the moment so all simultaneous notes highlight
+    const allAssignments = Array.from(streamAssignments.values()).flat();
+    const clicked = allAssignments.find(a => a.eventIndex === eventIndex);
+    if (clicked) {
+      // Find moment index: count distinct start times up to this one
+      const uniqueTimes = [...new Set(allAssignments.map(a => a.startTime))].sort((a, b) => a - b);
+      const EPSILON = 0.001;
+      const momentIdx = uniqueTimes.findIndex(t => Math.abs(t - clicked.startTime) < EPSILON);
+      if (momentIdx >= 0) {
+        dispatch({ type: 'SELECT_MOMENT', payload: momentIdx });
+      }
+    }
+  }, [dispatch, streamAssignments]);
 
   // ─── Render ──────────────────────────────────────────────────────────────
 

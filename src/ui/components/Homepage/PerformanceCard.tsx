@@ -51,22 +51,10 @@ export function PerformanceCard({
   onDelete,
 }: PerformanceCardProps) {
   // Derive real data from project index entry and loaded state
-  const tempo = projectState?.tempo ?? 120;
+  const tempo = (projectState?.tempo ?? (project as any).tempo) || 120;
   const soundCount = projectState?.soundStreams.length ?? project.soundCount;
-  const eventCount = projectState
-    ? projectState.soundStreams.reduce((sum, s) => sum + s.events.length, 0)
-    : project.eventCount;
-  const barDuration = (60 / tempo) * 4;
-  let maxTime = 0;
-  if (projectState) {
-    for (const s of projectState.soundStreams) {
-      for (const e of s.events) {
-        const end = e.startTime + e.duration;
-        if (end > maxTime) maxTime = end;
-      }
-    }
-  }
-  const durationBars = barDuration > 0 ? Math.ceil(maxTime / barDuration) : 0;
+  const eventCount = project.eventCount;
+  const durationBars = (project as any).durationBars ?? 0;
 
   return (
     <div

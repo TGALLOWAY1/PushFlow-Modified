@@ -42,8 +42,7 @@ export function VoicePalette() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'g' && selectedStreamIds.size > 0) {
         e.preventDefault();
-
-        // Check if all selected streams are in the same non-null group → ungroup
+        // Check if all selected streams are in the same group → ungroup
         const groupIds = new Set<string | null>();
         for (const streamId of selectedStreamIds) {
           const lane = state.performanceLanes.find(l => l.id === streamId);
@@ -280,6 +279,9 @@ export function VoicePalette() {
           {/* Ungrouped assigned streams (no section header) */}
           {ungroupedAssigned.length > 0 && (
             <div className="space-y-0.5 mt-2">
+              <span className="section-header px-2">
+                Ungrouped ({ungroupedAssigned.length})
+              </span>
               {ungroupedAssigned.map(s => renderStreamRow(s))}
             </div>
           )}
@@ -581,7 +583,7 @@ function StreamRow({
         </span>
       )}
 
-      {/* Finger assignment — show user constraint or solver suggestion (at reduced opacity) */}
+      {/* Finger assignment — show user constraint or solver suggestion */}
       <div onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
         <FingerAssignmentInput
           value={

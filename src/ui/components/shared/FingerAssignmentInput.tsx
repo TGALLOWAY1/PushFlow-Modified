@@ -43,7 +43,7 @@ interface FingerAssignmentInputProps {
   value: FingerAssignmentValue | null | undefined;
   onChange: (assignment: FingerAssignmentValue | null) => void;
   size?: 'sm' | 'md';
-  /** When true, the displayed value is a solver suggestion (shown at reduced opacity). */
+  /** When true, the value is a solver suggestion (displayed at reduced opacity). */
   isSuggestion?: boolean;
 }
 
