@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig(({ command }) => ({
-  base: command === 'build' ? '/pushflow-modified/' : '/',
+  base: command === 'build' ? '/PushFlow-Modified/' : '/',
   plugins: [
     react(),
     VitePWA({
@@ -20,8 +20,8 @@ export default defineConfig(({ command }) => ({
         theme_color: '#1e1e2e',
         background_color: '#1e1e2e',
         display: 'standalone',
-        scope: '/pushflow-modified/',
-        start_url: '/pushflow-modified/',
+        scope: '/PushFlow-Modified/',
+        start_url: '/PushFlow-Modified/',
         icons: [
           {
             src: 'pwa-192x192.png',
