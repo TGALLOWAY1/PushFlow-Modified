@@ -30,7 +30,6 @@ import { PracticeStatsCard } from '../components/Homepage/PracticeStatsCard';
 import {
   getReadinessData,
   getPracticeStats,
-  getProjectMockData,
 } from '../components/Homepage/homepageDemoData';
 
 export function ProjectLibraryPage() {
@@ -141,7 +140,6 @@ export function ProjectLibraryPage() {
           <ContinuePracticingHero
             project={heroProject}
             projectState={projectStates.get(heroProject.id) ?? null}
-            mockData={getProjectMockData(heroProject.id)}
             onResume={() => navigate(`/project/${heroProject.id}`)}
             onOpenEditor={() => navigate(`/project/${heroProject.id}`)}
           />
@@ -186,7 +184,6 @@ export function ProjectLibraryPage() {
                   key={entry.id}
                   project={entry}
                   projectState={projectStates.get(entry.id) ?? null}
-                  mockData={getProjectMockData(entry.id)}
                   onOpen={() => navigate(`/project/${entry.id}`)}
                   onDelete={() => handleRemoveFromHistory(entry.id)}
                 />

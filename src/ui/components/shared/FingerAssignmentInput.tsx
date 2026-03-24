@@ -43,9 +43,11 @@ interface FingerAssignmentInputProps {
   value: FingerAssignmentValue | null | undefined;
   onChange: (assignment: FingerAssignmentValue | null) => void;
   size?: 'sm' | 'md';
+  /** When true, the displayed value is a solver suggestion (shown at reduced opacity). */
+  isSuggestion?: boolean;
 }
 
-export function FingerAssignmentInput({ value, onChange, size = 'sm' }: FingerAssignmentInputProps) {
+export function FingerAssignmentInput({ value, onChange, size = 'sm', isSuggestion = false }: FingerAssignmentInputProps) {
   const displayValue = value ? fingerAssignmentLabel(value) : '';
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(displayValue);
@@ -113,13 +115,16 @@ export function FingerAssignmentInput({ value, onChange, size = 'sm' }: FingerAs
         color: value
           ? value.hand === 'left' ? '#6da3f5' : '#f09060'
           : 'var(--text-tertiary)',
+        opacity: isSuggestion ? 0.5 : 1,
       }}
       onClick={() => {
         setEditText(displayValue);
         setEditing(true);
       }}
       title={value
-        ? `${value.hand} ${value.finger} — click to edit`
+        ? isSuggestion
+          ? `Solver suggestion: ${value.hand} ${value.finger} — click to override`
+          : `${value.hand} ${value.finger} — click to edit`
         : 'Click to assign finger (e.g. L1, R5)'}
     >
       {value ? fingerAssignmentLabel(value) : '··'}
