@@ -323,18 +323,16 @@ function MomentRow({
         </span>
 
         {/* Cost badge */}
-        {costBreakdown && (
-          <span
-            className={`text-pf-xs font-mono flex-shrink-0 cursor-pointer ${costColor}`}
-            onClick={e => { e.stopPropagation(); setExpanded(!expanded); }}
-            title="Click for cost breakdown"
-          >
-            {costBreakdown.total.toFixed(1)}
-          </span>
-        )}
+        <span
+          className={`text-pf-xs font-mono flex-shrink-0 w-10 text-right ${costBreakdown ? `cursor-pointer ${costColor}` : 'text-[var(--text-tertiary)]'}`}
+          onClick={costBreakdown ? (e => { e.stopPropagation(); setExpanded(!expanded); }) : undefined}
+          title={costBreakdown ? 'Click for cost breakdown' : 'No cost data'}
+        >
+          {costBreakdown ? costBreakdown.total.toFixed(1) : '—'}
+        </span>
 
         {/* Note count badge */}
-        <span className={`text-pf-xs flex-shrink-0 ${
+        <span className={`text-pf-xs flex-shrink-0 w-8 text-right ${
           moment.noteCount > 3 ? 'text-amber-400' : 'text-[var(--text-tertiary)]'
         }`}>
           {moment.noteCount}n
@@ -343,7 +341,7 @@ function MomentRow({
 
       {/* Expanded cost breakdown */}
       {expanded && costBreakdown && (
-        <div className="mt-1 ml-14 grid grid-cols-2 gap-x-3 gap-y-0.5 text-pf-micro" onClick={e => e.stopPropagation()}>
+        <div className="mt-1 ml-10 grid grid-cols-2 gap-x-3 gap-y-0.5 text-pf-micro" onClick={e => e.stopPropagation()}>
           <span className="text-[var(--text-tertiary)]">Transition</span>
           <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.transitionCost.toFixed(2)}</span>
           <span className="text-[var(--text-tertiary)]">Grip</span>

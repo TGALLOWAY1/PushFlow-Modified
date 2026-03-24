@@ -276,7 +276,7 @@ export function VoicePalette() {
             </div>
           )}
 
-          {/* Ungrouped assigned streams */}
+          {/* Ungrouped assigned streams (no section header) */}
           {ungroupedAssigned.length > 0 && (
             <div className="space-y-0.5 mt-2">
               <span className="section-header px-2">
@@ -297,7 +297,7 @@ export function VoicePalette() {
 
       {selectedStreamIds.size > 0 && (
         <div className="text-pf-xs text-[var(--accent-primary)] pt-2 px-2">
-          {selectedStreamIds.size} selected — press <kbd className="px-1 py-0.5 rounded-pf-sm bg-[var(--bg-card)] text-[var(--text-secondary)] font-mono text-pf-micro border border-[var(--border-subtle)]">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+G</kbd> to group
+          {selectedStreamIds.size} selected — press <kbd className="px-1 py-0.5 rounded-pf-sm bg-[var(--bg-card)] text-[var(--text-secondary)] font-mono text-pf-micro border border-[var(--border-subtle)]">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+G</kbd> to group/ungroup
         </div>
       )}
     </div>

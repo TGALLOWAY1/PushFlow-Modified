@@ -2,19 +2,17 @@
  * ContinuePracticingHero.
  *
  * Large featured card showing the most recent performance with
- * a pad-grid thumbnail, practice context, and primary CTAs.
+ * a pad-grid thumbnail, real project context, and primary CTAs.
  */
 
 import { Play, Pencil } from 'lucide-react';
 import { type ProjectLibraryEntry } from '../../persistence/projectStorage';
 import { type ProjectState } from '../../state/projectState';
-import { type ProjectMockData } from './homepageDemoData';
 import { MiniGridPreview } from '../panels/MiniGridPreview';
 
 interface ContinuePracticingHeroProps {
   project: ProjectLibraryEntry;
   projectState: ProjectState | null;
-  mockData: ProjectMockData;
   onResume: () => void;
   onOpenEditor: () => void;
 }
@@ -26,16 +24,42 @@ const DIFFICULTY_COLORS: Record<string, string> = {
   Extreme: 'bg-red-500/15 text-red-400',
 };
 
+function relativeDate(iso: string): string {
+  try {
+    const date = new Date(iso);
+    const now = Date.now();
+    const diffMs = now - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'Just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDays = Math.floor(diffHr / 24);
+    if (diffDays < 30) return `${diffDays}d ago`;
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return '';
+  }
+}
+
 export function ContinuePracticingHero({
   project,
   projectState,
-  mockData,
   onResume,
   onOpenEditor,
 }: ContinuePracticingHeroProps) {
   const difficultyClass = project.difficulty
     ? DIFFICULTY_COLORS[project.difficulty] ?? 'bg-[var(--bg-hover)] text-[var(--text-secondary)]'
     : null;
+
+  const tempo = projectState?.tempo ?? 120;
+  const soundCount = projectState?.soundStreams.length ?? project.soundCount;
+  const eventCount = projectState
+    ? projectState.soundStreams.reduce((sum, s) => sum + s.events.length, 0)
+    : project.eventCount;
+  const padsUsed = projectState?.activeLayout
+    ? Object.keys(projectState.activeLayout.padToVoice).length
+    : 0;
 
   return (
     <div className="glass-panel-strong rounded-pf-lg p-5 flex gap-5 glow-emerald">
@@ -63,39 +87,27 @@ export function ContinuePracticingHero({
             Continue Practicing
           </span>
           <h2 className="text-xl font-bold mt-1 truncate">{project.name}</h2>
-          <p className="text-pf-sm text-[var(--text-tertiary)] mt-0.5">by Neon Pulse</p>
 
-          <div className="flex items-center gap-2 mt-3">
-            <span className="text-pf-sm text-[var(--text-secondary)]">
-              Last practiced section:{' '}
-              <span className="text-[var(--text-primary)]">{mockData.sectionLabel}</span>
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 mt-1.5">
-            <span className="text-pf-sm text-[var(--text-secondary)]">
-              Current layout:{' '}
-              <span className="text-[var(--text-primary)]">Ergo Focus 3</span>
-            </span>
+          <div className="flex items-center gap-3 mt-3 text-pf-sm text-[var(--text-secondary)]">
+            <span className="font-medium text-[var(--text-primary)]">{tempo} BPM</span>
+            <span>{soundCount} sounds</span>
+            <span>{eventCount} events</span>
+            {padsUsed > 0 && <span>{padsUsed} pads</span>}
           </div>
 
           {difficultyClass && (
             <div className="flex items-center gap-2 mt-1.5">
-              <span className="text-pf-sm text-[var(--text-secondary)]">Current difficulty:</span>
+              <span className="text-pf-sm text-[var(--text-secondary)]">Difficulty:</span>
               <span className={`text-pf-xs px-1.5 py-0.5 rounded-pf-sm font-mono ${difficultyClass}`}>
                 {project.difficulty}
               </span>
             </div>
           )}
 
-          {/* Practice insight */}
-          <div className="mt-4 p-2.5 rounded-pf-lg bg-[var(--bg-card)] border border-[var(--border-subtle)]">
-            <p className="text-pf-sm text-[var(--text-secondary)] italic">
-              Motivational supported
-            </p>
-            <p className="text-pf-sm text-[var(--text-primary)] mt-0.5">
-              {mockData.practiceInsight}
-            </p>
+          <div className="flex items-center gap-2 mt-1.5">
+            <span className="text-pf-sm text-[var(--text-tertiary)]">
+              Last opened: <span className="text-[var(--text-secondary)]">{relativeDate(project.updatedAt)}</span>
+            </span>
           </div>
         </div>
 
