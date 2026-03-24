@@ -265,6 +265,22 @@ That progression is the core contract of the product: PushFlow starts with music
 
 ---
 
+## TODO
+
+### GitHub Pages Deployment (one-time setup)
+1. Go to your repo **Settings > Pages**
+2. Under **Source**, select **GitHub Actions** (not "Deploy from a branch")
+3. Merge the PWA branch to `main` — the workflow will auto-build and deploy
+4. Visit `https://tgalloway1.github.io/pushflow-modified/`
+
+### Install as Desktop App
+Once deployed, open the site in Chrome or Edge and click the **install icon** (in the address bar or browser menu). PushFlow will appear as a standalone app in your dock/taskbar — no browser chrome, no terminal.
+
+### Replace Placeholder App Icons
+The current PWA icons (`public/pwa-192x192.png`, `public/pwa-512x512.png`) are auto-generated placeholders. Replace them with proper designed icons when ready. The favicon (`public/favicon.svg`) can also be updated.
+
+---
+
 ## Development
 
 ### Prerequisites
