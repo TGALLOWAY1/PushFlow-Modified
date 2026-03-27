@@ -558,6 +558,11 @@ const HARD_CONSTRAINTS = [
         key: 'speed',
         description: 'Hand movement between consecutive events cannot exceed 12.0 grid units/second. Faster transitions are physically impossible.',
       },
+      {
+        name: 'Outward Rotation',
+        key: 'outwardRotation',
+        description: 'For simultaneous notes on the same hand, a finger further from the thumb must not be placed on a lower row than a finger closer to the thumb. E.g., R3 (middle) below R2 (index) forces outward hand rotation (supination), which is unnatural. The reverse (R3 above R2) is inward rotation and is allowed. Rule: index row \u2264 middle row \u2264 ring row \u2264 pinky row.',
+      },
     ],
   },
   {
@@ -586,9 +591,14 @@ const HARD_CONSTRAINTS = [
     color: '#a855f7',
     rules: [
       {
-        name: 'Hand Topology',
+        name: 'Hand Topology (Horizontal)',
         key: 'topology',
         description: 'Left hand: pinky \u2264 ring \u2264 middle \u2264 index \u2264 thumb (left to right). Right hand: thumb \u2264 index \u2264 middle \u2264 ring \u2264 pinky (left to right). Violations mean an anatomically impossible hand shape.',
+      },
+      {
+        name: 'Hand Topology (Vertical)',
+        key: 'outwardRotation',
+        description: 'Both hands: index row \u2264 middle row \u2264 ring row \u2264 pinky row (bottom to top). Outer fingers placed below inner fingers force outward hand rotation (supination), which is unnatural and strained.',
       },
     ],
   },
