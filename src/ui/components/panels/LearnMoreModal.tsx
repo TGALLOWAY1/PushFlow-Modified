@@ -561,7 +561,7 @@ const HARD_CONSTRAINTS = [
       {
         name: 'Outward Rotation',
         key: 'outwardRotation',
-        description: 'For simultaneous notes on the same hand, a finger further from the thumb must not be placed on a lower row than a finger closer to the thumb. E.g., R3 (middle) below R2 (index) forces outward hand rotation (supination), which is unnatural. The reverse (R3 above R2) is inward rotation and is allowed. Rule: index row \u2264 middle row \u2264 ring row \u2264 pinky row.',
+        description: 'When two adjacent fingers share the same column, the outer finger (further from thumb) must not be placed below the inner finger (closer to thumb). E.g., R3 (middle) directly below R2 (index) in the same column forces outward hand rotation (supination). The reverse (R3 above R2) is inward rotation and natural. This only applies to same-column placement; a horizontal offset absorbs the vertical difference.',
       },
     ],
   },
@@ -598,7 +598,7 @@ const HARD_CONSTRAINTS = [
       {
         name: 'Hand Topology (Vertical)',
         key: 'outwardRotation',
-        description: 'Both hands: index row \u2264 middle row \u2264 ring row \u2264 pinky row (bottom to top). Outer fingers placed below inner fingers force outward hand rotation (supination), which is unnatural and strained.',
+        description: 'When adjacent fingers are on the same column: index row \u2264 middle row \u2264 ring row \u2264 pinky row (bottom to top). Outer fingers placed directly below inner fingers in the same column force outward hand rotation (supination). Different columns are allowed.',
       },
     ],
   },

@@ -230,14 +230,15 @@ export function isValidFingerOrder(
     }
   }
 
-  // Rule 5: Outward rotation constraint (vertical)
-  // Fingers further from thumb must not be below fingers closer to thumb.
-  // Applies identically to both hands: index.row <= middle.row <= ring.row <= pinky.row
+  // Rule 5: Outward rotation constraint (vertical, same column only)
+  // When two adjacent fingers share a column, the outer finger must not be below
+  // the inner finger — that forces outward hand rotation (supination).
+  // Only applies when fingers are on the same column; horizontal offset is fine.
   const verticalOrder: FingerType[] = ['index', 'middle', 'ring', 'pinky'];
   for (let i = 0; i < verticalOrder.length - 1; i++) {
     const innerPos = tempFingers[verticalOrder[i]].currentGridPos;
     const outerPos = tempFingers[verticalOrder[i + 1]].currentGridPos;
-    if (innerPos && outerPos) {
+    if (innerPos && outerPos && innerPos.col === outerPos.col) {
       if (outerPos.row < innerPos.row) return false;
     }
   }
@@ -439,11 +440,14 @@ function satisfiesRightHandTopology(
  * to the thumb. Violating this requires outward hand rotation (supination),
  * which is unnatural and physically strained.
  *
- * Valid:   R3 (middle) above or same row as R2 (index) — inward rotation, natural
- * Invalid: R3 (middle) below R2 (index) — outward rotation, unnatural
+ * Valid:   R3 (middle) above or same row as R2 (index) on the same column — inward rotation, natural
+ * Invalid: R3 (middle) below R2 (index) on the same column — outward rotation, unnatural
  *
- * The constraint applies identically to both hands: index.row <= middle.row <= ring.row <= pinky.row
- * (where row increases bottom→top on the Push grid).
+ * Only applies when the two fingers share the same column (directly above/below).
+ * When fingers are on different columns, the horizontal offset allows the hand to
+ * absorb the vertical difference without forced rotation.
+ *
+ * (where row increases bottom→top on the Push grid, x = col, y = row)
  */
 function satisfiesVerticalRotationConstraint(
   fingerPositions: Partial<Record<FingerType, FingerCoordinate>>
@@ -454,9 +458,8 @@ function satisfiesVerticalRotationConstraint(
   for (let i = 0; i < verticalOrder.length - 1; i++) {
     const innerPos = fingerPositions[verticalOrder[i]];  // closer to thumb
     const outerPos = fingerPositions[verticalOrder[i + 1]];  // further from thumb
-    if (innerPos !== undefined && outerPos !== undefined) {
-      // Outer finger must not be below inner finger (outerPos.y >= innerPos.y)
-      // y = row, row increases bottom→top
+    if (innerPos !== undefined && outerPos !== undefined && innerPos.x === outerPos.x) {
+      // Same column: outer finger must not be below inner finger (outerPos.y >= innerPos.y)
       if (outerPos.y < innerPos.y) return false;
     }
   }
@@ -682,7 +685,7 @@ function collectVerticalRotationRejections(
     const outerFinger = verticalOrder[i + 1];
     const innerPos = fingerPositions[innerFinger];
     const outerPos = fingerPositions[outerFinger];
-    if (innerPos !== undefined && outerPos !== undefined) {
+    if (innerPos !== undefined && outerPos !== undefined && innerPos.x === outerPos.x) {
       if (outerPos.y < innerPos.y) {
         rejections.push({
           fingerA: outerFinger,
