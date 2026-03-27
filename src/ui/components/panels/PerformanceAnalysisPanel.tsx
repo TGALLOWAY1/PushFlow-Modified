@@ -272,6 +272,7 @@ export function PerformanceAnalysisPanel({
                     onSelect={() => {
                       dispatch({ type: 'SELECT_CANDIDATE', payload: candidate.id });
                       dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidate });
+                      dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: candidate.id } });
                     }}
                     isCheckedForCompare={false}
                     onPromote={() => {
@@ -328,6 +329,7 @@ export function PerformanceAnalysisPanel({
             if (candidate) {
               dispatch({ type: 'SELECT_CANDIDATE', payload: id });
               dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidate });
+              dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: candidate.id } });
             }
           }}
           onClose={() => setViewAllOpen(false)}
