@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 ## Project
 
 PushFlow V3 is a performance-mapping and playability-analysis tool for Ableton Push 3. The active codebase (TypeScript + React + Vite) lives at the repository root.
@@ -97,6 +99,23 @@ npm run test:run         # Run tests once (CI mode)
 npm run test:coverage    # Run tests with coverage report
 ```
 
+### Running Individual Tests
+
+```bash
+npx vitest run test/engine/evaluation/executionPlan.test.ts   # Single file
+npx vitest run test/engine/                                    # Directory
+npx vitest run -t "pattern name"                               # By test name
+npx vitest test/engine/solvers/                                # Watch mode on directory
+```
+
+### Key Configuration Details
+
+- **Path alias**: `@/*` maps to `src/*` (configured in both tsconfig.json and vite.config.ts)
+- **No linter**: TypeScript strict mode with `noUnusedLocals` and `noUnusedParameters` serves as the linter
+- **Production base path**: `/PushFlow-Modified/` (for GitHub Pages deployment)
+- **Build output**: `dist/`
+- **Coverage output**: `coverage/` (HTML report available)
+
 ## Codebase Architecture
 
 ```
@@ -171,6 +190,30 @@ Key test invariants:
 - Feasibility tiers (Strict/Relaxed/Fallback) have correct boundaries
 - Generated candidates differ meaningfully from baseline
 - Same solver input produces consistent output
+
+### Application Routes
+
+| Route | Page | Purpose |
+|-------|------|---------|
+| `/` | ProjectLibraryPage | Project list and management |
+| `/project/:id` | ProjectEditorPage | Main workspace (full viewport) |
+| `/optimizer-debug` | OptimizerDebugPage | Solver debugging |
+| `/validator` | ConstraintValidatorPage | Constraint validation |
+| `/temporal-evaluator` | TemporalEvaluatorPage | Temporal cost evaluation |
+
+### Import Conventions
+
+- **Domain types**: Always import from `@/types` (barrel file at `src/types/index.ts`)
+- **Engine APIs**: Always import from `@/engine` (barrel file at `src/engine/index.ts`, ~200+ exports)
+- Internal module paths are implementation details; use barrel files for cross-boundary imports.
+
+### Theming
+
+The UI uses CSS custom properties (defined in `src/index.css`) consumed via Tailwind's extended theme in `tailwind.config.js`. Custom scales: `pf-sm`/`pf-md`/`pf-lg` for border-radius, `pf-micro` through `pf-xl` for font sizes, and `pf-fast`/`pf-normal`/`pf-slow` for transition durations.
+
+### CI/CD
+
+GitHub Actions (`.github/workflows/deploy.yml`) deploys to GitHub Pages on push to `main`: `npm ci` + `npm run build` + deploy `dist/`.
 
 ## Product Mission
 
