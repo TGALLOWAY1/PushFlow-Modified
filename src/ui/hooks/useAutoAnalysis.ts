@@ -280,6 +280,7 @@ export function useAutoAnalysis() {
         dispatch({ type: 'SET_CANDIDATES', payload: candidates });
         if (candidates.length > 0) {
           dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidates[0] });
+          dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: candidates[0].id } });
         }
 
         setGenerationProgress(null);
@@ -315,6 +316,7 @@ export function useAutoAnalysis() {
       dispatch({ type: 'SET_CANDIDATES', payload: generationResult.candidates });
       if (generationResult.candidates.length > 0) {
         dispatch({ type: 'SET_ANALYSIS_RESULT', payload: generationResult.candidates[0] });
+        dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: generationResult.candidates[0].id } });
       }
       setGenerationProgress(null);
       setAnalysisPhase('idle');

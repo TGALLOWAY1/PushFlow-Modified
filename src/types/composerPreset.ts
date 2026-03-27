@@ -2,11 +2,13 @@
  * Composer Preset Types.
  *
  * A ComposerPreset is the core artifact of the Composer reverse workflow.
- * It bundles three things into one authored unit:
- *   1. Relative pad layout
- *   2. Explicit finger assignment (mandatory)
- *   3. Quantized event pattern
+ * It bundles up to three things into one authored unit:
+ *   1. Quantized event pattern (always present)
+ *   2. Relative pad layout (optional — may be assigned after save)
+ *   3. Finger assignments per pad (included with pad layout)
  *
+ * A preset can be saved with just the pattern data (empty pads array).
+ * Layout and finger assignments can be added later before placing on the grid.
  * Presets are stored with relative coordinates so they can be placed
  * at any valid position on the 8×8 Push grid via translation.
  */
@@ -78,7 +80,7 @@ export interface ComposerPreset {
   createdAt: number;
   updatedAt: number;
 
-  /** Relative pad layout with finger assignments (mandatory). */
+  /** Relative pad layout with finger assignments. Empty if pattern saved before layout assignment. */
   pads: PresetPad[];
 
   /** Event pattern data. */
