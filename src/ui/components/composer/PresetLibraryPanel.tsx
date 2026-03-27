@@ -9,10 +9,10 @@
 import { useState, useCallback, useEffect } from 'react';
 import { type ComposerPreset, type PlacedPresetInstance } from '../../../types/composerPreset';
 import {
-  loadComposerPresets,
-  deleteComposerPreset,
-  duplicateComposerPreset,
-  renameComposerPreset,
+  loadComposerPresetsAsync,
+  deleteComposerPresetAsync,
+  duplicateComposerPresetAsync,
+  renameComposerPresetAsync,
 } from '../../persistence/composerPresetStorage';
 import { PresetCard } from './PresetCard';
 
@@ -49,9 +49,11 @@ export function PresetLibraryPanel({
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Load presets from localStorage
+  // Load presets from Supabase
   useEffect(() => {
-    setPresets(loadComposerPresets());
+    loadComposerPresetsAsync()
+      .then(setPresets)
+      .catch(err => console.error('Failed to load presets:', err));
   }, [refreshKey]);
 
   // Listen for storage events (other tabs) and custom refresh events
@@ -70,26 +72,26 @@ export function PresetLibraryPanel({
     window.dispatchEvent(new Event('composer-presets-changed'));
   }, []);
 
-  const handleDelete = useCallback((presetId: string) => {
+  const handleDelete = useCallback(async (presetId: string) => {
     if (!window.confirm('Delete this preset?')) return;
-    deleteComposerPreset(presetId);
+    await deleteComposerPresetAsync(presetId);
     if (selectedPresetId === presetId) {
       onSelectPreset?.(null);
     }
     refresh();
   }, [selectedPresetId, onSelectPreset, refresh]);
 
-  const handleDuplicate = useCallback((presetId: string) => {
-    duplicateComposerPreset(presetId);
+  const handleDuplicate = useCallback(async (presetId: string) => {
+    await duplicateComposerPresetAsync(presetId);
     refresh();
   }, [refresh]);
 
-  const handleRename = useCallback((presetId: string) => {
+  const handleRename = useCallback(async (presetId: string) => {
     const preset = presets.find(p => p.id === presetId);
     if (!preset) return;
     const newName = window.prompt('Rename preset:', preset.name);
     if (!newName || newName === preset.name) return;
-    renameComposerPreset(presetId, newName);
+    await renameComposerPresetAsync(presetId, newName);
     refresh();
   }, [presets, refresh]);
 

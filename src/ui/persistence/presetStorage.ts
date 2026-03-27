@@ -1,16 +1,22 @@
 /**
  * Performance Preset Storage.
  *
- * CRUD for user-saved performance presets in localStorage.
+ * CRUD for user-saved performance presets backed by Supabase PostgreSQL.
  * A preset captures the full loop state (config, lanes, events)
  * plus optional analysis data (finger assignments, pad assignments).
+ *
+ * All async methods throw on failure. Sync wrappers are provided
+ * for backward compatibility but prefer async versions.
  */
 
 import { type LoopState, type LoopCellKey, type LoopEvent } from '../../types/loopEditor';
 import { type RudimentResult } from '../../types/rudiment';
 import { generateId } from '../../utils/idGenerator';
-
-const PRESETS_KEY = 'pushflow_user_presets';
+import {
+  loadPresetsFromDb,
+  putPreset,
+  deletePresetFromDb,
+} from './supabaseStore';
 
 export interface PerformancePreset {
   id: string;
@@ -23,18 +29,33 @@ export interface PerformancePreset {
   rudimentResult: RudimentResult | null;
 }
 
-/** Load all presets from localStorage. */
+/** Load all presets from Supabase. */
+export async function loadPresetsAsync(): Promise<PerformancePreset[]> {
+  return loadPresetsFromDb();
+}
+
+/** Load all presets (sync fallback — returns empty, prefer loadPresetsAsync). */
 export function loadPresets(): PerformancePreset[] {
-  try {
-    const json = localStorage.getItem(PRESETS_KEY);
-    if (!json) return [];
-    return JSON.parse(json) as PerformancePreset[];
-  } catch {
-    return [];
-  }
+  return [];
 }
 
 /** Save a new preset from current loop state. Returns the new preset. */
+export async function savePresetAsync(name: string, state: LoopState): Promise<PerformancePreset> {
+  const preset: PerformancePreset = {
+    id: generateId('preset'),
+    name,
+    createdAt: Date.now(),
+    config: state.config,
+    lanes: state.lanes,
+    events: Array.from(state.events.entries()),
+    rudimentResult: state.rudimentResult ?? null,
+  };
+
+  await putPreset(preset);
+  return preset;
+}
+
+/** Save a new preset (sync fire-and-forget wrapper). */
 export function savePreset(name: string, state: LoopState): PerformancePreset {
   const preset: PerformancePreset = {
     id: generateId('preset'),
@@ -46,26 +67,20 @@ export function savePreset(name: string, state: LoopState): PerformancePreset {
     rudimentResult: state.rudimentResult ?? null,
   };
 
-  const presets = loadPresets();
-  presets.unshift(preset);
-
-  try {
-    localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
-  } catch {
-    // localStorage full — silently fail
-  }
-
+  putPreset(preset).catch(err => console.error('Failed to save preset:', err));
   return preset;
 }
 
 /** Delete a preset by ID. */
+export async function deletePresetAsync(presetId: string): Promise<void> {
+  await deletePresetFromDb(presetId);
+}
+
+/** Delete a preset (sync fire-and-forget wrapper). */
 export function deletePreset(presetId: string): void {
-  const presets = loadPresets().filter(p => p.id !== presetId);
-  try {
-    localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
-  } catch {
-    // silently fail
-  }
+  deletePresetFromDb(presetId).catch(err =>
+    console.error('Failed to delete preset:', err)
+  );
 }
 
 /** Convert a preset back to a LoopState for loading. */

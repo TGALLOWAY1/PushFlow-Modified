@@ -23,7 +23,7 @@ import { type FingerType, type HandSide } from '../../../types/fingerModel';
 import { type LaneFingerAssignment } from '../loop-editor/LoopLaneRow';
 import { parsePadKey } from '../../../types/padGrid';
 import { getDisplayedLayout } from '../../state/projectState';
-import { saveLoopState, loadLoopState } from '../../persistence/loopStorage';
+import { saveLoopState, loadLoopStateAsync } from '../../persistence/loopStorage';
 import { parseFingerConstraint } from '../../../utils/fingerConstraints';
 
 const LANE_COLORS = ['#ef4444', '#f97316', '#22c55e', '#eab308', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6'];
@@ -40,19 +40,26 @@ interface ProjectPatternMeta {
 export function WorkspacePatternStudio() {
   const { state: projectState, dispatch: projectDispatch } = useProject();
 
-  // Load persisted loop state on mount, fall back to fresh state
-  const initialState = useMemo(() => {
-    const saved = loadLoopState(projectState.id);
-    return saved ?? createInitialLoopState();
+  // Load persisted loop state from Supabase on mount
+  const [loopState, dispatch] = useReducer(loopEditorReducer, undefined, createInitialLoopState);
+  const [hasTouchedComposer, setHasTouchedComposer] = useState(false);
+  const loopLoadedRef = useRef(false);
+
+  useEffect(() => {
+    if (loopLoadedRef.current) return;
+    loopLoadedRef.current = true;
+    loadLoopStateAsync(projectState.id)
+      .then(saved => {
+        if (saved) {
+          dispatch({ type: 'LOAD_LOOP_STATE', payload: saved });
+          if (saved.lanes.length > 0 && saved.events.size > 0) {
+            setHasTouchedComposer(true);
+          }
+        }
+      })
+      .catch(err => console.error('Failed to load loop state:', err));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only on mount
-
-  const [loopState, dispatch] = useReducer(loopEditorReducer, initialState, s => s);
-
-  // Initialize hasTouchedComposer from loaded state (if it has content, sync should run)
-  const [hasTouchedComposer, setHasTouchedComposer] = useState(
-    () => initialState.lanes.length > 0 && initialState.events.size > 0
-  );
+  }, []);
 
   // Track whether the user explicitly cleared the composer (vs loading empty state)
   const userExplicitlyClearedRef = useRef(false);

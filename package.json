@@ -13,6 +13,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.100.1",
     "@tonejs/midi": "^2.0.28",
     "chroma-js": "^3.2.0",
     "clsx": "^2.0.0",

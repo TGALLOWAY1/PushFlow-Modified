@@ -1,8 +1,8 @@
 /**
  * Project Storage.
  *
- * Public API for project persistence. Uses IndexedDB as the primary store.
- * Migrates existing localStorage projects on first access.
+ * Public API for project persistence. Uses Supabase PostgreSQL as the primary store.
+ * Migrates existing IndexedDB/localStorage projects on first access.
  *
  * Candidates and analysis results are persisted so they survive refresh.
  */
@@ -20,6 +20,10 @@ import {
   deleteProjectFromDb,
   listAllProjects,
   getFullProject,
+} from './supabaseStore';
+import {
+  listAllProjects as listAllProjectsIdb,
+  getProject as getProjectIdb,
 } from './indexedDbStore';
 
 // ============================================================================
@@ -28,7 +32,7 @@ import {
 
 const LEGACY_INDEX_KEY = 'pushflow_projects';
 const LEGACY_PROJECT_PREFIX = 'pushflow_project_';
-const MIGRATION_DONE_KEY = 'pushflow_idb_migrated';
+const MIGRATION_DONE_KEY = 'pushflow_supabase_migrated';
 
 // ============================================================================
 // Re-export types for compatibility
@@ -45,13 +49,13 @@ export interface ProjectLibraryEntry extends ProjectIndexEntry {
 }
 
 // ============================================================================
-// Migration: localStorage → IndexedDB
+// Migration: IndexedDB + localStorage → Supabase
 // ============================================================================
 
 let migrationPromise: Promise<void> | null = null;
 
 /**
- * Migrate all projects from localStorage to IndexedDB.
+ * Migrate all projects from IndexedDB and localStorage to Supabase.
  * Runs once; subsequent calls are no-ops.
  */
 async function ensureMigration(): Promise<void> {
@@ -63,29 +67,48 @@ async function ensureMigration(): Promise<void> {
 
   migrationPromise = (async () => {
     try {
-      const indexJson = localStorage.getItem(LEGACY_INDEX_KEY);
-      if (!indexJson) {
-        localStorage.setItem(MIGRATION_DONE_KEY, 'true');
-        return;
-      }
-      const entries = JSON.parse(indexJson) as Array<{ id: string }>;
-
-      for (const entry of entries) {
-        try {
-          const projectJson = localStorage.getItem(`${LEGACY_PROJECT_PREFIX}${entry.id}`);
-          if (!projectJson) continue;
-
-          const parsed = JSON.parse(projectJson);
-          const persisted = validateAndMigrateRaw(parsed);
-          await putProject(persisted);
-        } catch (err) {
-          console.warn(`Failed to migrate project ${entry.id}:`, err);
+      // Phase 1: Migrate from IndexedDB
+      try {
+        const idbEntries = await listAllProjectsIdb();
+        for (const entry of idbEntries) {
+          try {
+            const project = await getProjectIdb(entry.id);
+            if (project) {
+              await putProject(project);
+            }
+          } catch (err) {
+            console.warn(`Failed to migrate project ${entry.id} from IndexedDB:`, err);
+          }
         }
+      } catch {
+        // IndexedDB may not be available or may be empty
+      }
+
+      // Phase 2: Migrate from localStorage (older projects not yet in IndexedDB)
+      try {
+        const indexJson = localStorage.getItem(LEGACY_INDEX_KEY);
+        if (indexJson) {
+          const entries = JSON.parse(indexJson) as Array<{ id: string }>;
+          for (const entry of entries) {
+            try {
+              const projectJson = localStorage.getItem(`${LEGACY_PROJECT_PREFIX}${entry.id}`);
+              if (!projectJson) continue;
+
+              const parsed = JSON.parse(projectJson);
+              const persisted = validateAndMigrateRaw(parsed);
+              await putProject(persisted);
+            } catch (err) {
+              console.warn(`Failed to migrate project ${entry.id} from localStorage:`, err);
+            }
+          }
+        }
+      } catch {
+        // localStorage may not be available
       }
 
       localStorage.setItem(MIGRATION_DONE_KEY, 'true');
     } catch (err) {
-      console.error('localStorage → IndexedDB migration failed:', err);
+      console.error('Migration to Supabase failed:', err);
     }
   })();
 
@@ -108,7 +131,6 @@ export async function listProjectsAsync(): Promise<ProjectLibraryEntry[]> {
 
 /**
  * Load a project by ID and return a full ProjectState.
- * Costs and analysis are NOT loaded — they are recomputed as needed.
  */
 export async function loadProjectAsync(id: string): Promise<ProjectState | null> {
   await ensureMigration();
@@ -118,24 +140,11 @@ export async function loadProjectAsync(id: string): Promise<ProjectState | null>
     return deserializeProject(persisted);
   }
 
-  // Fallback: try localStorage directly (for edge cases during migration)
-  try {
-    const json = localStorage.getItem(`${LEGACY_PROJECT_PREFIX}${id}`);
-    if (json) {
-      const parsed = JSON.parse(json);
-      const migrated = validateAndMigrateRaw(parsed);
-      await putProject(migrated); // Save to IndexedDB for next time
-      return deserializeProject(migrated);
-    }
-  } catch {
-    // Ignore localStorage fallback failures
-  }
-
   return null;
 }
 
 /**
- * Save a project to IndexedDB.
+ * Save a project to Supabase.
  * Strips all computed/ephemeral data; only durable state is stored.
  */
 export async function saveProjectAsync(state: ProjectState): Promise<void> {
@@ -144,7 +153,7 @@ export async function saveProjectAsync(state: ProjectState): Promise<void> {
 }
 
 /**
- * Delete a project from IndexedDB.
+ * Delete a project from Supabase.
  */
 export async function deleteProjectAsync(id: string): Promise<void> {
   await deleteProjectFromDb(id);
@@ -169,7 +178,7 @@ export async function getFullPersistedProject(id: string): Promise<PersistedProj
 // ============================================================================
 
 /**
- * Synchronous save — fires an async IndexedDB write and returns immediately.
+ * Synchronous save — fires an async Supabase write and returns immediately.
  * Use for backward compatibility with existing sync call sites.
  */
 export function saveProject(state: ProjectState): void {
@@ -179,66 +188,38 @@ export function saveProject(state: ProjectState): void {
 }
 
 /**
- * Synchronous project listing — reads from localStorage as fallback
- * while IndexedDB migration may be in progress.
+ * Synchronous project listing — returns empty while async listing loads.
  * Prefer listProjectsAsync() for new code.
  */
 export function listProjects(): ProjectLibraryEntry[] {
-  try {
-    const json = localStorage.getItem(LEGACY_INDEX_KEY);
-    if (!json) return [];
-    const entries = JSON.parse(json) as ProjectLibraryEntry[];
-    return entries.map(e => ({ ...e, difficulty: e.difficulty ?? null }));
-  } catch {
-    return [];
-  }
+  // Sync listing no longer possible with Supabase.
+  // Callers should migrate to listProjectsAsync().
+  return [];
 }
 
 /**
- * Synchronous load — tries localStorage first.
+ * Synchronous load — no longer possible with Supabase.
  * Prefer loadProjectAsync() for new code.
  */
-export function loadProject(id: string): ProjectState | null {
-  try {
-    const json = localStorage.getItem(`${LEGACY_PROJECT_PREFIX}${id}`);
-    if (!json) return null;
-    const parsed = JSON.parse(json);
-    const persisted = validateAndMigrateRaw(parsed);
-    return deserializeProject(persisted);
-  } catch (err) {
-    console.error('Failed to load project:', err);
-    return null;
-  }
+export function loadProject(_id: string): ProjectState | null {
+  return null;
 }
 
 /**
  * Synchronous delete.
  */
 export function deleteProject(id: string): void {
-  try {
-    localStorage.removeItem(`${LEGACY_PROJECT_PREFIX}${id}`);
-    const entries = listProjects().filter(e => e.id !== id);
-    localStorage.setItem(LEGACY_INDEX_KEY, JSON.stringify(entries));
-  } catch (err) {
-    console.error('Failed to delete project:', err);
-  }
   deleteProjectAsync(id).catch(err =>
-    console.error('Failed to delete project from IndexedDB:', err)
+    console.error('Failed to delete project:', err)
   );
 }
 
-/** Remove a project from the localStorage library index. */
+/** Remove a project from the library. */
 export function removeFromIndex(id: string): void {
-  try {
-    const entries = listProjects().filter(e => e.id !== id);
-    localStorage.setItem(LEGACY_INDEX_KEY, JSON.stringify(entries));
-  } catch (err) {
-    console.error('Failed to remove from index:', err);
-  }
   deleteProjectAsync(id).catch(() => {});
 }
 
-/** Clear the entire project library index. */
+/** Clear the entire project library index (legacy). */
 export function clearProjectIndex(): void {
   try {
     localStorage.setItem(LEGACY_INDEX_KEY, JSON.stringify([]));

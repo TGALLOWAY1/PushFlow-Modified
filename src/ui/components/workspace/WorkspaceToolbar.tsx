@@ -232,17 +232,22 @@ export function WorkspaceToolbar({
           className={`pf-btn text-pf-sm ${
             saveConfirm || saveStatus === 'saved'
               ? 'bg-emerald-600/12 text-emerald-400 border border-emerald-500/20'
-              : saveStatus === 'saving'
-                ? 'bg-[var(--accent-muted)] text-[var(--accent-primary)] border border-[var(--accent-primary)]/20'
-                : 'pf-btn-subtle'
+              : saveStatus === 'error'
+                ? 'bg-red-600/12 text-red-400 border border-red-500/20'
+                : saveStatus === 'saving'
+                  ? 'bg-[var(--accent-muted)] text-[var(--accent-primary)] border border-[var(--accent-primary)]/20'
+                  : 'pf-btn-subtle'
           }`}
           onClick={handleSave}
           title="Save project"
         >
-          {saveConfirm ? 'Saved' : saveStatus === 'saving' ? 'Saving...' : saveStatus === 'unsaved' ? 'Save' : 'Saved'}
+          {saveConfirm ? 'Saved' : saveStatus === 'saving' ? 'Saving...' : saveStatus === 'error' ? 'Save Failed' : saveStatus === 'unsaved' ? 'Save' : 'Saved'}
         </button>
         {saveStatus === 'saved' && !saveConfirm && (
           <span className="text-pf-micro text-[var(--text-tertiary)]">saved</span>
+        )}
+        {saveStatus === 'error' && (
+          <span className="text-pf-micro text-red-400">click to retry</span>
         )}
       </div>
 

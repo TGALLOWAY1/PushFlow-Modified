@@ -12,7 +12,7 @@ import {
   loopEditorReducer,
   createInitialLoopState,
 } from '../../state/loopEditorReducer';
-import { saveLoopState, loadLoopState } from '../../persistence/loopStorage';
+import { saveLoopState, loadLoopStateAsync } from '../../persistence/loopStorage';
 import { convertLoopToPerformanceLanes } from '../../state/loopToLanes';
 import { type LoopLane } from '../../../types/loopEditor';
 import { stepDuration, totalSteps } from '../../../types/loopEditor';
@@ -29,14 +29,21 @@ const DEFAULT_MIDI_NOTES = [36, 38, 42, 46, 48, 60, 62, 64];
 export function LoopEditorView() {
   const { state: projectState, dispatch: projectDispatch } = useProject();
 
-  // Initialize from localStorage or create fresh
-  const initialState = useMemo(() => {
-    const saved = loadLoopState(projectState.id);
-    if (saved) return saved;
-    return createInitialLoopState();
-  }, [projectState.id]);
+  // Initialize fresh, then load from Supabase
+  const [loopState, dispatch] = useReducer(loopEditorReducer, undefined, createInitialLoopState);
+  const loopLoadedRef = useRef(false);
 
-  const [loopState, dispatch] = useReducer(loopEditorReducer, initialState);
+  useEffect(() => {
+    if (loopLoadedRef.current) return;
+    loopLoadedRef.current = true;
+    loadLoopStateAsync(projectState.id)
+      .then(saved => {
+        if (saved) {
+          dispatch({ type: 'LOAD_LOOP_STATE', payload: saved });
+        }
+      })
+      .catch(err => console.error('Failed to load loop state:', err));
+  }, [projectState.id]);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const animFrameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);

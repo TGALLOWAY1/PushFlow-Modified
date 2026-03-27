@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { type ProjectState } from '../state/projectState';
 import { ProjectProvider } from '../state/ProjectContext';
-import { loadProjectAsync, loadProject } from '../persistence/projectStorage';
+import { loadProjectAsync } from '../persistence/projectStorage';
 import { PerformanceWorkspace } from '../components/workspace/PerformanceWorkspace';
 
 export function ProjectEditorPage() {
@@ -26,23 +26,17 @@ export function ProjectEditorPage() {
       return;
     }
 
-    // Try async (IndexedDB) first, then sync fallback
+    // Load from Supabase
     let cancelled = false;
     loadProjectAsync(id)
       .then(state => {
         if (cancelled) return;
-        if (state) {
-          setInitialState(state);
-        } else {
-          // Sync fallback for edge cases
-          const syncState = loadProject(id);
-          setInitialState(syncState);
-        }
+        setInitialState(state);
       })
-      .catch(() => {
+      .catch(err => {
         if (cancelled) return;
-        const syncState = loadProject(id);
-        setInitialState(syncState);
+        console.error('Failed to load project:', err);
+        setInitialState(null);
       });
 
     return () => { cancelled = true; };

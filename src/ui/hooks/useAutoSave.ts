@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { type ProjectState } from '../state/projectState';
 import { saveProjectAsync } from '../persistence/projectStorage';
 
-export type SaveStatus = 'saved' | 'saving' | 'unsaved';
+export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error';
 
 const AUTOSAVE_DELAY_MS = 2000; // 2 seconds after last change
 
@@ -18,10 +18,13 @@ interface UseAutoSaveResult {
   saveStatus: SaveStatus;
   /** Trigger an explicit save immediately. */
   saveNow: () => Promise<void>;
+  /** Last save error message, if any. */
+  saveError: string | null;
 }
 
 export function useAutoSave(state: ProjectState): UseAutoSaveResult {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedRef = useRef<string>(state.updatedAt);
   const savingRef = useRef(false);
@@ -37,9 +40,11 @@ export function useAutoSave(state: ProjectState): UseAutoSaveResult {
       await saveProjectAsync(stateRef.current);
       lastSavedRef.current = stateRef.current.updatedAt;
       setSaveStatus('saved');
+      setSaveError(null);
     } catch (err) {
       console.error('Save failed:', err);
-      setSaveStatus('unsaved');
+      setSaveStatus('error');
+      setSaveError(err instanceof Error ? err.message : 'Save failed');
     } finally {
       savingRef.current = false;
     }
@@ -68,10 +73,12 @@ export function useAutoSave(state: ProjectState): UseAutoSaveResult {
             .then(() => {
               lastSavedRef.current = stateRef.current.updatedAt;
               setSaveStatus('saved');
+              setSaveError(null);
             })
             .catch(err => {
               console.error('Autosave failed:', err);
-              setSaveStatus('unsaved');
+              setSaveStatus('error');
+              setSaveError(err instanceof Error ? err.message : 'Autosave failed');
             })
             .finally(() => {
               savingRef.current = false;
@@ -96,5 +103,5 @@ export function useAutoSave(state: ProjectState): UseAutoSaveResult {
     };
   }, []);
 
-  return { saveStatus, saveNow };
+  return { saveStatus, saveNow, saveError };
 }

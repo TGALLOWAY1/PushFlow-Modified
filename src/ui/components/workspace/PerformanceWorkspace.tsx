@@ -35,7 +35,7 @@ import { CompareModal } from '../panels/CompareModal';
 import { MoveTracePanel } from '../panels/MoveTracePanel';
 import { PresetLibraryPanel } from '../composer/PresetLibraryPanel';
 import { PresetInspector } from '../composer/PresetInspector';
-import { loadComposerPresets } from '../../persistence/composerPresetStorage';
+import { loadComposerPresetsAsync } from '../../persistence/composerPresetStorage';
 import {
   type PlacedPresetInstance,
   type ComposerPreset,
@@ -95,7 +95,19 @@ function PerformanceWorkspaceInner() {
   const [onionSkin, setOnionSkin] = useState(false);
   const [timelineTab, setTimelineTab] = useState<TimelineTab>(initialView === 'presets' ? 'composer' : 'timeline');
 
-  // Composer preset library state
+  // Composer preset library state (cached from Supabase)
+  const [cachedPresets, setCachedPresets] = useState<ComposerPreset[]>([]);
+  useEffect(() => {
+    loadComposerPresetsAsync()
+      .then(setCachedPresets)
+      .catch(err => console.error('Failed to load composer presets:', err));
+    const refresh = () => {
+      loadComposerPresetsAsync().then(setCachedPresets).catch(() => {});
+    };
+    window.addEventListener('composer-presets-changed', refresh);
+    return () => window.removeEventListener('composer-presets-changed', refresh);
+  }, []);
+
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [mirroredPresets, setMirroredPresets] = useState<Set<string>>(new Set());
   const handleToggleMirror = useCallback((presetId: string) => {
@@ -148,12 +160,12 @@ function PerformanceWorkspaceInner() {
   const [dragPreview, setDragPreview] = useState<PresetDragPreview | null>(null);
 
   const handleDragStartPreset = useCallback((presetId: string, isMirrored: boolean) => {
-    const presets = loadComposerPresets();
+    const presets = cachedPresets;
     const preset = presets.find(p => p.id === presetId);
     if (preset) {
       setDraggingPreset({ preset, isMirrored });
     }
-  }, []);
+  }, [cachedPresets]);
 
   const handleDragEndPreset = useCallback(() => {
     setDraggingPreset(null);
@@ -202,7 +214,7 @@ function PerformanceWorkspaceInner() {
 
   // Handle preset drop on grid
   const handlePresetDrop = useCallback((presetId: string, anchorRow: number, anchorCol: number, isMirroredFromDrag: boolean) => {
-    const presets = loadComposerPresets();
+    const presets = cachedPresets;
     let preset = presets.find(p => p.id === presetId);
     if (!preset) return;
 
@@ -275,7 +287,7 @@ function PerformanceWorkspaceInner() {
 
     // Add to workspace state
     composerDispatch({ type: 'PLACE_PRESET', instance });
-  }, [dispatch, occupiedPads, draggingPreset]);
+  }, [dispatch, occupiedPads, draggingPreset, cachedPresets]);
 
   // Resizable panel state
   const [leftWidth, setLeftWidth] = useState(LEFT_DEFAULT);
@@ -362,12 +374,12 @@ function PerformanceWorkspaceInner() {
       };
     }
     if (selectedPresetId) {
-      const presets = loadComposerPresets();
+      const presets = cachedPresets;
       const preset = presets.find(p => p.id === selectedPresetId);
       if (preset) return { preset, instance: null };
     }
     return null;
-  }, [selectedPresetId, composerWorkspace.selectedInstanceId, composerWorkspace.placedInstances]);
+  }, [selectedPresetId, composerWorkspace.selectedInstanceId, composerWorkspace.placedInstances, cachedPresets]);
 
   const handleRemoveInstance = useCallback((instanceId: string) => {
     const instance = composerWorkspace.placedInstances.find(i => i.id === instanceId);
