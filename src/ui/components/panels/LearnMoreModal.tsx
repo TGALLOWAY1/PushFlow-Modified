@@ -558,6 +558,11 @@ const HARD_CONSTRAINTS = [
         key: 'speed',
         description: 'Hand movement between consecutive events cannot exceed 12.0 grid units/second. Faster transitions are physically impossible.',
       },
+      {
+        name: 'Outward Rotation',
+        key: 'outwardRotation',
+        description: 'When two adjacent fingers share the same column, the outer finger (further from thumb) must not be placed below the inner finger (closer to thumb). E.g., R3 (middle) directly below R2 (index) in the same column forces outward hand rotation (supination). The reverse (R3 above R2) is inward rotation and natural. This only applies to same-column placement; a horizontal offset absorbs the vertical difference.',
+      },
     ],
   },
   {
@@ -586,9 +591,14 @@ const HARD_CONSTRAINTS = [
     color: '#a855f7',
     rules: [
       {
-        name: 'Hand Topology',
+        name: 'Hand Topology (Horizontal)',
         key: 'topology',
         description: 'Left hand: pinky \u2264 ring \u2264 middle \u2264 index \u2264 thumb (left to right). Right hand: thumb \u2264 index \u2264 middle \u2264 ring \u2264 pinky (left to right). Violations mean an anatomically impossible hand shape.',
+      },
+      {
+        name: 'Hand Topology (Vertical)',
+        key: 'outwardRotation',
+        description: 'When adjacent fingers are on the same column: index row \u2264 middle row \u2264 ring row \u2264 pinky row (bottom to top). Outer fingers placed directly below inner fingers in the same column force outward hand rotation (supination). Different columns are allowed.',
       },
     ],
   },
