@@ -19,3 +19,6 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# MCP configuration (contains API keys)
+.mcp.json
