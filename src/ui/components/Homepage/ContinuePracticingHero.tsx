@@ -1,8 +1,8 @@
 /**
  * ContinuePracticingHero.
  *
- * Large featured card showing the most recent performance with
- * a pad-grid thumbnail, real project context, and primary CTAs.
+ * Full-width hero section for the most recent performance.
+ * Features gradient background, 8x8 grid overlay, and stat pills.
  */
 
 import { Play, Pencil } from 'lucide-react';
@@ -16,13 +16,6 @@ interface ContinuePracticingHeroProps {
   onResume: () => void;
   onOpenEditor: () => void;
 }
-
-const DIFFICULTY_COLORS: Record<string, string> = {
-  Easy: 'bg-green-500/15 text-green-400',
-  Moderate: 'bg-yellow-500/15 text-yellow-400',
-  Hard: 'bg-orange-500/15 text-orange-400',
-  Extreme: 'bg-red-500/15 text-red-400',
-};
 
 function relativeDate(iso: string): string {
   try {
@@ -48,10 +41,6 @@ export function ContinuePracticingHero({
   onResume,
   onOpenEditor,
 }: ContinuePracticingHeroProps) {
-  const difficultyClass = project.difficulty
-    ? DIFFICULTY_COLORS[project.difficulty] ?? 'bg-[var(--bg-hover)] text-[var(--text-secondary)]'
-    : null;
-
   const tempo = projectState?.tempo ?? 120;
   const soundCount = projectState?.soundStreams.length ?? project.soundCount;
   const eventCount = projectState
@@ -62,73 +51,101 @@ export function ContinuePracticingHero({
     : 0;
 
   return (
-    <div className="glass-panel-strong rounded-pf-lg p-5 flex gap-5 glow-emerald">
-      {/* Grid preview */}
-      <div className="flex-shrink-0">
-        {projectState ? (
-          <MiniGridPreview
-            layout={projectState.activeLayout}
-            soundStreams={projectState.soundStreams}
-            size={2.5}
-            highlighted
-          />
-        ) : (
-          <div
-            className="rounded-pf-lg bg-[var(--bg-card)] border border-[var(--border-subtle)]"
-            style={{ width: 284, height: 284 }}
-          />
-        )}
+    <section className="relative rounded-xl overflow-hidden group" style={{ minHeight: 380 }}>
+      {/* Background gradient */}
+      <div className="absolute inset-0">
+        <div
+          className="absolute inset-0"
+          style={{
+            background: 'linear-gradient(135deg, #131316 0%, #1a1a2e 30%, #16213e 60%, #0f0f1a 100%)',
+          }}
+        />
+        {/* Subtle animated accent glow */}
+        <div
+          className="absolute inset-0 opacity-30"
+          style={{
+            background: 'radial-gradient(ellipse at 30% 80%, rgba(46, 91, 255, 0.15) 0%, transparent 60%), radial-gradient(ellipse at 70% 20%, rgba(139, 92, 246, 0.1) 0%, transparent 50%)',
+          }}
+        />
+        {/* Bottom fade */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-app)] via-transparent to-transparent" />
       </div>
 
       {/* Content */}
-      <div className="flex flex-col justify-between flex-1 min-w-0 py-1">
-        <div>
-          <span className="text-pf-xs uppercase tracking-widest text-emerald-400 font-medium">
-            Continue Practicing
+      <div className="relative h-full flex flex-col justify-end p-10 space-y-5" style={{ minHeight: 380 }}>
+        <div className="space-y-2">
+          <span className="font-label uppercase tracking-[0.2em] text-[var(--accent-primary)] text-xs font-semibold">
+            Current Session
           </span>
-          <h2 className="text-xl font-bold mt-1 truncate">{project.name}</h2>
-
-          <div className="flex items-center gap-3 mt-3 text-pf-sm text-[var(--text-secondary)]">
-            <span className="font-medium text-[var(--text-primary)]">{tempo} BPM</span>
-            <span>{soundCount} sounds</span>
-            <span>{eventCount} events</span>
-            {padsUsed > 0 && <span>{padsUsed} pads</span>}
-          </div>
-
-          {difficultyClass && (
-            <div className="flex items-center gap-2 mt-1.5">
-              <span className="text-pf-sm text-[var(--text-secondary)]">Difficulty:</span>
-              <span className={`text-pf-xs px-1.5 py-0.5 rounded-pf-sm font-mono ${difficultyClass}`}>
-                {project.difficulty}
-              </span>
-            </div>
-          )}
-
-          <div className="flex items-center gap-2 mt-1.5">
-            <span className="text-pf-sm text-[var(--text-tertiary)]">
-              Last opened: <span className="text-[var(--text-secondary)]">{relativeDate(project.updatedAt)}</span>
-            </span>
-          </div>
+          <h1 className="font-headline text-5xl font-bold tracking-tighter text-[var(--text-primary)]">
+            {project.name}
+          </h1>
+          <p className="text-[var(--text-secondary)] max-w-xl font-body text-base">
+            {soundCount} sounds &middot; {eventCount} events{padsUsed > 0 ? ` \u00b7 ${padsUsed} pads` : ''}.
+            Last edited {relativeDate(project.updatedAt)}.
+          </p>
         </div>
 
-        {/* CTAs */}
-        <div className="flex gap-2 mt-4">
+        <div className="flex items-center gap-6">
           <button
             onClick={onResume}
-            className="pf-btn pf-btn-primary flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-pf-lg text-pf-base font-medium text-white transition-colors"
+            className="px-7 py-3 bg-gradient-to-br from-[var(--accent-primary)] to-[#1a3fcc] text-white font-headline font-bold rounded-xl flex items-center gap-2 inner-button-shadow hover:scale-[1.02] transition-transform"
           >
-            <Play size={14} />
-            Resume Practice
+            <Play size={16} />
+            Resume Session
           </button>
           <button
             onClick={onOpenEditor}
-            className="pf-btn pf-btn-ghost flex items-center gap-1.5 px-4 py-2 border border-[var(--border-default)] hover:border-[var(--border-strong)] rounded-pf-lg text-pf-base font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+            className="px-5 py-3 border border-[var(--border-default)] hover:border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-headline font-medium rounded-xl flex items-center gap-2 transition-colors"
           >
             <Pencil size={14} />
             Open Layout Editor
           </button>
+
+          {/* Stat pills */}
+          <div className="flex gap-4 ml-2">
+            <div className="glass-panel-blur px-4 py-2 rounded-lg">
+              <span className="block font-label uppercase text-[10px] text-[var(--accent-primary)] tracking-widest">BPM</span>
+              <span className="font-headline text-xl font-bold text-[var(--text-primary)]">{tempo}</span>
+            </div>
+            <div className="glass-panel-blur px-4 py-2 rounded-lg">
+              <span className="block font-label uppercase text-[10px] text-[var(--accent-secondary)] tracking-widest">Sounds</span>
+              <span className="font-headline text-xl font-bold text-[var(--text-primary)]">{soundCount}</span>
+            </div>
+            <div className="glass-panel-blur px-4 py-2 rounded-lg">
+              <span className="block font-label uppercase text-[10px] text-[var(--accent-tertiary)] tracking-widest">Events</span>
+              <span className="font-headline text-xl font-bold text-[var(--text-primary)]">{eventCount}</span>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* 8x8 Grid Preview Overlay (top-right) */}
+      <div className="absolute top-8 right-8 glass-panel-blur p-4 rounded-xl hidden lg:block">
+        {projectState ? (
+          <>
+            <MiniGridPreview
+              layout={projectState.activeLayout}
+              soundStreams={projectState.soundStreams}
+              size={2.5}
+              highlighted
+            />
+            <div className="mt-3 flex justify-between items-center">
+              <span className="font-label text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
+                Active Pads
+              </span>
+              <span className="text-[var(--accent-primary)] font-bold text-xs">
+                {padsUsed} / 64
+              </span>
+            </div>
+          </>
+        ) : (
+          <div
+            className="rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)]"
+            style={{ width: 240, height: 240 }}
+          />
+        )}
+      </div>
+    </section>
   );
 }
