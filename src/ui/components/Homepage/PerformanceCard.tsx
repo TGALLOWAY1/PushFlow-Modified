@@ -1,8 +1,8 @@
 /**
  * PerformanceCard.
  *
- * Compact card for the Active Performances grid.
- * Shows pad-grid thumbnail, title, and real project metadata.
+ * Modern card for the Active Performances grid.
+ * Shows pad-grid thumbnail with hover effects and real project metadata.
  */
 
 import { type ProjectLibraryEntry } from '../../persistence/projectStorage';
@@ -35,76 +35,87 @@ function relativeDate(iso: string): string {
   }
 }
 
-/** Format an ISO date string as a short date. */
-function shortDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch {
-    return '';
-  }
-}
-
 export function PerformanceCard({
   project,
   projectState,
   onOpen,
   onDelete,
 }: PerformanceCardProps) {
-  // Derive real data from project index entry and loaded state
   const tempo = (projectState?.tempo ?? (project as any).tempo) || 120;
   const soundCount = projectState?.soundStreams.length ?? project.soundCount;
   const eventCount = project.eventCount;
-  const durationBars = (project as any).durationBars ?? 0;
+  const padsUsed = projectState?.activeLayout
+    ? Object.keys(projectState.activeLayout.padToVoice).length
+    : 0;
 
   return (
     <div
-      className="glass-panel rounded-pf-lg p-3 hover:border-[var(--border-default)] transition-colors cursor-pointer group relative"
+      className="group bg-[var(--bg-panel)] rounded-xl overflow-hidden hover:bg-[var(--bg-card)] transition-all duration-300 cursor-pointer border border-[var(--border-subtle)] hover:border-[var(--border-default)]"
       onClick={onOpen}
     >
-      {/* Delete button (hover) */}
-      <button
-        className="absolute top-2 right-2 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] text-pf-sm px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
-        onClick={e => { e.stopPropagation(); onDelete(); }}
-        title="Remove from library"
-      >
-        &times;
-      </button>
-
-      {/* Top section: grid + title */}
-      <div className="flex gap-3">
-        <div className="flex-shrink-0">
-          {projectState ? (
+      {/* Grid preview area */}
+      <div className="aspect-[4/3] relative overflow-hidden bg-[var(--bg-app)] flex items-center justify-center">
+        {projectState ? (
+          <div className="group-hover:scale-105 transition-transform duration-500">
             <MiniGridPreview
               layout={projectState.activeLayout}
               soundStreams={projectState.soundStreams}
-              size={1}
+              size={1.8}
             />
-          ) : (
-            <div
-              className="rounded-pf-lg bg-[var(--bg-card)] border border-[var(--border-subtle)]"
-              style={{ width: 119, height: 119 }}
-            />
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-[var(--bg-panel)] to-[var(--bg-app)]" />
+        )}
+        <div className="absolute inset-0 bg-[var(--bg-app)]/10" />
 
-        <div className="flex-1 min-w-0">
-          <h3 className="text-pf-base font-medium text-[var(--text-primary)] truncate">{project.name}</h3>
+        {/* Delete button (hover) */}
+        <button
+          className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-[var(--bg-app)]/80 flex items-center justify-center text-[var(--text-tertiary)] hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all z-10"
+          onClick={e => { e.stopPropagation(); onDelete(); }}
+          title="Remove from library"
+        >
+          <span className="material-symbols-outlined text-base">close</span>
+        </button>
 
-          {/* BPM badge */}
-          <span className="inline-block text-pf-micro px-1.5 py-0.5 rounded-pf-sm mt-1 font-medium bg-[var(--bg-hover)] text-[var(--text-secondary)]">
+        {/* Badges */}
+        <div className="absolute bottom-2 left-2 flex gap-1.5">
+          <span className="bg-[var(--accent-primary)]/20 backdrop-blur-md text-[var(--accent-primary)] text-[10px] font-label uppercase tracking-widest px-2 py-0.5 rounded">
             {tempo} BPM
           </span>
+          {soundCount > 0 && (
+            <span className="bg-[var(--accent-secondary)]/20 backdrop-blur-md text-[var(--accent-secondary)] text-[10px] font-label uppercase tracking-widest px-2 py-0.5 rounded">
+              {soundCount} Sounds
+            </span>
+          )}
+        </div>
+      </div>
 
-          {/* Real metadata */}
-          <div className="text-pf-xs text-[var(--text-tertiary)] mt-2 space-y-0.5">
-            <p>Sounds: <span className="text-[var(--text-secondary)]">{soundCount}</span></p>
-            {durationBars > 0 && (
-              <p>Length: <span className="text-[var(--text-secondary)]">{durationBars} bar{durationBars !== 1 ? 's' : ''}</span></p>
-            )}
-            <p>Events: <span className="text-[var(--text-secondary)]">{eventCount}</span></p>
-            <p>Created: <span className="text-[var(--text-secondary)]">{shortDate(project.createdAt)}</span></p>
-            <p>Last visited: <span className="text-[var(--text-secondary)]">{relativeDate(project.updatedAt)}</span></p>
+      {/* Card body */}
+      <div className="p-4 space-y-2">
+        <div className="flex justify-between items-start">
+          <h3 className="font-headline text-base font-bold tracking-tight text-[var(--text-primary)] truncate">
+            {project.name}
+          </h3>
+          <button
+            className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={e => e.stopPropagation()}
+          >
+            <span className="material-symbols-outlined text-lg">more_vert</span>
+          </button>
+        </div>
+
+        <div className="flex justify-between items-end">
+          <div className="space-y-0.5">
+            <p className="text-[10px] font-label uppercase tracking-widest text-[var(--text-tertiary)]">
+              Edited {relativeDate(project.updatedAt)}
+            </p>
+            <p className="text-[10px] font-label uppercase tracking-widest text-[var(--text-tertiary)]">
+              {eventCount} Events{padsUsed > 0 ? ` \u00b7 ${padsUsed} Pads` : ''}
+            </p>
           </div>
+          <span className="material-symbols-outlined text-[var(--accent-primary)] group-hover:translate-x-1 transition-transform text-lg">
+            arrow_forward
+          </span>
         </div>
       </div>
     </div>

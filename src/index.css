@@ -21,10 +21,19 @@
   --text-tertiary: #7a7a88;   /* Subtle labels, placeholders — still legible */
   --text-warning: #f87171;    /* Errors/conflicts */
 
-  /* --- Accent: restrained blue --- */
-  --accent-primary: #5b8def;
-  --accent-hover: #6d9bf5;
-  --accent-muted: rgba(91, 141, 239, 0.12);
+  /* --- Accent: primary blue (design guide #2E5BFF) --- */
+  --accent-primary: #2e5bff;
+  --accent-hover: #4a73ff;
+  --accent-muted: rgba(46, 91, 255, 0.12);
+  --accent-glow: rgba(46, 91, 255, 0.08);
+
+  /* --- Secondary: purple (design guide #8B5CF6) --- */
+  --accent-secondary: #8b5cf6;
+  --accent-secondary-muted: rgba(139, 92, 246, 0.12);
+
+  /* --- Tertiary: amber/orange (design guide #F59E0B) --- */
+  --accent-tertiary: #f59e0b;
+  --accent-tertiary-muted: rgba(245, 158, 11, 0.12);
 
   /* --- Borders: visible structure --- */
   --border-subtle: #33333a;
@@ -97,6 +106,28 @@ body {
 .glow-emerald {
   box-shadow: 0 0 20px rgba(16, 185, 129, 0.06), 0 0 40px rgba(16, 185, 129, 0.03),
     var(--shadow-lg);
+}
+
+/* Primary blue glow */
+.glow-primary {
+  box-shadow: 0 0 40px var(--accent-glow);
+}
+
+/* Glass panel with backdrop blur */
+.glass-panel-blur {
+  backdrop-filter: blur(12px);
+  background: rgba(30, 30, 35, 0.6);
+  border: 1px solid rgba(62, 62, 71, 0.3);
+}
+
+/* Inner button shadow (top edge highlight) */
+.inner-button-shadow {
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* Material Symbols configuration */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
