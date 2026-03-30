@@ -35,7 +35,7 @@ function buildActiveCandidate(state: ReturnType<typeof useProject>['state']): Ca
     overallScore: 0, passages: [], bindingConstraints: [],
   };
   const tradeoff = activeAnalysis?.tradeoffProfile ?? {
-    playability: 0, compactness: 0, handBalance: 0, transitionEfficiency: 0,
+    playability: 0, compactness: 0, handBalance: 0, transitionEfficiency: 0, structuralCoherence: 0.5,
   };
   return {
     id: '__active__',

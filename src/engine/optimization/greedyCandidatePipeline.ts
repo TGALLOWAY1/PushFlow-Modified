@@ -42,6 +42,8 @@ import {
 import { generateId } from '../../utils/idGenerator';
 import { createSeededRng } from '../../utils/seededRng';
 import { type CandidateGenerationResult } from './multiCandidateGenerator';
+import { detectStructuralGroups } from '../structure/structuralGroupDetection';
+import { scoreStructuralCoherence } from '../evaluation/structuralCoherence';
 
 // ============================================================================
 // Types
@@ -122,6 +124,13 @@ const CANDIDATE_FAMILIES: CandidateFamily[] = [
     seedCount: 4,
     bestForDescription: 'discovering unconventional but efficient structures',
   },
+  {
+    name: 'Structural Coherence',
+    seedKey: 'structural',
+    updateKey: 'adjacency-preserving',
+    seedCount: 3,
+    bestForDescription: 'pattern learnability and motor reuse',
+  },
 ];
 
 // ============================================================================
@@ -152,6 +161,12 @@ export async function generateGreedyCandidates(
   // Build voice map from base layout or performance events
   const voices = buildVoiceMap(input.performance, input.baseLayout);
 
+  // Phase 1b: Detect structural groups (shared across all candidates)
+  const structuralGroups = detectStructuralGroups(
+    input.performance.events,
+    input.performance.tempo ?? 120,
+  );
+
   // Phase 2: Generate internal candidates
   const allScored: ScoredCandidate[] = [];
   const optimizer = new GreedyOptimizer();
@@ -174,6 +189,7 @@ export async function generateGreedyCandidates(
         placementLocks: input.baseLayout?.placementLocks ?? {},
         rng,
         baseLayout: input.baseLayout,
+        structuralGroups,
       };
 
       const seedLayout = seedGen.generate(seedCtx);
@@ -208,7 +224,10 @@ export async function generateGreedyCandidates(
 
         // Build CandidateSolution
         const difficultyAnalysis = analyzeDifficulty(result.executionPlan, sections);
-        const tradeoffProfile = computeTradeoffProfile(result.executionPlan, difficultyAnalysis);
+        const coherenceScore = scoreStructuralCoherence(result.layout, structuralGroups);
+        const tradeoffProfile = computeTradeoffProfile(
+          result.executionPlan, difficultyAnalysis, coherenceScore.overall,
+        );
 
         const metadata: CandidateMetadata = {
           strategy: `${family.name} (seed ${seedIdx + 1})`,
@@ -392,6 +411,7 @@ function buildExplanation(
     { key: 'transitionEfficiency', label: 'transition efficiency' },
     { key: 'compactness', label: 'layout compactness' },
     { key: 'handBalance', label: 'hand balance' },
+    { key: 'structuralCoherence', label: 'structural coherence' },
   ];
 
   for (const dim of dimensions) {
