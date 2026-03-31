@@ -65,6 +65,7 @@ import {
   hashLayout,
   resolveEventToPad,
 } from '../mapping/mappingResolver';
+import { analyzePhraseStructure } from '../structure/phraseStructure';
 import {
   type UpdatePolicy,
   type EvaluatedMove,
@@ -180,6 +181,16 @@ class GreedyOptimizer implements OptimizerMethod {
     const iterationTrace: OptimizationIteration[] = [];
     let movesEvaluated = 0;
 
+    // Analyze phrase structure once for rhythm-aware placement and hill climbing
+    const phraseStructure = analyzePhraseStructure(
+      input.performance.events, input.performance.tempo,
+    );
+    const hasRhythmStructure = phraseStructure.confidence > 0.4
+      && phraseStructure.roleGroups.length > 0;
+    const rhythmPeers = hasRhythmStructure
+      ? phraseStructure.voicePeers
+      : new Map<string, string[]>();
+
     // ── Phase A: Greedy Initial Layout ─────────────────────────
     let layout: Layout;
 
@@ -194,7 +205,7 @@ class GreedyOptimizer implements OptimizerMethod {
       } else {
         // Build layout from scratch using greedy placement
         layout = await this.greedyInitLayout(
-          input, moments, moveHistory, iterationTrace, attemptIndex,
+          input, moments, moveHistory, iterationTrace, attemptIndex, rhythmPeers,
         );
       }
     }
@@ -229,6 +240,9 @@ class GreedyOptimizer implements OptimizerMethod {
     const seed = input.config.seed ?? 0;
     const hillClimbRng = createSeededRng(seed + 31337); // Separate RNG for policy
 
+    // Track rhythm peer alignment cost separately (not part of canonical evaluation)
+    let currentPeerCost = computeRhythmPeerCost(layout, rhythmPeers);
+
     for (let iter = 0; iter < maxIterations; iter++) {
       // Enumerate all candidate moves
       const candidateMoves = this.enumerateMoves(layout, assignment, input);
@@ -255,11 +269,18 @@ class GreedyOptimizer implements OptimizerMethod {
           moments, newLayout, newAssignment, input.evaluationConfig, input.costToggles,
         );
 
+        // Include rhythm peer alignment cost in move comparison
+        const newPeerCost = (move.type === 'pad_move' || move.type === 'pad_swap')
+          ? computeRhythmPeerCost(newLayout, rhythmPeers)
+          : currentPeerCost;
+        const effectiveCost = newCostResult.total + newPeerCost;
+        const effectiveDelta = effectiveCost - (currentCost.total + currentPeerCost);
+
         const idx = evaluatedMoves.length;
         evaluatedMoves.push({
           index: idx,
-          cost: newCostResult.total,
-          costDelta: newCostResult.total - currentCost.total,
+          cost: effectiveCost,
+          costDelta: effectiveDelta,
           breakdown: newCostResult,
           moveType: move.type,
           padKey: move.padKey,
@@ -341,6 +362,7 @@ class GreedyOptimizer implements OptimizerMethod {
       layout = bestMove.newLayout!;
       assignment = bestMove.newAssignment!;
       currentCost = bestMove.costResult!;
+      currentPeerCost = computeRhythmPeerCost(layout, rhythmPeers);
 
       // Yield every 10 iterations
       if (iter % 10 === 0) await yieldControl();
@@ -395,6 +417,7 @@ class GreedyOptimizer implements OptimizerMethod {
     moveHistory: OptimizerMove[],
     iterationTrace: OptimizationIteration[],
     attemptIndex: number = 0,
+    rhythmPeersFromParent?: Map<string, string[]>,
   ): Promise<Layout> {
     const layout: Layout = {
       ...input.layout,
@@ -434,6 +457,34 @@ class GreedyOptimizer implements OptimizerMethod {
     // Build co-occurrence matrix
     const cooccurrence = buildCooccurrenceMatrix(input.performance.events);
 
+    // Rhythm-aware placement: use pre-computed peer data from parent,
+    // or compute fresh if not provided
+    const phraseStructure = analyzePhraseStructure(
+      input.performance.events, input.performance.tempo,
+    );
+    const hasRhythmStructure = phraseStructure.confidence > 0.4
+      && phraseStructure.roleGroups.length > 0;
+
+    const rhythmPeers = rhythmPeersFromParent
+      ?? (hasRhythmStructure ? phraseStructure.voicePeers : new Map<string, string[]>());
+
+    // Build phrasemate lookup: voiceId → other voiceIds in same phrase iteration
+    const phrasemates = new Map<string, string[]>();
+    if (hasRhythmStructure) {
+      const phraseGroups = new Map<number, Set<string>>();
+      for (const mapping of phraseStructure.roleMappings) {
+        if (!phraseGroups.has(mapping.role.phraseIndex)) {
+          phraseGroups.set(mapping.role.phraseIndex, new Set());
+        }
+        phraseGroups.get(mapping.role.phraseIndex)!.add(mapping.voiceId);
+      }
+      for (const voices of phraseGroups.values()) {
+        for (const v of voices) {
+          phrasemates.set(v, [...voices].filter(x => x !== v));
+        }
+      }
+    }
+
     // Seeded RNG for placement diversity (different seeds produce different layouts)
     const seed = input.config.seed ?? 0;
     const rng = createSeededRng(seed);
@@ -460,6 +511,47 @@ class GreedyOptimizer implements OptimizerMethod {
         let score = scorePlacement(
           pad, soundId, layout, cooccurrence, input.costToggles,
         );
+
+        // Rhythm peer column affinity: prefer same column (same hand+finger) as already-placed peers
+        const peers = rhythmPeers.get(soundId);
+        if (peers) {
+          for (const peerId of peers) {
+            for (const [pk, v] of Object.entries(layout.padToVoice)) {
+              if ((v.id ?? String(v.originalMidiNote)) === peerId) {
+                const peerPad = parsePadKey(pk);
+                score += Math.abs(pad.col - peerPad.col) * 5.0
+                       + Math.abs(pad.row - peerPad.row) * 0.2;
+                break;
+              }
+            }
+          }
+        }
+
+        // Phrasemate hand cohesion: prefer same hand zone as already-placed phrasemates
+        const mates = phrasemates.get(soundId);
+        if (mates) {
+          let mateLeftCount = 0;
+          let mateRightCount = 0;
+          for (const mateId of mates) {
+            for (const [pk, v] of Object.entries(layout.padToVoice)) {
+              if ((v.id ?? String(v.originalMidiNote)) === mateId) {
+                const matePad = parsePadKey(pk);
+                if (matePad.col <= 3) mateLeftCount++;
+                else mateRightCount++;
+                break;
+              }
+            }
+          }
+          if (mateLeftCount + mateRightCount > 0) {
+            const padIsLeft = pad.col <= 3;
+            if (padIsLeft && mateRightCount > mateLeftCount) {
+              score += (mateRightCount - mateLeftCount) * 1.5;
+            } else if (!padIsLeft && mateLeftCount > mateRightCount) {
+              score += (mateLeftCount - mateRightCount) * 1.5;
+            }
+          }
+        }
+
         // Add seeded noise for non-zero seeds to explore different placements
         if (noiseScale > 0) {
           score += (rng() - 0.5) * noiseScale * Math.max(1, Math.abs(score));
@@ -1051,6 +1143,49 @@ function buildEmptyOutput(input: OptimizerInput, startTime: number): OptimizerOu
       improvement: 0,
     },
   };
+}
+
+// ============================================================================
+// Rhythm Peer Alignment Cost
+// ============================================================================
+
+/**
+ * Compute a cost penalty for rhythm peer column misalignment.
+ * Sounds that share a rhythmic role across phrase iterations (peers) should
+ * ideally be on the same grid column (same hand + finger assignment).
+ *
+ * Each pair is counted once. Weight: 2.0 per column of distance.
+ */
+function computeRhythmPeerCost(
+  layout: Layout,
+  rhythmPeers: Map<string, string[]>,
+): number {
+  if (rhythmPeers.size === 0) return 0;
+
+  // Build voice → pad column map
+  const voiceCol = new Map<string, number>();
+  for (const [pk, v] of Object.entries(layout.padToVoice)) {
+    const vid = v.id ?? String(v.originalMidiNote);
+    const col = parseInt(pk.split(',')[1], 10);
+    voiceCol.set(vid, col);
+  }
+
+  let cost = 0;
+  const counted = new Set<string>();
+  for (const [voiceId, peers] of rhythmPeers) {
+    const col = voiceCol.get(voiceId);
+    if (col === undefined) continue;
+    for (const peerId of peers) {
+      const pairKey = voiceId < peerId ? `${voiceId}:${peerId}` : `${peerId}:${voiceId}`;
+      if (counted.has(pairKey)) continue;
+      counted.add(pairKey);
+      const peerCol = voiceCol.get(peerId);
+      if (peerCol === undefined) continue;
+      cost += Math.abs(col - peerCol) * 2.0;
+    }
+  }
+
+  return cost;
 }
 
 // ============================================================================
