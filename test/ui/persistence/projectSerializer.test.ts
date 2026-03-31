@@ -78,6 +78,7 @@ function makeTestProject(): ProjectState {
         compactness: 0.7,
         handBalance: 0.6,
         transitionEfficiency: 0.5,
+        structuralCoherence: 0.5,
       },
       metadata: {
         generationMethod: 'beam',
@@ -90,7 +91,7 @@ function makeTestProject(): ProjectState {
         layout: createEmptyLayout('c', 'c', 'active'),
         executionPlan: { score: 30, fingerAssignments: [], unplayableCount: 0, hardCount: 0 },
         difficultyAnalysis: { overallScore: 0.2, sectionScores: [], passageDetails: [] },
-        tradeoffProfile: { playability: 0.9, compactness: 0.8, handBalance: 0.7, transitionEfficiency: 0.6 },
+        tradeoffProfile: { playability: 0.9, compactness: 0.8, handBalance: 0.7, transitionEfficiency: 0.6, structuralCoherence: 0.5 },
         metadata: { generationMethod: 'beam', timestamp: '2025-01-01T00:00:00.000Z' },
       },
     ],

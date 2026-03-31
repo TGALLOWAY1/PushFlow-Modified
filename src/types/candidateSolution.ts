@@ -25,6 +25,8 @@ export interface TradeoffProfile {
   handBalance: number;
   /** How smooth transitions are between events. */
   transitionEfficiency: number;
+  /** How well the layout preserves structural group relationships (0-1). */
+  structuralCoherence: number;
 }
 
 /**

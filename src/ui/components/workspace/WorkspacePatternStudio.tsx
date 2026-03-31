@@ -282,76 +282,59 @@ export function WorkspacePatternStudio() {
     if (loopState.events.size === 0 || loopState.lanes.length === 0) return;
 
     const layout = getDisplayedLayout(projectState);
-    if (!layout) return;
 
-    // Check if any lane has a finger assignment via voiceConstraints
-    const hasFingerAssignments = loopState.lanes.some(l => {
-      const voiceId = laneToVoiceId[l.id];
-      const vc = projectState.voiceConstraints[l.id]
-        ?? (voiceId ? projectState.voiceConstraints[voiceId] : undefined);
-      return vc?.hand && vc?.finger;
-    });
-
-    // If no finger assignments and no pads on grid, require finger assignments
-    if (!hasFingerAssignments && Object.keys(layout.padToVoice).length === 0) {
-      window.alert('Set finger assignments for each lane before saving a Composer Preset.\nClick the ·· button next to each lane name to assign a hand + finger.');
-      return;
-    }
-
-    // Build preset pads from the current layout's padToVoice mapping
+    // Build preset pads from the current layout's padToVoice mapping (if layout exists)
     const presetPads: PresetPad[] = [];
-    const fingerConstraints = layout.fingerConstraints ?? {};
 
-    for (const [padKeyStr, voice] of Object.entries(layout.padToVoice)) {
-      // Match pads to composer lanes: try ID match, then name match, then MIDI note match
-      let lane = loopState.lanes.find(l => l.id === voice.id);
-      if (!lane) lane = loopState.lanes.find(l => l.name === voice.name);
-      if (!lane) lane = loopState.lanes.find(l => l.midiNote !== null && l.midiNote === voice.originalMidiNote);
-      if (!lane) continue;
+    if (layout) {
+      const fingerConstraints = layout.fingerConstraints ?? {};
 
-      const coord = parsePadKey(padKeyStr);
-      if (!coord) continue;
+      for (const [padKeyStr, voice] of Object.entries(layout.padToVoice)) {
+        // Match pads to composer lanes: try ID match, then name match, then MIDI note match
+        let lane = loopState.lanes.find(l => l.id === voice.id);
+        if (!lane) lane = loopState.lanes.find(l => l.name === voice.name);
+        if (!lane) lane = loopState.lanes.find(l => l.midiNote !== null && l.midiNote === voice.originalMidiNote);
+        if (!lane) continue;
 
-      // Primary: use voice constraint from project state (try voice ID, lane ID, and mapped voice ID)
-      const mappedVoiceId = laneToVoiceId[lane.id];
-      const vc = projectState.voiceConstraints[voice.id]
-        ?? projectState.voiceConstraints[lane.id]
-        ?? (mappedVoiceId ? projectState.voiceConstraints[mappedVoiceId] : undefined);
-      let hand: HandSide;
-      let finger: FingerType;
+        const coord = parsePadKey(padKeyStr);
+        if (!coord) continue;
 
-      if (vc?.hand && vc?.finger) {
-        hand = vc.hand;
-        finger = vc.finger as FingerType;
-      } else {
-        // Fallback: parse finger constraint from layout
-        const constraint = fingerConstraints[padKeyStr];
-        hand = coord.col <= 4 ? 'left' : 'right';
-        finger = 'index';
+        // Primary: use voice constraint from project state (try voice ID, lane ID, and mapped voice ID)
+        const mappedVoiceId = laneToVoiceId[lane.id];
+        const vc = projectState.voiceConstraints[voice.id]
+          ?? projectState.voiceConstraints[lane.id]
+          ?? (mappedVoiceId ? projectState.voiceConstraints[mappedVoiceId] : undefined);
+        let hand: HandSide;
+        let finger: FingerType;
 
-        if (constraint) {
-          const parsed = parseFingerConstraint(constraint);
-          if (parsed) {
-            hand = parsed.hand;
-            finger = parsed.finger;
+        if (vc?.hand && vc?.finger) {
+          hand = vc.hand;
+          finger = vc.finger as FingerType;
+        } else {
+          // Fallback: parse finger constraint from layout
+          const constraint = fingerConstraints[padKeyStr];
+          hand = coord.col <= 4 ? 'left' : 'right';
+          finger = 'index';
+
+          if (constraint) {
+            const parsed = parseFingerConstraint(constraint);
+            if (parsed) {
+              hand = parsed.hand;
+              finger = parsed.finger;
+            }
           }
         }
+
+        presetPads.push({
+          position: { rowOffset: coord.row, colOffset: coord.col },
+          laneId: lane.id,
+          finger,
+          hand,
+        });
       }
-
-      presetPads.push({
-        position: { rowOffset: coord.row, colOffset: coord.col },
-        laneId: lane.id,
-        finger,
-        hand,
-      });
     }
 
-    if (presetPads.length === 0) {
-      window.alert('No pads assigned. Assign pads on the grid before saving a Composer Preset.');
-      return;
-    }
-
-    // Normalize to relative coordinates
+    // Normalize to relative coordinates (empty array if no pads assigned yet)
     const normalizedPads = normalizePadPositions(presetPads);
     const handedness = computeHandedness(normalizedPads);
 

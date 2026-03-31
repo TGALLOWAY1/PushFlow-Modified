@@ -169,6 +169,7 @@ export function LayoutOptionsPanel({
                 onSelect={() => {
                   dispatch({ type: 'SELECT_CANDIDATE', payload: candidate.id });
                   dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidate });
+                  dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: candidate.id } });
                 }}
                 onPromote={() => {
                   dispatch({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
@@ -245,6 +246,7 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
                     onSelect={() => {
                       dispatch({ type: 'SELECT_CANDIDATE', payload: c.id });
                       dispatch({ type: 'SET_ANALYSIS_RESULT', payload: c });
+                      dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: c.id } });
                     }}
                     onPromote={() => {
                       if (confirm('Promote this candidate to become the Active Layout?')) {

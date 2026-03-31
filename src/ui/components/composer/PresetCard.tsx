@@ -124,7 +124,7 @@ export function PresetCard({
       {/* Footer: metadata */}
       <div className="flex items-center gap-2 mt-1.5">
         <span className="text-[10px] text-gray-500">
-          {preset.pads.length} pads · {preset.events.length} events
+          {preset.pads.length === 0 ? 'pattern only' : `${preset.pads.length} pads`} · {preset.events.length} events
         </span>
         <div className="flex-1" />
         {/* Action buttons (visible on hover) */}

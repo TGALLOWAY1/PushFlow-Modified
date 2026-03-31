@@ -94,7 +94,7 @@ The workflow is built around `Sound identity`, not only imported pitch.
 ---
 ## Required Cross-Cutting Properties
 For the approved workflow to make sense, the engine must eventually support:
-- hard-feasibility verdicts with clear reasons
+- hard-feasibility verdicts with clear reasons (including outward-rotation rejection)
 - one canonical cost story
 - factorized diagnostics
 - baseline-relative candidate diversity

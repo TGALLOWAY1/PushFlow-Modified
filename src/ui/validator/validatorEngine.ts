@@ -336,6 +336,7 @@ function gripRejectionToEvidence(r: GripRejection): ConstraintViolationEvidence 
     reachability: `Reachability: ${r.fingerA} / ${r.fingerB} distance ${r.actual.toFixed(2)} > reach ${r.limit.toFixed(1)}`,
     speed: `Speed violation: transition too fast (${r.actual.toFixed(2)} > ${r.limit.toFixed(1)})`,
     zone: `Zone violation: hand in wrong zone`,
+    outwardRotation: `Outward rotation: ${r.fingerA} is ${r.actual.toFixed(0)} row(s) below ${r.fingerB} — requires unnatural hand rotation`,
   };
 
   return {

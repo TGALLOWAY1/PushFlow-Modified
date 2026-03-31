@@ -14,7 +14,7 @@ import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
 import { generateId } from '../../utils/idGenerator';
 import { formatPadPosition } from '../../utils/padPosition';
 import { FingerAssignmentInput, type FingerAssignmentValue } from './shared/FingerAssignmentInput';
-import { type FingerType } from '../../types/fingerModel';
+import { type FingerType, type HandSide } from '../../types/fingerModel';
 
 const FINGER_ABBREV: Record<string, string> = {
   thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
@@ -37,28 +37,44 @@ export function VoicePalette() {
     [state.soundStreams],
   );
 
-  // Cmd+G to group selected streams
+  // Cmd+G to group/ungroup selected streams
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'g' && selectedStreamIds.size > 0) {
         e.preventDefault();
-        const group: LaneGroup = {
-          groupId: generateId('grp'),
-          name: `Group ${state.laneGroups.length + 1}`,
-          color: COLOR_PALETTE[state.laneGroups.length % COLOR_PALETTE.length],
-          orderIndex: state.laneGroups.length,
-          isCollapsed: false,
-        };
-        dispatch({ type: 'CREATE_LANE_GROUP', payload: group });
+        // Check if all selected streams are in the same group → ungroup
+        const groupIds = new Set<string | null>();
         for (const streamId of selectedStreamIds) {
-          dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: streamId, groupId: group.groupId } });
+          const lane = state.performanceLanes.find(l => l.id === streamId);
+          groupIds.add(lane?.groupId ?? null);
+        }
+        const allInSameGroup = groupIds.size === 1 && !groupIds.has(null);
+
+        if (allInSameGroup) {
+          // Ungroup: remove streams from their group
+          for (const streamId of selectedStreamIds) {
+            dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: streamId, groupId: null } });
+          }
+        } else {
+          // Group: create a new group and assign all selected streams
+          const group: LaneGroup = {
+            groupId: generateId('grp'),
+            name: `Group ${state.laneGroups.length + 1}`,
+            color: COLOR_PALETTE[state.laneGroups.length % COLOR_PALETTE.length],
+            orderIndex: state.laneGroups.length,
+            isCollapsed: false,
+          };
+          dispatch({ type: 'CREATE_LANE_GROUP', payload: group });
+          for (const streamId of selectedStreamIds) {
+            dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: streamId, groupId: group.groupId } });
+          }
         }
         setSelectedStreamIds(new Set());
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedStreamIds, state.laneGroups.length, dispatch]);
+  }, [selectedStreamIds, state.laneGroups.length, state.performanceLanes, dispatch]);
 
   // Drag-to-reorder state
   const [reorderTarget, setReorderTarget] = useState<string | null>(null);
@@ -260,11 +276,11 @@ export function VoicePalette() {
             </div>
           )}
 
-          {/* Ungrouped assigned streams */}
+          {/* Ungrouped assigned streams (no section header) */}
           {ungroupedAssigned.length > 0 && (
             <div className="space-y-0.5 mt-2">
               <span className="section-header px-2">
-                On Grid ({ungroupedAssigned.length})
+                Ungrouped ({ungroupedAssigned.length})
               </span>
               {ungroupedAssigned.map(s => renderStreamRow(s))}
             </div>
@@ -281,7 +297,7 @@ export function VoicePalette() {
 
       {selectedStreamIds.size > 0 && (
         <div className="text-pf-xs text-[var(--accent-primary)] pt-2 px-2">
-          {selectedStreamIds.size} selected — press <kbd className="px-1 py-0.5 rounded-pf-sm bg-[var(--bg-card)] text-[var(--text-secondary)] font-mono text-pf-micro border border-[var(--border-subtle)]">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+G</kbd> to group
+          {selectedStreamIds.size} selected — press <kbd className="px-1 py-0.5 rounded-pf-sm bg-[var(--bg-card)] text-[var(--text-secondary)] font-mono text-pf-micro border border-[var(--border-subtle)]">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+G</kbd> to group/ungroup
         </div>
       )}
     </div>
@@ -437,7 +453,6 @@ function StreamRow({
   onReorderDrop: () => void;
   isReorderTarget: boolean;
 }) {
-  const solverFinger = solverAssignment?.label ?? null;
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(stream.name);
@@ -565,20 +580,20 @@ function StreamRow({
           {isLocked && <span className="text-[8px] text-amber-400" title="Placement locked">&#x1F512;</span>}
           {formatPadPosition(padKeys[0])}
           {padKeys.length > 1 && `+${padKeys.length - 1}`}
-          {solverFinger && !voiceConstraint && (
-            <span className="ml-1 text-[8px] opacity-60">({solverFinger})</span>
-          )}
         </span>
       )}
 
-      {/* Finger assignment — only show explicit user constraints (not solver suggestions) */}
+      {/* Finger assignment — show user constraint or solver suggestion */}
       <div onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
         <FingerAssignmentInput
           value={
             voiceConstraint?.hand && voiceConstraint?.finger
               ? { hand: voiceConstraint.hand, finger: voiceConstraint.finger as FingerType }
-              : null
+              : solverAssignment
+                ? { hand: solverAssignment.hand as HandSide, finger: solverAssignment.finger as FingerType }
+                : null
           }
+          isSuggestion={!(voiceConstraint?.hand && voiceConstraint?.finger) && !!solverAssignment}
           onChange={(assignment: FingerAssignmentValue | null) => {
             if (assignment) {
               onSetConstraint(assignment.hand, assignment.finger);

@@ -100,14 +100,30 @@ export async function listAllProjects(): Promise<ProjectIndexEntry[]> {
     const request = store.getAll();
     request.onsuccess = () => {
       const projects = request.result as PersistedProject[];
-      const entries: ProjectIndexEntry[] = projects.map(p => ({
-        id: p.id,
-        name: p.name,
-        createdAt: p.createdAt,
-        updatedAt: p.updatedAt,
-        soundCount: p.soundStreams.length,
-        eventCount: p.soundStreams.reduce((sum, s) => sum + s.events.length, 0),
-      }));
+      const entries: ProjectIndexEntry[] = projects.map(p => {
+        const eventCount = p.soundStreams.reduce((sum, s) => sum + s.events.length, 0);
+        // Compute duration in bars from events
+        let maxTime = 0;
+        for (const s of p.soundStreams) {
+          for (const e of s.events) {
+            const end = e.startTime + e.duration;
+            if (end > maxTime) maxTime = end;
+          }
+        }
+        const beatDuration = 60 / (p.bpm || 120);
+        const barDuration = beatDuration * 4;
+        const durationBars = barDuration > 0 ? Math.ceil(maxTime / barDuration) : 0;
+        return {
+          id: p.id,
+          name: p.name,
+          createdAt: p.createdAt,
+          updatedAt: p.updatedAt,
+          soundCount: p.soundStreams.length,
+          eventCount,
+          tempo: p.bpm || 120,
+          durationBars,
+        };
+      });
       // Sort by updatedAt descending
       entries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
       resolve(entries);

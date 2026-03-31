@@ -22,6 +22,7 @@ import {
   getVoicePhraseIndex,
   getRoleGroupsByImportance,
 } from '../structure/phraseStructure';
+import { type StructuralGroupAnalysis } from '../structure/structuralGroupDetection';
 import { adjacentPads } from '../surface/padGrid';
 import { generateId } from '../../utils/idGenerator';
 
@@ -50,6 +51,8 @@ export interface SeedContext {
   baseLayout?: Layout;
   /** Performance data for phrase structure analysis. */
   performance?: Performance;
+  /** Optional structural group analysis for group-aware seeding. */
+  structuralGroups?: StructuralGroupAnalysis;
 }
 
 // ============================================================================
@@ -738,6 +741,135 @@ export const noveltySeed: SeedGenerator = {
 };
 
 // ============================================================================
+// Seed Generator E: Structural Coherence
+// ============================================================================
+
+/**
+ * Structural Coherence seed.
+ *
+ * Places voices from detected structural groups into coherent spatial shapes:
+ * - Each group occupies a contiguous row or block
+ * - Parallel group pairs are placed in adjacent rows
+ * - Voice order within groups follows temporal order (left→right)
+ * - Ungrouped voices fill remaining golden pads
+ *
+ * Falls back to natural-pose seeding when no structural groups are detected.
+ */
+export const structuralSeed: SeedGenerator = {
+  key: 'structural',
+  name: 'Structural Coherence',
+
+  generate(ctx: SeedContext): Layout {
+    const layout = createEmptyLayout('Structural Coherence', ctx.baseLayout);
+    const placedVoiceIds = applyPlacementLocks(layout, ctx.placementLocks, ctx.voices);
+    const rows = ctx.instrumentConfig.rows;
+    const cols = ctx.instrumentConfig.cols;
+
+    const groups = ctx.structuralGroups?.groups ?? [];
+
+    // Fall back to natural-pose if no structural groups detected
+    if (groups.length === 0) {
+      return naturalPoseSeed.generate(ctx);
+    }
+
+    // Identify parallel pairs for adjacent-row placement
+    const groupPairs = ctx.structuralGroups?.groupPairs ?? [];
+    const pairedGroupIds = new Set<string>();
+    const adjacencyPairs: Array<[string, string]> = [];
+
+    for (const pair of groupPairs) {
+      if (!pairedGroupIds.has(pair.groupA) && !pairedGroupIds.has(pair.groupB)) {
+        adjacencyPairs.push([pair.groupA, pair.groupB]);
+        pairedGroupIds.add(pair.groupA);
+        pairedGroupIds.add(pair.groupB);
+      }
+    }
+
+    // Build placement order: paired groups first (adjacent rows), then unpaired groups
+    const placementOrder: string[] = [];
+    for (const [a, b] of adjacencyPairs) {
+      placementOrder.push(a, b);
+    }
+    for (const group of groups) {
+      if (!pairedGroupIds.has(group.id)) {
+        placementOrder.push(group.id);
+      }
+    }
+
+    const groupMap = new Map(groups.map(g => [g.id, g]));
+
+    // Allocate rows starting from ergonomic center (row 3), expanding outward
+    const centerRow = Math.min(3, rows - 1);
+    let nextRow = centerRow;
+    const rowDirection = [0, 1, -1, 2, -2, 3, -3, 4]; // expand from center
+
+    let rowIdx = 0;
+
+    for (const groupId of placementOrder) {
+      const group = groupMap.get(groupId);
+      if (!group) continue;
+
+      // Find next available row
+      let targetRow = -1;
+      while (rowIdx < rowDirection.length) {
+        const candidate = centerRow + rowDirection[rowIdx];
+        if (candidate >= 0 && candidate < rows) {
+          targetRow = candidate;
+          rowIdx++;
+          break;
+        }
+        rowIdx++;
+      }
+
+      if (targetRow < 0) {
+        targetRow = nextRow % rows;
+        nextRow++;
+      }
+
+      // Place group members left→right in temporal order, centered in the row
+      const unplacedMembers = group.voiceIds.filter(vid => !placedVoiceIds.has(vid));
+      const startCol = Math.max(0, Math.floor((cols - unplacedMembers.length) / 2));
+
+      let colIdx = startCol;
+      for (const voiceId of unplacedMembers) {
+        const voice = ctx.voices.get(voiceId);
+        if (!voice) continue;
+
+        // Find next empty pad in this row, starting from colIdx
+        while (colIdx < cols && isOccupied(layout, targetRow, colIdx)) {
+          colIdx++;
+        }
+
+        if (colIdx < cols) {
+          placeVoice(layout, targetRow, colIdx, voice);
+          placedVoiceIds.add(voiceId);
+          colIdx++;
+        }
+      }
+    }
+
+    // Place ungrouped voices on remaining golden pads
+    const ungrouped = ctx.structuralGroups?.ungroupedVoiceIds ?? [];
+    const ranked = rankByImportance(ctx.features)
+      .filter(f => !placedVoiceIds.has(f.voiceId) || ungrouped.includes(f.voiceId));
+
+    for (const feat of ranked) {
+      if (placedVoiceIds.has(feat.voiceId)) continue;
+      const voice = ctx.voices.get(feat.voiceId);
+      if (!voice) continue;
+
+      const pad = getFirstEmptyPad(layout, GOLDEN_PADS)
+        ?? getFirstEmptyPad(layout, getAllEmptyPads(layout, rows, cols));
+      if (!pad) break;
+      placeVoice(layout, pad.row, pad.col, voice);
+      placedVoiceIds.add(feat.voiceId);
+    }
+
+    return layout;
+  },
+};
+
+// ============================================================================
 // Registry
 // ============================================================================
 
@@ -747,6 +879,7 @@ export const SEED_GENERATORS: Record<string, SeedGenerator> = {
   'cluster': clusterSeed,
   'coordination': coordinationSeed,
   'novelty': noveltySeed,
+  'structural': structuralSeed,
 };
 
 /** Get a seed generator by key. */

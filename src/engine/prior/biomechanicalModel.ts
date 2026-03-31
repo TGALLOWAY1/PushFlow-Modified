@@ -205,7 +205,8 @@ export type ConstraintRuleName =
   | 'topology'       // Left/right hand topology violation
   | 'reachability'   // Finger outside reach given hand anchor
   | 'speed'          // Transition too fast (exceeds MAX_HAND_SPEED)
-  | 'zone';          // Hand in wrong zone (left hand in right territory)
+  | 'zone'           // Hand in wrong zone (left hand in right territory)
+  | 'outwardRotation'; // Outer finger below inner finger requires unnatural hand rotation
 
 /**
  * GripRejection: Diagnostic data for why a grip was rejected.

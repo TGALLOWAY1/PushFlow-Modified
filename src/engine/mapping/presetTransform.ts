@@ -72,6 +72,10 @@ export function validatePlacement(
 ): PlacementValidationResult {
   const reasons: string[] = [];
 
+  if (pads.length === 0) {
+    return { valid: false, reasons: ['Preset has no pad layout yet — assign pads before placing'] };
+  }
+
   for (const pad of pads) {
     const abs = toAbsolute(pad, anchorRow, anchorCol);
 

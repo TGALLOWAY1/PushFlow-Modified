@@ -135,7 +135,8 @@ export function classifyDifficulty(
  */
 export function computeTradeoffProfile(
   result: ExecutionPlanResult,
-  analysis: DifficultyAnalysis
+  analysis: DifficultyAnalysis,
+  structuralCoherenceOverride?: number,
 ): TradeoffProfile {
   const assignments = result.fingerAssignments;
 
@@ -159,11 +160,15 @@ export function computeTradeoffProfile(
   const avgMovement = result.averageMetrics?.transitionCost ?? 0;
   const transitionEfficiency = Math.max(0, 1 - Math.min(avgMovement / 10, 1));
 
+  // Structural coherence: passed in from caller, or neutral default
+  const structuralCoherence = structuralCoherenceOverride ?? 0.5;
+
   return {
     playability,
     compactness,
     handBalance,
     transitionEfficiency,
+    structuralCoherence,
   };
 }
 

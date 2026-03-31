@@ -293,6 +293,7 @@ export type ProjectAction =
   | { type: 'SET_CANDIDATES'; payload: CandidateSolution[] }
   | { type: 'SELECT_CANDIDATE'; payload: string | null }
   | { type: 'MARK_ANALYSIS_STALE' }
+  | { type: 'APPLY_GENERATION_TO_LAYOUT'; payload: { candidateId: string } }
 
   // Instrument config
   | { type: 'SET_INSTRUMENT_CONFIG'; payload: Partial<InstrumentConfig> }
@@ -1038,6 +1039,52 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
     case 'MARK_ANALYSIS_STALE':
       return { ...state, analysisStale: true };
+
+    case 'APPLY_GENERATION_TO_LAYOUT': {
+      const candidate = state.candidates.find(c => c.id === action.payload.candidateId);
+      if (!candidate) return state;
+      const now = new Date().toISOString();
+
+      // Apply the candidate's layout as the working layout
+      const working = cloneLayout(
+        candidate.layout,
+        generateId(),
+        `${candidate.layout.name ?? 'Generated'} (draft)`,
+        'working',
+      );
+
+      // Extract solver finger assignments and write them into voiceConstraints.
+      // Use the first assignment per voice (stable pad-level ownership).
+      const newConstraints = { ...state.voiceConstraints };
+      const ep = candidate.executionPlan;
+      if (ep?.fingerAssignments) {
+        const seen = new Set<string>();
+        for (const fa of ep.fingerAssignments) {
+          const vid = fa.voiceId;
+          if (!vid || seen.has(vid)) continue;
+          if (fa.assignedHand === 'Unplayable' || !fa.finger) continue;
+          seen.add(vid);
+          newConstraints[vid] = { hand: fa.assignedHand, finger: fa.finger };
+        }
+      }
+
+      // Also sync finger constraints into the working layout's per-pad fingerConstraints
+      const padFingerConstraints: Record<string, string> = {};
+      for (const [pk, voice] of Object.entries(working.padToVoice)) {
+        const vc = newConstraints[voice.id];
+        if (vc?.hand && vc?.finger) {
+          padFingerConstraints[pk] = formatFingerConstraint(vc.hand, vc.finger as Parameters<typeof formatFingerConstraint>[1]);
+        }
+      }
+      working.fingerConstraints = { ...working.fingerConstraints, ...padFingerConstraints };
+
+      return {
+        ...state,
+        workingLayout: working,
+        voiceConstraints: newConstraints,
+        updatedAt: now,
+      };
+    }
 
     // -- Ephemeral UI --
 

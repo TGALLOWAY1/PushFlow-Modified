@@ -94,6 +94,12 @@ export { analyzeTransition, analyzeAllTransitions } from './evaluation/transitio
 export { scorePassage, scorePassagesFromSections, scorePassagesFixedWindow } from './evaluation/passageDifficulty';
 export { analyzeDifficulty, classifyDifficulty, computeTradeoffProfile } from './evaluation/difficultyScoring';
 export { checkPlanFreshness, getEffectiveLayoutBinding, type FreshnessCheck } from './evaluation/executionPlanValidation';
+export {
+  scoreStructuralCoherence,
+  type StructuralCoherenceScore,
+  type GroupCoherenceDetail,
+  type PairParallelismDetail,
+} from './evaluation/structuralCoherence';
 
 // Structure analysis
 export { groupEventsByTime, getPolyphonyTimeline, getMaxPolyphony } from './structure/eventGrouping';
@@ -104,6 +110,12 @@ export { buildCooccurrenceGraph } from './structure/cooccurrence';
 export { buildTransitionGraph } from './structure/transitionGraph';
 export { inferVoiceRoles } from './structure/roleInference';
 export { analyzePerformance } from './structure/performanceAnalyzer';
+export {
+  detectStructuralGroups,
+  type StructuralGroup,
+  type StructuralGroupAnalysis,
+  type GroupPair,
+} from './structure/structuralGroupDetection';
 
 // Solvers
 export { BeamSolver, createBeamSolver } from './solvers/beamSolver';

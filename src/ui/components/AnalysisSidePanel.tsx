@@ -75,6 +75,7 @@ export function AnalysisSidePanel() {
                       onClick={() => {
                         dispatch({ type: 'SELECT_CANDIDATE', payload: c.id });
                         dispatch({ type: 'SET_ANALYSIS_RESULT', payload: c });
+                        dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: c.id } });
                       }}
                     >
                       #{i + 1} {(score * 100).toFixed(0)}%

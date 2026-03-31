@@ -84,6 +84,9 @@ export function PresetInspector({ preset, instance, onRemoveInstance, onMirrorIn
       {/* Finger Assignment Table */}
       <div className="bg-gray-800/30 rounded-lg p-2">
         <div className="text-[10px] text-gray-500 mb-1.5">Finger Assignments</div>
+        {pads.length === 0 && (
+          <div className="text-[10px] text-gray-600 italic">No pad layout yet — assign pads to place this preset</div>
+        )}
         <div className="space-y-0.5">
           {pads.map((pad, i) => {
             const lane = lanes.find(l => l.id === pad.laneId);

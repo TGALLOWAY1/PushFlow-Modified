@@ -124,10 +124,11 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     return result;
   }, [layout, soundStreamLookup]);
 
+  // Whether to show finger labels on pads (user constraints always show; solver assignments show when toggle is on)
+  const showFingerLabels = gridLabels?.showFingerAssignment ?? true;
+
   // Build per-pad summary from assignments, overlaying voiceConstraints.
-  // Per invariant 7 (no auto grid layout): finger labels only display when the user
-  // has explicitly set a voiceConstraint. Solver-computed fingers (a.assignedHand/a.finger)
-  // are used for hand coloring (glow) but NOT displayed as finger labels on pads.
+  // Finger labels show user constraints always, and solver assignments when showFingerAssignment toggle is on.
   const padSummaries = useMemo(() => {
     const map = new Map<string, PadSummary>();
     if (!assignments) return map;
@@ -147,22 +148,26 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
         };
         map.set(key, summary);
       }
-      // Use solver hand for glow coloring (visual feedback), but only show
-      // finger labels when the user has explicitly set a voiceConstraint.
+      // Use solver hand for glow coloring (visual feedback).
+      // Show finger labels from user constraints or solver assignments (when toggle is on).
       const voice = soundStreamLookup.forAssignment(a.voiceId, a.noteNumber);
       const constraint = voice ? voiceConstraints[voice.id] : undefined;
       const effectiveHand = constraint?.hand ?? a.assignedHand;
       summary.hands.add(effectiveHand);
-      // Only add finger label if user explicitly set a constraint
+      // Add finger label: user constraint takes priority, then solver assignment
       if (constraint?.hand && constraint?.finger) {
         const handChar = constraint.hand === 'left' ? 'L' : 'R';
         const fingerNum = FINGER_ABBREV[constraint.finger] ?? constraint.finger;
+        summary.fingers.add(`${handChar}${fingerNum}`);
+      } else if (showFingerLabels && a.assignedHand && (a.assignedHand as string) !== 'raw' && (a.assignedHand as string) !== 'Unplayable' && a.finger && (a.finger as string) !== 'unassigned') {
+        const handChar = a.assignedHand === 'left' ? 'L' : 'R';
+        const fingerNum = FINGER_ABBREV[a.finger] ?? a.finger;
         summary.fingers.add(`${handChar}${fingerNum}`);
       }
       summary.hitCount++;
     }
     return map;
-  }, [assignments, soundStreamLookup, voiceConstraints]);
+  }, [assignments, soundStreamLookup, voiceConstraints, showFingerLabels]);
 
   // Selected pads: all assignments at the same start time as the selected event
   // Also builds a map of padKey → finger label for the selected event
