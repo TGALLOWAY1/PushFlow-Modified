@@ -226,6 +226,70 @@ export const transitionAware: UpdatePolicy = {
 };
 
 // ============================================================================
+// Policy 5: Motif-Preserving
+// ============================================================================
+
+/**
+ * Conservative policy that preserves the phrase-aware layout structure.
+ *
+ * This policy is designed to work with the Clustered Motif Layout seed,
+ * which places phrase-peer voices in analogous positions. The policy:
+ *
+ * 1. Freely accepts finger reassignments (they don't affect spatial structure)
+ * 2. Requires larger improvements for spatial moves (pad_move, pad_swap)
+ * 3. Penalizes moves that would scatter related voices apart
+ * 4. Gradually relaxes constraints as optimization progresses
+ *
+ * The goal is to preserve the seed's phrase-aware structure while still
+ * allowing necessary improvements to playability.
+ */
+export const motifPreserving: UpdatePolicy = {
+  key: 'motif-preserving',
+  name: 'Motif-Preserving Greedy',
+
+  selectMove(candidates: EvaluatedMove[], context: UpdateContext): EvaluatedMove | null {
+    // Relaxation schedule: early iterations are strict, later ones are more permissive
+    const progress = context.iteration / Math.max(context.maxIterations, 1);
+    
+    // Early: require 0.5 cost improvement for spatial moves
+    // Late: require 0.1 cost improvement for spatial moves
+    const spatialThreshold = 0.5 - progress * 0.4;
+    
+    // Finger reassignments are always acceptable if they improve
+    const fingerMoves = candidates.filter(
+      c => c.moveType === 'finger_reassignment' && c.costDelta < 0,
+    );
+    
+    // Spatial moves require a more significant improvement
+    const spatialMoves = candidates.filter(
+      c => (c.moveType === 'pad_move' || c.moveType === 'pad_swap') &&
+           c.costDelta < -spatialThreshold,
+    );
+
+    // Combine and find the best move
+    const acceptable = [...fingerMoves, ...spatialMoves];
+    if (acceptable.length === 0) return null;
+
+    // Among acceptable moves, prefer finger reassignments when improvements are similar
+    let best: EvaluatedMove | null = null;
+    let bestScore = Infinity;
+
+    for (const candidate of acceptable) {
+      // Score = cost with preference bonus for non-spatial moves
+      const preservationBonus = candidate.moveType === 'finger_reassignment' ? -0.1 : 0;
+      const score = candidate.cost + preservationBonus;
+
+      if (!best || score < bestScore) {
+        bestScore = score;
+        best = candidate;
+      }
+    }
+
+    return best;
+  },
+};
+
+// ============================================================================
 // Registry
 // ============================================================================
 
@@ -235,6 +299,7 @@ export const UPDATE_POLICIES: Record<string, UpdatePolicy> = {
   'soft-greedy': softGreedy,
   'adjacency-preserving': adjacencyPreserving,
   'transition-aware': transitionAware,
+  'motif-preserving': motifPreserving,
 };
 
 /** Get an update policy by key. */

@@ -104,7 +104,7 @@ const CANDIDATE_FAMILIES: CandidateFamily[] = [
   {
     name: 'Clustered Motif Layout',
     seedKey: 'cluster',
-    updateKey: 'adjacency-preserving',
+    updateKey: 'motif-preserving',
     seedCount: 3,
     bestForDescription: 'memorability and phrase consistency',
   },
@@ -174,6 +174,7 @@ export async function generateGreedyCandidates(
         placementLocks: input.baseLayout?.placementLocks ?? {},
         rng,
         baseLayout: input.baseLayout,
+        performance: input.performance,
       };
 
       const seedLayout = seedGen.generate(seedCtx);
