@@ -3,7 +3,7 @@
  *
  * Four seed generators produce fundamentally different starting layouts:
  * A. Natural Pose  — comfort and finger dominance
- * B. Cluster       — musically related sounds grouped together
+ * B. Cluster       — phrase-aware musically related sounds grouped together
  * C. Coordination  — rhythmic motion patterns optimized
  * D. Novelty       — stochastic exploration with minimal constraints
  *
@@ -12,9 +12,16 @@
 
 import { type Layout } from '../../types/layout';
 import { type Voice } from '../../types/voice';
-import { type InstrumentConfig } from '../../types/performance';
+import { type InstrumentConfig, type Performance } from '../../types/performance';
 import { type PadCoord } from '../../types/padGrid';
 import { type SoundFeatureMap, rankByImportance } from '../structure/soundFeatures';
+import {
+  type PhraseStructure,
+  analyzePhraseStructure,
+  getVoicePeers,
+  getVoicePhraseIndex,
+  getRoleGroupsByImportance,
+} from '../structure/phraseStructure';
 import { type StructuralGroupAnalysis } from '../structure/structuralGroupDetection';
 import { adjacentPads } from '../surface/padGrid';
 import { generateId } from '../../utils/idGenerator';
@@ -42,6 +49,8 @@ export interface SeedContext {
   rng: () => number;
   /** Optional base layout for reference. */
   baseLayout?: Layout;
+  /** Performance data for phrase structure analysis. */
+  performance?: Performance;
   /** Optional structural group analysis for group-aware seeding. */
   structuralGroups?: StructuralGroupAnalysis;
 }
@@ -184,14 +193,22 @@ export const naturalPoseSeed: SeedGenerator = {
 };
 
 // ============================================================================
-// Seed Generator B: Cluster
+// Seed Generator B: Cluster (Phrase-Aware)
 // ============================================================================
 
 /**
  * Clustered Motif seed.
  *
- * Groups musically related sounds (co-occurrence + transitions) into
- * compact physical regions on the grid.
+ * Groups musically related sounds into compact physical regions on the grid,
+ * with phrase-awareness: voices that share rhythmic roles across phrase
+ * iterations are placed in analogous spatial positions.
+ *
+ * Algorithm:
+ * 1. Analyze phrase structure to detect repeated rhythmic patterns
+ * 2. Group voices by their rhythmic role (independent of sound identity)
+ * 3. For each role group, place the first-phrase voice, then place peer
+ *    voices at the same relative position (offset by phrase index)
+ * 4. Fall back to co-occurrence clustering for non-repeating patterns
  */
 export const clusterSeed: SeedGenerator = {
   key: 'cluster',
@@ -203,17 +220,24 @@ export const clusterSeed: SeedGenerator = {
     const rows = ctx.instrumentConfig.rows;
     const cols = ctx.instrumentConfig.cols;
 
+    // Analyze phrase structure if performance is available
+    let phraseStructure: PhraseStructure | null = null;
+    if (ctx.performance && ctx.performance.events.length > 0) {
+      phraseStructure = analyzePhraseStructure(
+        ctx.performance.events,
+        ctx.performance.tempo ?? 120,
+      );
+    }
+
     // Build relationship graph: voiceId → voiceId → strength
     const relationships = new Map<string, Map<string, number>>();
     for (const [voiceId, feat] of ctx.features) {
       if (placedVoiceIds.has(voiceId)) continue;
       const rels = new Map<string, number>();
-      // Co-occurrence neighbors contribute 1.0 per rank position
       for (let i = 0; i < feat.cooccurrenceNeighbors.length; i++) {
         const neighbor = feat.cooccurrenceNeighbors[i];
         rels.set(neighbor, (rels.get(neighbor) ?? 0) + (5 - i));
       }
-      // Transition neighbors contribute 0.8 per rank position
       for (let i = 0; i < feat.transitionNeighbors.length; i++) {
         const neighbor = feat.transitionNeighbors[i];
         rels.set(neighbor, (rels.get(neighbor) ?? 0) + (5 - i) * 0.8);
@@ -221,69 +245,328 @@ export const clusterSeed: SeedGenerator = {
       relationships.set(voiceId, rels);
     }
 
-    // Build clusters using greedy agglomeration
     const unplaced = rankByImportance(ctx.features)
       .filter(f => !placedVoiceIds.has(f.voiceId));
 
     if (unplaced.length === 0) return layout;
 
-    // Start first cluster at center of grid
-    const startRow = Math.floor(rows / 2);
-    const startCol = Math.floor(cols / 2);
-
-    // Place first voice
-    const firstVoice = ctx.voices.get(unplaced[0].voiceId);
-    if (firstVoice) {
-      placeVoice(layout, startRow, startCol, firstVoice);
-    }
-    const placed = new Set([unplaced[0].voiceId]);
-
-    // Place remaining voices adjacent to their most related already-placed voice
-    for (let i = 1; i < unplaced.length; i++) {
-      const feat = unplaced[i];
-      const voice = ctx.voices.get(feat.voiceId);
-      if (!voice) continue;
-
-      // Find the best position: adjacent to the most related placed voice
-      let bestPad: PadCoord | null = null;
-      let bestScore = -Infinity;
-
-      const rels = relationships.get(feat.voiceId);
-
-      // Check all empty pads and score by adjacency to related voices
-      const emptyPads = getAllEmptyPads(layout, rows, cols);
-      for (const pad of emptyPads) {
-        let score = 0;
-        const neighbors = adjacentPads(pad);
-
-        for (const neighbor of neighbors) {
-          const nKey = padKey(neighbor.row, neighbor.col);
-          const neighborVoice = layout.padToVoice[nKey];
-          if (neighborVoice) {
-            const neighborId = neighborVoice.id;
-            const relStrength = rels?.get(neighborId) ?? 0;
-            score += relStrength + 1; // +1 for any adjacency to placed voice
-          }
-        }
-
-        // Small random tiebreaker
-        score += ctx.rng() * 0.01;
-
-        if (score > bestScore) {
-          bestScore = score;
-          bestPad = pad;
-        }
-      }
-
-      if (bestPad) {
-        placeVoice(layout, bestPad.row, bestPad.col, voice);
-        placed.add(feat.voiceId);
-      }
+    // Use phrase-aware placement if phrase structure is detected with confidence
+    if (phraseStructure && phraseStructure.confidence > 0.4 && phraseStructure.roleGroups.length > 0) {
+      placePhraseAware(
+        layout, ctx, phraseStructure, relationships, placedVoiceIds, rows, cols,
+      );
+    } else {
+      // Fall back to legacy co-occurrence clustering
+      placeLegacyCluster(layout, ctx, relationships, placedVoiceIds, rows, cols);
     }
 
     return layout;
   },
 };
+
+/**
+ * Phrase-aware placement: place voices sharing rhythmic roles in analogous positions.
+ */
+function placePhraseAware(
+  layout: Layout,
+  ctx: SeedContext,
+  phraseStructure: PhraseStructure,
+  relationships: Map<string, Map<string, number>>,
+  placedVoiceIds: Set<string>,
+  rows: number,
+  cols: number,
+): void {
+  const placed = new Set<string>(placedVoiceIds);
+
+  // Get role groups sorted by importance (most phrase coverage first)
+  const roleGroups = getRoleGroupsByImportance(phraseStructure);
+
+  // Track template positions for each role (roleKey → relative pad position)
+  const roleTemplates = new Map<string, { row: number; col: number }>();
+
+  // Start placement at center of grid
+  const centerRow = Math.floor(rows / 2);
+  const centerCol = Math.floor(cols / 2);
+  let nextRow = centerRow;
+  let nextCol = centerCol;
+
+  // Process each role group
+  for (const group of roleGroups) {
+    // Sort voices in this group by phrase index (first phrase first)
+    const sortedVoices = group.voiceIds
+      .filter(v => !placed.has(v) && ctx.voices.has(v))
+      .sort((a, b) => {
+        const idxA = getVoicePhraseIndex(phraseStructure, a);
+        const idxB = getVoicePhraseIndex(phraseStructure, b);
+        return idxA - idxB;
+      });
+
+    if (sortedVoices.length === 0) continue;
+
+    // Check if we already have a template for this role
+    const existingTemplate = roleTemplates.get(group.roleKey);
+
+    if (existingTemplate) {
+      // Place all voices in this group at the template position
+      for (const voiceId of sortedVoices) {
+        const voice = ctx.voices.get(voiceId);
+        if (!voice) continue;
+
+        // Try to place at template position or nearby
+        const targetPad = findNearestEmptyPad(
+          layout, existingTemplate.row, existingTemplate.col, rows, cols,
+        );
+
+        if (targetPad) {
+          placeVoice(layout, targetPad.row, targetPad.col, voice);
+          placed.add(voiceId);
+        }
+      }
+    } else {
+      // This is a new role group - find best position for first voice
+      const firstVoiceId = sortedVoices[0];
+      const voice = ctx.voices.get(firstVoiceId);
+      if (!voice) continue;
+
+      // Find best position considering relationships and adjacency
+      const bestPad = findBestPadForVoice(
+        layout, firstVoiceId, relationships, rows, cols, ctx.rng,
+        nextRow, nextCol,
+      );
+
+      if (bestPad) {
+        placeVoice(layout, bestPad.row, bestPad.col, voice);
+        placed.add(firstVoiceId);
+
+        // Record this as the template for this role
+        roleTemplates.set(group.roleKey, { row: bestPad.row, col: bestPad.col });
+
+        // Update next position hint for unrelated voices
+        nextRow = bestPad.row;
+        nextCol = (bestPad.col + 1) % cols;
+        if (nextCol === 0) nextRow = (nextRow + 1) % rows;
+      }
+
+      // Place remaining voices in this group at the same template position
+      for (let i = 1; i < sortedVoices.length; i++) {
+        const peerVoiceId = sortedVoices[i];
+        const peerVoice = ctx.voices.get(peerVoiceId);
+        if (!peerVoice) continue;
+
+        const template = roleTemplates.get(group.roleKey);
+        if (template) {
+          const targetPad = findNearestEmptyPad(
+            layout, template.row, template.col, rows, cols,
+          );
+          if (targetPad) {
+            placeVoice(layout, targetPad.row, targetPad.col, peerVoice);
+            placed.add(peerVoiceId);
+          }
+        }
+      }
+    }
+  }
+
+  // Place any remaining voices that weren't in role groups
+  const unplacedFeatures = rankByImportance(ctx.features)
+    .filter(f => !placed.has(f.voiceId));
+
+  for (const feat of unplacedFeatures) {
+    const voice = ctx.voices.get(feat.voiceId);
+    if (!voice) continue;
+
+    // Check for phrase peers that are already placed
+    const peers = getVoicePeers(phraseStructure, feat.voiceId);
+    let targetPad: PadCoord | null = null;
+
+    for (const peerId of peers) {
+      const peerPad = findVoicePad(layout, peerId);
+      if (peerPad) {
+        targetPad = findNearestEmptyPad(layout, peerPad.row, peerPad.col, rows, cols);
+        break;
+      }
+    }
+
+    if (!targetPad) {
+      targetPad = findBestPadForVoice(
+        layout, feat.voiceId, relationships, rows, cols, ctx.rng,
+        nextRow, nextCol,
+      );
+    }
+
+    if (targetPad) {
+      placeVoice(layout, targetPad.row, targetPad.col, voice);
+      placed.add(feat.voiceId);
+      nextRow = targetPad.row;
+      nextCol = (targetPad.col + 1) % cols;
+    }
+  }
+}
+
+/**
+ * Legacy clustering (fallback when no phrase structure detected).
+ */
+function placeLegacyCluster(
+  layout: Layout,
+  ctx: SeedContext,
+  relationships: Map<string, Map<string, number>>,
+  placedVoiceIds: Set<string>,
+  rows: number,
+  cols: number,
+): void {
+  const unplaced = rankByImportance(ctx.features)
+    .filter(f => !placedVoiceIds.has(f.voiceId));
+
+  if (unplaced.length === 0) return;
+
+  const startRow = Math.floor(rows / 2);
+  const startCol = Math.floor(cols / 2);
+
+  const firstVoice = ctx.voices.get(unplaced[0].voiceId);
+  if (firstVoice) {
+    placeVoice(layout, startRow, startCol, firstVoice);
+  }
+  const placed = new Set([unplaced[0].voiceId]);
+
+  for (let i = 1; i < unplaced.length; i++) {
+    const feat = unplaced[i];
+    const voice = ctx.voices.get(feat.voiceId);
+    if (!voice) continue;
+
+    let bestPad: PadCoord | null = null;
+    let bestScore = -Infinity;
+
+    const rels = relationships.get(feat.voiceId);
+    const emptyPads = getAllEmptyPads(layout, rows, cols);
+
+    for (const pad of emptyPads) {
+      let score = 0;
+      const neighbors = adjacentPads(pad);
+
+      for (const neighbor of neighbors) {
+        const nKey = padKey(neighbor.row, neighbor.col);
+        const neighborVoice = layout.padToVoice[nKey];
+        if (neighborVoice) {
+          const neighborId = neighborVoice.id;
+          const relStrength = rels?.get(neighborId) ?? 0;
+          score += relStrength + 1;
+        }
+      }
+
+      score += ctx.rng() * 0.01;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestPad = pad;
+      }
+    }
+
+    if (bestPad) {
+      placeVoice(layout, bestPad.row, bestPad.col, voice);
+      placed.add(feat.voiceId);
+    }
+  }
+}
+
+/**
+ * Find the best pad for a voice considering relationships and position hints.
+ */
+function findBestPadForVoice(
+  layout: Layout,
+  voiceId: string,
+  relationships: Map<string, Map<string, number>>,
+  rows: number,
+  cols: number,
+  rng: () => number,
+  hintRow: number,
+  hintCol: number,
+): PadCoord | null {
+  const emptyPads = getAllEmptyPads(layout, rows, cols);
+  if (emptyPads.length === 0) return null;
+
+  let bestPad: PadCoord | null = null;
+  let bestScore = -Infinity;
+
+  const rels = relationships.get(voiceId);
+
+  for (const pad of emptyPads) {
+    let score = 0;
+
+    // Score by adjacency to related voices
+    const neighbors = adjacentPads(pad);
+    for (const neighbor of neighbors) {
+      const nKey = padKey(neighbor.row, neighbor.col);
+      const neighborVoice = layout.padToVoice[nKey];
+      if (neighborVoice) {
+        const neighborId = neighborVoice.id;
+        const relStrength = rels?.get(neighborId) ?? 0;
+        score += relStrength + 1;
+      }
+    }
+
+    // Prefer positions near the hint
+    const distToHint = Math.abs(pad.row - hintRow) + Math.abs(pad.col - hintCol);
+    score -= distToHint * 0.1;
+
+    // Prefer center of grid
+    const distToCenter = Math.abs(pad.row - rows / 2) + Math.abs(pad.col - cols / 2);
+    score -= distToCenter * 0.05;
+
+    score += rng() * 0.01;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestPad = pad;
+    }
+  }
+
+  return bestPad;
+}
+
+/**
+ * Find the nearest empty pad to a target position.
+ */
+function findNearestEmptyPad(
+  layout: Layout,
+  targetRow: number,
+  targetCol: number,
+  rows: number,
+  cols: number,
+): PadCoord | null {
+  // Check the target first
+  if (!isOccupied(layout, targetRow, targetCol)) {
+    return { row: targetRow, col: targetCol };
+  }
+
+  // Spiral outward from target
+  for (let d = 1; d < Math.max(rows, cols); d++) {
+    for (let dr = -d; dr <= d; dr++) {
+      for (let dc = -d; dc <= d; dc++) {
+        if (Math.abs(dr) !== d && Math.abs(dc) !== d) continue;
+        const r = targetRow + dr;
+        const c = targetCol + dc;
+        if (r >= 0 && r < rows && c >= 0 && c < cols && !isOccupied(layout, r, c)) {
+          return { row: r, col: c };
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Find the pad where a voice is placed.
+ */
+function findVoicePad(layout: Layout, voiceId: string): PadCoord | null {
+  for (const [pk, voice] of Object.entries(layout.padToVoice)) {
+    if (voice.id === voiceId) {
+      const [r, c] = pk.split(',').map(Number);
+      return { row: r, col: c };
+    }
+  }
+  return null;
+}
 
 // ============================================================================
 // Seed Generator C: Coordination
