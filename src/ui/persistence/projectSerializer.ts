@@ -21,6 +21,7 @@ import { type Layout } from '../../types/layout';
 import { type Voice } from '../../types/voice';
 import { type CostToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
 import { type OptimizerMethodKey } from '../../engine/optimization/optimizerInterface';
+import { type GreedyLayoutStrategy } from '../../engine/optimization/greedyCandidatePipeline';
 import { buildLegacySourceFile, buildPerformanceLanesFromStreams } from '../state/streamsToLanes';
 
 // ============================================================================
@@ -62,6 +63,7 @@ export function serializeProject(state: ProjectState): PersistedProject {
     // Engine config (user preferences)
     engineConfig: state.engineConfig,
     optimizerMethod: state.optimizerMethod,
+    greedyStrategy: state.greedyStrategy,
     costToggles: state.costToggles,
 
     // Metadata
@@ -144,6 +146,9 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
     optimizerMethod: isValidOptimizerMethod(persisted.optimizerMethod)
       ? persisted.optimizerMethod
       : base.optimizerMethod,
+    greedyStrategy: isValidGreedyStrategy(persisted.greedyStrategy)
+      ? persisted.greedyStrategy
+      : base.greedyStrategy,
     costToggles: isValidCostToggles(persisted.costToggles)
       ? persisted.costToggles
       : ALL_COSTS_ENABLED,
@@ -236,6 +241,10 @@ function isValidOptimizerMethod(m: unknown): m is OptimizerMethodKey {
   return typeof m === 'string' && ['beam', 'annealing', 'greedy'].includes(m);
 }
 
+function isValidGreedyStrategy(s: unknown): s is GreedyLayoutStrategy {
+  return typeof s === 'string' && ['all', 'natural-pose', 'cluster', 'coordination', 'novelty', 'structural'].includes(s);
+}
+
 function isValidCostToggles(t: unknown): t is CostToggles {
   return t != null && typeof t === 'object' && !Array.isArray(t);
 }
@@ -267,6 +276,7 @@ function applyPersistedDefaults(p: Partial<PersistedProject> & { id: string }): 
     sourceFiles: Array.isArray(p.sourceFiles) ? p.sourceFiles : [],
     engineConfig: p.engineConfig ?? base.engineConfig,
     optimizerMethod: isValidOptimizerMethod(p.optimizerMethod) ? p.optimizerMethod : 'greedy',
+    greedyStrategy: isValidGreedyStrategy(p.greedyStrategy) ? p.greedyStrategy : 'all',
     costToggles: isValidCostToggles(p.costToggles) ? p.costToggles : ALL_COSTS_ENABLED,
     createdAt: p.createdAt || new Date().toISOString(),
     updatedAt: p.updatedAt || new Date().toISOString(),
@@ -341,6 +351,9 @@ function migrateLegacyToPersistedProject(p: Record<string, unknown>): PersistedP
     optimizerMethod: isValidOptimizerMethod(p.optimizerMethod)
       ? p.optimizerMethod
       : 'greedy',
+    greedyStrategy: isValidGreedyStrategy((p as Record<string, unknown>).greedyStrategy)
+      ? (p as Record<string, unknown>).greedyStrategy as GreedyLayoutStrategy
+      : 'all',
     costToggles: isValidCostToggles(p.costToggles)
       ? p.costToggles as PersistedProject['costToggles']
       : ALL_COSTS_ENABLED,

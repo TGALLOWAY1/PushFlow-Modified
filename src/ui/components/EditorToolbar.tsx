@@ -16,6 +16,7 @@ import { saveProject, exportProjectToFile } from '../persistence/projectStorage'
 import { getDisplayedLayout, getDisplayedLayoutRole, hasWorkingChanges } from '../state/projectState';
 import { type GenerationMode } from '../hooks/useAutoAnalysis';
 import { type OptimizerMethodKey } from '../../engine/optimization/optimizerInterface';
+import { type GreedyLayoutStrategy, GREEDY_STRATEGY_LABELS } from '../../engine/optimization/greedyCandidatePipeline';
 
 interface EditorToolbarProps {
   generateFull?: (mode?: GenerationMode) => Promise<void>;
@@ -164,6 +165,19 @@ export function EditorToolbar({
                 <option value="beam">Beam Search</option>
                 <option value="annealing">Annealing</option>
               </select>
+
+              {state.optimizerMethod === 'greedy' && (
+                <select
+                  className="pf-select"
+                  value={state.greedyStrategy}
+                  onChange={(e) => dispatch({ type: 'SET_GREEDY_STRATEGY', payload: e.target.value as GreedyLayoutStrategy })}
+                  title="Layout seeding strategy. All: run every strategy. Individual: focus on one approach."
+                >
+                  {Object.entries(GREEDY_STRATEGY_LABELS).map(([key, label]) => (
+                    <option key={key} value={key}>{label}</option>
+                  ))}
+                </select>
+              )}
 
               {state.optimizerMethod === 'annealing' && (
                 <select

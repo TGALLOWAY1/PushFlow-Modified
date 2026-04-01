@@ -255,7 +255,10 @@ export function useAutoAnalysis() {
       if (method === 'greedy') {
         const neutralHandCenters = getNeutralHandCenters(effectiveLayout, state.instrumentConfig);
 
-        setGenerationProgress('Greedy optimization: generating 4 diverse candidates...');
+        const strategyLabel = state.greedyStrategy === 'all'
+          ? 'all strategies'
+          : state.greedyStrategy;
+        setGenerationProgress(`Greedy optimization (${strategyLabel}): generating candidates...`);
 
         const generationResult = await generateGreedyCandidates({
           performance,
@@ -273,6 +276,7 @@ export function useAutoAnalysis() {
           activeLayout: effectiveLayout,
           sections: state.sections,
           count: 4,
+          strategy: state.greedyStrategy,
         });
 
         const candidates = generationResult.candidates;
