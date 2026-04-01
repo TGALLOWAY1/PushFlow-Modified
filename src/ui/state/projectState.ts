@@ -24,6 +24,7 @@ import { type LaneAction, isLaneAction, lanesReducer } from './lanesReducer';
 import { type CostToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
 import { type PerformanceCostBreakdown } from '../../types/costBreakdown';
 import { type OptimizerMethodKey, type OptimizerMove, type OptimizationIteration } from '../../engine/optimization/optimizerInterface';
+import { type GreedyLayoutStrategy } from '../../engine/optimization/greedyCandidatePipeline';
 import { checkPlanFreshness } from '../../engine/evaluation/executionPlanValidation';
 import { formatFingerConstraint, parseFingerConstraint } from '../../utils/fingerConstraints';
 
@@ -125,6 +126,8 @@ export interface ProjectState {
 
   /** Active optimization method. */
   optimizerMethod: OptimizerMethodKey;
+  /** Selected greedy layout seeding strategy. */
+  greedyStrategy: GreedyLayoutStrategy;
   /** Cost toggle state (which cost families are active). */
   costToggles: CostToggles;
 
@@ -307,6 +310,7 @@ export type ProjectAction =
 
   // Optimizer configuration
   | { type: 'SET_OPTIMIZER_METHOD'; payload: OptimizerMethodKey }
+  | { type: 'SET_GREEDY_STRATEGY'; payload: GreedyLayoutStrategy }
   | { type: 'SET_COST_TOGGLES'; payload: CostToggles }
   | { type: 'SET_MANUAL_COST_RESULT'; payload: PerformanceCostBreakdown | null }
   | { type: 'SET_MOVE_HISTORY'; payload: { moves: OptimizerMove[] | null; trace: OptimizationIteration[] | null; stopReason?: string } }
@@ -338,6 +342,7 @@ const EPHEMERAL_ACTIONS = new Set<ProjectAction['type']>([
   'SET_MANUAL_COST_RESULT',
   'SET_MOVE_HISTORY',
   'SET_MOVE_HISTORY_INDEX',
+  'SET_GREEDY_STRATEGY',
 ]);
 
 export function isEphemeralAction(action: ProjectAction): boolean {
@@ -1120,6 +1125,9 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'SET_OPTIMIZER_METHOD':
       return { ...state, optimizerMethod: action.payload };
 
+    case 'SET_GREEDY_STRATEGY':
+      return { ...state, greedyStrategy: action.payload };
+
     case 'SET_COST_TOGGLES':
       return { ...state, costToggles: action.payload };
 
@@ -1182,6 +1190,7 @@ export function createEmptyProjectState(): ProjectState {
     },
     voiceConstraints: {},
     optimizerMethod: 'greedy',
+    greedyStrategy: 'all',
     costToggles: ALL_COSTS_ENABLED,
     performanceLanes: [],
     laneGroups: [],

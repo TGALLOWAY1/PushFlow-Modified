@@ -12,6 +12,7 @@ import { hasWorkingChanges } from '../../state/projectState';
 import { type GenerationMode } from '../../hooks/useAutoAnalysis';
 import { type SaveStatus } from '../../hooks/useAutoSave';
 import { type OptimizerMethodKey } from '../../../engine/optimization/optimizerInterface';
+import { type GreedyLayoutStrategy, GREEDY_STRATEGY_LABELS } from '../../../engine/optimization/greedyCandidatePipeline';
 import { SettingsGear } from '../panels/SettingsGear';
 import { useViewSettings } from '../../state/viewSettings';
 
@@ -271,6 +272,19 @@ export function WorkspaceToolbar({
             <option value="beam">Beam</option>
             <option value="annealing">Annealing</option>
           </select>
+
+          {state.optimizerMethod === 'greedy' && (
+            <select
+              className="pf-select"
+              value={state.greedyStrategy}
+              onChange={(e) => dispatch({ type: 'SET_GREEDY_STRATEGY', payload: e.target.value as GreedyLayoutStrategy })}
+              title="Layout seeding strategy"
+            >
+              {Object.entries(GREEDY_STRATEGY_LABELS).map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </select>
+          )}
 
           {state.optimizerMethod === 'annealing' && (
             <select

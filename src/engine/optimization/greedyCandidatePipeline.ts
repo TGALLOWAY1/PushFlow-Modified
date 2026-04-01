@@ -50,6 +50,30 @@ import { scoreStructuralCoherence } from '../evaluation/structuralCoherence';
 // ============================================================================
 
 /**
+ * Greedy layout strategy keys — one per candidate family, plus 'all'.
+ *
+ * 'all' runs every family (current default behavior).
+ * Individual keys run only that family's seeds.
+ */
+export type GreedyLayoutStrategy =
+  | 'all'
+  | 'natural-pose'
+  | 'cluster'
+  | 'coordination'
+  | 'novelty'
+  | 'structural';
+
+/** User-facing labels for each greedy strategy. */
+export const GREEDY_STRATEGY_LABELS: Record<GreedyLayoutStrategy, string> = {
+  'all': 'All Strategies',
+  'natural-pose': 'Natural Pose',
+  'cluster': 'Clustered Motif',
+  'coordination': 'Coordination',
+  'novelty': 'Exploratory',
+  'structural': 'Structural',
+};
+
+/**
  * Input configuration for greedy candidate pipeline.
  */
 export interface GreedyCandidateInput {
@@ -66,6 +90,8 @@ export interface GreedyCandidateInput {
   count?: number;
   /** Maximum iterations per internal greedy run. Default: 100. */
   maxIterationsPerRun?: number;
+  /** Which seed strategy to use. Default: 'all'. */
+  strategy?: GreedyLayoutStrategy;
 }
 
 /**
@@ -150,6 +176,7 @@ export async function generateGreedyCandidates(
   const maxIter = input.maxIterationsPerRun ?? 100;
   const costToggles = input.costToggles ?? ALL_COSTS_ENABLED;
   const sections = input.sections ?? [];
+  const strategy = input.strategy ?? 'all';
 
   // Phase 1: Extract sound features (shared across all candidates)
   const features = extractSoundFeatures(input.performance.events, sections);
@@ -171,7 +198,12 @@ export async function generateGreedyCandidates(
   const allScored: ScoredCandidate[] = [];
   const optimizer = new GreedyOptimizer();
 
-  for (const family of CANDIDATE_FAMILIES) {
+  // Filter families by selected strategy
+  const activeFamilies = strategy === 'all'
+    ? CANDIDATE_FAMILIES
+    : CANDIDATE_FAMILIES.filter(f => f.seedKey === strategy);
+
+  for (const family of activeFamilies) {
     const seedGen = SEED_GENERATORS[family.seedKey];
     const updatePolicy = UPDATE_POLICIES[family.updateKey];
 

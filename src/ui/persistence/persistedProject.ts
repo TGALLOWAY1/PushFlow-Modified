@@ -12,6 +12,7 @@ import { type PerformanceLane, type LaneGroup, type SourceFile } from '../../typ
 import { type EngineConfiguration } from '../../types/engineConfig';
 import { type CostToggles } from '../../types/costToggles';
 import { type OptimizerMethodKey } from '../../engine/optimization/optimizerInterface';
+import { type GreedyLayoutStrategy } from '../../engine/optimization/greedyCandidatePipeline';
 import { type SoundStream } from '../state/projectState';
 import { type CandidateSolution } from '../../types/candidateSolution';
 
@@ -68,6 +69,7 @@ export interface PersistedProject {
   // --- Engine Config (user preferences, not computed) ---
   engineConfig: EngineConfiguration;
   optimizerMethod: OptimizerMethodKey;
+  greedyStrategy?: GreedyLayoutStrategy;
   costToggles: CostToggles;
 
   // --- Analysis / Candidates (persisted so they survive refresh) ---
