@@ -159,6 +159,19 @@ export const MAX_HAND_SPEED = 12.0;
 /** Weight factor for speed component in transition cost (Fitts's Law). */
 export const SPEED_COST_WEIGHT = 0.5;
 
+/**
+ * Weight for average per-finger movement in transition cost.
+ * Captures individual finger travel that centroid distance misses.
+ * E.g., index jumping 6 pads while the hand centroid barely moves.
+ */
+export const PER_FINGER_MOVEMENT_WEIGHT = 1.0;
+
+/**
+ * Extra penalty weight for the worst-case single finger jump.
+ * Discourages layouts where one finger does all the traveling.
+ */
+export const MAX_FINGER_JUMP_WEIGHT = 0.8;
+
 // V1 Cost Model (D-01): RELAXED_GRIP_PENALTY and FALLBACK_GRIP_PENALTY removed.
 // Grips are either feasible (strict tier) or rejected outright.
 

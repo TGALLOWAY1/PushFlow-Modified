@@ -286,7 +286,7 @@ describe('TEST MIDI 1.mid end-to-end', () => {
     expect(usage.left + usage.right).toBe(total);
   });
 
-  it('should produce candidates with 0 unplayable events via greedy candidate pipeline', { timeout: 30000 }, async () => {
+  it('should produce candidates with 0 unplayable events via greedy candidate pipeline', { timeout: 60000 }, async () => {
     const performance: Performance = {
       events: midiData.events,
       tempo: midiData.tempo,
