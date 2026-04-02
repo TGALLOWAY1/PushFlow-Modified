@@ -28,6 +28,7 @@ const VIEW_OPTIONS: Array<{ key: keyof GridLabelSettings; label: string }> = [
   { key: 'showNoteLabels', label: 'Show Note Labels' },
   { key: 'showPositionLabels', label: 'Show Position Labels' },
   { key: 'showFingerAssignment', label: 'Show Finger Assignment' },
+  { key: 'showHandColors', label: 'Color Pads by Hand' },
 ];
 
 export function SettingsGear({

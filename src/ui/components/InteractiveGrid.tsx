@@ -526,34 +526,62 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       let isGlowActive = false;
 
       if (voice) {
-        // Always show the voice's custom color as pad background
-        if (voice.color) {
-          bgColor = safeColorAlpha(voice.color, 0.25, voice.color);
-        }
+        const useHandColors = gridLabels?.showHandColors && summary && summary.hitCount > 0;
 
-        if (summary && summary.hitCount > 0) {
+        if (useHandColors) {
+          // Hand-color mode: pad background is based on which hand plays this pad
           const hands = [...summary.hands];
           if (hands.length === 1 && hands[0] !== 'Unplayable') {
-            glowColor = HAND_COLORS[hands[0] as 'left' | 'right'] ?? HAND_COLORS.mixed;
-            borderColor = voice.color ?? glowColor;
+            const handColor = HAND_COLORS[hands[0] as 'left' | 'right'] ?? HAND_COLORS.mixed;
+            bgColor = safeColorAlpha(handColor, 0.3, handColor);
+            glowColor = handColor;
+            borderColor = handColor;
             textColor = 'var(--text-primary)';
             isGlowActive = true;
           } else if (hands.includes('Unplayable') && hands.length === 1) {
+            bgColor = safeColorAlpha(HAND_COLORS.Unplayable, 0.25, HAND_COLORS.Unplayable);
             glowColor = HAND_COLORS.Unplayable;
             borderColor = glowColor;
             textColor = glowColor;
             isGlowActive = true;
           } else {
-            glowColor = HAND_COLORS.mixed;
-            borderColor = voice.color ?? glowColor;
+            const mixedColor = HAND_COLORS.mixed;
+            bgColor = safeColorAlpha(mixedColor, 0.25, mixedColor);
+            glowColor = mixedColor;
+            borderColor = mixedColor;
             textColor = 'var(--text-primary)';
             isGlowActive = true;
           }
         } else {
-          // Assigned but no analysis yet
-          glowColor = voice.color ?? 'var(--border-strong)';
-          borderColor = glowColor;
-          textColor = 'var(--text-secondary)';
+          // Default mode: voice color as pad background
+          if (voice.color) {
+            bgColor = safeColorAlpha(voice.color, 0.25, voice.color);
+          }
+
+          if (summary && summary.hitCount > 0) {
+            const hands = [...summary.hands];
+            if (hands.length === 1 && hands[0] !== 'Unplayable') {
+              glowColor = HAND_COLORS[hands[0] as 'left' | 'right'] ?? HAND_COLORS.mixed;
+              borderColor = voice.color ?? glowColor;
+              textColor = 'var(--text-primary)';
+              isGlowActive = true;
+            } else if (hands.includes('Unplayable') && hands.length === 1) {
+              glowColor = HAND_COLORS.Unplayable;
+              borderColor = glowColor;
+              textColor = glowColor;
+              isGlowActive = true;
+            } else {
+              glowColor = HAND_COLORS.mixed;
+              borderColor = voice.color ?? glowColor;
+              textColor = 'var(--text-primary)';
+              isGlowActive = true;
+            }
+          } else {
+            // Assigned but no analysis yet
+            glowColor = voice.color ?? 'var(--border-strong)';
+            borderColor = glowColor;
+            textColor = 'var(--text-secondary)';
+          }
         }
       }
 
