@@ -16,7 +16,7 @@
 import { type Performance, type InstrumentConfig } from '../../types/performance';
 import { type EngineConfiguration } from '../../types/engineConfig';
 import { type CandidateSolution } from '../../types/candidateSolution';
-import { type Layout, type LayoutRole, cloneLayout, createEmptyLayout } from '../../types/layout';
+import { type Layout, type LayoutRole, cloneLayout, createEmptyLayout, reconcileLayoutVoices } from '../../types/layout';
 import { type ExecutionPlanResult } from '../../types/executionPlan';
 import { type Section, type VoiceProfile } from '../../types/performanceStructure';
 import { type PerformanceLane, type LaneGroup, type SourceFile } from '../../types/performanceLane';
@@ -506,6 +506,10 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
           ...state.workingLayout,
           padToVoice: renamePadVoices(state.workingLayout.padToVoice),
         } : null,
+        savedVariants: state.savedVariants.map(v => ({
+          ...v,
+          padToVoice: renamePadVoices(v.padToVoice),
+        })),
       };
     }
 
@@ -573,6 +577,10 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
           ...state.workingLayout,
           padToVoice: recolorPadVoices(state.workingLayout.padToVoice),
         } : null,
+        savedVariants: state.savedVariants.map(v => ({
+          ...v,
+          padToVoice: recolorPadVoices(v.padToVoice),
+        })),
       };
     }
 
@@ -884,15 +892,15 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         autoSavedVariants.push(replaced);
       }
 
-      // Promote: candidate's layout becomes active
-      const promoted: Layout = {
+      // Promote: candidate's layout becomes active, reconciling voice metadata
+      const promoted: Layout = reconcileLayoutVoices({
         ...candidate.layout,
         id: generateId(),
         role: 'active',
         baselineId: undefined,
         placementLocks: { ...candidate.layout.placementLocks },
         savedAt: now,
-      };
+      }, state.soundStreams);
 
       // Keep non-promoted candidates so the user can still compare or promote others
       const remainingCandidates = state.candidates.filter(c => c.id !== action.payload.candidateId);
@@ -948,10 +956,11 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'LOAD_SAVED_VARIANT': {
       const variant = state.savedVariants.find(layout => layout.id === action.payload.variantId);
       if (!variant) return state;
+      const reconciledVariant = reconcileLayoutVoices(variant, state.soundStreams);
       return {
         ...state,
         updatedAt: new Date().toISOString(),
-        workingLayout: cloneLayout(variant, generateId(), variant.name, 'working'),
+        workingLayout: cloneLayout(reconciledVariant, generateId(), reconciledVariant.name, 'working'),
         selectedCandidateId: null,
         compareCandidateId: null,
         selectedEventIndex: null,
@@ -977,12 +986,12 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         autoSavedVariants.push(replaced);
       }
 
-      const promoted: Layout = {
+      const promoted: Layout = reconcileLayoutVoices({
         ...variant,
         role: 'active',
         baselineId: undefined,
         savedAt: now,
-      };
+      }, state.soundStreams);
 
       return {
         ...state,
@@ -1050,11 +1059,12 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       if (!candidate) return state;
       const now = new Date().toISOString();
 
-      // Apply the candidate's layout as the working layout
+      // Apply the candidate's layout as the working layout, reconciling voice metadata
+      const reconciledCandidateLayout = reconcileLayoutVoices(candidate.layout, state.soundStreams);
       const working = cloneLayout(
-        candidate.layout,
+        reconciledCandidateLayout,
         generateId(),
-        `${candidate.layout.name ?? 'Generated'} (draft)`,
+        `${reconciledCandidateLayout.name ?? 'Generated'} (draft)`,
         'working',
       );
 

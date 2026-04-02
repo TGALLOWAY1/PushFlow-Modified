@@ -80,6 +80,8 @@ export interface OptimizerInput {
   evaluationConfig: EvaluationConfig;
   /** Instrument grid geometry. */
   instrumentConfig: InstrumentConfig;
+  /** Canonical voice metadata from soundStreams — used to preserve user-assigned names/colors. */
+  voiceHints?: ReadonlyArray<{ id: string; name: string; color: string; originalMidiNote: number | null }>;
 }
 
 // ============================================================================
