@@ -7,51 +7,54 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* --- Backgrounds: warm dark graphite scale --- */
-  --bg-app: #111114;        /* Deep graphite — calm, not void */
-  --bg-panel: #18181c;      /* Panel surface */
-  --bg-card: #1e1e23;       /* Elevated card/section */
-  --bg-input: #111114;      /* Inset field */
-  --bg-hover: #252529;      /* Hover state on surfaces */
-  --bg-active: #2a2a30;     /* Active/pressed state */
+  /* --- Backgrounds: neutral dark scale (M3-inspired) --- */
+  --bg-app: #131313;        /* Deep neutral — cinematic dark */
+  --bg-panel: #1c1b1b;      /* Panel surface — warm charcoal */
+  --bg-card: #201f1f;       /* Elevated card/section */
+  --bg-input: #0e0e0e;      /* Inset field — deepest surface */
+  --bg-hover: #2a2a2a;      /* Hover state on surfaces */
+  --bg-active: #353534;     /* Active/pressed state */
 
-  /* --- Text hierarchy: off-white scale for readability --- */
-  --text-primary: #f0f0f5;    /* Primary text — near white, high contrast */
-  --text-secondary: #b0b0bc;  /* Secondary/metadata — clearly readable */
-  --text-tertiary: #7a7a88;   /* Subtle labels, placeholders — still legible */
-  --text-warning: #f87171;    /* Errors/conflicts */
+  /* --- Text hierarchy: warm off-white scale --- */
+  --text-primary: #e5e2e1;    /* Primary text — warm near-white */
+  --text-secondary: #c4c5d9;  /* Secondary/metadata — subtle lavender tint */
+  --text-tertiary: #8e90a2;   /* Labels, placeholders — muted but legible */
+  --text-warning: #ffb4ab;    /* Errors/conflicts — softer red */
 
-  /* --- Accent: primary blue (design guide #2E5BFF) --- */
+  /* --- Accent: primary blue-lavender --- */
   --accent-primary: #2e5bff;
+  --accent-primary-soft: #b8c3ff;   /* Light primary — text/icons on dark */
   --accent-hover: #4a73ff;
-  --accent-muted: rgba(46, 91, 255, 0.12);
-  --accent-glow: rgba(46, 91, 255, 0.08);
+  --accent-muted: rgba(46, 91, 255, 0.10);
+  --accent-glow: rgba(184, 195, 255, 0.08);
 
-  /* --- Secondary: purple (design guide #8B5CF6) --- */
-  --accent-secondary: #8b5cf6;
-  --accent-secondary-muted: rgba(139, 92, 246, 0.12);
+  /* --- Secondary: purple (M3 secondary) --- */
+  --accent-secondary: #d0bcff;       /* Light purple for text/badges */
+  --accent-secondary-strong: #571bc1; /* Saturated purple for containers */
+  --accent-secondary-muted: rgba(208, 188, 255, 0.12);
 
-  /* --- Tertiary: amber/orange (design guide #F59E0B) --- */
-  --accent-tertiary: #f59e0b;
-  --accent-tertiary-muted: rgba(245, 158, 11, 0.12);
+  /* --- Tertiary: warm amber --- */
+  --accent-tertiary: #ffb95f;
+  --accent-tertiary-strong: #996100;  /* Deep amber for containers */
+  --accent-tertiary-muted: rgba(255, 185, 95, 0.12);
 
-  /* --- Borders: visible structure --- */
-  --border-subtle: #33333a;
-  --border-default: #3e3e47;
-  --border-strong: #525260;
-  --border-active: #5b8def;
-  --border-focus: #5b8def;
+  /* --- Borders: ultra-subtle structure --- */
+  --border-subtle: #252527;
+  --border-default: #2e2e32;
+  --border-strong: #434656;
+  --border-active: #b8c3ff;
+  --border-focus: #b8c3ff;
 
-  /* --- Shadows --- */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2);
-  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.25);
-  --shadow-xl: 0 8px 24px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
+  /* --- Shadows (deeper, more cinematic) --- */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 2px 10px rgba(0, 0, 0, 0.45), 0 1px 4px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 4px 20px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 8px 32px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.35);
 
-  /* --- Radii --- */
+  /* --- Radii (more generous) --- */
   --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
 
   /* --- Legacy aliases (backward compat) --- */
   --background: var(--bg-app);
@@ -89,40 +92,57 @@ body {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 .glass-panel {
-  background: var(--bg-panel);
-  border: 1px solid var(--border-subtle);
+  background: rgba(28, 27, 27, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(67, 70, 86, 0.15);
   box-shadow: var(--shadow-sm);
   border-radius: var(--radius-lg);
 }
 
 .glass-panel-strong {
   background: var(--bg-card);
-  border: 1px solid var(--border-default);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(67, 70, 86, 0.2);
   box-shadow: var(--shadow-md);
   border-radius: var(--radius-lg);
 }
 
 /* Hero card subtle glow */
 .glow-emerald {
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.06), 0 0 40px rgba(16, 185, 129, 0.03),
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.08), 0 0 40px rgba(16, 185, 129, 0.04),
     var(--shadow-lg);
 }
 
 /* Primary blue glow */
 .glow-primary {
-  box-shadow: 0 0 40px var(--accent-glow);
+  box-shadow: 0 0 15px rgba(46, 91, 255, 0.4);
+}
+
+/* Secondary purple glow */
+.glow-secondary {
+  box-shadow: 0 0 15px rgba(87, 27, 193, 0.4);
+}
+
+/* Tertiary amber glow */
+.glow-tertiary {
+  box-shadow: 0 0 15px rgba(153, 97, 0, 0.4);
+}
+
+/* Push grid enclosure shadow */
+.push-grid-shadow {
+  box-shadow: 0 0 40px 0 rgba(184, 195, 255, 0.06), var(--shadow-xl);
 }
 
 /* Glass panel with backdrop blur */
 .glass-panel-blur {
-  backdrop-filter: blur(12px);
-  background: rgba(30, 30, 35, 0.6);
-  border: 1px solid rgba(62, 62, 71, 0.3);
+  backdrop-filter: blur(16px);
+  background: rgba(28, 27, 27, 0.7);
+  border: 1px solid rgba(67, 70, 86, 0.2);
 }
 
 /* Inner button shadow (top edge highlight) */
 .inner-button-shadow {
-  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.06);
 }
 
 /* Material Symbols configuration */
@@ -136,11 +156,11 @@ body {
 
 /* Section headers */
 .section-header {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.15em;
 }
 
 /* Editable field affordance */
@@ -170,20 +190,20 @@ button, a, [role="button"], select, input,
   transition-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
-/* Scrollbar styling */
+/* Scrollbar styling — minimal, near-invisible */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--bg-app);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border-default);
-  border-radius: 3px;
+  background: var(--border-strong);
+  border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--border-strong);
+  background: #525260;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -193,9 +213,11 @@ button, a, [role="button"], select, input,
 .pf-tab {
   position: relative;
   padding: 8px 12px;
-  font-size: 13px;
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: 12px;
   font-weight: 500;
-  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
   transition: color 120ms ease;
   border-bottom: 2px solid transparent;
 }
@@ -203,8 +225,8 @@ button, a, [role="button"], select, input,
   color: var(--text-secondary);
 }
 .pf-tab.active {
-  color: var(--text-primary);
-  border-bottom-color: var(--accent-primary);
+  color: var(--accent-primary-soft);
+  border-bottom-color: var(--accent-primary-soft);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -217,8 +239,9 @@ button, a, [role="button"], select, input,
   justify-content: center;
   gap: 4px;
   padding: 6px 12px;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   border-radius: var(--radius-md);
   transition: all 120ms ease;
   cursor: pointer;
@@ -231,28 +254,29 @@ button, a, [role="button"], select, input,
   color: var(--text-secondary);
 }
 .pf-btn-ghost:hover {
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text-primary);
 }
 
 .pf-btn-subtle {
   background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid rgba(67, 70, 86, 0.15);
   color: var(--text-secondary);
 }
 .pf-btn-subtle:hover {
   background: var(--bg-hover);
-  border-color: var(--border-default);
+  border-color: rgba(67, 70, 86, 0.3);
   color: var(--text-primary);
 }
 
 .pf-btn-primary {
   background: var(--accent-primary);
-  border: 1px solid transparent;
-  color: #fff;
+  border: 1px solid rgba(184, 195, 255, 0.2);
+  color: #efefff;
 }
 .pf-btn-primary:hover {
   background: var(--accent-hover);
+  box-shadow: 0 0 15px rgba(46, 91, 255, 0.3);
 }
 
 .pf-btn:disabled, .pf-btn[disabled] {
@@ -267,17 +291,17 @@ button, a, [role="button"], select, input,
 
 .pf-input {
   background: var(--bg-input);
-  border: 1px solid var(--border-default);
+  border: 1px solid rgba(67, 70, 86, 0.2);
   border-radius: var(--radius-md);
   color: var(--text-primary);
   padding: 4px 8px;
-  font-size: 13px;
+  font-size: 12px;
   outline: none;
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 .pf-input:focus {
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 2px rgba(91, 141, 239, 0.15);
+  border-color: var(--accent-primary-soft);
+  box-shadow: 0 0 0 2px rgba(184, 195, 255, 0.1);
 }
 .pf-input::placeholder {
   color: var(--text-tertiary);
@@ -286,24 +310,24 @@ button, a, [role="button"], select, input,
 /* Select styling */
 .pf-select {
   background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid rgba(67, 70, 86, 0.15);
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   padding: 3px 6px;
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
   outline: none;
   transition: border-color 120ms ease, background-color 120ms ease;
-  appearance: none; /* Remove default arrow for a flatter look if desired, or keep for UX */
+  appearance: none;
 }
 .pf-select:hover {
   background: var(--bg-hover);
-  border-color: var(--border-default);
+  border-color: rgba(67, 70, 86, 0.3);
   color: var(--text-primary);
 }
 .pf-select:focus {
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 2px rgba(91, 141, 239, 0.1);
+  border-color: var(--accent-primary-soft);
+  box-shadow: 0 0 0 2px rgba(184, 195, 255, 0.08);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -313,10 +337,12 @@ button, a, [role="button"], select, input,
 .pf-badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 6px;
-  font-size: 11px;
-  font-weight: 600;
-  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-radius: 9999px;
   white-space: nowrap;
 }
 
