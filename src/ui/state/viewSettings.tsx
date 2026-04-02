@@ -26,6 +26,8 @@ export interface GridLabelSettings {
   showFingerAssignment: boolean;
   /** Show sound names on pads */
   showSoundNames: boolean;
+  /** Color pads by assigned hand (left/right) instead of voice color */
+  showHandColors: boolean;
 }
 
 /**
@@ -50,6 +52,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
     showPositionLabels: false,
     showFingerAssignment: true,
     showSoundNames: true,
+    showHandColors: false,
   },
   layoutDisplay: {
     organize4x4Banks: false,
