@@ -17,7 +17,7 @@ import {
   createEmptyProjectState,
   PROJECT_STATE_VERSION,
 } from '../state/projectState';
-import { type Layout } from '../../types/layout';
+import { type Layout, reconcileLayoutVoices } from '../../types/layout';
 import { type Voice } from '../../types/voice';
 import { type CostToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
 import { type OptimizerMethodKey } from '../../engine/optimization/optimizerInterface';
@@ -120,13 +120,13 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
     sections: Array.isArray(persisted.sections) ? persisted.sections : [],
     voiceProfiles: Array.isArray(persisted.voiceProfiles) ? persisted.voiceProfiles : [],
 
-    // Layouts
+    // Layouts — reconcile voice metadata against canonical soundStreams
     activeLayout: persisted.activeLayout
-      ? ensureLayoutDefaults(persisted.activeLayout, 'active')
+      ? reconcileLayoutVoices(ensureLayoutDefaults(persisted.activeLayout, 'active'), soundStreams)
       : base.activeLayout,
     workingLayout: null, // Always null on load (session-scoped)
     savedVariants: Array.isArray(persisted.savedVariants)
-      ? persisted.savedVariants.map(l => ensureLayoutDefaults(l, 'variant'))
+      ? persisted.savedVariants.map(l => reconcileLayoutVoices(ensureLayoutDefaults(l, 'variant'), soundStreams))
       : [],
 
     // Constraints
@@ -153,14 +153,14 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
       ? persisted.costToggles
       : ALL_COSTS_ENABLED,
 
-    // Analysis — restore if present in persisted data
-    analysisResult: persisted.analysisResult 
-      ? { ...persisted.analysisResult, layout: ensureLayoutDefaults(persisted.analysisResult.layout, 'variant') }
+    // Analysis — restore if present in persisted data, reconcile voice metadata
+    analysisResult: persisted.analysisResult
+      ? { ...persisted.analysisResult, layout: reconcileLayoutVoices(ensureLayoutDefaults(persisted.analysisResult.layout, 'variant'), soundStreams) }
       : null,
-    candidates: Array.isArray(persisted.candidates) 
+    candidates: Array.isArray(persisted.candidates)
       ? persisted.candidates.map(c => ({
           ...c,
-          layout: ensureLayoutDefaults(c.layout, 'variant')
+          layout: reconcileLayoutVoices(ensureLayoutDefaults(c.layout, 'variant'), soundStreams),
         }))
       : [],
     selectedCandidateId: null,

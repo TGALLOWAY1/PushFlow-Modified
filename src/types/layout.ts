@@ -184,3 +184,33 @@ export function cloneLayout(
     fingerConstraints: { ...source.fingerConstraints },
   };
 }
+
+/**
+ * Reconcile a layout's padToVoice voice metadata with canonical sound streams.
+ * Updates name and color from streams while preserving all other voice fields.
+ * This ensures embedded Voice copies stay in sync with the authoritative soundStreams.
+ */
+export function reconcileLayoutVoices(
+  layout: Layout,
+  streams: ReadonlyArray<{ id: string; name: string; color: string }>,
+): Layout {
+  if (streams.length === 0) return layout;
+  const entries = Object.entries(layout.padToVoice);
+  if (entries.length === 0) return layout;
+
+  const streamMap = new Map(streams.map(s => [s.id, s]));
+  let changed = false;
+  const reconciledPadToVoice: Record<string, Voice> = {};
+
+  for (const [key, voice] of entries) {
+    const stream = streamMap.get(voice.id);
+    if (stream && (voice.name !== stream.name || voice.color !== stream.color)) {
+      reconciledPadToVoice[key] = { ...voice, name: stream.name, color: stream.color };
+      changed = true;
+    } else {
+      reconciledPadToVoice[key] = voice;
+    }
+  }
+
+  return changed ? { ...layout, padToVoice: reconciledPadToVoice } : layout;
+}

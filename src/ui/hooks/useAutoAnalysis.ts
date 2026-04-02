@@ -277,6 +277,7 @@ export function useAutoAnalysis() {
           sections: state.sections,
           count: 4,
           strategy: state.greedyStrategy,
+          voiceHints: state.soundStreams,
         });
 
         const candidates = generationResult.candidates;

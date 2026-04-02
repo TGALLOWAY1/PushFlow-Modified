@@ -92,6 +92,8 @@ export interface GreedyCandidateInput {
   maxIterationsPerRun?: number;
   /** Which seed strategy to use. Default: 'all'. */
   strategy?: GreedyLayoutStrategy;
+  /** Canonical voice metadata from soundStreams — used to preserve user-assigned names/colors. */
+  voiceHints?: ReadonlyArray<{ id: string; name: string; color: string; originalMidiNote: number | null }>;
 }
 
 /**
@@ -186,7 +188,7 @@ export async function generateGreedyCandidates(
   }
 
   // Build voice map from base layout or performance events
-  const voices = buildVoiceMap(input.performance, input.baseLayout);
+  const voices = buildVoiceMap(input.performance, input.baseLayout, input.voiceHints);
 
   // Phase 1b: Detect structural groups (shared across all candidates)
   const structuralGroups = detectStructuralGroups(
@@ -245,6 +247,7 @@ export async function generateGreedyCandidates(
         },
         evaluationConfig: input.evaluationConfig,
         instrumentConfig: input.instrumentConfig,
+        voiceHints: input.voiceHints,
       };
 
       const runOptions: GreedyRunOptions = {
@@ -513,11 +516,13 @@ function buildExplanation(
 // ============================================================================
 
 /**
- * Build a voice map from layout and/or performance events.
+ * Build a voice map from layout, voiceHints (canonical soundStreams), and/or performance events.
+ * Priority: layout voices > voiceHints (by id, then by noteNumber) > hardcoded defaults.
  */
 function buildVoiceMap(
   performance: Performance,
   baseLayout?: Layout,
+  voiceHints?: ReadonlyArray<{ id: string; name: string; color: string; originalMidiNote: number | null }>,
 ): Map<string, Voice> {
   const voices = new Map<string, Voice>();
 
@@ -536,17 +541,30 @@ function buildVoiceMap(
     }
   }
 
-  // Fill in from performance events
+  // Build hint lookup maps for voices not in the layout
+  const hintById = new Map<string, { id: string; name: string; color: string; originalMidiNote: number | null }>();
+  const hintByNote = new Map<number, { id: string; name: string; color: string; originalMidiNote: number | null }>();
+  if (voiceHints) {
+    for (const hint of voiceHints) {
+      hintById.set(hint.id, hint);
+      if (hint.originalMidiNote != null) {
+        hintByNote.set(hint.originalMidiNote, hint);
+      }
+    }
+  }
+
+  // Fill in from performance events, using voiceHints before hardcoded defaults
   for (const event of performance.events) {
     const id = event.voiceId ?? String(event.noteNumber);
     if (!voices.has(id)) {
+      const hint = hintById.get(id) ?? hintByNote.get(event.noteNumber);
       voices.set(id, {
-        id,
-        name: `Sound ${event.noteNumber}`,
+        id: hint?.id ?? id,
+        name: hint?.name ?? `Sound ${event.noteNumber}`,
         sourceType: 'midi_track',
         sourceFile: '',
         originalMidiNote: event.noteNumber,
-        color: '#888888',
+        color: hint?.color ?? '#888888',
       });
     }
   }

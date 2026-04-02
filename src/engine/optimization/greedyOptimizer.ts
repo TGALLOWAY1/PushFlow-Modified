@@ -432,18 +432,29 @@ class GreedyOptimizer implements OptimizerMethod {
       voiceMap.set(voice.id ?? String(voice.originalMidiNote), voice);
     }
 
-    // If no voices in layout, extract from performance events
+    // If no voices in layout, extract from performance events using voiceHints when available
     if (voiceMap.size === 0) {
+      const hintById = new Map<string, { id: string; name: string; color: string; originalMidiNote: number | null }>();
+      const hintByNote = new Map<number, { id: string; name: string; color: string; originalMidiNote: number | null }>();
+      if (input.voiceHints) {
+        for (const hint of input.voiceHints) {
+          hintById.set(hint.id, hint);
+          if (hint.originalMidiNote != null) {
+            hintByNote.set(hint.originalMidiNote, hint);
+          }
+        }
+      }
       for (const event of input.performance.events) {
         const id = event.voiceId ?? String(event.noteNumber);
         if (!voiceMap.has(id)) {
+          const hint = hintById.get(id) ?? hintByNote.get(event.noteNumber);
           voiceMap.set(id, {
-            id,
-            name: `Sound ${event.noteNumber}`,
+            id: hint?.id ?? id,
+            name: hint?.name ?? `Sound ${event.noteNumber}`,
             sourceType: 'midi_track',
             sourceFile: '',
             originalMidiNote: event.noteNumber,
-            color: '#888888',
+            color: hint?.color ?? '#888888',
           });
         }
       }
