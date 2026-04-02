@@ -633,8 +633,14 @@ function PerformanceWorkspaceInner() {
         {/* Center Column: Grid + Timeline stacked */}
         <div className="flex-1 flex flex-col gap-2.5 min-w-0 min-h-0 px-0.5 overflow-hidden">
           {/* Push Grid — takes available space, scales to fill */}
-          <div className="flex-1 min-h-0 glass-panel p-1.5 flex flex-col">
-            <div ref={gridContainerRef} className="flex-1 min-h-0 flex items-center justify-center overflow-hidden">
+          <div className="flex-1 min-h-0 relative flex flex-col overflow-hidden">
+            {/* Ambient background glows */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full pointer-events-none" style={{ background: 'rgba(46, 91, 255, 0.04)', filter: 'blur(120px)' }} />
+            <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full pointer-events-none" style={{ background: 'rgba(87, 27, 193, 0.03)', filter: 'blur(100px)' }} />
+            {/* Grid enclosure */}
+            <div ref={gridContainerRef} className="flex-1 min-h-0 flex items-center justify-center overflow-hidden relative z-10">
+              <div className="glass-panel-blur push-grid-shadow p-1 rounded-[1.5rem] border border-[rgba(67,70,86,0.2)]">
+                <div className="bg-[#0e0e0e] p-4 rounded-[1.3rem]" style={{ boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.4)' }}>
               <div style={{ transform: `scale(${gridScale})`, transformOrigin: 'center' }}>
                 <InteractiveGrid
                   assignments={assignments}
@@ -651,6 +657,8 @@ function PerformanceWorkspaceInner() {
                   onGridDragLeave={handleGridDragLeave}
                   debuggerIteration={debuggerIteration}
                 />
+              </div>
+                </div>
               </div>
             </div>
           </div>
