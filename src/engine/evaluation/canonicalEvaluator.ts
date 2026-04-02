@@ -659,11 +659,14 @@ function computePoseDetail(
     fingerDominance += calculateFingerPreferenceCost(poseResult.right);
   }
 
-  // Apply the same weighting as calculatePoseNaturalness
+  // Weighted pose sub-components.
+  // fingerDominance at 0.4 (was 0.2) to make finger selection matter more —
+  // discourages overuse of preferred fingers when distributing across fingers
+  // would produce a more playable layout.
   return {
-    attractor: 0.4 * attractor,
-    perFingerHome: 0.4 * perFingerHome,
-    fingerDominance: 0.2 * fingerDominance,
+    attractor: 0.3 * attractor,
+    perFingerHome: 0.3 * perFingerHome,
+    fingerDominance: 0.4 * fingerDominance,
   };
 }
 

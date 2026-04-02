@@ -22,6 +22,8 @@ import { type NeutralHandCentersResult, type NeutralPadPositions } from '../prio
 import {
   MAX_HAND_SPEED,
   SPEED_COST_WEIGHT,
+  PER_FINGER_MOVEMENT_WEIGHT,
+  MAX_FINGER_JUMP_WEIGHT,
   ALTERNATION_DT_THRESHOLD,
   ALTERNATION_PENALTY,
   HAND_BALANCE_TARGET_LEFT,
@@ -34,6 +36,8 @@ import {
 export {
   MAX_HAND_SPEED,
   SPEED_COST_WEIGHT,
+  PER_FINGER_MOVEMENT_WEIGHT,
+  MAX_FINGER_JUMP_WEIGHT,
   ALTERNATION_DT_THRESHOLD,
   ALTERNATION_PENALTY,
   HAND_BALANCE_TARGET_LEFT,
@@ -300,8 +304,13 @@ export function calculatePerFingerHomeCost(
 // ============================================================================
 
 /**
- * Transition cost (Fitts's Law): movement distance + speed penalty.
+ * Transition cost (Fitts's Law): movement distance + speed penalty + per-finger movement.
  * Returns Infinity if speed exceeds MAX_HAND_SPEED.
+ *
+ * The per-finger component tracks how far each individual finger moves between
+ * poses. This catches cases where a single finger jumps across the grid while
+ * the hand centroid barely moves (e.g., index finger hopping 6 pads while the
+ * other 3 fingers stay put — centroid moves only ~1.5 units).
  *
  * This is the transitionDifficulty term in the PerformabilityObjective.
  */
@@ -311,9 +320,35 @@ export function calculateTransitionCost(
   timeDelta: number
 ): number {
   if (timeDelta <= MIN_TIME_DELTA) return 0;
-  const distance = fingerCoordinateDistance(prev.centroid, curr.centroid);
-  if (distance === 0) return 0;
-  const speed = distance / timeDelta;
+
+  // Centroid-based cost (original Fitts's Law component)
+  const centroidDistance = fingerCoordinateDistance(prev.centroid, curr.centroid);
+  const speed = centroidDistance > 0 ? centroidDistance / timeDelta : 0;
   if (speed > MAX_HAND_SPEED) return Infinity;
-  return distance + speed * SPEED_COST_WEIGHT;
+  const centroidCost = centroidDistance + speed * SPEED_COST_WEIGHT;
+
+  // Per-finger movement cost: sum distance each shared finger travels
+  let perFingerTotal = 0;
+  let maxFingerJump = 0;
+  let sharedFingerCount = 0;
+
+  for (const [finger, currCoord] of Object.entries(curr.fingers) as [FingerType, FingerCoordinate][]) {
+    const prevCoord = prev.fingers[finger];
+    if (prevCoord) {
+      const dist = fingerCoordinateDistance(prevCoord, currCoord);
+      perFingerTotal += dist;
+      if (dist > maxFingerJump) maxFingerJump = dist;
+      sharedFingerCount++;
+    }
+  }
+
+  const perFingerCost = sharedFingerCount > 0
+    ? (perFingerTotal / sharedFingerCount) * PER_FINGER_MOVEMENT_WEIGHT
+      + maxFingerJump * MAX_FINGER_JUMP_WEIGHT
+    : 0;
+
+  // If both centroid and per-finger show zero movement, cost is 0
+  if (centroidCost === 0 && perFingerCost === 0) return 0;
+
+  return centroidCost + perFingerCost;
 }

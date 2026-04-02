@@ -512,15 +512,37 @@ class GreedyOptimizer implements OptimizerMethod {
           pad, soundId, layout, cooccurrence, input.costToggles,
         );
 
-        // Rhythm peer column affinity: prefer same column (same hand+finger) as already-placed peers
+        // Rhythm peer affinity: same hand zone + adjacent columns (different fingers)
+        // Sounds that play in quick succession should be on different fingers
+        // of the same hand — not the same column (same finger).
         const peers = rhythmPeers.get(soundId);
         if (peers) {
           for (const peerId of peers) {
             for (const [pk, v] of Object.entries(layout.padToVoice)) {
               if ((v.id ?? String(v.originalMidiNote)) === peerId) {
                 const peerPad = parsePadKey(pk);
-                score += Math.abs(pad.col - peerPad.col) * 5.0
-                       + Math.abs(pad.row - peerPad.row) * 0.2;
+                const peerIsLeft = peerPad.col <= 3;
+                const candidateIsLeft = pad.col <= 3;
+
+                // Reward same hand zone (penalty for cross-hand placement)
+                if (peerIsLeft !== candidateIsLeft) {
+                  score += 3.0;
+                }
+
+                // Penalize same column (same finger) — rapid alternation on one finger is hard
+                if (pad.col === peerPad.col) {
+                  score += 4.0;
+                }
+
+                // Mild proximity within hand zone (adjacent columns are ideal)
+                const colDist = Math.abs(pad.col - peerPad.col);
+                if (candidateIsLeft === peerIsLeft && colDist > 0) {
+                  // Within same hand: prefer adjacent columns (1 apart), mildly penalize far
+                  score += Math.max(0, colDist - 1) * 0.8;
+                }
+
+                // Mild row proximity preference
+                score += Math.abs(pad.row - peerPad.row) * 0.3;
                 break;
               }
             }
