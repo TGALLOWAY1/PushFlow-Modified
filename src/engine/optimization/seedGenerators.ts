@@ -23,6 +23,8 @@ import {
   getRoleGroupsByImportance,
 } from '../structure/phraseStructure';
 import { type StructuralGroupAnalysis } from '../structure/structuralGroupDetection';
+import { type TemporalClusterAnalysis } from '../../types/performanceStructure';
+import { selectBestPlacement } from '../structure/shapeTemplates';
 import { adjacentPads } from '../surface/padGrid';
 import { generateId } from '../../utils/idGenerator';
 
@@ -53,6 +55,8 @@ export interface SeedContext {
   performance?: Performance;
   /** Optional structural group analysis for group-aware seeding. */
   structuralGroups?: StructuralGroupAnalysis;
+  /** Optional temporal cluster analysis for shape-based seeding. */
+  temporalClusters?: TemporalClusterAnalysis;
 }
 
 // ============================================================================
@@ -870,6 +874,103 @@ export const structuralSeed: SeedGenerator = {
 };
 
 // ============================================================================
+// Seed Generator F: Temporal Coherence (Tetris Shapes)
+// ============================================================================
+
+/**
+ * Temporal Coherence seed.
+ *
+ * Uses pre-optimization temporal clustering to place groups of temporally
+ * related sounds as connected shapes (Tetris pieces) on the grid.
+ *
+ * Algorithm:
+ * 1. Process clusters by confidence (highest first)
+ * 2. For each cluster, select a shape from the catalog matching its size + hint
+ * 3. Find the best placement that doesn't overlap existing placements
+ * 4. Place cluster members onto the shape's pads in temporal order
+ * 5. Place unclustered sounds on remaining golden pads
+ *
+ * Falls back to natural-pose seeding when no temporal clusters are detected.
+ */
+export const temporalSeed: SeedGenerator = {
+  key: 'temporal',
+  name: 'Temporal Coherence',
+
+  generate(ctx: SeedContext): Layout {
+    const layout = createEmptyLayout('Temporal Coherence', ctx.baseLayout);
+    const placedVoiceIds = applyPlacementLocks(layout, ctx.placementLocks, ctx.voices);
+    const rows = ctx.instrumentConfig.rows;
+    const cols = ctx.instrumentConfig.cols;
+
+    const clusters = ctx.temporalClusters?.clusters ?? [];
+
+    // Fall back to natural-pose if no temporal clusters detected
+    if (clusters.length === 0) {
+      return naturalPoseSeed.generate(ctx);
+    }
+
+    // Build set of occupied pads
+    const occupiedPads = new Set<string>();
+    for (const key of Object.keys(layout.padToVoice)) {
+      occupiedPads.add(key);
+    }
+
+    // Place each cluster as a connected shape
+    for (const cluster of clusters) {
+      // Filter out already-placed voices
+      const unplacedMembers = cluster.soundIds.filter(id => !placedVoiceIds.has(id));
+      if (unplacedMembers.length < 2) {
+        // Too small to form a shape, place individually later
+        continue;
+      }
+
+      const placement = selectBestPlacement(
+        unplacedMembers.length,
+        cluster.shapeHint,
+        occupiedPads,
+        ctx.rng,
+      );
+
+      if (!placement) {
+        // No shape fits — try a smaller subset or skip
+        // Place these sounds individually in the ungrouped phase
+        continue;
+      }
+
+      // Map cluster members to shape pads in temporal order
+      for (let i = 0; i < unplacedMembers.length && i < placement.pads.length; i++) {
+        const voiceId = unplacedMembers[i];
+        const voice = ctx.voices.get(voiceId);
+        if (!voice) continue;
+
+        const pad = placement.pads[i];
+        placeVoice(layout, pad.row, pad.col, voice);
+        placedVoiceIds.add(voiceId);
+        occupiedPads.add(`${pad.row},${pad.col}`);
+      }
+    }
+
+    // Place unclustered sounds + any cluster members that didn't fit
+    const ranked = rankByImportance(ctx.features)
+      .filter(f => !placedVoiceIds.has(f.voiceId));
+
+    for (const feat of ranked) {
+      const voice = ctx.voices.get(feat.voiceId);
+      if (!voice) continue;
+
+      const pad = getFirstEmptyPad(layout, GOLDEN_PADS)
+        ?? getFirstEmptyPad(layout, getAllEmptyPads(layout, rows, cols));
+      if (!pad) break;
+      placeVoice(layout, pad.row, pad.col, voice);
+      placedVoiceIds.add(feat.voiceId);
+      occupiedPads.add(`${pad.row},${pad.col}`);
+    }
+
+    return layout;
+  },
+};
+
+// ============================================================================
 // Registry
 // ============================================================================
 
@@ -880,6 +981,7 @@ export const SEED_GENERATORS: Record<string, SeedGenerator> = {
   'coordination': coordinationSeed,
   'novelty': noveltySeed,
   'structural': structuralSeed,
+  'temporal': temporalSeed,
 };
 
 /** Get a seed generator by key. */

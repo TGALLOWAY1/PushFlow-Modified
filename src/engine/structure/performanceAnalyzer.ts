@@ -13,6 +13,7 @@ import { detectSections } from './sectionDetection';
 import { buildCooccurrenceGraph } from './cooccurrence';
 import { buildTransitionGraph } from './transitionGraph';
 import { inferVoiceRoles } from './roleInference';
+import { detectTemporalClusters } from './temporalClustering';
 
 /**
  * Analyze a performance and produce a complete PerformanceStructure.
@@ -46,6 +47,18 @@ export function analyzePerformance(
   // 7. Detect motifs (simplified - recurring 2-4 note patterns)
   const motifs = detectSimpleMotifs(events);
 
+  // 8. Detect temporal clusters (pre-optimization sound grouping)
+  // Build noteNumber → voiceId mapping for co-occurrence integration
+  const noteToVoiceId = new Map<number, string>();
+  for (const e of events) {
+    if (e.voiceId && !noteToVoiceId.has(e.noteNumber)) {
+      noteToVoiceId.set(e.noteNumber, e.voiceId);
+    }
+  }
+  const temporalClusters = detectTemporalClusters(
+    events, cooccurrenceGraph, noteToVoiceId,
+  );
+
   return {
     events,
     tempo,
@@ -56,6 +69,7 @@ export function analyzePerformance(
     motifs,
     voiceProfiles,
     simultaneityGroups,
+    temporalClusters,
   };
 }
 

@@ -100,6 +100,11 @@ export {
   type GroupCoherenceDetail,
   type PairParallelismDetail,
 } from './evaluation/structuralCoherence';
+export {
+  scoreClusterCoherence,
+  type ClusterCoherenceScore,
+  type ClusterCoherenceDetail,
+} from './evaluation/clusterCoherence';
 
 // Structure analysis
 export { groupEventsByTime, getPolyphonyTimeline, getMaxPolyphony } from './structure/eventGrouping';
@@ -110,6 +115,19 @@ export { buildCooccurrenceGraph } from './structure/cooccurrence';
 export { buildTransitionGraph } from './structure/transitionGraph';
 export { inferVoiceRoles } from './structure/roleInference';
 export { analyzePerformance } from './structure/performanceAnalyzer';
+export {
+  detectTemporalClusters,
+  computeTemporalAffinities,
+} from './structure/temporalClustering';
+export {
+  SHAPE_CATALOG,
+  getMatchingShapes,
+  findValidPlacements,
+  selectBestPlacement,
+  type ShapeTemplate,
+  type ShapePlacement,
+  type ShapeOffset,
+} from './structure/shapeTemplates';
 export {
   detectStructuralGroups,
   type StructuralGroup,

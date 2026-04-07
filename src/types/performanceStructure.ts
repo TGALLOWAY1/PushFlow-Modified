@@ -141,4 +141,61 @@ export interface PerformanceStructure {
   voiceProfiles: VoiceProfile[];
   /** Simultaneity groups (events at the same time). */
   simultaneityGroups: SimultaneityGroup[];
+  /** Temporal clusters: groups of sounds that play in tight sequence. */
+  temporalClusters?: TemporalClusterAnalysis;
+}
+
+// ============================================================================
+// Temporal Clustering (pre-optimization sound grouping)
+// ============================================================================
+
+/**
+ * A group of sounds that play in tight temporal proximity and should
+ * be placed on spatially adjacent pads.
+ */
+export interface TemporalCluster {
+  /** Unique cluster identifier. */
+  id: string;
+  /** Voice IDs in this cluster, ordered by temporal flow (first→last). */
+  soundIds: string[];
+  /** Overall confidence in this grouping (0-1). */
+  confidence: number;
+  /** How this cluster was detected. */
+  reason: 'rapid-succession' | 'alternation' | 'co-occurrence' | 'merged';
+  /** Metrics about the cluster's temporal tightness. */
+  metrics: {
+    /** Average time between consecutive sounds in the cluster (seconds). */
+    avgInternalDt: number;
+    /** Minimum internal time delta (seconds). */
+    minInternalDt: number;
+    /** Total transition count between cluster members. */
+    totalTransitions: number;
+  };
+  /** Suggested spatial layout. */
+  shapeHint: 'row' | 'column' | 'block' | 'any';
+}
+
+/**
+ * Complete temporal clustering analysis for a performance.
+ */
+export interface TemporalClusterAnalysis {
+  /** Detected temporal clusters. Ordered by confidence (highest first). */
+  clusters: TemporalCluster[];
+  /** Voice IDs not assigned to any cluster. */
+  unclusteredVoiceIds: string[];
+  /** Pairwise affinity data (useful for cost evaluation). */
+  affinities: TemporalAffinity[];
+}
+
+/**
+ * Pairwise temporal affinity between two sounds.
+ */
+export interface TemporalAffinity {
+  voiceA: string;
+  voiceB: string;
+  affinity: number;
+  transitionCount: number;
+  avgTimeDelta: number;
+  minTimeDelta: number;
+  directionality: 'A→B' | 'B→A' | 'bidirectional';
 }
