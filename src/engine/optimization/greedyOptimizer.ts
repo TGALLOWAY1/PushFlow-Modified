@@ -26,6 +26,7 @@ import {
 } from './optimizerInterface';
 import { registerOptimizer } from './optimizerRegistry';
 import { evaluatePerformance } from '../evaluation/canonicalEvaluator';
+import { computePlanScore } from '../evaluation/planScore';
 import { buildPerformanceMoments } from '../structure/momentBuilder';
 import { type Layout } from '../../types/layout';
 import {
@@ -930,7 +931,16 @@ class GreedyOptimizer implements OptimizerMethod {
       });
     }
 
-    const score = clampScore(100 - (5 * hardMomentCount) - (20 * unplayableMomentCount));
+    // diagnostics.total is a sum over the whole performance; normalize to an
+    // average per moment so the ergonomic term is comparable to the beam solver's.
+    const avgErgonomicCost = momentAssignments.length > 0
+      ? diagnostics.total / momentAssignments.length
+      : 0;
+    const score = computePlanScore({
+      hardCount: hardMomentCount,
+      unplayableCount: unplayableMomentCount,
+      avgErgonomicCost,
+    });
     const diagnosticsPayload = buildDiagnosticsPayload(diagnostics);
 
     return {
@@ -1096,10 +1106,6 @@ function computePadDrift(hand: 'left' | 'right', row: number, col: number): numb
   return Math.sqrt(
     Math.pow(col - home.x, 2) + Math.pow(row - home.y, 2),
   );
-}
-
-function clampScore(score: number): number {
-  return Math.max(0, Math.min(100, score));
 }
 
 function buildEmptyOutput(input: OptimizerInput, startTime: number): OptimizerOutput {

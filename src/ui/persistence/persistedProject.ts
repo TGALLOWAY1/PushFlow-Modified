@@ -2,7 +2,9 @@
  * Persisted Project Shape.
  *
  * Defines the exact durable fields stored in IndexedDB.
- * Includes generated candidates and analysis results so they survive refresh.
+ * The optional `candidates`/`analysisResult` fields are legacy: they may exist in
+ * previously-persisted data but are no longer written or restored (analysis-only
+ * state is not project truth). They remain here only for backward-compatible reads.
  */
 
 import { type Layout } from '../../types/layout';

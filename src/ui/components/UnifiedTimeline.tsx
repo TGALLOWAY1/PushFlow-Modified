@@ -11,7 +11,7 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getActiveStreams, getDisplayedExecutionPlan, type SoundStream } from '../state/projectState';
+import { getDisplayedExecutionPlan, type SoundStream } from '../state/projectState';
 import { useLaneImport } from '../hooks/useLaneImport';
 import { type FingerAssignment } from '../../types/executionPlan';
 
@@ -68,10 +68,12 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
 
   // ─── Derived Data ────────────────────────────────────────────────────────
 
-  const activeStreams = getActiveStreams(state);
   const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
 
-  const visibleStreams = activeStreams;
+  // Timeline shows ALL sound streams, including muted ones (Product Invariant #4:
+  // the timeline must never hide a stream). Muted streams are rendered distinctly
+  // (dimmed) and remain unmute-able from the sidebar.
+  const visibleStreams = state.soundStreams;
 
   // Beat duration (used for bar-quantization and grid lines)
   const beatDurationRaw = 60 / (state.tempo || 120);
@@ -159,13 +161,19 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
     const map = new Map<string, FingerAssignment[]>();
 
     if (assignments && assignments.length > 0) {
-      // Real assignments — group by noteNumber → stream
+      // Group assignments onto streams by STABLE VOICE IDENTITY (voiceId), never by
+      // MIDI pitch (Product Invariant #5). Pitch keying loses events when two streams
+      // share a pitch (last-wins collision) or when a plan is stale. Fall back to
+      // pitch only for legacy assignments that predate voiceId.
+      const streamIds = new Set(visibleStreams.map(s => s.id));
       const noteToStream = new Map<number, string>();
-      for (const s of activeStreams) {
-        noteToStream.set(s.originalMidiNote, s.id);
+      for (const s of visibleStreams) {
+        if (!noteToStream.has(s.originalMidiNote)) noteToStream.set(s.originalMidiNote, s.id);
       }
       for (const a of assignments) {
-        const streamId = noteToStream.get(a.noteNumber);
+        const streamId = (a.voiceId && streamIds.has(a.voiceId))
+          ? a.voiceId
+          : noteToStream.get(a.noteNumber);
         if (streamId) {
           const constraint = state.voiceConstraints[streamId];
           const overlaid = constraint
@@ -182,8 +190,9 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
       }
 
       // Render unassigned streams: streams with events but no solver assignments
-      // get grey "unassigned" pills so they remain visible in the timeline
-      for (const s of activeStreams) {
+      // (including muted streams, which the solver never assigns) get grey
+      // "unassigned" pills so they remain visible in the timeline.
+      for (const s of visibleStreams) {
         if (!map.has(s.id) && s.events.length > 0) {
           const constraint = state.voiceConstraints[s.id];
           const unassigned: FingerAssignment[] = s.events.map((e, i) => ({
@@ -202,7 +211,7 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
       }
     } else {
       // Dummy assignments for pre-analysis rendering — apply constraints if set
-      for (const s of activeStreams) {
+      for (const s of visibleStreams) {
         const constraint = state.voiceConstraints[s.id];
         const dummies: FingerAssignment[] = s.events.map((e, i) => ({
           eventKey: e.eventKey,
@@ -219,7 +228,7 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
       }
     }
     return map;
-  }, [assignments, activeStreams, state.voiceConstraints]);
+  }, [assignments, visibleStreams, state.voiceConstraints]);
 
   // Beat grid lines
   const beatDuration = beatDurationRaw;

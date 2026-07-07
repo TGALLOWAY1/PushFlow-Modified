@@ -5,7 +5,10 @@
  * Centralizes all serialization/deserialization, validation, and default-filling.
  *
  * Key invariant: ephemeral UI state (selection, playback) is NEVER persisted.
- * Candidates and analysis results ARE persisted so they survive refresh.
+ * Analysis results and generated candidates are analysis-only state, not project
+ * truth (see PUSHFLOW_CANON §"Analysis-only state is not project truth"). They are
+ * NOT persisted; on load, analysis is reset and marked stale so it is recomputed
+ * against the restored layout rather than presented as fresh.
  */
 
 import {
@@ -71,9 +74,8 @@ export function serializeProject(state: ProjectState): PersistedProject {
     updatedAt: new Date().toISOString(),
     schemaVersion: PERSISTED_SCHEMA_VERSION,
 
-    // Analysis / Candidates
-    candidates: state.candidates.length > 0 ? state.candidates : undefined,
-    analysisResult: state.analysisResult ?? undefined,
+    // Analysis results and candidates are analysis-only state, not project truth.
+    // They are intentionally NOT persisted; they are recomputed on load.
   };
 }
 
@@ -153,16 +155,10 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
       ? persisted.costToggles
       : ALL_COSTS_ENABLED,
 
-    // Analysis — restore if present in persisted data, reconcile voice metadata
-    analysisResult: persisted.analysisResult
-      ? { ...persisted.analysisResult, layout: reconcileLayoutVoices(ensureLayoutDefaults(persisted.analysisResult.layout, 'variant'), soundStreams) }
-      : null,
-    candidates: Array.isArray(persisted.candidates)
-      ? persisted.candidates.map(c => ({
-          ...c,
-          layout: reconcileLayoutVoices(ensureLayoutDefaults(c.layout, 'variant'), soundStreams),
-        }))
-      : [],
+    // Analysis — analysis-only state is not project truth; always reset on load
+    // and mark stale so it is recomputed against the restored layout.
+    analysisResult: null,
+    candidates: [],
     selectedCandidateId: null,
 
     // Ephemeral — always reset
@@ -172,7 +168,7 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
     compareCandidateId: null,
     isProcessing: false,
     error: null,
-    analysisStale: !persisted.analysisResult,
+    analysisStale: true,
     manualCostResult: null,
     moveHistory: null,
     moveHistoryStopReason: null,

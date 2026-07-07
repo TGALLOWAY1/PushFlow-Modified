@@ -40,6 +40,7 @@ import {
   calculateFingerPreferenceCost,
   calculateHandBalanceCost,
 } from '../evaluation/costFunction';
+import { computePlanScore } from '../evaluation/planScore';
 import {
   type PerformabilityObjective,
   combinePerformabilityComponents,
@@ -887,8 +888,11 @@ export class BeamSolver implements SolverStrategy {
       fatigueMap[`R-${finger.charAt(0).toUpperCase() + finger.slice(1)}`] = 0;
     }
 
-    let score = 100 - (5 * hardCount) - (20 * unplayableCount);
-    if (score < 0) score = 0;
+    const score = computePlanScore({
+      hardCount,
+      unplayableCount,
+      avgErgonomicCost: averageMetrics.total,
+    });
 
     // V1: Build canonical diagnostics payload from V1CostBreakdown
     const canonicalFactors = v1CostBreakdownToCanonicalFactors(totalV1Cost);
