@@ -83,6 +83,57 @@ describe('projectReducer constraint sync', () => {
     expect(next.voiceConstraints[snare.id]).toEqual({ hand: 'left', finger: 'index' });
   });
 
+  it('derives pad constraints from a voice preference set via SET_VOICE_CONSTRAINT', () => {
+    const { state, kick } = makeState();
+
+    // Kick has no finger preference yet and sits on pad 0,0.
+    const next = projectReducer(state, {
+      type: 'SET_VOICE_CONSTRAINT',
+      payload: { streamId: kick.id, hand: 'right', finger: 'pinky' },
+    });
+
+    // voiceConstraints is the source of truth...
+    expect(next.voiceConstraints[kick.id]).toEqual({ hand: 'right', finger: 'pinky' });
+    // ...and the pad constraint is derived from it, alongside the existing ones.
+    expect(next.workingLayout?.fingerConstraints).toEqual({
+      '0,0': 'R5',
+      '0,1': 'L2',
+      '0,2': 'R3',
+    });
+  });
+
+  it('removes the derived pad constraint when a voice preference is cleared (no drift)', () => {
+    const { state, snare } = makeState();
+
+    // Snare starts with L2 on pad 0,1. Clear its preference.
+    const next = projectReducer(state, {
+      type: 'SET_VOICE_CONSTRAINT',
+      payload: { streamId: snare.id, hand: null, finger: null },
+    });
+
+    expect(next.voiceConstraints[snare.id]).toBeUndefined();
+    // The derived pad constraint for the snare's pad is gone — no stale entry.
+    expect(next.workingLayout?.fingerConstraints).toEqual({
+      '0,2': 'R3',
+    });
+  });
+
+  it('does not fork a working layout when a preference targets an unplaced sound', () => {
+    const { state } = makeState();
+    // Add an unplaced sound (not in any padToVoice).
+    const ghost = makeStream('stream-ghost', 'Ghost', 50, '#a855f7');
+    state.soundStreams = [...state.soundStreams, ghost];
+
+    const next = projectReducer(state, {
+      type: 'SET_VOICE_CONSTRAINT',
+      payload: { streamId: ghost.id, hand: 'left', finger: 'ring' },
+    });
+
+    expect(next.voiceConstraints[ghost.id]).toEqual({ hand: 'left', finger: 'ring' });
+    // No pad holds the ghost, so no derived constraint changed → no draft created.
+    expect(next.workingLayout).toBeNull();
+  });
+
   it('swaps derived constraints and lock targets with the swapped voices', () => {
     const { state, snare, hihat } = makeState();
 

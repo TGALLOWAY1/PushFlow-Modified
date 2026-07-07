@@ -411,6 +411,17 @@ function buildLayoutFingerConstraints(
   return nextConstraints;
 }
 
+/** Shallow-compare two derived fingerConstraints maps (padKey → compact string). */
+function fingerConstraintsEqual(
+  a: Layout['fingerConstraints'],
+  b: Layout['fingerConstraints'],
+): boolean {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every(k => a[k] === b[k]);
+}
+
 function prunePlacementLocks(
   padToVoice: Layout['padToVoice'],
   placementLocks: Layout['placementLocks'],
@@ -510,6 +521,17 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
           ...v,
           padToVoice: renamePadVoices(v.padToVoice),
         })),
+        // Layouts embed a display copy of each sound's name/color; keep every
+        // layout-bearing store — including in-session candidates and the analysis
+        // result — in sync so previews and compare never show a stale label.
+        candidates: state.candidates.map(c => ({
+          ...c,
+          layout: { ...c.layout, padToVoice: renamePadVoices(c.layout.padToVoice) },
+        })),
+        analysisResult: state.analysisResult ? {
+          ...state.analysisResult,
+          layout: { ...state.analysisResult.layout, padToVoice: renamePadVoices(state.analysisResult.layout.padToVoice) },
+        } : null,
       };
     }
 
@@ -581,6 +603,15 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
           ...v,
           padToVoice: recolorPadVoices(v.padToVoice),
         })),
+        // Keep candidates and analysis result in sync too (see RENAME_SOUND).
+        candidates: state.candidates.map(c => ({
+          ...c,
+          layout: { ...c.layout, padToVoice: recolorPadVoices(c.layout.padToVoice) },
+        })),
+        analysisResult: state.analysisResult ? {
+          ...state.analysisResult,
+          layout: { ...state.analysisResult.layout, padToVoice: recolorPadVoices(state.analysisResult.layout.padToVoice) },
+        } : null,
       };
     }
 
@@ -596,31 +627,20 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       if (Object.keys(updated).length === 0) delete next[streamId];
       else next[streamId] = updated;
 
-      // Cross-sync: update pad-level fingerConstraints for any pad holding this voice
+      // voiceConstraints is the SINGLE source of truth for per-sound finger
+      // preferences; layout.fingerConstraints is always a pure DERIVED projection
+      // (buildLayoutFingerConstraints), never patched independently. This removes
+      // the previous two-store drift (Invariant #6). Only fork a working layout
+      // when the derived pad constraints actually change — so setting a preference
+      // on an unplaced sound does not spuriously create a draft.
       let newState: ProjectState = { ...state, updatedAt: new Date().toISOString(), voiceConstraints: next, analysisStale: true };
       const targetLayout = newState.workingLayout ?? newState.activeLayout;
-      const padsForVoice = Object.entries(targetLayout.padToVoice)
-        .filter(([, v]) => v.id === streamId)
-        .map(([pk]) => pk);
-
-      if (padsForVoice.length > 0 && updated.hand && updated.finger) {
-        const constraintStr = formatFingerConstraint(updated.hand, updated.finger as Parameters<typeof formatFingerConstraint>[1]);
-        newState = updateWorkingLayout(newState, layout => {
-          const newConstraints = { ...layout.fingerConstraints };
-          for (const pk of padsForVoice) {
-            newConstraints[pk] = constraintStr;
-          }
-          return { ...layout, fingerConstraints: newConstraints };
-        });
-      } else if (padsForVoice.length > 0 && Object.keys(updated).length === 0) {
-        // Voice constraint cleared — remove pad constraints for this voice's pads
-        newState = updateWorkingLayout(newState, layout => {
-          const newConstraints = { ...layout.fingerConstraints };
-          for (const pk of padsForVoice) {
-            delete newConstraints[pk];
-          }
-          return { ...layout, fingerConstraints: newConstraints };
-        });
+      const derivedConstraints = buildLayoutFingerConstraints(targetLayout.padToVoice, next);
+      if (!fingerConstraintsEqual(derivedConstraints, targetLayout.fingerConstraints)) {
+        newState = updateWorkingLayout(newState, layout => ({
+          ...layout,
+          fingerConstraints: buildLayoutFingerConstraints(layout.padToVoice, next),
+        }));
       }
       return newState;
     }
@@ -1083,15 +1103,10 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         }
       }
 
-      // Also sync finger constraints into the working layout's per-pad fingerConstraints
-      const padFingerConstraints: Record<string, string> = {};
-      for (const [pk, voice] of Object.entries(working.padToVoice)) {
-        const vc = newConstraints[voice.id];
-        if (vc?.hand && vc?.finger) {
-          padFingerConstraints[pk] = formatFingerConstraint(vc.hand, vc.finger as Parameters<typeof formatFingerConstraint>[1]);
-        }
-      }
-      working.fingerConstraints = { ...working.fingerConstraints, ...padFingerConstraints };
+      // Derive the working layout's per-pad fingerConstraints from the updated
+      // voiceConstraints (single source of truth). Full rebuild — not a merge — so
+      // constraints for voices no longer preferred don't linger as stale entries.
+      working.fingerConstraints = buildLayoutFingerConstraints(working.padToVoice, newConstraints);
 
       return {
         ...state,
