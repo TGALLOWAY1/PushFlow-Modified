@@ -90,7 +90,7 @@ export {
   groupAssignmentsIntoMoments,
   analyzeAssignments,
 } from './evaluation/eventMetrics';
-export { analyzeTransition, analyzeAllTransitions } from './evaluation/transitionAnalyzer';
+export { analyzeTransition } from './evaluation/transitionAnalyzer';
 export { scorePassage, scorePassagesFromSections, scorePassagesFixedWindow } from './evaluation/passageDifficulty';
 export { analyzeDifficulty, classifyDifficulty, computeTradeoffProfile } from './evaluation/difficultyScoring';
 export { checkPlanFreshness, getEffectiveLayoutBinding, type FreshnessCheck } from './evaluation/executionPlanValidation';
@@ -100,11 +100,6 @@ export {
   type GroupCoherenceDetail,
   type PairParallelismDetail,
 } from './evaluation/structuralCoherence';
-export {
-  scoreClusterCoherence,
-  type ClusterCoherenceScore,
-  type ClusterCoherenceDetail,
-} from './evaluation/clusterCoherence';
 
 // Structure analysis
 export { groupEventsByTime, getPolyphonyTimeline, getMaxPolyphony } from './structure/eventGrouping';
@@ -196,13 +191,8 @@ export {
   computeCollisionPressureScore, computeAllMetrics,
 } from './rudiment/coherenceMetrics';
 export { filterAndDiversify } from './rudiment/candidateFilter';
-export {
-  generateCandidateSolutions, patternToPerformance, patternToLayout,
-  SOUND_CLASS_MIDI_MAP, type PipelineConfig,
-} from './rudiment/patternToPipeline';
 
 // Analysis (explainability)
-export { analyzePassages, getHardestPassages } from './analysis/passageAnalyzer';
 export { compareCandidates, summarizeComparison } from './analysis/candidateComparator';
 export { explainConstraints, identifyBottlenecks } from './analysis/constraintExplainer';
 

@@ -14,6 +14,7 @@ interface PerformanceCardProps {
   projectState: ProjectState | null;
   onOpen: () => void;
   onDelete: () => void;
+  onExport?: () => void;
 }
 
 /** Format an ISO date string as a relative label. */
@@ -40,8 +41,9 @@ export function PerformanceCard({
   projectState,
   onOpen,
   onDelete,
+  onExport,
 }: PerformanceCardProps) {
-  const tempo = (projectState?.tempo ?? (project as any).tempo) || 120;
+  const tempo = projectState?.tempo ?? project.tempo;
   const soundCount = projectState?.soundStreams.length ?? project.soundCount;
   const eventCount = project.eventCount;
   const padsUsed = projectState?.activeLayout
@@ -68,14 +70,25 @@ export function PerformanceCard({
         )}
         <div className="absolute inset-0 bg-[var(--bg-app)]/10" />
 
-        {/* Delete button (hover) */}
-        <button
-          className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-[var(--bg-app)]/80 flex items-center justify-center text-[var(--text-tertiary)] hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all z-10"
-          onClick={e => { e.stopPropagation(); onDelete(); }}
-          title="Remove from library"
-        >
-          <span className="material-symbols-outlined text-base">close</span>
-        </button>
+        {/* Export / delete buttons (hover) */}
+        <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all z-10">
+          {onExport && (
+            <button
+              className="w-7 h-7 rounded-lg bg-[var(--bg-app)]/80 flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10 transition-colors"
+              onClick={e => { e.stopPropagation(); onExport(); }}
+              title="Export project file"
+            >
+              <span className="material-symbols-outlined text-base">download</span>
+            </button>
+          )}
+          <button
+            className="w-7 h-7 rounded-lg bg-[var(--bg-app)]/80 flex items-center justify-center text-[var(--text-tertiary)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            onClick={e => { e.stopPropagation(); onDelete(); }}
+            title="Delete project"
+          >
+            <span className="material-symbols-outlined text-base">close</span>
+          </button>
+        </div>
 
         {/* Badges */}
         <div className="absolute bottom-2 left-2 flex gap-1.5">
@@ -92,17 +105,9 @@ export function PerformanceCard({
 
       {/* Card body */}
       <div className="p-4 space-y-2">
-        <div className="flex justify-between items-start">
-          <h3 className="font-headline text-base font-bold tracking-tight text-[var(--text-primary)] truncate">
-            {project.name}
-          </h3>
-          <button
-            className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={e => e.stopPropagation()}
-          >
-            <span className="material-symbols-outlined text-lg">more_vert</span>
-          </button>
-        </div>
+        <h3 className="font-headline text-base font-bold tracking-tight text-[var(--text-primary)] truncate">
+          {project.name}
+        </h3>
 
         <div className="flex justify-between items-end">
           <div className="space-y-0.5">

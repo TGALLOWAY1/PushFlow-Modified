@@ -137,7 +137,6 @@ describe('serializeProject', () => {
     const persisted = serializeProject(state);
     const keys = Object.keys(persisted);
 
-    expect(keys).not.toContain('workingLayout');
     expect(keys).not.toContain('selectedEventIndex');
     expect(keys).not.toContain('selectedMomentIndex');
     expect(keys).not.toContain('isProcessing');
@@ -190,6 +189,57 @@ describe('deserializeProject', () => {
     expect(restored.analysisStale).toBe(true);
     expect(restored.currentTime).toBe(0);
     expect(restored.isPlaying).toBe(false);
+  });
+
+  it('never overwrites the Active Layout baseline with working edits', () => {
+    // Regression: serializing used to merge workingLayout into the activeLayout
+    // slot, so an autosave during exploration destroyed the promoted baseline.
+    const state = makeTestProject();
+    const withWorking: ProjectState = {
+      ...state,
+      workingLayout: {
+        ...createEmptyLayout('layout-working', 'Draft Edits', 'working'),
+        baselineId: 'layout-1',
+        padToVoice: {
+          '3,3': { id: 'stream-2', name: 'Snare', sourceType: 'midi_track', sourceFile: '', originalMidiNote: 38, color: '#00ff00' },
+        },
+      },
+    };
+
+    const persisted = serializeProject(withWorking);
+    expect(persisted.activeLayout.id).toBe('layout-1');
+    expect(persisted.activeLayout.padToVoice['0,0'].name).toBe('Kick');
+    expect(persisted.workingLayout?.id).toBe('layout-working');
+
+    const restored = deserializeProject(persisted);
+    // The committed baseline survives untouched...
+    expect(restored.activeLayout.id).toBe('layout-1');
+    expect(restored.activeLayout.padToVoice['0,0'].name).toBe('Kick');
+    // ...and the uncommitted draft is restored as the Working/Test Layout,
+    // so Discard still returns to the real baseline after a refresh.
+    expect(restored.workingLayout).not.toBeNull();
+    expect(restored.workingLayout!.role).toBe('working');
+    expect(restored.workingLayout!.baselineId).toBe('layout-1');
+    expect(restored.workingLayout!.padToVoice['3,3'].name).toBe('Snare');
+  });
+
+  it('restores workingLayout as null when there were no uncommitted edits', () => {
+    const state = makeTestProject();
+    const persisted = serializeProject(state);
+    expect(deserializeProject(persisted).workingLayout).toBeNull();
+  });
+
+  it('repairs a persisted working layout that lost its baselineId', () => {
+    const state = makeTestProject();
+    const persisted = serializeProject({
+      ...state,
+      workingLayout: {
+        ...createEmptyLayout('layout-working', 'Draft', 'working'),
+        padToVoice: {},
+      },
+    });
+    const restored = deserializeProject(persisted);
+    expect(restored.workingLayout!.baselineId).toBe('layout-1');
   });
 
   it('round-trips sound stream data correctly', () => {

@@ -41,7 +41,7 @@ export function ContinuePracticingHero({
   onResume,
   onOpenEditor,
 }: ContinuePracticingHeroProps) {
-  const tempo = projectState?.tempo ?? 120;
+  const tempo = projectState?.tempo ?? project.tempo;
   const soundCount = projectState?.soundStreams.length ?? project.soundCount;
   const eventCount = projectState
     ? projectState.soundStreams.reduce((sum, s) => sum + s.events.length, 0)

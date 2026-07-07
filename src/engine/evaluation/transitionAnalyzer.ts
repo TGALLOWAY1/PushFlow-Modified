@@ -127,21 +127,3 @@ export function analyzeTransition(
     },
   };
 }
-
-/**
- * Analyzes all transitions between consecutive moments.
- */
-export function analyzeAllTransitions(
-  moments: AnalyzedMoment[]
-): Transition[] {
-  if (moments.length < 2) return [];
-
-  const transitions: Transition[] = [];
-  for (let i = 0; i < moments.length - 1; i++) {
-    const transition = analyzeTransition(moments[i], moments[i + 1]);
-    transition.fromIndex = i;
-    transition.toIndex = i + 1;
-    transitions.push(transition);
-  }
-  return transitions;
-}

@@ -165,37 +165,12 @@ export async function getFullPersistedProject(id: string): Promise<PersistedProj
 }
 
 // ============================================================================
-// Synchronous API (backward compatible, fire-and-forget saves)
+// Synchronous API (legacy localStorage fallback)
 // ============================================================================
 
 /**
- * Synchronous save — fires an async IndexedDB write and returns immediately.
- * Use for backward compatibility with existing sync call sites.
- */
-export function saveProject(state: ProjectState): void {
-  saveProjectAsync(state).catch(err =>
-    console.error('Failed to save project:', err)
-  );
-}
-
-/**
- * Synchronous project listing — reads from localStorage as fallback
- * while IndexedDB migration may be in progress.
- * Prefer listProjectsAsync() for new code.
- */
-export function listProjects(): ProjectLibraryEntry[] {
-  try {
-    const json = localStorage.getItem(LEGACY_INDEX_KEY);
-    if (!json) return [];
-    const entries = JSON.parse(json) as ProjectLibraryEntry[];
-    return entries.map(e => ({ ...e, difficulty: e.difficulty ?? null }));
-  } catch {
-    return [];
-  }
-}
-
-/**
  * Synchronous load — tries localStorage first.
+ * Used only as the editor's fallback for pre-migration edge cases.
  * Prefer loadProjectAsync() for new code.
  */
 export function loadProject(id: string): ProjectState | null {
@@ -208,42 +183,6 @@ export function loadProject(id: string): ProjectState | null {
   } catch (err) {
     console.error('Failed to load project:', err);
     return null;
-  }
-}
-
-/**
- * Synchronous delete.
- */
-export function deleteProject(id: string): void {
-  try {
-    localStorage.removeItem(`${LEGACY_PROJECT_PREFIX}${id}`);
-    const entries = listProjects().filter(e => e.id !== id);
-    localStorage.setItem(LEGACY_INDEX_KEY, JSON.stringify(entries));
-  } catch (err) {
-    console.error('Failed to delete project:', err);
-  }
-  deleteProjectAsync(id).catch(err =>
-    console.error('Failed to delete project from IndexedDB:', err)
-  );
-}
-
-/** Remove a project from the localStorage library index. */
-export function removeFromIndex(id: string): void {
-  try {
-    const entries = listProjects().filter(e => e.id !== id);
-    localStorage.setItem(LEGACY_INDEX_KEY, JSON.stringify(entries));
-  } catch (err) {
-    console.error('Failed to remove from index:', err);
-  }
-  deleteProjectAsync(id).catch(() => {});
-}
-
-/** Clear the entire project library index. */
-export function clearProjectIndex(): void {
-  try {
-    localStorage.setItem(LEGACY_INDEX_KEY, JSON.stringify([]));
-  } catch (err) {
-    console.error('Failed to clear project index:', err);
   }
 }
 

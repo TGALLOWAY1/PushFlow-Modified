@@ -59,25 +59,30 @@ export function useAutoSave(state: ProjectState): UseAutoSaveResult {
         clearTimeout(timerRef.current);
       }
 
-      // Schedule autosave
-      timerRef.current = setTimeout(() => {
-        if (!savingRef.current) {
-          savingRef.current = true;
-          setSaveStatus('saving');
-          saveProjectAsync(stateRef.current)
-            .then(() => {
-              lastSavedRef.current = stateRef.current.updatedAt;
-              setSaveStatus('saved');
-            })
-            .catch(err => {
-              console.error('Autosave failed:', err);
-              setSaveStatus('unsaved');
-            })
-            .finally(() => {
-              savingRef.current = false;
-            });
+      // Schedule autosave. If a save is already in flight when the timer
+      // fires, re-arm instead of dropping this batch of edits — otherwise
+      // the changes sit unsaved until some future edit bumps updatedAt.
+      const runAutosave = () => {
+        if (savingRef.current) {
+          timerRef.current = setTimeout(runAutosave, AUTOSAVE_DELAY_MS);
+          return;
         }
-      }, AUTOSAVE_DELAY_MS);
+        savingRef.current = true;
+        setSaveStatus('saving');
+        saveProjectAsync(stateRef.current)
+          .then(() => {
+            lastSavedRef.current = stateRef.current.updatedAt;
+            setSaveStatus('saved');
+          })
+          .catch(err => {
+            console.error('Autosave failed:', err);
+            setSaveStatus('unsaved');
+          })
+          .finally(() => {
+            savingRef.current = false;
+          });
+      };
+      timerRef.current = setTimeout(runAutosave, AUTOSAVE_DELAY_MS);
     }
 
     return () => {
@@ -87,12 +92,19 @@ export function useAutoSave(state: ProjectState): UseAutoSaveResult {
     };
   }, [state.updatedAt, state.id]);
 
-  // Save on unmount (navigating away)
+  // Save on unmount (navigating away) and on tab close/refresh. React unmount
+  // does not run on browser unload, so without the pagehide flush any edit made
+  // within the debounce window is silently lost on close or reload.
   useEffect(() => {
-    return () => {
+    const flush = () => {
       if (stateRef.current.id && stateRef.current.updatedAt !== lastSavedRef.current) {
         saveProjectAsync(stateRef.current).catch(() => {});
       }
+    };
+    window.addEventListener('pagehide', flush);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      flush();
     };
   }, []);
 

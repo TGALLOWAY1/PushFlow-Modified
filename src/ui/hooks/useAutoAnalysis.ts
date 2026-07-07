@@ -199,7 +199,14 @@ export function useAutoAnalysis() {
           manualAssignments,
         );
 
-        if (abortRef.current) return;
+        if (abortRef.current) {
+          // The effect cleanup aborted this run mid-solve. The re-run effect is
+          // blocked while isProcessing is true, so failing to reset here would
+          // permanently wedge auto-analysis for the rest of the session.
+          dispatch({ type: 'SET_PROCESSING', payload: false });
+          setAnalysisPhase('idle');
+          return;
+        }
 
         const difficultyAnalysis = analyzeDifficulty(executionPlan, state.sections);
         const tradeoffProfile = computeTradeoffProfile(executionPlan, difficultyAnalysis);
@@ -218,8 +225,8 @@ export function useAutoAnalysis() {
         setAnalysisPhase('idle');
       } catch (err) {
         setAnalysisPhase('idle');
+        dispatch({ type: 'SET_PROCESSING', payload: false });
         if (!abortRef.current) {
-          dispatch({ type: 'SET_PROCESSING', payload: false });
           dispatch({ type: 'SET_ERROR', payload: err instanceof Error ? err.message : 'Analysis failed' });
         }
       }
