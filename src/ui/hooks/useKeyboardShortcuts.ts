@@ -10,7 +10,7 @@
 
 import { useEffect } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getDisplayedLayout } from '../state/projectState';
+import { getDisplayedLayout, getDisplayedExecutionPlan } from '../state/projectState';
 
 export function useKeyboardShortcuts() {
   const { state, dispatch, undo, redo } = useProject();
@@ -47,7 +47,7 @@ export function useKeyboardShortcuts() {
 
       // Arrow Left/Right: Navigate through time steps (groups of simultaneous events)
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-        const assignments = state.analysisResult?.executionPlan.fingerAssignments;
+        const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
         if (!assignments || assignments.length === 0) return;
         e.preventDefault();
 
@@ -84,7 +84,7 @@ export function useKeyboardShortcuts() {
       // Delete / Backspace: Remove pad at selected event
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (state.selectedEventIndex === null) return;
-        const assignments = state.analysisResult?.executionPlan.fingerAssignments;
+        const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
         if (!assignments) return;
         const a = assignments.find(fa => fa.eventIndex === state.selectedEventIndex);
         if (!a || a.row === undefined || a.col === undefined) return;

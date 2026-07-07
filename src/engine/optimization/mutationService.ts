@@ -101,9 +101,9 @@ export function applyRandomMutation(layout: Layout, rng: Rng = Math.random): Lay
     const [pad1, pad2] = getRandomPair(mutablePads, rng);
     return applySwapMutation(layout, pad1, pad2);
   } else if (roll < 0.70 && emptyPads.length > 0) {
-    // Single move (only from unlocked pad)
+    // Single move (only from unlocked pad) — biased to relocate to a nearby pad
     const sourcePad = getRandomElement(mutablePads, rng);
-    const targetPad = getRandomElement(emptyPads, rng);
+    const targetPad = getNearbyEmptyPad(sourcePad, emptyPads, rng);
     return applyMoveMutation(layout, sourcePad, targetPad);
   } else if (roll < 0.85 && mutablePads.length >= 4) {
     // Cluster swap: swap two groups of adjacent unlocked voices
@@ -112,9 +112,9 @@ export function applyRandomMutation(layout: Layout, rng: Rng = Math.random): Lay
     // Row/col shift: shift unlocked pads in a row or column
     return applyShiftMutation(layout, mutablePads, emptyPads, rng);
   } else if (emptyPads.length > 0) {
-    // Fallback to move (from unlocked pad)
+    // Fallback to move (from unlocked pad) — biased to relocate to a nearby pad
     const sourcePad = getRandomElement(mutablePads, rng);
-    const targetPad = getRandomElement(emptyPads, rng);
+    const targetPad = getNearbyEmptyPad(sourcePad, emptyPads, rng);
     return applyMoveMutation(layout, sourcePad, targetPad);
   } else {
     return layout;
@@ -462,6 +462,30 @@ export function applyZoneTransferMutation(layout: Layout, rng: Rng = Math.random
 
 function getRandomElement<T>(array: T[], rng: Rng = Math.random): T {
   return array[Math.floor(rng() * array.length)];
+}
+
+/**
+ * Max Chebyshev distance a single "move" mutation relocates a voice. Keeps
+ * annealing exploration LOCAL so it refines the clustered natural-pose seed
+ * instead of teleporting voices across the grid. Unconstrained relocation was the
+ * main driver of scattered, unplayable layouts (pads "nowhere near each other").
+ */
+const MOVE_LOCALITY_RADIUS = 2;
+
+/**
+ * Pick an empty target pad for a move, biased to stay near the source pad.
+ * Prefers empty pads within MOVE_LOCALITY_RADIUS (Chebyshev) of the source; if
+ * none are free nearby, widens the radius, and finally falls back to any empty pad.
+ * The radius expansion is deterministic (no RNG), so seeded determinism is preserved.
+ */
+function getNearbyEmptyPad(source: PadCoord, emptyPads: PadCoord[], rng: Rng): PadCoord {
+  for (let radius = MOVE_LOCALITY_RADIUS; radius <= 7; radius++) {
+    const nearby = emptyPads.filter(p =>
+      Math.max(Math.abs(p.row - source.row), Math.abs(p.col - source.col)) <= radius
+    );
+    if (nearby.length > 0) return getRandomElement(nearby, rng);
+  }
+  return getRandomElement(emptyPads, rng);
 }
 
 function getRandomPair<T>(array: T[], rng: Rng = Math.random): [T, T] {

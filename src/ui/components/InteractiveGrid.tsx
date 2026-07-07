@@ -92,6 +92,12 @@ const IMPOSSIBLE_REACH_THRESHOLD = 5;
 export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave, debuggerIteration }: InteractiveGridProps) {
   const { state, dispatch } = useProject();
   const layout = layoutOverride ?? getDisplayedLayout(state);
+  // Drum-rack note for a pad is a function of its GRID POSITION, never the sound
+  // that happens to sit on it (Product Invariant #5: MIDI pitch is metadata only).
+  // bottom-left pad (row 0, col 0) = bottomLeftNote (default 36/C1); each step
+  // right is +1, each row up is +8 — the 8×8 window into the 128-cell drum rack.
+  const bottomLeftNote = state.instrumentConfig?.bottomLeftNote ?? 36;
+  const padDrumRackNote = (row: number, col: number) => bottomLeftNote + row * 8 + col;
   const [dragOverPad, setDragOverPad] = useState<string | null>(null);
   const [dragSourcePad, setDragSourcePad] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ padKey: string; x: number; y: number } | null>(null);
@@ -696,10 +702,10 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                     {voice.name}
                   </span>
                 )}
-                {/* Note label (e.g. C1, C#1) */}
-                {gridLabels?.showNoteLabels && voice.originalMidiNote != null && (
+                {/* Note label — the pad's Ableton Drum Rack note, by position (e.g. C1, C#1) */}
+                {gridLabels?.showNoteLabels && (
                   <span className="block text-[10px] font-mono text-cyan-300/80 leading-none mt-0.5">
-                    {midiNoteToName(voice.originalMidiNote)}
+                    {midiNoteToName(padDrumRackNote(row, col))}
                   </span>
                 )}
                 {/* Position label */}
@@ -741,7 +747,9 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
               </>
             )
           ) : (
-            <span className="text-[8px] text-gray-600">{row},{col}</span>
+            <span className="text-[8px] text-gray-600">
+              {gridLabels?.showNoteLabels ? midiNoteToName(padDrumRackNote(row, col)) : `${row},${col}`}
+            </span>
           )}
         </div>
       );

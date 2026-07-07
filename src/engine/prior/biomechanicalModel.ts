@@ -191,8 +191,18 @@ export const ALTERNATION_PENALTY = 1.5;
 /** Target left-hand share for right-handed bias (0.45 = 55% right). */
 export const HAND_BALANCE_TARGET_LEFT = 0.45;
 
-/** Weight for quadratic hand-balance penalty. */
-export const HAND_BALANCE_WEIGHT = 2.0;
+/**
+ * Weight for quadratic hand-balance penalty.
+ *
+ * Hand balance is a song-LEVEL property, but the canonical evaluator charges it
+ * per moment (accumulated over every multi-note moment). A high weight therefore
+ * over-penalizes grooves that comfortably fit one hand and pushes the optimizer to
+ * force a 50/50 split — which, because hand is column-derived, scatters pads across
+ * the grid and creates impossible-speed transitions. Kept as a soft nudge (not a
+ * dominant driver): genuinely one-hand-impossible passages are still caught by the
+ * transition speed limit (MAX_HAND_SPEED → Infinity), not by this cost.
+ */
+export const HAND_BALANCE_WEIGHT = 0.5;
 
 /** Minimum total notes before applying hand balance penalty. */
 export const HAND_BALANCE_MIN_NOTES = 2;

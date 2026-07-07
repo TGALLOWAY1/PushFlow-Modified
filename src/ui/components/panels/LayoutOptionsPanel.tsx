@@ -167,8 +167,12 @@ export function LayoutOptionsPanel({
                 isSelected={candidate.id === state.selectedCandidateId}
                 isCheckedForCompare={selectedForCompare.has(candidate.id)}
                 onSelect={() => {
+                  // Selecting a candidate drives display via the selector layer
+                  // (getDisplayedCandidate reads selectedCandidateId first), so we do
+                  // NOT overwrite analysisResult here — that kept analysis-cache and
+                  // candidate-selection as two conflated stores. APPLY_GENERATION makes
+                  // the candidate the editable working layout.
                   dispatch({ type: 'SELECT_CANDIDATE', payload: candidate.id });
-                  dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidate });
                   dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: candidate.id } });
                 }}
                 onPromote={() => {
@@ -244,8 +248,8 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
                     isSelected={c.id === state.selectedCandidateId}
                     isCheckedForCompare={false}
                     onSelect={() => {
+                      // Display flows through the selector layer; no analysisResult overwrite.
                       dispatch({ type: 'SELECT_CANDIDATE', payload: c.id });
-                      dispatch({ type: 'SET_ANALYSIS_RESULT', payload: c });
                       dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: c.id } });
                     }}
                     onPromote={() => {

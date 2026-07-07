@@ -415,6 +415,20 @@ export async function generateCandidates(
       ? DEEP_ANNEALING_CONFIG
       : FAST_ANNEALING_CONFIG;
 
+    const hasLayout = Object.keys(layout.padToVoice).length > 0;
+
+    // Pre-seed pad ownership from pose0 when available — this ensures the solver
+    // uses the natural finger for each pad from the first event, preventing
+    // ownership conflicts from random grip selection. Both the annealing ("Thorough")
+    // and beam-only ("Quick") paths get it, so Thorough no longer starts from a
+    // worse footing than Quick.
+    const offsetRow = strategy.layoutStrategy.type === 'pose0-offset'
+      ? strategy.layoutStrategy.offsetRow
+      : 0;
+    const initialPadOwnership = (pose0 && poseHasAssignments(pose0) && hasLayout)
+      ? computeInitialPadOwnership(pose0, layout, offsetRow)
+      : undefined;
+
     if (shouldAnneal && Object.keys(layout.padToVoice).length > 0) {
       // Run annealing to optimize layout + execution jointly
       const solverConfig: SolverConfig = {
@@ -422,24 +436,13 @@ export async function generateCandidates(
         layout,
         seed: strategy.seed,
         annealingConfig,
+        initialPadOwnership,
       };
       const solver = createAnnealingSolver(solverConfig);
       executionPlan = await solver.solve(performance, candidateEngineConfig);
       finalLayout = solver.getBestLayout() ?? layout;
     } else {
       // Run beam search only (no annealing requested or empty layout)
-      const hasLayout = Object.keys(layout.padToVoice).length > 0;
-
-      // Pre-seed pad ownership from pose0 when available — this ensures the
-      // solver uses the natural finger for each pad from the first event,
-      // preventing ownership conflicts from random grip selection.
-      const offsetRow = strategy.layoutStrategy.type === 'pose0-offset'
-        ? strategy.layoutStrategy.offsetRow
-        : 0;
-      const initialPadOwnership = (pose0 && poseHasAssignments(pose0) && hasLayout)
-        ? computeInitialPadOwnership(pose0, layout, offsetRow)
-        : undefined;
-
       const solverConfig: SolverConfig = {
         instrumentConfig: config.instrumentConfig,
         layout: hasLayout ? layout : null,

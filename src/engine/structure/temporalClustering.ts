@@ -18,8 +18,6 @@
 
 import { type PerformanceEvent } from '../../types/performanceEvent';
 import {
-  type TransitionGraph,
-  type TransitionEdge,
   type CooccurrenceGraph,
 } from '../../types/performanceStructure';
 

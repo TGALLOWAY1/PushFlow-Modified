@@ -9,7 +9,7 @@
  */
 
 import { type Layout } from '../../types/layout';
-import { type TemporalClusterAnalysis, type TemporalAffinity } from '../../types/performanceStructure';
+import { type TemporalClusterAnalysis } from '../../types/performanceStructure';
 import { type PadCoord, parsePadKey } from '../../types/padGrid';
 import { manhattanDistance } from '../surface/padGrid';
 

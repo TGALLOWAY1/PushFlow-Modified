@@ -50,6 +50,7 @@ export class AnnealingSolver implements SolverStrategy {
   private instrumentConfig: SolverConfig['instrumentConfig'];
   private initialLayout: Layout | null;
   private neutralPadPositionsOverride: NeutralPadPositions | null = null;
+  private initialPadOwnership: SolverConfig['initialPadOwnership'];
   private bestLayout: Layout | null = null;
   private seed: number;
   private annealingConfig: AnnealingConfig;
@@ -58,6 +59,12 @@ export class AnnealingSolver implements SolverStrategy {
     this.instrumentConfig = config.instrumentConfig;
     this.initialLayout = config.layout ?? null;
     this.neutralPadPositionsOverride = config.neutralPadPositionsOverride ?? null;
+    // Pose0 pad→finger pre-seed. Positional (keyed by pad), so it stays valid as
+    // annealing moves voices between pads. Forwarding it to the internal beam
+    // evaluations gives annealing the same natural-finger head-start the "Quick"
+    // (beam-only) path already gets — without it, annealing produced far more
+    // unplayable events than the quick arrangement.
+    this.initialPadOwnership = config.initialPadOwnership;
     this.seed = config.seed ?? Math.floor(Math.random() * 0x7fffffff);
     this.annealingConfig = config.annealingConfig ?? FAST_ANNEALING_CONFIG;
   }
@@ -116,6 +123,7 @@ export class AnnealingSolver implements SolverStrategy {
       instrumentConfig: this.instrumentConfig,
       layout,
       neutralPadPositionsOverride: this.neutralPadPositionsOverride,
+      initialPadOwnership: this.initialPadOwnership,
       mappingResolverMode: 'strict',
     };
 
@@ -348,6 +356,7 @@ export class AnnealingSolver implements SolverStrategy {
       instrumentConfig: this.instrumentConfig,
       layout: globalBestLayout,
       neutralPadPositionsOverride: this.neutralPadPositionsOverride,
+      initialPadOwnership: this.initialPadOwnership,
     };
 
     const finalBeamSolver = createBeamSolver(finalSolverConfig);
