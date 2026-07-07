@@ -3,33 +3,30 @@
  *
  * Performance Practice Hub — the homepage.
  * Modern dark design with full-width hero, project card grid,
- * and sidebar with readiness score, quick actions, and practice stats.
+ * and sidebar with real library stats and quick actions.
  *
  * Uses IndexedDB for project listing (async), with localStorage fallback.
  */
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { Plus, Upload } from 'lucide-react';
 import { type ProjectState, createEmptyProjectState } from '../state/projectState';
 import {
   listProjectsAsync,
   saveProjectAsync,
   deleteProjectAsync,
   loadProjectAsync,
+  exportProjectToFile,
+  importProjectFromFile,
   type ProjectLibraryEntry,
 } from '../persistence/projectStorage';
 import { generateId } from '../../utils/idGenerator';
 
 import { ContinuePracticingHero } from '../components/Homepage/ContinuePracticingHero';
-import { ReadinessScoreCard } from '../components/Homepage/ReadinessScoreCard';
 import { PerformanceCard } from '../components/Homepage/PerformanceCard';
 import { QuickActionsCard } from '../components/Homepage/QuickActionsCard';
-import { PracticeStatsCard } from '../components/Homepage/PracticeStatsCard';
-import {
-  getReadinessData,
-  getPracticeStats,
-} from '../components/Homepage/homepageDemoData';
+import { LibraryStatsCard } from '../components/Homepage/LibraryStatsCard';
 
 export function ProjectLibraryPage() {
   const navigate = useNavigate();
@@ -37,7 +34,8 @@ export function ProjectLibraryPage() {
   const [projectStates, setProjectStates] = useState<Map<string, ProjectState>>(new Map());
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<'all' | 'recent' | 'favorites'>('all');
+  const [importError, setImportError] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   // Load project list from IndexedDB
   const refreshProjects = useCallback(async () => {
@@ -67,21 +65,16 @@ export function ProjectLibraryPage() {
     refreshProjects();
   }, [refreshProjects]);
 
-  // Hero project = most recently updated (index 0, already sorted)
+  // Hero project = most recently updated (index 0, already sorted).
+  // When searching, the hero stays put and the grid searches ALL projects.
   const heroProject = savedProjects.length > 0 ? savedProjects[0] : null;
-  // Grid projects = remaining (up to 6 for the 3x2 grid)
   const gridProjects = useMemo(() => {
-    let projects = savedProjects.slice(1);
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      projects = projects.filter(p => p.name.toLowerCase().includes(q));
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      return savedProjects.filter(p => p.name.toLowerCase().includes(q));
     }
-    return projects.slice(0, 6);
+    return savedProjects.slice(1);
   }, [savedProjects, searchQuery]);
-
-  // Mock data (stable across renders)
-  const readinessData = useMemo(() => getReadinessData(), []);
-  const practiceStats = useMemo(() => getPracticeStats(), []);
 
   // ---- Handlers ----
 
@@ -99,9 +92,35 @@ export function ProjectLibraryPage() {
     navigate(`/project/${id}${queryParams}`);
   }, [navigate]);
 
-  const handleRemoveFromHistory = useCallback(async (id: string) => {
-    await deleteProjectAsync(id);
+  const handleDeleteProject = useCallback(async (entry: ProjectLibraryEntry) => {
+    const confirmed = window.confirm(
+      `Delete "${entry.name}" permanently? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    await deleteProjectAsync(entry.id);
     refreshProjects();
+  }, [refreshProjects]);
+
+  const handleExportProject = useCallback(async (id: string) => {
+    const state = projectStates.get(id) ?? await loadProjectAsync(id);
+    if (state) exportProjectToFile(state);
+  }, [projectStates]);
+
+  const handleImportFile = useCallback(async (file: File) => {
+    setImportError(null);
+    const result = await importProjectFromFile(file);
+    if (!result.ok) {
+      setImportError(`Could not import "${file.name}": ${result.error}`);
+      return;
+    }
+    // Never overwrite an existing project on import — give collisions a new id.
+    let state = result.state;
+    const existing = await loadProjectAsync(state.id);
+    if (existing) {
+      state = { ...state, id: generateId('proj'), name: `${state.name} (imported)` };
+    }
+    await saveProjectAsync(state);
+    await refreshProjects();
   }, [refreshProjects]);
 
   // ---- Render ----
@@ -136,6 +155,25 @@ export function ProjectLibraryPage() {
               className="w-80 bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-xl py-2.5 pl-10 pr-4 font-label text-xs uppercase tracking-widest text-[var(--text-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)] placeholder:text-[var(--text-tertiary)] outline-none transition-colors"
             />
           </div>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={e => {
+              const file = e.target.files?.[0];
+              if (file) handleImportFile(file);
+              e.target.value = '';
+            }}
+          />
+          <button
+            onClick={() => importInputRef.current?.click()}
+            className="flex items-center gap-2 px-5 py-2.5 bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-headline font-bold rounded-xl hover:border-[var(--border-default)] transition-colors"
+            title="Import a .pushflow.json project file"
+          >
+            <Upload size={16} />
+            Import Project
+          </button>
           <button
             onClick={() => handleNewProject()}
             className="flex items-center gap-2 px-5 py-2.5 bg-[var(--bg-card)] border border-[var(--accent-primary)]/20 text-[var(--accent-primary)] font-headline font-bold rounded-xl hover:bg-[var(--accent-primary)]/5 transition-colors"
@@ -145,6 +183,18 @@ export function ProjectLibraryPage() {
           </button>
         </div>
       </header>
+
+      {importError && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-3 flex items-center justify-between">
+          <p className="text-sm text-red-300 font-body">{importError}</p>
+          <button
+            className="text-red-300 hover:text-red-100 text-xs font-label uppercase tracking-widest"
+            onClick={() => setImportError(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* ---- Hero Section ---- */}
       {heroProject ? (
@@ -180,31 +230,12 @@ export function ProjectLibraryPage() {
         </section>
       )}
 
-      {/* ---- Filter Tabs ---- */}
-      <div className="flex items-center gap-4">
-        <div className="flex bg-[var(--bg-panel)] p-1 rounded-xl border border-[var(--border-subtle)]">
-          {(['all', 'recent', 'favorites'] as const).map(filter => (
-            <button
-              key={filter}
-              onClick={() => setActiveFilter(filter)}
-              className={`px-5 py-2 text-xs font-label uppercase tracking-widest rounded-lg transition-colors ${
-                activeFilter === filter
-                  ? 'bg-[var(--bg-card)] text-[var(--accent-primary)]'
-                  : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              {filter}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* ---- Content Grid: Projects + Sidebar ---- */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-8">
         {/* Project Grid */}
         <div>
           <h2 className="font-label uppercase tracking-[0.15em] text-[var(--text-tertiary)] text-xs font-semibold mb-5">
-            Active Performances
+            {searchQuery.trim() ? 'Search Results' : 'Active Performances'}
           </h2>
 
           {gridProjects.length > 0 ? (
@@ -215,11 +246,12 @@ export function ProjectLibraryPage() {
                   project={entry}
                   projectState={projectStates.get(entry.id) ?? null}
                   onOpen={() => navigate(`/project/${entry.id}`)}
-                  onDelete={() => handleRemoveFromHistory(entry.id)}
+                  onDelete={() => handleDeleteProject(entry)}
+                  onExport={() => handleExportProject(entry.id)}
                 />
               ))}
               {/* Add placeholder */}
-              {gridProjects.length < 6 && (
+              {!searchQuery.trim() && (
                 <button
                   onClick={() => handleNewProject()}
                   className="rounded-xl border border-dashed border-[var(--border-default)] bg-[var(--bg-panel)] flex items-center justify-center min-h-[220px] hover:border-[var(--accent-primary)]/30 hover:bg-[var(--accent-primary)]/5 transition-all group"
@@ -248,8 +280,7 @@ export function ProjectLibraryPage() {
 
         {/* Sidebar */}
         <div className="space-y-6">
-          <ReadinessScoreCard data={readinessData} />
-          <PracticeStatsCard stats={practiceStats} />
+          <LibraryStatsCard projects={savedProjects} />
           <QuickActionsCard
             onNewProject={handleNewProject}
             onNavigate={navigate}

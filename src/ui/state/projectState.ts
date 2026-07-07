@@ -850,6 +850,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return {
         ...state,
         workingLayout: null,
+        updatedAt: new Date().toISOString(),
         analysisStale: true,
         selectedEventIndex: null,
         selectedMomentIndex: null,
@@ -1055,8 +1056,11 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
     // -- Analysis --
 
+    // Analysis results and candidates are analysis-only state (never persisted),
+    // so they must not bump updatedAt — otherwise merely opening a project
+    // triggers an autosave and reshuffles the library's recency ordering.
     case 'SET_ANALYSIS_RESULT':
-      return { ...state, analysisResult: action.payload, analysisStale: false, updatedAt: new Date().toISOString() };
+      return { ...state, analysisResult: action.payload, analysisStale: false };
 
     case 'SET_CANDIDATES':
       return {
@@ -1065,7 +1069,6 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         selectedCandidateId: action.payload[0]?.id ?? null,
         compareCandidateId: null,
         isProcessing: false,
-        updatedAt: new Date().toISOString(),
       };
 
     case 'SELECT_CANDIDATE':
@@ -1146,15 +1149,16 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'TOGGLE_PLAYING':
       return { ...state, isPlaying: !state.isPlaying };
 
-    // Optimizer configuration
+    // Optimizer configuration — persisted user preferences, so bump updatedAt
+    // to schedule an autosave (otherwise the choice silently reverts on reload).
     case 'SET_OPTIMIZER_METHOD':
-      return { ...state, optimizerMethod: action.payload };
+      return { ...state, optimizerMethod: action.payload, updatedAt: new Date().toISOString() };
 
     case 'SET_GREEDY_STRATEGY':
-      return { ...state, greedyStrategy: action.payload };
+      return { ...state, greedyStrategy: action.payload, updatedAt: new Date().toISOString() };
 
     case 'SET_COST_TOGGLES':
-      return { ...state, costToggles: action.payload };
+      return { ...state, costToggles: action.payload, updatedAt: new Date().toISOString() };
 
     case 'SET_MANUAL_COST_RESULT':
       return { ...state, manualCostResult: action.payload };

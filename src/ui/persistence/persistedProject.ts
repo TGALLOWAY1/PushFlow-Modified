@@ -47,6 +47,12 @@ export interface PersistedProject {
   // --- Layouts ---
   /** Committed baseline layout. */
   activeLayout: Layout;
+  /**
+   * Uncommitted exploratory edits, persisted separately so a refresh never
+   * overwrites the committed Active Layout baseline. Restored as the
+   * Working/Test Layout on load; absent when there are no uncommitted edits.
+   */
+  workingLayout?: Layout | null;
   /** Durable named alternative layouts. */
   savedVariants: Layout[];
 

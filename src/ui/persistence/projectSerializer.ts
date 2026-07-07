@@ -41,10 +41,12 @@ export function serializeProject(state: ProjectState): PersistedProject {
     name: state.name,
     bpm: state.tempo,
 
-    // Layouts — merge workingLayout into activeLayout so edits survive refresh
-    // The workingLayout contains uncommitted pad edits; if it exists, it's what
-    // the user is actually looking at, so persist it as the active layout.
-    activeLayout: state.workingLayout ?? state.activeLayout,
+    // Layouts — the committed baseline and the uncommitted working draft are
+    // persisted separately. Merging working into active here would destroy the
+    // promoted baseline on the next autosave (Discard would have nothing to
+    // return to), so the working layout gets its own slot instead.
+    activeLayout: state.activeLayout,
+    workingLayout: state.workingLayout ?? null,
     savedVariants: state.savedVariants,
 
     // Sound state
@@ -126,7 +128,15 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
     activeLayout: persisted.activeLayout
       ? reconcileLayoutVoices(ensureLayoutDefaults(persisted.activeLayout, 'active'), soundStreams)
       : base.activeLayout,
-    workingLayout: null, // Always null on load (session-scoped)
+    workingLayout: persisted.workingLayout
+      ? reconcileLayoutVoices(
+          ensureWorkingBaseline(
+            ensureLayoutDefaults(persisted.workingLayout, 'working'),
+            persisted.activeLayout?.id,
+          ),
+          soundStreams,
+        )
+      : null,
     savedVariants: Array.isArray(persisted.savedVariants)
       ? persisted.savedVariants.map(l => reconcileLayoutVoices(ensureLayoutDefaults(l, 'variant'), soundStreams))
       : [],
@@ -233,6 +243,12 @@ function ensureLayoutDefaults(layout: any, role: Layout['role']): Layout {
   };
 }
 
+/** Working layouts must reference their baseline; repair records that lost it. */
+function ensureWorkingBaseline(layout: Layout, activeLayoutId: string | undefined): Layout {
+  if (layout.baselineId || !activeLayoutId) return layout;
+  return { ...layout, baselineId: activeLayoutId };
+}
+
 function isValidOptimizerMethod(m: unknown): m is OptimizerMethodKey {
   return typeof m === 'string' && ['beam', 'annealing', 'greedy'].includes(m);
 }
@@ -257,6 +273,9 @@ function applyPersistedDefaults(p: Partial<PersistedProject> & { id: string }): 
     activeLayout: p.activeLayout
       ? ensureLayoutDefaults(p.activeLayout, 'active')
       : base.activeLayout,
+    workingLayout: p.workingLayout
+      ? ensureLayoutDefaults(p.workingLayout, 'working')
+      : null,
     savedVariants: Array.isArray(p.savedVariants)
       ? p.savedVariants.map(l => ensureLayoutDefaults(l, 'variant'))
       : [],

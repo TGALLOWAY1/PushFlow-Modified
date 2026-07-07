@@ -131,7 +131,7 @@ src/
 │   ├── pattern/                   # Pattern engine, presets, rhythm resolvers
 │   ├── mapping/                   # Pad-to-event mapping, coverage, seed from pose
 │   ├── debug/                     # Debug utilities, sanity checks, constraint validator
-│   ├── diagnostics/               # Fatigue model, legacy costs
+│   ├── diagnostics/               # Fatigue model
 │   ├── surface/                   # Hand zone, pad grid
 │   └── index.ts                   # Main engine export
 ├── types/                         # Domain types and contracts (~20 files)
@@ -149,11 +149,11 @@ src/
 │   ├── components/                # React components
 │   │   ├── Grid/                  # PadGrid, InteractiveGrid, CompareGridView
 │   │   ├── Panels/                # DiagnosticsPanel, AnalysisSidePanel, EventDetailPanel
-│   │   ├── Timeline/              # ExecutionTimeline, UnifiedTimeline, TimelinePanel
+│   │   ├── Timeline/              # UnifiedTimeline, TimelinePanel
 │   │   ├── Candidates/            # CandidateCard, CandidateCompare
 │   │   ├── Voice/                 # VoicePalette, PadContextMenu
-│   │   ├── Editor/                # EditorToolbar, DifficultyHeatmap
-│   │   ├── Lanes/                 # PerformanceLanesView, LaneRow, LaneSidebar, LaneTimeline
+│   │   ├── Editor/                # EditorToolbar
+│   │   ├── Lanes/                 # PerformanceLanesView, LaneRow, LaneSidebar
 │   │   ├── LoopEditor/            # LoopEditorView, LoopGridCanvas, PatternLayerEditor
 │   │   └── Workspace/             # PerformanceWorkspace, WorkspacePatternStudio
 │   ├── pages/                     # ProjectLibraryPage, ProjectEditorPage, OptimizerDebugPage

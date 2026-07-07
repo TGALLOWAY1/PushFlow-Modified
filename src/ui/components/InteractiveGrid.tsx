@@ -415,7 +415,9 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
         const anchorRow = parseInt(rowStr, 10);
         const anchorCol = parseInt(colStr, 10);
         onPresetDrop(presetId, anchorRow, anchorCol, isMirrored);
-      } catch { /* invalid data */ }
+      } catch {
+        dispatch({ type: 'SET_ERROR', payload: 'Could not place preset — the dragged data was invalid. Try dragging it again.' });
+      }
       return;
     }
 
@@ -436,8 +438,12 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
         const stream = state.soundStreams.find(s => s.id === data.id);
         if (stream) {
           dispatch({ type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey, stream } });
+        } else {
+          dispatch({ type: 'SET_ERROR', payload: 'Could not assign sound — it no longer exists in this project.' });
         }
-      } catch { /* invalid data */ }
+      } catch {
+        dispatch({ type: 'SET_ERROR', payload: 'Could not assign sound — the dragged data was invalid. Try dragging it again.' });
+      }
       setDragSourcePad(null);
       return;
     }

@@ -7,13 +7,8 @@
 
 import {
   Plus,
-  Download,
-  Copy,
-  Play,
-  GitCompare,
   Shield,
   Clock,
-  History,
   Sparkles,
 } from 'lucide-react';
 
@@ -47,34 +42,6 @@ const ACTIONS: ActionDef[] = [
     bgAccent: 'bg-emerald-400/10',
   },
   {
-    icon: <Download size={15} />,
-    label: 'Import MIDI',
-    onClick: (p) => p.onNewProject(),
-    accent: 'text-blue-400',
-    bgAccent: 'bg-blue-400/10',
-  },
-  {
-    icon: <Copy size={15} />,
-    label: 'Duplicate Existing Layout',
-    onClick: () => {},
-    accent: 'text-purple-400',
-    bgAccent: 'bg-purple-400/10',
-  },
-  {
-    icon: <Play size={15} />,
-    label: 'Resume Last Practice',
-    onClick: () => {},
-    accent: 'text-amber-400',
-    bgAccent: 'bg-amber-400/10',
-  },
-  {
-    icon: <GitCompare size={15} />,
-    label: 'Compare Layout Options',
-    onClick: () => {},
-    accent: 'text-orange-400',
-    bgAccent: 'bg-orange-400/10',
-  },
-  {
     icon: <Shield size={15} />,
     label: 'Constraint Validator',
     onClick: (p) => p.onNavigate('/validator'),
@@ -87,13 +54,6 @@ const ACTIONS: ActionDef[] = [
     onClick: (p) => p.onNavigate('/temporal-evaluator'),
     accent: 'text-cyan-400',
     bgAccent: 'bg-cyan-400/10',
-  },
-  {
-    icon: <History size={15} />,
-    label: 'View Practice History',
-    onClick: () => {},
-    accent: 'text-rose-400',
-    bgAccent: 'bg-rose-400/10',
   },
 ];
 

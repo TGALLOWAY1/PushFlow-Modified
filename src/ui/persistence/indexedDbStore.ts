@@ -100,30 +100,51 @@ export async function listAllProjects(): Promise<ProjectIndexEntry[]> {
     const request = store.getAll();
     request.onsuccess = () => {
       const projects = request.result as PersistedProject[];
-      const entries: ProjectIndexEntry[] = projects.map(p => {
-        const eventCount = p.soundStreams.reduce((sum, s) => sum + s.events.length, 0);
-        // Compute duration in bars from events
-        let maxTime = 0;
-        for (const s of p.soundStreams) {
-          for (const e of s.events) {
-            const end = e.startTime + e.duration;
-            if (end > maxTime) maxTime = end;
+      // Map each record defensively: one corrupt/partial record must degrade
+      // to a placeholder entry, not throw and hide the user's entire library.
+      const entries: ProjectIndexEntry[] = [];
+      for (const p of projects) {
+        try {
+          const soundStreams = Array.isArray(p.soundStreams) ? p.soundStreams : [];
+          let eventCount = 0;
+          let maxTime = 0;
+          for (const s of soundStreams) {
+            const events = Array.isArray(s.events) ? s.events : [];
+            eventCount += events.length;
+            for (const e of events) {
+              const end = e.startTime + e.duration;
+              if (end > maxTime) maxTime = end;
+            }
+          }
+          const beatDuration = 60 / (p.bpm || 120);
+          const barDuration = beatDuration * 4;
+          const durationBars = barDuration > 0 ? Math.ceil(maxTime / barDuration) : 0;
+          entries.push({
+            id: p.id,
+            name: p.name,
+            createdAt: p.createdAt,
+            updatedAt: p.updatedAt,
+            soundCount: soundStreams.length,
+            eventCount,
+            tempo: p.bpm || 120,
+            durationBars,
+          });
+        } catch (err) {
+          console.warn(`Skipping unreadable project record ${p?.id ?? '(unknown)'}:`, err);
+          if (p && typeof p.id === 'string') {
+            entries.push({
+              id: p.id,
+              name: typeof p.name === 'string' ? p.name : 'Unreadable project',
+              createdAt: typeof p.createdAt === 'string' ? p.createdAt : '',
+              updatedAt: typeof p.updatedAt === 'string' ? p.updatedAt : '',
+              soundCount: 0,
+              eventCount: 0,
+              tempo: 120,
+              durationBars: 0,
+            });
           }
         }
-        const beatDuration = 60 / (p.bpm || 120);
-        const barDuration = beatDuration * 4;
-        const durationBars = barDuration > 0 ? Math.ceil(maxTime / barDuration) : 0;
-        return {
-          id: p.id,
-          name: p.name,
-          createdAt: p.createdAt,
-          updatedAt: p.updatedAt,
-          soundCount: p.soundStreams.length,
-          eventCount,
-          tempo: p.bpm || 120,
-          durationBars,
-        };
-      });
+      }
       // Sort by updatedAt descending
       entries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
       resolve(entries);

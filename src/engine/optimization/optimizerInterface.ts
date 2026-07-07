@@ -209,6 +209,12 @@ export interface OptimizerTelemetry {
   finalCost: number;
   /** Relative improvement: (initial - final) / initial. */
   improvement: number;
+  /**
+   * The random seed actually used for this run. When the caller supplies no
+   * seed and the method generates one, it must be echoed here so the run can
+   * be reproduced (see the Restart / Attempt Metadata contract).
+   */
+  seed?: number;
 }
 
 // ============================================================================
