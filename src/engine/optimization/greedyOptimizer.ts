@@ -393,6 +393,7 @@ class GreedyOptimizer implements OptimizerMethod {
       initialCost,
       finalCost: finalDiagnostics.total,
       improvement: initialCost > 0 ? (initialCost - finalDiagnostics.total) / initialCost : 0,
+      seed: input.config.seed ?? 0,
     };
 
     return {

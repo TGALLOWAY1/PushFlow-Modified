@@ -14,12 +14,15 @@ interface LayoutOptionsPanelProps {
   selectedForCompare: Set<string>;
   onToggleCompare: (id: string) => void;
   onCompare: () => void;
+  /** Re-runs candidate generation after a failure. */
+  onRetryGenerate?: () => void;
 }
 
 export function LayoutOptionsPanel({
   selectedForCompare,
   onToggleCompare,
   onCompare,
+  onRetryGenerate,
 }: LayoutOptionsPanelProps) {
   const { state, dispatch } = useProject();
   const [viewAllOpen, setViewAllOpen] = useState(false);
@@ -63,8 +66,34 @@ export function LayoutOptionsPanel({
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto px-3 py-3">
+        {/* Inline error state — the top banner is easy to miss in a
+            full-viewport editor, so failures also surface here where the
+            user is looking after clicking Generate. */}
+        {state.error && !state.isProcessing && (
+          <div className="rounded-pf-md border border-red-500/20 bg-red-500/8 px-3 py-2.5 mb-2">
+            <div className="text-pf-xs font-semibold text-red-400 mb-1">Generation failed</div>
+            <div className="text-pf-xs text-red-400/80 mb-2 break-words">{state.error}</div>
+            <div className="flex items-center gap-2">
+              {onRetryGenerate && (
+                <button
+                  className="px-2 py-1 text-pf-xs rounded-pf-sm bg-red-600/20 border border-red-500/30 text-red-300 hover:bg-red-600/30 transition-colors"
+                  onClick={onRetryGenerate}
+                >
+                  Retry
+                </button>
+              )}
+              <button
+                className="px-2 py-1 text-pf-xs rounded-pf-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+                onClick={() => dispatch({ type: 'SET_ERROR', payload: null })}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Empty state */}
-        {!hasCandidates && !state.isProcessing && (
+        {!hasCandidates && !state.isProcessing && !state.error && (
           <div className="text-pf-xs text-[var(--text-tertiary)] py-6 text-center">
             Click <strong className="text-[var(--text-secondary)]">Generate</strong> to create candidate layouts.
           </div>

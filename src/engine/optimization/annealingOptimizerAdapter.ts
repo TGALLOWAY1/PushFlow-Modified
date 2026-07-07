@@ -49,12 +49,16 @@ class AnnealingOptimizerAdapter implements OptimizerMethod {
         ? DEEP_ANNEALING_CONFIG
         : FAST_ANNEALING_CONFIG;
 
+    // Resolve the seed once so a randomly generated fallback can be echoed
+    // into telemetry — otherwise an unseeded run is irreproducible.
+    const resolvedSeed = input.config.seed ?? Math.floor(Math.random() * 0x7fffffff);
+
     // Convert to SolverConfig
     const solverConfig: SolverConfig = {
       instrumentConfig: input.instrumentConfig,
       layout: input.layout,
       sourceLayoutRole: input.layout.role,
-      seed: input.config.seed ?? Math.floor(Math.random() * 0x7fffffff),
+      seed: resolvedSeed,
       annealingConfig,
     };
 
@@ -105,6 +109,7 @@ class AnnealingOptimizerAdapter implements OptimizerMethod {
       initialCost,
       finalCost: executionPlan.averageMetrics.total,
       improvement: executionPlan.metadata?.solverTelemetry?.finalCostImprovement ?? 0,
+      seed: resolvedSeed,
     };
 
     return {
