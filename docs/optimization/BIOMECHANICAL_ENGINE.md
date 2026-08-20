@@ -342,6 +342,10 @@ For full-performance decisions, inspect at least:
 5. peak moments and transition records; and
 6. baseline-relative differences when selecting a Candidate Solution.
 
+The canonical evaluator attributes a non-finite transition to its destination
+moment as an infeasibility. A speed-limit violation therefore cannot retain a
+`feasible` verdict merely because every Sound has a pad and finger owner.
+
 ## Configuration and tuning
 
 | Parameter | Default/current value | Effect |
@@ -392,9 +396,9 @@ These are current implementation facts, not desired future behavior:
 1. **The solver and canonical evaluator use different pose-naturalness
    formulas.** Beam uses translation-invariant shape deviation plus raw finger
    preference; post-hoc evaluation uses weighted centroid/home/finger terms.
-2. **Post-hoc grip classification checks span only.** `buildMomentPoses` does not
-   re-run topology, thumb, outward-rotation, collision, reach, or zone checks.
-   The beam generator applies more geometry than independent validation.
+2. **Post-hoc and solver grip geometry are aligned.** `buildMomentPoses` reuses
+   the strict CLP predicate and additionally rejects duplicate simultaneous
+   finger ownership and wrong-hand zones. Reach remains a transition concern.
 3. **Transition speed is centroid-based.** A shared finger can move very far and
    incur a large soft cost without independently triggering `Infinity` when the
    centroid remains under 12 units/s.

@@ -11,11 +11,8 @@ import { type FingerCoordinate, type HandPose } from '../../types/performance';
 import { parsePadKey } from '../../types/padGrid';
 import { type PadFingerAssignment } from '../../types/executionPlan';
 import { type ConstraintTier } from '../prior/feasibility';
-import {
-  FINGER_PAIR_MAX_SPAN_STRICT,
-  MAX_FINGER_SPAN_STRICT,
-  pairKey,
-} from '../prior/biomechanicalModel';
+import { isStrictGripValid } from '../prior/feasibility';
+import { isZoneValid } from '../surface/handZone';
 
 // ============================================================================
 // Pose Construction
@@ -48,6 +45,8 @@ export function buildMomentPoses(
   const leftFingers: Partial<Record<FingerType, FingerCoordinate>> = {};
   const rightFingers: Partial<Record<FingerType, FingerCoordinate>> = {};
   const unmappedPads: string[] = [];
+  let assignmentCollision = false;
+  let zoneViolation = false;
 
   for (const padKey of activePadKeys) {
     const owner = assignment[padKey];
@@ -65,8 +64,12 @@ export function buildMomentPoses(
     const fingerCoord: FingerCoordinate = { x: coord.col, y: coord.row };
 
     if (owner.hand === 'left') {
+      if (leftFingers[owner.finger]) assignmentCollision = true;
+      if (!isZoneValid(coord, 'left')) zoneViolation = true;
       leftFingers[owner.finger] = fingerCoord;
     } else {
+      if (rightFingers[owner.finger]) assignmentCollision = true;
+      if (!isZoneValid(coord, 'right')) zoneViolation = true;
       rightFingers[owner.finger] = fingerCoord;
     }
   }
@@ -79,7 +82,9 @@ export function buildMomentPoses(
     ? buildHandPose(rightFingers)
     : null;
 
-  const tier = classifyGripTier(leftFingers, rightFingers);
+  const tier = assignmentCollision || zoneViolation
+    ? 'fallback'
+    : classifyGripTier(leftFingers, rightFingers);
 
   return { left, right, tier, unmappedPads };
 }
@@ -105,33 +110,15 @@ function buildHandPose(
 /**
  * Determines the constraint tier for the given finger positions.
  * V1 Cost Model (D-01): Only strict tier exists. Returns 'strict' if all
- * finger pairs pass strict span limits, 'fallback' otherwise.
+ * hand poses pass every strict CLP geometry rule, 'fallback' otherwise.
  */
 function classifyGripTier(
   leftFingers: Partial<Record<FingerType, FingerCoordinate>>,
   rightFingers: Partial<Record<FingerType, FingerCoordinate>>,
 ): ConstraintTier {
-  const strictOk = checkSpan(leftFingers, FINGER_PAIR_MAX_SPAN_STRICT)
-    && checkSpan(rightFingers, FINGER_PAIR_MAX_SPAN_STRICT);
+  const strictOk = (Object.keys(leftFingers).length === 0 || isStrictGripValid(leftFingers, 'left'))
+    && (Object.keys(rightFingers).length === 0 || isStrictGripValid(rightFingers, 'right'));
   return strictOk ? 'strict' : 'fallback';
-}
-
-function checkSpan(
-  fingers: Partial<Record<FingerType, FingerCoordinate>>,
-  pairMaxSpan: Record<string, number>,
-): boolean {
-  const entries = Object.entries(fingers) as [FingerType, FingerCoordinate][];
-  for (let i = 0; i < entries.length; i++) {
-    for (let j = i + 1; j < entries.length; j++) {
-      const key = pairKey(entries[i][0], entries[j][0]);
-      const max = pairMaxSpan[key] ?? MAX_FINGER_SPAN_STRICT;
-      const dx = entries[i][1].x - entries[j][1].x;
-      const dy = entries[i][1].y - entries[j][1].y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > max) return false;
-    }
-  }
-  return true;
 }
 
 /**

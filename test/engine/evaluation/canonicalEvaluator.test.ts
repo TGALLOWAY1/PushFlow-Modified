@@ -168,6 +168,27 @@ describe('poseBuilder', () => {
     const result = buildMomentPoses([padKey(3, 4), padKey(3, 5)], assignment);
     expect(result.tier).toBe('strict');
   });
+
+  it('rejects simultaneous pads assigned to the same finger', () => {
+    const assignment: PadFingerAssignment = {
+      [padKey(3, 4)]: { hand: 'right', finger: 'index' },
+      [padKey(3, 5)]: { hand: 'right', finger: 'index' },
+    };
+    expect(buildMomentPoses([padKey(3, 4), padKey(3, 5)], assignment).tier).toBe('fallback');
+  });
+
+  it('applies topology and hand-zone rules used by the solver', () => {
+    const crossed: PadFingerAssignment = {
+      [padKey(3, 4)]: { hand: 'right', finger: 'index' },
+      [padKey(3, 3)]: { hand: 'right', finger: 'middle' },
+    };
+    const wrongZone: PadFingerAssignment = {
+      [padKey(3, 1)]: { hand: 'right', finger: 'index' },
+    };
+
+    expect(buildMomentPoses([padKey(3, 4), padKey(3, 3)], crossed).tier).toBe('fallback');
+    expect(buildMomentPoses([padKey(3, 1)], wrongZone).tier).toBe('fallback');
+  });
 });
 
 // ============================================================================
@@ -436,6 +457,32 @@ describe('evaluatePerformance', () => {
 
     expect(result.feasibility).toBeDefined();
     expect(['feasible', 'degraded', 'infeasible']).toContain(result.feasibility.level);
+  });
+
+  it('marks an over-speed transition as infeasible', () => {
+    const layout: Layout = {
+      ...makeSimpleLayout(),
+      padToVoice: {
+        [padKey(0, 3)]: makeVoice(40),
+        [padKey(7, 7)]: makeVoice(41),
+      },
+    };
+    const assignment: PadFingerAssignment = {
+      [padKey(0, 3)]: { hand: 'right', finger: 'index' },
+      [padKey(7, 7)]: { hand: 'right', finger: 'index' },
+    };
+    const moments = [
+      makeMoment(0, 0, [makeNote('voice-40', 40, padKey(0, 3))]),
+      makeMoment(1, 0.1, [makeNote('voice-41', 41, padKey(7, 7))]),
+    ];
+
+    const result = evaluatePerformance({
+      moments, layout, padFingerAssignment: assignment, config: makeConfig(),
+    });
+
+    expect(result.transitionCosts[0].dimensions.transitionCost).toBe(Infinity);
+    expect(result.aggregateMetrics.infeasibleMomentCount).toBe(1);
+    expect(result.feasibility.level).toBe('infeasible');
   });
 
   it('should handle empty performance', () => {

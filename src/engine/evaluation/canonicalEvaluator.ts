@@ -321,8 +321,8 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
   const eventCosts: EventCostBreakdown[] = [];
   const transitionCosts: TransitionCostBreakdown[] = [];
   let totalCost = 0;
-  let hardMomentCount = 0;
-  let infeasibleMomentCount = 0;
+  const hardMomentIndices = new Set<number>();
+  const infeasibleMomentIndices = new Set<number>();
   let leftCount = 0;
   let rightCount = 0;
 
@@ -349,10 +349,10 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
 
     // Track feasibility
     if (eventResult.feasibilityTier === 'fallback') {
-      hardMomentCount++;
+      hardMomentIndices.add(i);
     }
     if (eventResult.noteAssignments.length < moment.notes.length) {
-      infeasibleMomentCount++;
+      infeasibleMomentIndices.add(i);
     }
 
     // Update running state
@@ -375,6 +375,12 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
 
       transitionCosts.push(transitionResult);
       totalCost += transitionResult.dimensions.total;
+      // A speed-limit violation is a hard feasibility failure, not merely an
+      // expensive transition. Attribute it to the destination moment.
+      if (!Number.isFinite(transitionResult.dimensions.transitionCost)) {
+        hardMomentIndices.add(i + 1);
+        infeasibleMomentIndices.add(i + 1);
+      }
     }
   }
 
@@ -403,16 +409,16 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
     averageDimensions,
     peakDimensions,
     peakMomentIndex,
-    hardMomentCount,
-    infeasibleMomentCount,
+    hardMomentCount: hardMomentIndices.size,
+    infeasibleMomentCount: infeasibleMomentIndices.size,
     momentCount: moments.length,
     transitionCount: transitionCosts.length,
   };
 
   const feasibility = deriveFeasibilityVerdict(
-    infeasibleMomentCount,
-    hardMomentCount,
-    infeasibleMomentCount,
+    infeasibleMomentIndices.size,
+    hardMomentIndices.size,
+    infeasibleMomentIndices.size,
     eventCosts.filter(e => e.feasibilityTier === 'fallback').length,
     moments.length,
   );
