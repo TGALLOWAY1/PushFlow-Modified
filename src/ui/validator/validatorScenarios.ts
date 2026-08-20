@@ -290,14 +290,12 @@ const SCENARIOS: ValidatorScenario[] = [
     const vB = makeVoice('v9-b', 'Sound B', 65, '#3b82f6');
     const vC = makeVoice('v9-c', 'Sound C', 71, '#22c55e');
     const layout = makeLayout('v9-layout', 'Valid But Degraded', [
-      { row: 3, col: 2, voice: vA },
-      { row: 3, col: 5, voice: vB },
-      { row: 4, col: 3, voice: vC },
+      { row: 3, col: 3, voice: vA },
+      { row: 3, col: 6, voice: vB },
+      { row: 4, col: 4, voice: vC },
     ]);
-    // thumb(2) < middle(3) < pinky(5) for right hand — valid ordering
-    // thumb-pinky = sqrt((5-2)^2) = 3.0 ≤ 5.5 OK
-    // thumb-middle = sqrt((3-2)^2 + (4-3)^2) = sqrt(2) ≈ 1.41 ≤ 4.5 OK
-    // middle-pinky = sqrt((5-3)^2 + (3-4)^2) = sqrt(5) ≈ 2.24 ≤ 2.5 OK
+    // All pads are in the right-hand zone; thumb(3) < middle(4) < pinky(6).
+    // Pair spans remain within their strict limits.
     return {
       id: 'V9',
       title: 'Valid But Degraded: High Cost, Feasible',
@@ -305,14 +303,14 @@ const SCENARIOS: ValidatorScenario[] = [
       constraintIds: ['span'] as const,
       layout,
       padFingerAssignment: {
-        [padKey(3, 2)]: { hand: 'right', finger: 'thumb' },
-        [padKey(4, 3)]: { hand: 'right', finger: 'middle' },
-        [padKey(3, 5)]: { hand: 'right', finger: 'pinky' },
+        [padKey(3, 3)]: { hand: 'right', finger: 'thumb' },
+        [padKey(4, 4)]: { hand: 'right', finger: 'middle' },
+        [padKey(3, 6)]: { hand: 'right', finger: 'pinky' },
       } satisfies PadFingerAssignment,
       moment: makeMoment([
-        makeNote(vA.id, padKey(3, 2), 62),
-        makeNote(vB.id, padKey(3, 5), 65),
-        makeNote(vC.id, padKey(4, 3), 71),
+        makeNote(vA.id, padKey(3, 3), 62),
+        makeNote(vB.id, padKey(3, 6), 65),
+        makeNote(vC.id, padKey(4, 4), 71),
       ]),
       expectedInitialStatus: 'valid',
     } satisfies ValidatorScenario;

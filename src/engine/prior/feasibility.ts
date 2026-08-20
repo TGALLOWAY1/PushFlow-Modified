@@ -467,6 +467,30 @@ function satisfiesVerticalRotationConstraint(
 }
 
 /**
+ * Validate an already-assigned simultaneous grip with the exact hard geometry
+ * used by CLP grip generation.  Post-hoc evaluators must use this rather than
+ * reimplementing only a subset of the constraints, otherwise an optimizer can
+ * rank an assignment that the solver could never produce.
+ */
+export function isStrictGripValid(
+  fingerPositions: Partial<Record<FingerType, FingerCoordinate>>,
+  hand: HandSide,
+): boolean {
+  const positions = Object.values(fingerPositions);
+  if (positions.length === 0 || positions.length > 5) return false;
+
+  const occupiedPads = new Set(positions.map(pos => `${pos.x},${pos.y}`));
+  if (occupiedPads.size !== positions.length) return false;
+  if (!satisfiesSpanConstraint(fingerPositions)) return false;
+
+  const topologyValid = hand === 'left'
+    ? satisfiesLeftHandTopology(fingerPositions)
+    : satisfiesRightHandTopology(fingerPositions);
+
+  return topologyValid && satisfiesVerticalRotationConstraint(fingerPositions);
+}
+
+/**
  * Calculates the centroid of a set of finger positions.
  */
 function calculateCentroid(
