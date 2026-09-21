@@ -73,6 +73,9 @@ export interface SoundStream {
 /** Persistence format version for migration support. */
 export const PROJECT_STATE_VERSION = 2;
 
+/** Tempo a new project starts at, before any MIDI is imported. */
+export const DEFAULT_PROJECT_TEMPO = 120;
+
 export interface ProjectState {
   /** Persistence format version. */
   version: number;
@@ -284,7 +287,12 @@ export function getAnalysisForLayout(
   layout: Layout | null,
 ): CandidateSolution | null {
   if (!layout || !state.analysisResult) return null;
-  if (state.analysisResult.layout.id === layout.id) return state.analysisResult;
+  // Always check freshness. Short-circuiting on a matching layout id defeated the
+  // check in exactly the case that matters: a manual pad edit keeps the same
+  // working-layout id, so the Score, Hard/Unplay counts, cost bars, grid finger
+  // overlay and timeline pills kept showing the numbers from BEFORE the edit for
+  // the full debounce plus solve time — and indefinitely whenever a re-analysis
+  // did not follow. The hash comparison is cheap.
   return checkPlanFreshness(state.analysisResult.executionPlan, layout).isFresh
     ? state.analysisResult
     : null;
@@ -1366,7 +1374,7 @@ export function createEmptyProjectState(): ProjectState {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     soundStreams: [],
-    tempo: 120,
+    tempo: DEFAULT_PROJECT_TEMPO,
     instrumentConfig: {
       id: 'default',
       name: 'Push 3',

@@ -112,7 +112,12 @@ export function evaluateEvent(input: EvaluateEventInput): EventCostBreakdown {
       voiceIdIndex,
       noteIndex,
       config.instrumentConfig,
-      'allow-fallback',
+      // Strict: a sound the user has not placed has no pad. Deriving one from its
+      // MIDI pitch reported an unplaced sound as being played — sometimes by the
+      // finger belonging to a different sound already on that pad — and let the
+      // feasibility badge read "all events playable" for a half-empty grid. It also
+      // scored against a different mapping than the solver optimized.
+      'strict',
     );
 
     if (resolution.source === 'unmapped') {
@@ -780,7 +785,12 @@ function resolveMomentPadKeysFromIndexes(
       voiceIdIndex,
       noteIndex,
       instrumentConfig,
-      'allow-fallback',
+      // Strict: a sound the user has not placed has no pad. Deriving one from its
+      // MIDI pitch reported an unplaced sound as being played — sometimes by the
+      // finger belonging to a different sound already on that pad — and let the
+      // feasibility badge read "all events playable" for a half-empty grid. It also
+      // scored against a different mapping than the solver optimized.
+      'strict',
     );
     if (resolution.source !== 'unmapped') {
       padKeys.push(padKey(resolution.pad.row, resolution.pad.col));

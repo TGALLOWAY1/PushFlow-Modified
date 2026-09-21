@@ -174,6 +174,13 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
       const wallDelta = (frameTime - lastFrame) / 1000;
       lastFrame = frameTime;
 
+      // Honour a seek requested while playing before advancing.
+      if (seekRef.current !== null) {
+        position = seekRef.current;
+        seekRef.current = null;
+        audio?.reset();
+      }
+
       const {
         rate, loopEnabled, loopStart, loopEnd, tempo, hits,
       } = clockRef.current;
@@ -237,6 +244,27 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
   const effectiveMinZoom = Math.max(MIN_ZOOM, autoFitZoom);
   const zoom = zoomOverride !== null ? Math.max(effectiveMinZoom, zoomOverride) : autoFitZoom;
 
+  // Follow the playhead while playing.
+  //
+  // Nothing scrolled the timeline during playback, so on a real take the cursor
+  // walked off the right edge after about twenty seconds and the view stayed
+  // frozen at bar 1 for the rest of the performance — the user pressed play and
+  // simply could not see what was being played. Scrolls only when the cursor
+  // approaches an edge, so the view does not jitter on every frame.
+  useEffect(() => {
+    if (!state.isPlaying) return;
+    const el = scrollContainerRef.current;
+    if (!el || zoom <= 0) return;
+
+    const x = (state.currentTime - minTime) * zoom;
+    const view = el.clientWidth;
+    const margin = view * 0.15;
+    if (x < el.scrollLeft + margin || x > el.scrollLeft + view - margin) {
+      el.scrollLeft = Math.max(0, x - view / 2);
+    }
+  }, [state.isPlaying, state.currentTime, zoom, minTime]);
+
+
   // ─── Loop Region Selection ──────────────────────────────────────────────
 
   // Dragging across the bar ruler marks the passage to rehearse. Click (no drag)
@@ -244,12 +272,16 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
   const [dragRegion, setDragRegion] = useState<{ from: number; to: number } | null>(null);
   const rulerRef = useRef<HTMLDivElement | null>(null);
 
+  // Timeline x is measured from `minTime`, not from zero. Converting without it
+  // put ruler clicks whole bars earlier than the bar clicked, and shaded a loop
+  // region over a different passage than the transport actually looped.
   const timeFromRulerEvent = useCallback((clientX: number): number | null => {
     const el = rulerRef.current;
     if (!el || zoom <= 0) return null;
     const rect = el.getBoundingClientRect();
-    return Math.max(0, (clientX - rect.left) / zoom);
-  }, [zoom]);
+    const t = minTime + (clientX - rect.left) / zoom;
+    return Math.min(maxTime, Math.max(minTime, t));
+  }, [zoom, minTime, maxTime]);
 
   const handleRulerMouseDown = useCallback((e: React.MouseEvent) => {
     const t = timeFromRulerEvent(e.clientX);
@@ -264,19 +296,28 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
     setDragRegion({ from: dragRegion.from, to: t });
   }, [dragRegion, timeFromRulerEvent]);
 
+  // Pending seek, read by the playback loop at the top of its next frame. Without
+  // it the running loop owned the playhead outright and silently reverted every
+  // ruler click, so relocating during rehearsal meant stop, click, start again.
+  const seekRef = useRef<number | null>(null);
+  const seekTo = useCallback((t: number) => {
+    seekRef.current = t;
+    dispatch({ type: 'SET_CURRENT_TIME', payload: t });
+  }, [dispatch]);
+
   const handleRulerMouseUp = useCallback(() => {
     if (!dragRegion) return;
     const { from, to } = dragRegion;
     setDragRegion(null);
     // A drag shorter than ~1px of travel is a click, not a region.
     if (Math.abs(to - from) * zoom < 4) {
-      dispatch({ type: 'SET_CURRENT_TIME', payload: from });
+      seekTo(from);
       return;
     }
     dispatch({ type: 'SET_LOOP_REGION', payload: { start: from, end: to } });
     dispatch({ type: 'SET_LOOP_ENABLED', payload: true });
-    dispatch({ type: 'SET_CURRENT_TIME', payload: Math.min(from, to) });
-  }, [dragRegion, zoom, dispatch]);
+    seekTo(Math.min(from, to));
+  }, [dragRegion, zoom, dispatch, seekTo]);
 
 
   // Build per-stream finger assignments (or dummies pre-analysis),
@@ -757,7 +798,7 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
                 <div
                   className="absolute pointer-events-none"
                   style={{
-                    left: start * zoom,
+                    left: (start - minTime) * zoom,
                     width: (end - start) * zoom,
                     top: TOTAL_HEADER_HEIGHT,
                     height: totalHeight,
@@ -814,12 +855,14 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
               );
             })}
 
-            {/* Playhead */}
-            {state.currentTime > 0 && (
+            {/* Playhead. Rendered unconditionally: hiding it at position 0 meant
+                there was no cursor at the start of a take, or after RESET, so the
+                user could not see where playback would begin. */}
+            {(
               <div
                 className="absolute z-30 pointer-events-none"
                 style={{
-                  left: (state.currentTime - minTime) * zoom,
+                  left: Math.max(0, Math.min(totalDuration, state.currentTime - minTime)) * zoom,
                   top: TOTAL_HEADER_HEIGHT,
                   height: totalHeight,
                   width: 2,

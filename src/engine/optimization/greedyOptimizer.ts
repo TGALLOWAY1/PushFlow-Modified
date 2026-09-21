@@ -895,7 +895,9 @@ class GreedyOptimizer implements OptimizerMethod {
             voiceIdIndex,
             noteIndex,
             resolveConfig,
-            'allow-fallback',
+            // Strict: an unplaced sound must read as unmapped, not be given a
+            // pad derived from its MIDI pitch.
+            'strict',
           );
           if (resolution.source !== 'unmapped') {
             padKeyStr = `${resolution.pad.row},${resolution.pad.col}`;

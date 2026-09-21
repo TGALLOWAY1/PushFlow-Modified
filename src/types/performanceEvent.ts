@@ -6,11 +6,23 @@
  */
 
 /**
- * Canonical epsilon for grouping notes into moments.
+ * Canonical window for grouping notes into moments.
  * Notes within this window (in seconds) are considered simultaneous.
  * This is the single source of truth — no other epsilon should be used.
+ *
+ * 25 ms is a performance window, not a floating-point tolerance. At 1 ms — the
+ * previous value — any humanized, played-in or groove-quantized chord shattered
+ * into separate moments, and the engine then charged a hand for "moving" between
+ * two pads it was striking together. The same three-note chord scored 1.86 when
+ * perfectly quantized and 3936 with its notes 2 ms apart, where it was also
+ * declared partly unplayable. Most real MIDI is not perfectly quantized.
+ *
+ * 25 ms is below the threshold at which two drum hits are heard as separate
+ * (about 30 ms) and comfortably above the timing spread of a hand-played chord,
+ * so it groups what a player performs as one gesture without merging hits they
+ * intended as distinct — at 240 BPM a 32nd note is still 31 ms.
  */
-export const MOMENT_EPSILON = 0.001;
+export const MOMENT_EPSILON = 0.025;
 
 /**
  * A single performance event (formerly NoteEvent in Version1).

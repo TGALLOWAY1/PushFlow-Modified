@@ -6,6 +6,7 @@
  * PerformanceLanes grouped by source file name.
  */
 
+import { DEFAULT_PROJECT_TEMPO } from '../state/projectState';
 import { useCallback } from 'react';
 import { parseMidiFileToProject } from '../../import/midiImport';
 import { generateId } from '../../utils/idGenerator';
@@ -109,6 +110,23 @@ export function useLaneImport() {
           payload: { lanes, sourceFile },
         });
 
+        // Adopt the file's tempo on the first import into an untouched project.
+        //
+        // The header tempo was parsed and then thrown away, so a 90 or 174 BPM
+        // file left the project at the 120 BPM default while its notes sat at
+        // their true absolute times. Bar lines landed mid-note, the click track
+        // drifted against the music, and the Pattern Composer's grid (which is
+        // required to follow project tempo) was wrong too — which makes the
+        // rehearsal surfaces actively misleading rather than merely imprecise.
+        //
+        // Only on a first import, and only while the tempo is still the default,
+        // so a tempo the user chose is never overwritten.
+        const importedTempo = projectData.performance.tempo ?? 0;
+        const isFirstImport = state.performanceLanes.length === 0 && state.sourceFiles.length === 0;
+        if (isFirstImport && importedTempo > 0 && state.tempo === DEFAULT_PROJECT_TEMPO) {
+          dispatch({ type: 'SET_TEMPO', payload: importedTempo });
+        }
+
         // bottomLeftNote stays at default (36/C1). MIDI pitch is metadata
         // only and must not affect grid placement.
 
@@ -117,7 +135,7 @@ export function useLaneImport() {
         dispatch({ type: 'SET_ERROR', payload: `Import error (${file.name}): ${message}` });
       }
     }
-  }, [state.performanceLanes, state.laneGroups, state.instrumentConfig, dispatch]);
+  }, [state.performanceLanes, state.laneGroups, state.instrumentConfig, state.sourceFiles, state.tempo, dispatch]);
 
   return { importFiles };
 }

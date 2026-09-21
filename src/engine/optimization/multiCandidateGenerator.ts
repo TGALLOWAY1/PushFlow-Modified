@@ -447,7 +447,8 @@ export async function generateCandidates(
       const solverConfig: SolverConfig = {
         instrumentConfig: config.instrumentConfig,
         layout: hasLayout ? layout : null,
-        mappingResolverMode: 'allow-fallback',
+        // Strict: pitch must never stand in for a placement the user has not made.
+      mappingResolverMode: 'strict',
         initialPadOwnership,
       };
       const solver = createBeamSolver(solverConfig);

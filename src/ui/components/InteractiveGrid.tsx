@@ -328,6 +328,8 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
 
   // Active playing pads — with blink tracking for repeated hits
   const BLINK_DURATION_MS = 120; // how long the flash lasts
+  /** How long a pad stays lit after it is struck, in seconds. */
+  const STRIKE_WINDOW_SECONDS = 0.09;
   const prevActivePadsRef = useRef(new Set<string>());
   const [blinkingPads, setBlinkingPads] = useState(new Map<string, number>()); // padKey → timestamp
 
@@ -345,8 +347,13 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     }
 
     for (const a of assignments) {
-      const duration = (a.eventKey && durationMap.get(a.eventKey)) || 0.2;
-      if (state.currentTime >= a.startTime && state.currentTime < a.startTime + duration) {
+      // A pad is lit for the STRIKE, not for the note's length. Driving this from
+      // MIDI duration left one to three pads permanently lit — on the reference
+      // file the grid is lit 98% of the time — so it conveyed no rhythm at all,
+      // which is the one thing the grid is meant to show during rehearsal.
+      const noteDuration = (a.eventKey && durationMap.get(a.eventKey)) || STRIKE_WINDOW_SECONDS;
+      const window = Math.min(noteDuration, STRIKE_WINDOW_SECONDS);
+      if (state.currentTime >= a.startTime && state.currentTime < a.startTime + window) {
         if (a.row !== undefined && a.col !== undefined) {
           keys.add(`${a.row},${a.col}`);
         }

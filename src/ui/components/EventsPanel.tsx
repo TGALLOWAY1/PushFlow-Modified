@@ -18,11 +18,12 @@ import { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { getActiveStreams, getDisplayedExecutionPlan, type SoundStream } from '../state/projectState';
 import { type V1CostBreakdown } from '../../types/diagnostics';
+import { MOMENT_EPSILON } from '../../types/performanceEvent';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 /** Maximum time gap (seconds) to consider events simultaneous. */
-const MOMENT_EPSILON = 0.001;
+// Re-declaring this drifted from the canonical value; import the single source.
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
