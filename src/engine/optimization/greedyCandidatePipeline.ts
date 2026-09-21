@@ -343,9 +343,25 @@ export async function generateGreedyCandidates(
     return unplayableRatio <= 0.25;
   });
 
-  const finalCandidates = valid.length > 0
+  const selected = valid.length > 0
     ? valid
     : [...filtered].sort((a, b) => b.executionPlan.score - a.executionPlan.score).slice(0, 1);
+
+  // Order by quality before returning. Diversity selection decides WHICH
+  // candidates the user is offered; it must not decide the order they appear in.
+  // The cards are numbered #1..#N and the app applies the first one to the working
+  // layout automatically, so leaving them in generation order presented a
+  // not-best candidate as the recommendation and made the numbering a lie.
+  //
+  // Feasibility is lexicographically dominant: a candidate with unplayable
+  // moments can never outrank a fully playable one, however good its ergonomics,
+  // because "best" has to mean "you can actually play this".
+  const finalCandidates = [...selected].sort((a, b) => {
+    const unplayableA = a.executionPlan.unplayableMomentCount ?? a.executionPlan.unplayableCount;
+    const unplayableB = b.executionPlan.unplayableMomentCount ?? b.executionPlan.unplayableCount;
+    if (unplayableA !== unplayableB) return unplayableA - unplayableB;
+    return compositeScore(b.tradeoffProfile) - compositeScore(a.tradeoffProfile);
+  });
 
   const summary = input.activeLayout
     ? buildGenerationSummary(

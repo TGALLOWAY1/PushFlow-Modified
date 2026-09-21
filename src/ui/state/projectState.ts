@@ -914,10 +914,21 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return ensureWorkingLayout(state);
     }
 
-    case 'DISCARD_WORKING_LAYOUT':
+    case 'DISCARD_WORKING_LAYOUT': {
+      // Discard drops the exploratory pad moves, but NOT the placement locks made
+      // during the session. A lock is the one hard, user-facing placement
+      // guarantee the product offers — it is an explicit decision, not an
+      // exploratory edit — and letting Discard take it meant the next Generate
+      // freely relocated a sound the user had pinned, with nothing to tell them
+      // the guarantee had lapsed.
+      const preservedLocks = state.workingLayout
+        ? { ...state.activeLayout.placementLocks, ...state.workingLayout.placementLocks }
+        : state.activeLayout.placementLocks;
+
       return {
         ...state,
         workingLayout: null,
+        activeLayout: { ...state.activeLayout, placementLocks: preservedLocks },
         updatedAt: new Date().toISOString(),
         analysisStale: true,
         selectedEventIndex: null,
@@ -926,6 +937,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         selectedCandidateId: null,
         compareCandidateId: null,
       };
+    }
 
     case 'PROMOTE_WORKING_LAYOUT': {
       if (!state.workingLayout) return state;
@@ -1230,30 +1242,27 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         'working',
       );
 
-      // Extract solver finger assignments and write them into voiceConstraints.
-      // Use the first assignment per voice (stable pad-level ownership).
-      const newConstraints = { ...state.voiceConstraints };
-      const ep = candidate.executionPlan;
-      if (ep?.fingerAssignments) {
-        const seen = new Set<string>();
-        for (const fa of ep.fingerAssignments) {
-          const vid = fa.voiceId;
-          if (!vid || seen.has(vid)) continue;
-          if (fa.assignedHand === 'Unplayable' || !fa.finger) continue;
-          seen.add(vid);
-          newConstraints[vid] = { hand: fa.assignedHand, finger: fa.finger };
-        }
-      }
-
-      // Derive the working layout's per-pad fingerConstraints from the updated
-      // voiceConstraints (single source of truth). Full rebuild — not a merge — so
-      // constraints for voices no longer preferred don't linger as stale entries.
-      working.fingerConstraints = buildLayoutFingerConstraints(working.padToVoice, newConstraints);
+      // The solver's fingering is NOT a user preference and must not be written
+      // into voiceConstraints. Doing so meant one click of Generate stamped a
+      // hand+finger onto every sound, persisted it, and rendered it in the Sounds
+      // panel as though the user had chosen it — after which the user could no
+      // longer tell their own preferences from the optimizer's guesses, and every
+      // later Generate was boxed in by the previous one's output.
+      //
+      // Solver fingerings already live where they belong, on the candidate's
+      // ExecutionPlan, and the Sounds panel renders them as dimmed suggestions
+      // when no user constraint is set.
+      working.fingerConstraints = buildLayoutFingerConstraints(
+        working.padToVoice, state.voiceConstraints,
+      );
 
       return {
         ...state,
         workingLayout: working,
-        voiceConstraints: newConstraints,
+        // The pad map changed, so any existing analysis describes a different
+        // layout. Marking it stale re-runs analysis instead of showing figures
+        // the freshness check itself would reject.
+        analysisStale: true,
         updatedAt: now,
       };
     }

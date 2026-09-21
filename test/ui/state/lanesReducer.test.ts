@@ -380,8 +380,12 @@ describe('lanesReducer', () => {
 
       const result = lanesReducer(state, { type: 'SYNC_STREAMS_FROM_LANES' });
 
-      expect(result.soundStreams).toHaveLength(1); // muted lane excluded
-      expect(result.soundStreams[0].id).toBe('lane-1');
+      // A muted lane keeps its stream, flagged muted. Dropping it removed the
+      // sound from the Sounds panel and the timeline, so there was no row left
+      // to un-mute from.
+      expect(result.soundStreams).toHaveLength(2);
+      expect(result.soundStreams.map(s => [s.id, s.muted]))
+        .toEqual([['lane-1', false], ['lane-2', true]]);
       expect(result.soundStreams[0].name).toBe('Kick');
       expect(result.soundStreams[0].events).toHaveLength(2);
       expect(result.analysisStale).toBe(true);
@@ -398,8 +402,9 @@ describe('lanesReducer', () => {
 
       const result = lanesReducer(state, { type: 'SYNC_STREAMS_FROM_LANES' });
 
-      expect(result.soundStreams).toHaveLength(2);
-      expect(result.soundStreams.map(s => s.id)).toEqual(['lane-1', 'lane-3']);
+      expect(result.soundStreams).toHaveLength(3);
+      expect(result.soundStreams.filter(s => !s.muted).map(s => s.id))
+        .toEqual(['lane-1', 'lane-3']);
     });
   });
 

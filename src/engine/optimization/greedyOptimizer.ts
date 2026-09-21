@@ -50,6 +50,7 @@ import {
   type DiagnosticsPayload,
   computeTopContributors,
 } from '../../types/diagnostics';
+import { parseFingerConstraint } from '../../utils/fingerConstraints';
 import {
   buildCooccurrenceMatrix,
   buildSoundFrequency,
@@ -182,6 +183,10 @@ class GreedyOptimizer implements OptimizerMethod {
     const iterationTrace: OptimizationIteration[] = [];
     let movesEvaluated = 0;
 
+    // The user's per-Sound finger preferences, resolved from the layout they set
+    // them on. Keyed by voice so they survive the optimizer relocating a sound.
+    const voicePreferences = resolveVoicePreferences(input.layout);
+
     // Analyze phrase structure once for rhythm-aware placement and hill climbing
     const phraseStructure = analyzePhraseStructure(
       input.performance.events, input.performance.tempo,
@@ -216,8 +221,9 @@ class GreedyOptimizer implements OptimizerMethod {
 
     // ── Phase B: Initial Finger Assignment ─────────────────────
     // Moments are supplied so pads that sound together are guaranteed distinct
-    // fingers — one finger cannot strike two pads at the same instant.
-    let assignment = buildFingerAssignmentFromLayout(layout, moments);
+    // fingers — one finger cannot strike two pads at the same instant — and the
+    // user's own per-Sound preferences are honoured rather than overwritten.
+    let assignment = buildFingerAssignmentFromLayout(layout, moments, voicePreferences);
 
     // Initial evaluation
     let currentCost = this.evaluateLayout(
@@ -248,7 +254,7 @@ class GreedyOptimizer implements OptimizerMethod {
 
     for (let iter = 0; iter < maxIterations; iter++) {
       // Enumerate all candidate moves
-      const candidateMoves = this.enumerateMoves(layout, assignment, input);
+      const candidateMoves = this.enumerateMoves(layout, assignment, input, voicePreferences);
       if (candidateMoves.length === 0) {
         stopReason = 'infeasible_neighborhood';
         break;
@@ -265,7 +271,7 @@ class GreedyOptimizer implements OptimizerMethod {
         movesEvaluated++;
 
         // Apply move tentatively
-        const { newLayout, newAssignment } = this.applyMove(layout, assignment, move, moments);
+        const { newLayout, newAssignment } = this.applyMove(layout, assignment, move, moments, voicePreferences);
 
         // Evaluate
         const newCostResult = this.evaluateLayout(
@@ -663,6 +669,7 @@ class GreedyOptimizer implements OptimizerMethod {
     layout: Layout,
     assignment: PadFingerAssignment,
     input: OptimizerInput,
+    voicePreferences?: Record<string, { hand: HandSide; finger: FingerType }>,
   ): CandidateMove[] {
     const moves: CandidateMove[] = [];
     const rows = input.instrumentConfig.rows;
@@ -712,9 +719,13 @@ class GreedyOptimizer implements OptimizerMethod {
         });
       }
 
-      // Move type 3: Finger reassignment
+      // Move type 3: Finger reassignment.
+      // Skipped where the user set a preference for this Sound: the initial
+      // assignment honours it, and generating reassignment moves for it meant
+      // hill-climbing quietly optimised the preference away again.
       const currentAssignment = assignment[padKey];
-      if (currentAssignment) {
+      const hasUserPreference = voice.id ? voicePreferences?.[voice.id] !== undefined : false;
+      if (currentAssignment && !hasUserPreference) {
         // Try the other valid fingers for this pad's hand zone
         const availableFingers = getValidFingersForPad(pad.col);
         for (const { hand, finger } of availableFingers) {
@@ -745,6 +756,7 @@ class GreedyOptimizer implements OptimizerMethod {
     assignment: PadFingerAssignment,
     move: CandidateMove,
     moments?: PerformanceMoment[],
+    voicePreferences?: Record<string, { hand: HandSide; finger: FingerType }>,
   ): { newLayout: Layout; newAssignment: PadFingerAssignment } {
     const newLayout = deepCopyLayout(layout);
     let newAssignment = { ...assignment };
@@ -761,7 +773,7 @@ class GreedyOptimizer implements OptimizerMethod {
         // silently reintroduce a same-finger collision.
         delete newAssignment[move.padKey];
         newAssignment = moments
-          ? buildFingerAssignmentFromLayout(newLayout, moments)
+          ? buildFingerAssignmentFromLayout(newLayout, moments, voicePreferences)
           : (() => {
               const target = parsePadKey(move.targetPadKey);
               return {
@@ -778,7 +790,13 @@ class GreedyOptimizer implements OptimizerMethod {
         const voiceB = newLayout.padToVoice[move.targetPadKey];
         newLayout.padToVoice[move.padKey] = voiceB;
         newLayout.padToVoice[move.targetPadKey] = voiceA;
-        // Assignment stays the same (fingers tied to pad position, not voice)
+        // Rebuild rather than leaving the fingers with the pads. A user's finger
+        // preference belongs to the SOUND, so leaving assignments pinned to pad
+        // position meant a swapped sound silently inherited the other pad's finger
+        // and the preference was lost. Rebuilding also re-checks simultaneity.
+        if (moments) {
+          newAssignment = buildFingerAssignmentFromLayout(newLayout, moments, voicePreferences);
+        }
         break;
       }
 
@@ -1054,6 +1072,28 @@ interface CandidateMove {
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/**
+ * Resolves the layout's per-pad finger constraints into per-Sound preferences.
+ *
+ * The constraints are stored against pads, but the optimizer's whole job is to
+ * move sounds between pads — so a pad-keyed preference stops describing the
+ * sound it was set on as soon as that sound is relocated. Re-keying by voice id
+ * keeps the preference attached to the thing the user actually chose it for.
+ */
+function resolveVoicePreferences(
+  layout: Layout,
+): Record<string, { hand: HandSide; finger: FingerType }> {
+  const prefs: Record<string, { hand: HandSide; finger: FingerType }> = {};
+  const constraints = layout.fingerConstraints ?? {};
+  for (const [padKeyStr, raw] of Object.entries(constraints)) {
+    const voiceId = layout.padToVoice[padKeyStr]?.id;
+    if (!voiceId) continue;
+    const parsed = parseFingerConstraint(raw);
+    if (parsed) prefs[voiceId] = parsed;
+  }
+  return prefs;
+}
 
 function deepCopyLayout(layout: Layout): Layout {
   return {

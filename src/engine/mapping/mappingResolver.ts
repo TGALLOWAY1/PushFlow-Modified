@@ -179,6 +179,11 @@ export function resolveNoteToPad(
  * and fingering as if it were current.
  */
 export function hashLayout(layout: Layout): string {
+  // placementLocks maps VOICE id -> pad key, so it must be inverted before it can
+  // be tested by pad. Indexing it by pad key returned undefined for every pad, and
+  // lock state silently never contributed to layout identity — an analysis
+  // computed before a lock was applied was reported as fresh afterwards.
+  const lockedPads = new Set(Object.values(layout.placementLocks ?? {}));
   const keys = Object.keys(layout.padToVoice).sort();
   const entries = keys.map((k) => {
     const voice = layout.padToVoice[k];
@@ -187,7 +192,7 @@ export function hashLayout(layout: Layout): string {
       voice?.id ?? null,
       voice?.originalMidiNote ?? null,
       layout.fingerConstraints?.[k] ?? null,
-      layout.placementLocks?.[k] ? 1 : 0,
+      lockedPads.has(k) ? 1 : 0,
     ];
   });
   return JSON.stringify(entries);

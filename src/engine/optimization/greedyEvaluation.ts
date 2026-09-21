@@ -143,14 +143,30 @@ function rankFingerOptions(col: number): Array<{ hand: HandSide; finger: FingerT
 export function buildFingerAssignmentFromLayout(
   layout: Layout,
   moments?: Array<{ notes: Array<{ padId?: string }> }>,
+  /**
+   * Per-Sound finger preferences set by the user, keyed by voice id.
+   *
+   * Keyed by VOICE, not by pad: the optimizer moves sounds between pads, so a
+   * pad-keyed preference stops describing the sound the moment it is relocated.
+   * Without this the greedy path built its assignment purely from pad geometry
+   * and every user preference was silently discarded — a sound pinned to the
+   * left pinky came back on the right index with no warning.
+   */
+  voicePreferences?: Record<string, { hand: HandSide; finger: FingerType }>,
 ): PadFingerAssignment {
   const assignment: PadFingerAssignment = {};
   const padKeys = Object.keys(layout.padToVoice);
 
+  const preferenceForPad = (padKeyStr: string) => {
+    const voiceId = layout.padToVoice[padKeyStr]?.id;
+    return voiceId ? voicePreferences?.[voiceId] : undefined;
+  };
+
   if (!moments || moments.length === 0) {
     for (const padKeyStr of padKeys) {
       const parts = padKeyStr.split(',');
-      assignment[padKeyStr] = assignFingerForPad(parseInt(parts[0], 10), parseInt(parts[1], 10));
+      assignment[padKeyStr] = preferenceForPad(padKeyStr)
+        ?? assignFingerForPad(parseInt(parts[0], 10), parseInt(parts[1], 10));
     }
     return assignment;
   }
@@ -169,9 +185,22 @@ export function buildFingerAssignmentFromLayout(
     }
   }
 
-  // Assign the most constrained pads first so the crowded moments get the
-  // anatomically sensible fingers rather than whatever is left over.
-  const ordered = [...padKeys].sort((a, b) => {
+  // Pads whose Sound the user gave an explicit preference are assigned first and
+  // are never displaced, so the user's choice survives the collision resolution
+  // below rather than being whatever is left over.
+  const preferred: string[] = [];
+  const unconstrained: string[] = [];
+  for (const padKeyStr of padKeys) {
+    if (preferenceForPad(padKeyStr)) preferred.push(padKeyStr);
+    else unconstrained.push(padKeyStr);
+  }
+  for (const padKeyStr of preferred) {
+    assignment[padKeyStr] = { ...preferenceForPad(padKeyStr)! };
+  }
+
+  // Then the most constrained pads, so crowded moments get the anatomically
+  // sensible fingers rather than whatever is left over.
+  const ordered = unconstrained.sort((a, b) => {
     const da = coOccurring.get(a)!.size;
     const db = coOccurring.get(b)!.size;
     if (da !== db) return db - da;

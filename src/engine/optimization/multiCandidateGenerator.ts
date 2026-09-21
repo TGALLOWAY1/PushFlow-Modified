@@ -19,6 +19,7 @@
 
 import { type Performance, type InstrumentConfig } from '../../types/performance';
 import { type Layout } from '../../types/layout';
+import { compositeScore } from './candidateRanker';
 import {
   type CandidateSolution,
   type CandidateMetadata,
@@ -513,9 +514,19 @@ export async function generateCandidates(
   });
 
   // If all candidates were filtered, keep the best normalized plan score.
-  const finalCandidates = valid.length > 0
+  const selected = valid.length > 0
     ? valid
     : [...filtered].sort((a, b) => b.executionPlan.score - a.executionPlan.score).slice(0, 1);
+
+  // Rank before returning, feasibility first: the cards are numbered and the app
+  // auto-applies the first one, so generation order must not decide which
+  // candidate is presented as the recommendation.
+  const finalCandidates = [...selected].sort((a, b) => {
+    const unplayableA = a.executionPlan.unplayableMomentCount ?? a.executionPlan.unplayableCount;
+    const unplayableB = b.executionPlan.unplayableMomentCount ?? b.executionPlan.unplayableCount;
+    if (unplayableA !== unplayableB) return unplayableA - unplayableB;
+    return compositeScore(b.tradeoffProfile) - compositeScore(a.tradeoffProfile);
+  });
 
   // Build generation summary (includes low-diversity explanation)
   const summary = buildGenerationSummary(

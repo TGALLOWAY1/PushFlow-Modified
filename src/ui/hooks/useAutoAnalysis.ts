@@ -308,9 +308,6 @@ export function useAutoAnalysis() {
           dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: candidates[0].id } });
         }
 
-        setGenerationProgress(null);
-        setAnalysisPhase('idle');
-        dispatch({ type: 'SET_PROCESSING', payload: false });
         return candidates.length;
       }
 
@@ -343,15 +340,19 @@ export function useAutoAnalysis() {
         dispatch({ type: 'SET_ANALYSIS_RESULT', payload: generationResult.candidates[0] });
         dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: generationResult.candidates[0].id } });
       }
-      setGenerationProgress(null);
-      setAnalysisPhase('idle');
       return generationResult.candidates.length;
     } catch (err) {
-      setGenerationProgress(null);
-      setAnalysisPhase('idle');
-      dispatch({ type: 'SET_PROCESSING', payload: false });
       dispatch({ type: 'SET_ERROR', payload: err instanceof Error ? err.message : 'Generation failed' });
       return 0;
+    } finally {
+      // CLAUDE.md requires isProcessing be reset on BOTH paths. The beam and
+      // annealing branch previously returned without clearing it, so after a
+      // successful Generate with either method the spinner ran forever and every
+      // control gated on isProcessing stayed disabled until a page reload — the
+      // user could not inspect, compare or promote the candidates just produced.
+      dispatch({ type: 'SET_PROCESSING', payload: false });
+      setGenerationProgress(null);
+      setAnalysisPhase('idle');
     }
   }, [state, dispatch]);
 
