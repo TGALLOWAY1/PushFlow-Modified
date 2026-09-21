@@ -26,6 +26,7 @@ import { type PerformanceCostBreakdown } from '../../types/costBreakdown';
 import { type OptimizerMethodKey, type OptimizerMove, type OptimizationIteration } from '../../engine/optimization/optimizerInterface';
 import { type GreedyLayoutStrategy } from '../../engine/optimization/greedyCandidatePipeline';
 import { checkPlanFreshness } from '../../engine/evaluation/executionPlanValidation';
+import { hashLayout } from '../../engine/mapping/mappingResolver';
 import { formatFingerConstraint, parseFingerConstraint } from '../../utils/fingerConstraints';
 
 // ============================================================================
@@ -227,6 +228,35 @@ export function getCandidateById(
 
 export function getSelectedCandidate(state: ProjectState): CandidateSolution | null {
   return getCandidateById(state, state.selectedCandidateId);
+}
+
+/**
+ * Re-points a Candidate Solution's analysis at a layout it still describes.
+ *
+ * Promotion clones the chosen layout under a new id, which left the candidate's
+ * Execution Plan bound to the old one. `getAnalysisForLayout` then rejected it and
+ * the cost panel, grid finger overlay and timeline pills went blank — permanently,
+ * because promotion also declared the analysis fresh so nothing re-ran it.
+ *
+ * The pad map is unchanged by promotion, so the plan is still valid; only its
+ * binding needs to follow the layout.
+ */
+function rebindAnalysisToLayout(
+  candidate: CandidateSolution,
+  layout: Layout,
+): CandidateSolution {
+  return {
+    ...candidate,
+    layout,
+    executionPlan: {
+      ...candidate.executionPlan,
+      layoutBinding: {
+        layoutId: layout.id,
+        layoutHash: hashLayout(layout),
+        layoutRole: layout.role ?? 'active',
+      },
+    },
+  };
 }
 
 export function getAnalysisForLayout(
@@ -932,7 +962,9 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         workingLayout: null,
         savedVariants: autoSavedVariants,
         updatedAt: now,
-        analysisResult: candidate, // Preserve finger assignments for the promoted layout
+        // Re-bind the candidate's plan to the promoted layout so the finger
+        // assignments, costs and timeline pills keep rendering after promotion.
+        analysisResult: rebindAnalysisToLayout(candidate, promoted),
         analysisStale: false,
         candidates: remainingCandidates,
         selectedCandidateId: null,

@@ -232,23 +232,27 @@ describe('v1CostBreakdownToCanonicalFactors', () => {
     expect(factors.constraintPenalty).toBe(1000);
   });
 
-  it('should always set alternation to 0', () => {
+  it('should carry alternation through as its own factor', () => {
+    // Alternation used to be hardcoded to 0 here, so the Alternation bar could
+    // never move for any layout the beam solver analysed.
     const v1: V1CostBreakdown = {
       fingerPreference: 5,
       handShapeDeviation: 3,
+      alternation: 4,
       transitionCost: 10,
       handBalance: 1,
       constraintPenalty: 0,
-      total: 19,
+      total: 23,
     };
     const factors = v1CostBreakdownToCanonicalFactors(v1);
-    expect(factors.alternation).toBe(0);
+    expect(factors.alternation).toBe(4);
   });
 
   it('should compute total as sum of canonical factors', () => {
     const v1: V1CostBreakdown = {
       fingerPreference: 5,
       handShapeDeviation: 8,
+      alternation: 2,
       transitionCost: 3,
       handBalance: 1,
       constraintPenalty: 0,
@@ -256,7 +260,7 @@ describe('v1CostBreakdownToCanonicalFactors', () => {
     };
     const factors = v1CostBreakdownToCanonicalFactors(v1);
     // Total = transition + gripNaturalness + alternation + handBalance + constraintPenalty
-    expect(factors.total).toBe(3 + 13 + 0 + 1 + 0); // = 17
+    expect(factors.total).toBe(3 + 13 + 2 + 1 + 0); // = 19
   });
 });
 

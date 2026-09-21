@@ -333,6 +333,7 @@ function emptyResult(assignment: PadFingerAssignment): TemporalEvaluationResult 
     dimensions: createZeroCostDimensions(),
     performanceCost: {
       total: 0,
+      costPerMoment: 0,
       dimensions: createZeroCostDimensions(),
       eventCosts: [],
       transitionCosts: [],

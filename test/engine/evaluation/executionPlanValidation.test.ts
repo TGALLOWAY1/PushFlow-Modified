@@ -85,7 +85,11 @@ describe('checkPlanFreshness', () => {
     expect(check.reason).toBeUndefined();
   });
 
-  it('should return stale when layout ID differs', () => {
+  it('should stay fresh when only the layout ID differs', () => {
+    // Every workflow transition (promote, discard, load variant, apply generation)
+    // clones the layout under a fresh id while leaving the pad map untouched. The
+    // plan still describes what is on screen, so it must remain fresh — treating an
+    // id change as staleness is what made the promoted layout show no analysis.
     const layout = makeLayout('layout-002', { '0,0': v1 });
     const plan = makePlan({
       layoutBinding: {
@@ -97,8 +101,25 @@ describe('checkPlanFreshness', () => {
 
     const check = checkPlanFreshness(plan, layout);
 
+    expect(check.isFresh).toBe(true);
+    expect(check.reason).toBeUndefined();
+  });
+
+  it('should return stale when the ID differs AND the pads differ', () => {
+    const original = makeLayout('layout-001', { '0,0': v1 });
+    const layout = makeLayout('layout-002', { '4,6': v1 });
+    const plan = makePlan({
+      layoutBinding: {
+        layoutId: 'layout-001',
+        layoutHash: hashLayout(original),
+        layoutRole: 'active',
+      },
+    });
+
+    const check = checkPlanFreshness(plan, layout);
+
     expect(check.isFresh).toBe(false);
-    expect(check.reason).toContain('different layout');
+    expect(check.reason).toContain('changed');
   });
 
   it('should return stale when layout hash differs (pad assignments changed)', () => {

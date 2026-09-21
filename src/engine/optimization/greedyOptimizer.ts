@@ -215,7 +215,9 @@ class GreedyOptimizer implements OptimizerMethod {
     await yieldControl();
 
     // ── Phase B: Initial Finger Assignment ─────────────────────
-    let assignment = buildFingerAssignmentFromLayout(layout);
+    // Moments are supplied so pads that sound together are guaranteed distinct
+    // fingers — one finger cannot strike two pads at the same instant.
+    let assignment = buildFingerAssignmentFromLayout(layout, moments);
 
     // Initial evaluation
     let currentCost = this.evaluateLayout(
@@ -263,7 +265,7 @@ class GreedyOptimizer implements OptimizerMethod {
         movesEvaluated++;
 
         // Apply move tentatively
-        const { newLayout, newAssignment } = this.applyMove(layout, assignment, move);
+        const { newLayout, newAssignment } = this.applyMove(layout, assignment, move, moments);
 
         // Evaluate
         const newCostResult = this.evaluateLayout(
@@ -742,6 +744,7 @@ class GreedyOptimizer implements OptimizerMethod {
     layout: Layout,
     assignment: PadFingerAssignment,
     move: CandidateMove,
+    moments?: PerformanceMoment[],
   ): { newLayout: Layout; newAssignment: PadFingerAssignment } {
     const newLayout = deepCopyLayout(layout);
     let newAssignment = { ...assignment };
@@ -753,10 +756,19 @@ class GreedyOptimizer implements OptimizerMethod {
         delete newLayout.padToVoice[move.padKey];
         newLayout.padToVoice[move.targetPadKey] = voice;
 
-        // Update finger assignment
+        // Update finger assignment. Rebuilt across the whole layout because moving
+        // a pad can change which pads share a moment, and a per-pad patch would
+        // silently reintroduce a same-finger collision.
         delete newAssignment[move.padKey];
-        const target = parsePadKey(move.targetPadKey);
-        newAssignment[move.targetPadKey] = assignFingerForPad(target.row, target.col);
+        newAssignment = moments
+          ? buildFingerAssignmentFromLayout(newLayout, moments)
+          : (() => {
+              const target = parsePadKey(move.targetPadKey);
+              return {
+                ...newAssignment,
+                [move.targetPadKey]: assignFingerForPad(target.row, target.col),
+              };
+            })();
         break;
       }
 
@@ -836,8 +848,23 @@ class GreedyOptimizer implements OptimizerMethod {
       const transitionDimensions = transitionByMoment.get(moment.momentIndex);
       const momentDimensions = combineMomentDimensions(eventDimensions, transitionDimensions);
       const momentCostBreakdown = canonicalDimensionsToV1Breakdown(momentDimensions);
+      // The evaluator names the physical violations for this moment. Cost alone
+      // cannot express them: a moment demanding one finger on two pads at once is
+      // impossible no matter how cheap it scores, and reporting such candidates as
+      // "0 unplayable, all Easy" is what made generated layouts untrustworthy.
+      const momentViolations = diagnostics.eventCosts[moment.momentIndex]?.violations;
       const momentCost = momentCostBreakdown.total;
-      const momentDifficulty = getDifficulty(momentCost);
+      let momentDifficulty = getDifficulty(momentCost);
+      if (momentViolations) {
+        if (momentViolations.collisions > 0 || momentViolations.unmapped > 0) {
+          momentDifficulty = 'Unplayable';
+        } else if (
+          (momentViolations.gripViolations > 0 || momentViolations.zoneReaches > 0) &&
+          momentDifficulty !== 'Hard'
+        ) {
+          momentDifficulty = 'Hard';
+        }
+      }
       const noteAssignments: NoteAssignmentInfo[] = [];
 
       for (const note of moment.notes) {
@@ -912,6 +939,9 @@ class GreedyOptimizer implements OptimizerMethod {
 
       if (momentDifficulty === 'Unplayable') {
         unplayableMomentCount++;
+        // Notes with no pad at all were already counted above; these are notes that
+        // do have a finger but belong to a moment that cannot be executed.
+        unplayableCount += noteAssignments.length;
       } else if (momentDifficulty === 'Hard') {
         hardMomentCount++;
       }
@@ -934,8 +964,9 @@ class GreedyOptimizer implements OptimizerMethod {
 
     // diagnostics.total is a sum over the whole performance; normalize to an
     // average per moment so the ergonomic term is comparable to the beam solver's.
+    const momentDivisor = Math.max(1, momentAssignments.length);
     const avgErgonomicCost = momentAssignments.length > 0
-      ? diagnostics.total / momentAssignments.length
+      ? diagnostics.total / momentDivisor
       : 0;
     const score = computePlanScore({
       hardCount: hardMomentCount,
@@ -956,13 +987,22 @@ class GreedyOptimizer implements OptimizerMethod {
       fingerUsageStats,
       fatigueMap: {},
       averageDrift: driftCount > 0 ? totalDrift / driftCount : 0,
+      // `averageMetrics` is a PER-MOMENT average everywhere else in the product
+      // (the beam solver divides by event count before writing it). Writing raw
+      // whole-performance sums here put greedy candidates and the beam-analysed
+      // Active Layout on different scales, which pinned every greedy candidate's
+      // transition-efficiency tradeoff at 0 in Compare.
       averageMetrics: {
-        fingerPreference: diagnostics.dimensions.poseNaturalness,
+        fingerPreference: diagnostics.dimensions.poseNaturalness / momentDivisor,
         handShapeDeviation: 0,
-        transitionCost: diagnostics.dimensions.transitionCost + diagnostics.dimensions.alternation,
-        handBalance: diagnostics.dimensions.handBalance,
-        constraintPenalty: diagnostics.dimensions.constraintPenalty,
-        total: diagnostics.total,
+        // Alternation is its own canonical factor and must not be folded into
+        // movement. Doing so told the user a passage was hard because of hand
+        // travel when the real cause was finger repetition.
+        transitionCost: diagnostics.dimensions.transitionCost / momentDivisor,
+        alternation: diagnostics.dimensions.alternation / momentDivisor,
+        handBalance: diagnostics.dimensions.handBalance / momentDivisor,
+        constraintPenalty: diagnostics.dimensions.constraintPenalty / momentDivisor,
+        total: avgErgonomicCost,
       },
       layoutBinding: {
         layoutId: layout.id,
@@ -1074,7 +1114,8 @@ function canonicalDimensionsToV1Breakdown(dimensions: CostDimensions) {
   return {
     fingerPreference: dimensions.poseNaturalness,
     handShapeDeviation: 0,
-    transitionCost: dimensions.transitionCost + dimensions.alternation,
+    alternation: dimensions.alternation,
+    transitionCost: dimensions.transitionCost,
     handBalance: dimensions.handBalance,
     constraintPenalty: dimensions.constraintPenalty,
     total: dimensions.total,
@@ -1125,7 +1166,7 @@ function buildEmptyOutput(input: OptimizerInput, startTime: number): OptimizerOu
       fatigueMap: {},
       averageDrift: 0,
       averageMetrics: {
-        fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0,
+        fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0,
         handBalance: 0, constraintPenalty: 0, total: 0,
       },
       layoutBinding: {
@@ -1161,6 +1202,7 @@ function buildEmptyOutput(input: OptimizerInput, startTime: number): OptimizerOu
     },
     diagnostics: {
       total: 0,
+      costPerMoment: 0,
       dimensions: { poseNaturalness: 0, transitionCost: 0, constraintPenalty: 0, alternation: 0, handBalance: 0, total: 0 },
       eventCosts: [],
       transitionCosts: [],

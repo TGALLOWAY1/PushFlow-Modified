@@ -99,7 +99,7 @@ export class AnnealingSolver implements SolverStrategy {
         fatigueMap: {},
         averageDrift: 0,
         averageMetrics: {
-          fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0,
+          fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0,
           handBalance: 0, constraintPenalty: 0, total: Number.POSITIVE_INFINITY,
         },
         metadata: {

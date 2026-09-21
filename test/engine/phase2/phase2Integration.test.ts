@@ -299,11 +299,13 @@ describe('Phase 2: Staleness Detection', () => {
     expect(result.reason).toBeUndefined();
   });
 
-  it('should report stale when layout id differs', () => {
+  it('should stay fresh when only the layout id differs', () => {
+    // A layout cloned under a new id (promote / discard / load variant) still has
+    // the same pad map, so its analysis is still valid. Freshness is decided by
+    // the layout hash, not by object identity.
     const differentLayout = makeTestLayout({ id: 'different-layout' });
     const result = checkPlanFreshness(freshPlan, differentLayout);
-    expect(result.isFresh).toBe(false);
-    expect(result.reason).toContain('different layout');
+    expect(result.isFresh).toBe(true);
   });
 
   it('should report stale when layout hash differs', () => {

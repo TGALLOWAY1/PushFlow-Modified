@@ -200,7 +200,7 @@ export function EventsPanel({
       );
       if (matching.length === 0) continue;
       const avg: V1CostBreakdown = {
-        fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0,
+        fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0,
         handBalance: 0, constraintPenalty: 0, total: 0,
       };
       for (const a of matching) {

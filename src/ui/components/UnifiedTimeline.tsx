@@ -204,7 +204,7 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
             finger: (constraint?.finger ?? 'unassigned') as any,
             cost: 0,
             difficulty: 'Easy',
-            costBreakdown: { fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0, handBalance: 0, constraintPenalty: 0, total: 0 },
+            costBreakdown: { fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0, handBalance: 0, constraintPenalty: 0, total: 0 },
           }));
           map.set(s.id, unassigned);
         }
@@ -222,7 +222,7 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
           finger: (constraint?.finger ?? 'unassigned') as any,
           cost: 0,
           difficulty: 'Easy',
-          costBreakdown: { fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0, handBalance: 0, constraintPenalty: 0, total: 0 },
+          costBreakdown: { fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0, handBalance: 0, constraintPenalty: 0, total: 0 },
         }));
         if (dummies.length > 0) map.set(s.id, dummies);
       }

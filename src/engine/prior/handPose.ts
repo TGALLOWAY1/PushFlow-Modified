@@ -18,6 +18,7 @@ import {
   getPose0PadsWithOffset,
   getMaxSafeOffset,
   poseHasAssignments,
+  createDefaultPose0,
 } from './naturalHandPose';
 
 // ============================================================================
@@ -184,6 +185,21 @@ export function resolveNeutralPadPositions(
       noteNumber: pose.noteNumber,
       noteName: pose.noteName,
     };
+  }
+
+  // DEFAULT_HAND_POSE is expressed in note names (D#-2 … G0 → notes 3-31), but the
+  // product's mandated default grid starts at note 36, so every one of those notes
+  // falls below the window and NOT ONE finger resolves. The neutral reference then
+  // came back empty, which silently turned the engine's primary ergonomic term into
+  // "penalise any hand spread at all": a relaxed four-finger hand on four adjacent
+  // pads scored 20 while a single finger scored 0, so the solver was biased toward
+  // one-finger-at-a-time playing on every layout it produced.
+  //
+  // Fall back to the grid-native Natural Hand Pose (Pose 0), which is defined in pad
+  // coordinates and therefore always resolves.
+  if (Object.keys(result).length === 0) {
+    const pose0 = getNeutralPadPositionsFromPose0(createDefaultPose0(), 0, instrumentConfig);
+    if (pose0) return pose0;
   }
 
   return result;

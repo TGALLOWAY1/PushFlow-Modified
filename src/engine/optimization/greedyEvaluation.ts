@@ -77,8 +77,13 @@ const RIGHT_HAND_FINGERS: FingerType[] = ['thumb', 'index', 'middle', 'ring', 'p
 
 /**
  * Assign a finger to a pad based on its position within the hand zone.
- * Cols 0-3 = left hand, cols 4-7 = right hand (as specified in requirements).
+ * Cols 0-3 = left hand, cols 4-7 = right hand.
  * The finger is chosen based on the column position within the zone.
+ *
+ * This is the anatomically preferred choice for a pad considered in isolation.
+ * Use `buildFingerAssignmentFromLayout` when a whole layout is being assigned —
+ * it additionally guarantees that two pads which sound together never share a
+ * finger, which this function on its own cannot know about.
  */
 export function assignFingerForPad(
   _row: number,
@@ -96,19 +101,98 @@ export function assignFingerForPad(
 }
 
 /**
- * Build a PadFingerAssignment from a layout by assigning fingers
- * based on pad positions (column-based hand zone heuristic).
+ * Ranks every (hand, finger) option for a pad, best anatomical fit first.
+ *
+ * The preferred hand's fingers are tried in order of how close the finger's
+ * natural column is to the pad's column, then the other hand's fingers as
+ * cross-body reaches. Thumbs come last within a hand: they are usable on pads
+ * but awkward, which the cost model already reflects.
+ */
+function rankFingerOptions(col: number): Array<{ hand: HandSide; finger: FingerType }> {
+  const options: Array<{ hand: HandSide; finger: FingerType; rank: number }> = [];
+  for (const hand of ['left', 'right'] as HandSide[]) {
+    const order = hand === 'left' ? LEFT_HAND_FINGERS : RIGHT_HAND_FINGERS;
+    const zoneStart = hand === 'left' ? 0 : 4;
+    const crossBody = (hand === 'left' && col > 3) || (hand === 'right' && col <= 3);
+    order.forEach((finger, idx) => {
+      const naturalCol = zoneStart + idx;
+      const rank =
+        Math.abs(naturalCol - col) +
+        (finger === 'thumb' ? 4 : 0) +
+        (crossBody ? 16 : 0);
+      options.push({ hand, finger, rank });
+    });
+  }
+  options.sort((a, b) => a.rank - b.rank);
+  return options.map(({ hand, finger }) => ({ hand, finger }));
+}
+
+/**
+ * Build a PadFingerAssignment from a layout.
+ *
+ * A pad's finger is fixed for the whole performance (that is what makes a layout
+ * learnable), so two pads may share a finger only if they never sound at the same
+ * instant. The previous implementation chose a finger from the pad's COLUMN alone
+ * and ignored the row, which handed the same finger to every pad in a column and
+ * produced assignments demanding one finger strike two pads simultaneously. The
+ * greedy path then reported those layouts as "0 unplayable, all Easy".
+ *
+ * When `moments` are supplied, pads that sound together are guaranteed distinct
+ * fingers. Without them the function falls back to the per-pad anatomical choice.
  */
 export function buildFingerAssignmentFromLayout(
   layout: Layout,
+  moments?: Array<{ notes: Array<{ padId?: string }> }>,
 ): PadFingerAssignment {
   const assignment: PadFingerAssignment = {};
-  for (const padKeyStr of Object.keys(layout.padToVoice)) {
-    const parts = padKeyStr.split(',');
-    const row = parseInt(parts[0], 10);
-    const col = parseInt(parts[1], 10);
-    assignment[padKeyStr] = assignFingerForPad(row, col);
+  const padKeys = Object.keys(layout.padToVoice);
+
+  if (!moments || moments.length === 0) {
+    for (const padKeyStr of padKeys) {
+      const parts = padKeyStr.split(',');
+      assignment[padKeyStr] = assignFingerForPad(parseInt(parts[0], 10), parseInt(parts[1], 10));
+    }
+    return assignment;
   }
+
+  // Which pads ever sound at the same instant as which others.
+  const coOccurring = new Map<string, Set<string>>();
+  for (const padKeyStr of padKeys) coOccurring.set(padKeyStr, new Set());
+  for (const moment of moments) {
+    const active = moment.notes
+      .map(n => n.padId)
+      .filter((id): id is string => !!id && coOccurring.has(id));
+    for (const a of active) {
+      for (const b of active) {
+        if (a !== b) coOccurring.get(a)!.add(b);
+      }
+    }
+  }
+
+  // Assign the most constrained pads first so the crowded moments get the
+  // anatomically sensible fingers rather than whatever is left over.
+  const ordered = [...padKeys].sort((a, b) => {
+    const da = coOccurring.get(a)!.size;
+    const db = coOccurring.get(b)!.size;
+    if (da !== db) return db - da;
+    return a.localeCompare(b);
+  });
+
+  for (const padKeyStr of ordered) {
+    const parts = padKeyStr.split(',');
+    const col = parseInt(parts[1], 10);
+    const taken = new Set<string>();
+    for (const neighbour of coOccurring.get(padKeyStr)!) {
+      const owner = assignment[neighbour];
+      if (owner) taken.add(`${owner.hand}:${owner.finger}`);
+    }
+    const options = rankFingerOptions(col);
+    const choice =
+      options.find(o => !taken.has(`${o.hand}:${o.finger}`)) ??
+      assignFingerForPad(parseInt(parts[0], 10), col);
+    assignment[padKeyStr] = { hand: choice.hand, finger: choice.finger };
+  }
+
   return assignment;
 }
 

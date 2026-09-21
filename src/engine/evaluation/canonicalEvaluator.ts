@@ -45,6 +45,7 @@ import { padKey } from '../../types/padGrid';
 
 import {
   calculateTransitionCost,
+  exceedsHandSpeedLimit,
   calculateAttractorCost,
   calculatePerFingerHomeCost,
   calculateFingerPreferenceCost,
@@ -144,8 +145,8 @@ export function evaluateEvent(input: EvaluateEventInput): EventCostBreakdown {
   const poseDetail = computePoseDetail(poseResult, config);
   const poseNaturalness = poseDetail.attractor + poseDetail.perFingerHome + poseDetail.fingerDominance;
 
-  // Constraint penalty based on grip tier
-  const constraintPenalty = tierToPenalty(poseResult.tier);
+  // Constraint penalty: real, named ergonomic and feasibility violations.
+  const constraintPenalty = computeConstraintPenalty(poseResult);
 
   // Alternation cost
   let alternation = 0;
@@ -185,6 +186,12 @@ export function evaluateEvent(input: EvaluateEventInput): EventCostBreakdown {
     dimensions,
     poseDetail,
     feasibilityTier,
+    violations: {
+      collisions: poseResult.collisions,
+      zoneReaches: poseResult.zoneViolations,
+      gripViolations: poseResult.gripViolations,
+      unmapped: unmappedCount + poseResult.unmappedPads.length,
+    },
     noteAssignments,
     debug: includeDebug ? {
       handPoses: {
@@ -237,16 +244,19 @@ export function evaluateTransition(input: EvaluateTransitionInput): TransitionCo
   // Compute transition cost per hand
   let transitionCost = 0;
   let rawFittsLawCost = 0;
+  let overSpeed = false;
 
   if (fromPoses.left && toPoses.left) {
     const cost = calculateTransitionCost(fromPoses.left, toPoses.left, timeDelta);
     transitionCost += cost;
     rawFittsLawCost += cost;
+    if (exceedsHandSpeedLimit(fromPoses.left, toPoses.left, timeDelta)) overSpeed = true;
   }
   if (fromPoses.right && toPoses.right) {
     const cost = calculateTransitionCost(fromPoses.right, toPoses.right, timeDelta);
     transitionCost += cost;
     rawFittsLawCost += cost;
+    if (exceedsHandSpeedLimit(fromPoses.right, toPoses.right, timeDelta)) overSpeed = true;
   }
 
   // Movement metrics
@@ -268,6 +278,7 @@ export function evaluateTransition(input: EvaluateTransitionInput): TransitionCo
     toTimestamp: toMoment.startTime,
     timeDeltaMs,
     dimensions,
+    exceedsSpeedLimit: overSpeed,
     movement: {
       gridDistance,
       speedPressure,
@@ -325,6 +336,9 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
   const infeasibleMomentIndices = new Set<number>();
   let leftCount = 0;
   let rightCount = 0;
+  let unmappedNoteCount = 0;
+  let collisionCount = 0;
+  let overSpeedCount = 0;
 
   let prevAssignments: Array<{ hand: HandSide; finger: FingerType }> = [];
   let prevTimestamp = 0;
@@ -339,7 +353,11 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
       padFingerAssignment,
       config,
       prevMomentContext: i > 0 ? { assignments: prevAssignments, timestamp: prevTimestamp } : undefined,
-      handCounts: { left: leftCount, right: rightCount },
+      // Hand balance is deliberately NOT charged per moment. It is a property of
+      // the performance as a whole, and charging the running cumulative figure at
+      // every moment and summing the results made the penalty grow with length:
+      // the same steady 50/50 groove scored 0.026 over 4 notes and 0.408 over 256.
+      // It is computed once, from the final counts, after this loop.
       includeDebug,
       costToggles,
     });
@@ -347,12 +365,14 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
     eventCosts.push(eventResult);
     totalCost += eventResult.dimensions.total;
 
-    // Track feasibility
-    if (eventResult.feasibilityTier === 'fallback') {
-      hardMomentIndices.add(i);
-    }
-    if (eventResult.noteAssignments.length < moment.notes.length) {
+    // Track feasibility. A collision or a note with no pad is a physical
+    // impossibility; everything else that strains the hand is merely hard.
+    if (eventResult.violations.collisions > 0 || eventResult.violations.unmapped > 0) {
       infeasibleMomentIndices.add(i);
+      unmappedNoteCount += eventResult.violations.unmapped;
+      collisionCount += eventResult.violations.collisions;
+    } else if (eventResult.feasibilityTier === 'fallback') {
+      hardMomentIndices.add(i);
     }
 
     // Update running state
@@ -377,9 +397,9 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
       totalCost += transitionResult.dimensions.total;
       // A speed-limit violation is a hard feasibility failure, not merely an
       // expensive transition. Attribute it to the destination moment.
-      if (!Number.isFinite(transitionResult.dimensions.transitionCost)) {
-        hardMomentIndices.add(i + 1);
+      if (transitionResult.exceedsSpeedLimit) {
         infeasibleMomentIndices.add(i + 1);
+        overSpeedCount++;
       }
     }
   }
@@ -391,17 +411,37 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
 
   const aggregatedDimensions = allDimensions.reduce(sumCostDimensions, createZeroCostDimensions());
 
-  const averageDimensions = averageCostDimensions(allEventDimensions);
+  // Hand balance, charged once for the whole performance.
+  const globalHandBalance = applyToggles(
+    { poseNaturalness: 0, transitionCost: 0, constraintPenalty: 0, alternation: 0,
+      handBalance: calculateHandBalanceCost(leftCount, rightCount), total: 0 },
+    costToggles ?? ALL_COSTS_ENABLED,
+  ).handBalance;
+  aggregatedDimensions.handBalance += globalHandBalance;
+  aggregatedDimensions.total += globalHandBalance;
+  totalCost += globalHandBalance;
+
+  // Per-moment cost vectors that INCLUDE the movement needed to arrive at each
+  // moment. Averaging and peak-finding over event dimensions alone reported
+  // transitionCost as 0.0000 on every layout — even when movement was the great
+  // majority of the real cost — and picked the "hardest moment" without looking at
+  // hand travel at all, which is exactly the moment a player needs to rehearse.
+  const perMomentDimensions = eventCosts.map((event, i) => {
+    const incoming = i > 0 ? transitionCosts[i - 1]?.dimensions : undefined;
+    return incoming ? sumCostDimensions(event.dimensions, incoming) : event.dimensions;
+  });
+
+  const averageDimensions = averageCostDimensions(perMomentDimensions);
 
   // Find peak moment
   let peakMomentIndex = 0;
   let peakTotal = 0;
   const peakDimensions = createZeroCostDimensions();
-  for (let i = 0; i < eventCosts.length; i++) {
-    if (eventCosts[i].dimensions.total > peakTotal) {
-      peakTotal = eventCosts[i].dimensions.total;
+  for (let i = 0; i < perMomentDimensions.length; i++) {
+    if (perMomentDimensions[i].total > peakTotal) {
+      peakTotal = perMomentDimensions[i].total;
       peakMomentIndex = i;
-      Object.assign(peakDimensions, eventCosts[i].dimensions);
+      Object.assign(peakDimensions, perMomentDimensions[i]);
     }
   }
 
@@ -415,16 +455,20 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
     transitionCount: transitionCosts.length,
   };
 
+  // Each reason is counted from its own source. Previously the same number was
+  // passed as both "unplayable" and "unmapped", so one underlying problem was
+  // reported to the user twice as two unrelated failures.
   const feasibility = deriveFeasibilityVerdict(
-    infeasibleMomentIndices.size,
+    collisionCount + overSpeedCount,
     hardMomentIndices.size,
-    infeasibleMomentIndices.size,
-    eventCosts.filter(e => e.feasibilityTier === 'fallback').length,
+    unmappedNoteCount,
+    eventCosts.filter(e => e.feasibilityTier === 'fallback' && e.violations.collisions === 0).length,
     moments.length,
   );
 
   return {
     total: totalCost,
+    costPerMoment: moments.length > 0 ? totalCost / moments.length : 0,
     dimensions: aggregatedDimensions,
     eventCosts,
     transitionCosts,
@@ -680,8 +724,38 @@ function computePoseDetail(
  * V1 Cost Model (D-01): Tier penalty removed. All grips are strict tier.
  * Returns 0 for backward compatibility with costBreakdown consumers.
  */
-function tierToPenalty(_tier: ConstraintTier): number {
-  return 0;
+/**
+ * Cost charged when one finger is asked to strike two pads in the same moment.
+ *
+ * This is physically impossible rather than merely hard, so the penalty is large
+ * enough to dominate any ergonomic saving a colliding assignment might show.
+ */
+export const COLLISION_PENALTY = 25;
+
+/** Cost charged per pad played by a hand reaching across the grid midline. */
+export const ZONE_REACH_PENALTY = 3;
+
+/** Cost charged per hand whose simultaneous grip fails the strict geometry rules. */
+export const GRIP_VIOLATION_PENALTY = 8;
+
+/**
+ * Computes the canonical `constraintPenalty` factor for one moment.
+ *
+ * This factor used to be hardcoded to zero, which meant the evaluator that ranks
+ * every candidate the user chooses between scored a physically impossible
+ * assignment exactly the same as a comfortable one — and the Constraint Penalty
+ * bar in the UI could never move off zero.
+ */
+function computeConstraintPenalty(pose: {
+  collisions: number;
+  zoneViolations: number;
+  gripViolations: number;
+}): number {
+  return (
+    pose.collisions * COLLISION_PENALTY +
+    pose.zoneViolations * ZONE_REACH_PENALTY +
+    pose.gripViolations * GRIP_VIOLATION_PENALTY
+  );
 }
 
 function resolveMomentPadKeys(
@@ -771,6 +845,7 @@ function detectFingerChange(
 function emptyPerformanceBreakdown(assignment: PadFingerAssignment): PerformanceCostBreakdown {
   return {
     total: 0,
+    costPerMoment: 0,
     dimensions: createZeroCostDimensions(),
     eventCosts: [],
     transitionCosts: [],

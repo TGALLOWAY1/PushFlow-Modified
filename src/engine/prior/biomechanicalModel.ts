@@ -148,13 +148,58 @@ export const FINGER_ORDER: FingerType[] = ['pinky', 'ring', 'middle', 'index', '
 export const FINGER_PREFERENCE_COST: Record<FingerType, number> = {
   index:  0.0,   // Preferred — no penalty
   middle: 0.0,   // Preferred — no penalty
-  ring:   1.0,   // Slightly suboptimal
-  pinky:  3.0,   // Discouraged
-  thumb:  5.0,   // Very discouraged for percussion
+  ring:   0.5,   // Slightly suboptimal
+  pinky:  1.0,   // Weaker, but ordinary in four-finger patterns
+  thumb:  1.5,   // Least dexterous on pads — biased against, not excluded
 };
 
-/** Maximum physiological hand movement speed in grid units per second. */
-export const MAX_HAND_SPEED = 12.0;
+// These costs are charged for every finger used in every moment, so they are kept
+// in the same order of magnitude as the other soft costs. The previous values
+// (pinky 3.0, thumb 5.0) were large enough relative to everything else that the
+// solver stopped using those fingers at all: across 48 events of the reference MIDI
+// the thumb was never assigned once. Finger-drummers use thumbs constantly — the
+// app's own shipped natural pose places a thumb on a pad for each hand — and
+// excluding two fingers per hand left only eight, which forces pads to share a
+// finger and manufactures simultaneity conflicts.
+
+/**
+ * Maximum physiological hand movement speed, in grid units (pads) per second.
+ *
+ * Derivation: the Push 3's 8x8 pad area is roughly 17-18 cm across, so one grid
+ * unit is about 2.2 cm. A player sweeping a hand the full width of the grid
+ * (8 units, ~18 cm) in about 100 ms is moving at ~80 units/s, or ~1.8 m/s —
+ * fast, but well within what a hand does. That is the ceiling encoded here.
+ *
+ * This constant was previously 12.0 units/s, which is only ~26 cm/s — slower
+ * than a casual reach. At that limit an ordinary alternating 16th-note groove
+ * across two adjacent pads was rejected as physically impossible, which is the
+ * main reason routine material was reported as unplayable.
+ */
+export const MAX_HAND_SPEED = 80.0;
+
+/**
+ * Speed above which movement starts to feel rushed, in grid units per second.
+ *
+ * Between this and MAX_HAND_SPEED the transition cost ramps up steeply: the
+ * movement is playable but increasingly demanding. This is the "merely awkward"
+ * band the product canon requires us to distinguish from "impossible".
+ */
+export const COMFORTABLE_HAND_SPEED = 24.0;
+
+/** Cost added per unit of speed above COMFORTABLE_HAND_SPEED. */
+export const OVER_SPEED_RAMP_WEIGHT = 1.5;
+
+/**
+ * Finite cost charged when a transition exceeds MAX_HAND_SPEED.
+ *
+ * Deliberately finite. Using Infinity as an in-band cost poisoned every
+ * comparison downstream: `Infinity < Infinity` is false, so the greedy
+ * hill-climb could not accept any move and stopped at iteration 0, and
+ * `Infinity - Infinity` is NaN, so layout comparison produced no verdict.
+ * A speed violation is still reported as a hard feasibility failure — by
+ * `exceedsHandSpeedLimit`, not by an unorderable cost.
+ */
+export const SPEED_LIMIT_PENALTY = 1000.0;
 
 /** Weight factor for speed component in transition cost (Fitts's Law). */
 export const SPEED_COST_WEIGHT = 0.5;
@@ -200,7 +245,7 @@ export const HAND_BALANCE_TARGET_LEFT = 0.45;
  * force a 50/50 split — which, because hand is column-derived, scatters pads across
  * the grid and creates impossible-speed transitions. Kept as a soft nudge (not a
  * dominant driver): genuinely one-hand-impossible passages are still caught by the
- * transition speed limit (MAX_HAND_SPEED → Infinity), not by this cost.
+ * transition speed limit (see exceedsHandSpeedLimit), not by this cost.
  */
 export const HAND_BALANCE_WEIGHT = 0.5;
 

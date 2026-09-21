@@ -229,6 +229,7 @@ describe('v1CostBreakdownToCanonicalFactors', () => {
     const v1: V1CostBreakdown = {
       fingerPreference: 5.0,
       handShapeDeviation: 10.0,
+      alternation: 2.0,
       transitionCost: 3.0,
       handBalance: 1.0,
       constraintPenalty: 0,
@@ -238,10 +239,10 @@ describe('v1CostBreakdownToCanonicalFactors', () => {
     expect(factors.gripNaturalness).toBe(15.0); // 5 + 10
     expect(factors.transition).toBe(3.0);
     expect(factors.handBalance).toBe(1.0);
-    expect(factors.alternation).toBe(0);         // always 0 in V1
+    expect(factors.alternation).toBe(2.0);       // carried through, not zeroed
     expect(factors.constraintPenalty).toBe(0);
     // Total = sum of canonical factors, not beam total
-    expect(factors.total).toBe(19.0); // 15 + 3 + 0 + 1 + 0
+    expect(factors.total).toBe(21.0); // 15 + 3 + 2 + 1 + 0
   });
 });
 

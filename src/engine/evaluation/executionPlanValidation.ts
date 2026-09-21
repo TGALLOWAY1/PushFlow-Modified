@@ -62,11 +62,14 @@ export function checkPlanFreshness(
     return { isFresh: true };
   }
 
-  // Phase 2+ plan: use layoutBinding
-  if (binding.layoutId !== layout.id) {
-    return { isFresh: false, reason: 'Plan was computed for a different layout' };
-  }
-
+  // Phase 2+ plan: use layoutBinding.
+  //
+  // The HASH decides freshness, not the id. Every workflow transition (promote,
+  // discard, load variant, apply generation) clones the layout with a fresh id
+  // while leaving the pad map untouched, so an id comparison reported a perfectly
+  // valid plan as stale after each of those — and in the promote case the analysis
+  // simply vanished from the UI. Identical pads, constraints and locks mean the
+  // plan still describes what is on screen, whatever the layout object is called.
   const currentHash = hashLayout(layout);
   if (binding.layoutHash !== currentHash) {
     return { isFresh: false, reason: 'Layout pad assignments have changed since plan was computed' };

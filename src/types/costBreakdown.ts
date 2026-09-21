@@ -128,6 +128,24 @@ export interface EventCostBreakdown {
   poseDetail: PoseNaturalnessDetail;
   /** Which feasibility tier was used for the grip. */
   feasibilityTier: ConstraintTier;
+  /**
+   * Named, countable reasons this moment is hard or impossible.
+   *
+   * These are kept separate so the UI can distinguish a physical impossibility
+   * (one finger asked to hit two pads at once, or a note with no pad at all)
+   * from an ergonomic strain (reaching across the midline). Reporting them as
+   * one undifferentiated number is what made earlier verdicts untrustworthy.
+   */
+  violations: {
+    /** Notes in this moment whose finger is already busy on another pad. */
+    collisions: number;
+    /** Pads played by a hand reaching outside its comfortable zone. */
+    zoneReaches: number;
+    /** Hands whose simultaneous grip fails the strict geometry rules. */
+    gripViolations: number;
+    /** Notes in this moment that resolve to no pad in the layout. */
+    unmapped: number;
+  };
   /** Per-note assignments within this moment. */
   noteAssignments: NoteEvaluationDetail[];
   /** Debug info (only when includeDebug is true). */
@@ -152,6 +170,14 @@ export interface TransitionCostBreakdown {
   timeDeltaMs: number;
   /** The 5-dimension cost vector for this transition. */
   dimensions: CostDimensions;
+  /**
+   * True when a hand would have to move faster than physiologically possible.
+   *
+   * Asked as an explicit question rather than inferred from an infinite cost, so
+   * that every cost stays finite and comparable while genuine impossibility is
+   * still reported.
+   */
+  exceedsSpeedLimit: boolean;
   /** Movement-specific metrics. */
   movement: {
     gridDistance: number;
@@ -189,8 +215,22 @@ export interface AggregateMetrics {
  * This is the primary output of evaluatePerformance().
  */
 export interface PerformanceCostBreakdown {
-  /** Total cost across all moments and transitions. */
+  /**
+   * Total cost across all moments and transitions.
+   *
+   * This is a raw SUM, so it grows with how much music the project contains —
+   * the same two-pad pattern totals ~0.2 over 4 moments and ~12 over 256. Use it
+   * for internal ranking within one performance only. Anything shown to the user,
+   * or compared across passages of different lengths, must use `costPerMoment`.
+   */
   total: number;
+  /**
+   * Length-independent cost: `total` divided by the number of moments.
+   *
+   * This is the figure that is meaningful to a person — it does not get worse
+   * simply because the piece is longer, and it is comparable between sections.
+   */
+  costPerMoment: number;
   /** Aggregated cost dimensions. */
   dimensions: CostDimensions;
   /** Per-moment cost breakdowns. */

@@ -177,17 +177,34 @@ describe('poseBuilder', () => {
     expect(buildMomentPoses([padKey(3, 4), padKey(3, 5)], assignment).tier).toBe('fallback');
   });
 
-  it('applies topology and hand-zone rules used by the solver', () => {
+  it('applies the solver topology rules to the grip', () => {
     const crossed: PadFingerAssignment = {
       [padKey(3, 4)]: { hand: 'right', finger: 'index' },
       [padKey(3, 3)]: { hand: 'right', finger: 'middle' },
     };
-    const wrongZone: PadFingerAssignment = {
+    expect(buildMomentPoses([padKey(3, 4), padKey(3, 3)], crossed).tier).toBe('fallback');
+  });
+
+  it('treats a cross-midline reach as a graded cost, not a feasibility failure', () => {
+    // A Push 3's pad area is only ~17 cm wide, so either hand can reach any
+    // column. The reach is counted so the evaluator can price it, but it must not
+    // downgrade the tier — doing so reported comfortable layouts as degraded.
+    const reach: PadFingerAssignment = {
       [padKey(3, 1)]: { hand: 'right', finger: 'index' },
     };
+    const result = buildMomentPoses([padKey(3, 1)], reach);
+    expect(result.zoneViolations).toBe(1);
+    expect(result.tier).toBe('strict');
+  });
 
-    expect(buildMomentPoses([padKey(3, 4), padKey(3, 3)], crossed).tier).toBe('fallback');
-    expect(buildMomentPoses([padKey(3, 1)], wrongZone).tier).toBe('fallback');
+  it('flags one finger asked to strike two pads at once as impossible', () => {
+    const collide: PadFingerAssignment = {
+      [padKey(3, 4)]: { hand: 'right', finger: 'index' },
+      [padKey(3, 6)]: { hand: 'right', finger: 'index' },
+    };
+    const result = buildMomentPoses([padKey(3, 4), padKey(3, 6)], collide);
+    expect(result.collisions).toBe(1);
+    expect(result.tier).toBe('fallback');
   });
 });
 
@@ -480,7 +497,11 @@ describe('evaluatePerformance', () => {
       moments, layout, padFingerAssignment: assignment, config: makeConfig(),
     });
 
-    expect(result.transitionCosts[0].dimensions.transitionCost).toBe(Infinity);
+    // Over-speed is reported by an explicit flag; the cost stays finite but is
+    // dominated by the speed-limit penalty so such a layout can never rank well.
+    expect(result.transitionCosts[0].exceedsSpeedLimit).toBe(true);
+    expect(Number.isFinite(result.transitionCosts[0].dimensions.transitionCost)).toBe(true);
+    expect(result.transitionCosts[0].dimensions.transitionCost).toBeGreaterThan(500);
     expect(result.aggregateMetrics.infeasibleMomentCount).toBe(1);
     expect(result.feasibility.level).toBe('infeasible');
   });
@@ -517,7 +538,13 @@ describe('evaluatePerformance', () => {
     const eventTotal = result.eventCosts.reduce((s, e) => s + e.dimensions.total, 0);
     const transitionTotal = result.transitionCosts.reduce((s, t) => s + t.dimensions.total, 0);
 
-    expect(result.total).toBeCloseTo(eventTotal + transitionTotal, 8);
+    // Hand balance is a whole-performance property charged once after the loop,
+    // not per moment, so it is part of `total` but not of any event's dimensions.
+    expect(result.total).toBeCloseTo(
+      eventTotal + transitionTotal + result.dimensions.handBalance, 8,
+    );
+    // And it must not scale with length the way a summed per-moment charge did.
+    expect(result.costPerMoment).toBeCloseTo(result.total / moments.length, 8);
   });
 });
 

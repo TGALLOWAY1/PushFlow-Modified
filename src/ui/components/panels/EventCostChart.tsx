@@ -77,9 +77,7 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
       const assignments = timeMap.get(time)!;
       // Aggregate cost breakdown across all notes in this event
       const aggregated: V1CostBreakdown = {
-        fingerPreference: 0,
-        handShapeDeviation: 0,
-        transitionCost: 0,
+        fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0,
         handBalance: 0,
         constraintPenalty: 0,
         total: 0,

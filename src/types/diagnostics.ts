@@ -220,9 +220,11 @@ export interface V1CostBreakdown {
   handShapeDeviation: number;
   /** Fitts's Law transition cost. */
   transitionCost: number;
+  /** Same-finger rapid repetition penalty. */
+  alternation: number;
   /** Left/right hand distribution penalty. */
   handBalance: number;
-  /** Hard constraint penalty (always 0 for valid grips; non-zero = infeasible). */
+  /** Soft ergonomic and hard feasibility penalties (zone reach, re-fingering). */
   constraintPenalty: number;
   /** Weighted total. */
   total: number;
@@ -233,6 +235,7 @@ export function createZeroV1CostBreakdown(): V1CostBreakdown {
   return {
     fingerPreference: 0,
     handShapeDeviation: 0,
+    alternation: 0,
     transitionCost: 0,
     handBalance: 0,
     constraintPenalty: 0,

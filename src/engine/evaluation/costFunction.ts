@@ -21,6 +21,9 @@ import { type FingerCoordinate, type HandPose } from '../../types/performance';
 import { type NeutralHandCentersResult, type NeutralPadPositions } from '../prior/handPose';
 import {
   MAX_HAND_SPEED,
+  COMFORTABLE_HAND_SPEED,
+  OVER_SPEED_RAMP_WEIGHT,
+  SPEED_LIMIT_PENALTY,
   SPEED_COST_WEIGHT,
   PER_FINGER_MOVEMENT_WEIGHT,
   MAX_FINGER_JUMP_WEIGHT,
@@ -304,8 +307,30 @@ export function calculatePerFingerHomeCost(
 // ============================================================================
 
 /**
+ * Reports whether moving between two poses in `timeDelta` seconds exceeds the
+ * maximum physiological hand speed.
+ *
+ * Feasibility is asked as an explicit question rather than inferred from an
+ * Infinity cost, so that costs stay finite and orderable everywhere.
+ */
+export function exceedsHandSpeedLimit(
+  prev: HandPose,
+  curr: HandPose,
+  timeDelta: number,
+): boolean {
+  if (timeDelta <= MIN_TIME_DELTA) return false;
+  const centroidDistance = fingerCoordinateDistance(prev.centroid, curr.centroid);
+  if (centroidDistance <= 0) return false;
+  return centroidDistance / timeDelta > MAX_HAND_SPEED;
+}
+
+/**
  * Transition cost (Fitts's Law): movement distance + speed penalty + per-finger movement.
- * Returns Infinity if speed exceeds MAX_HAND_SPEED.
+ *
+ * The cost is always finite. Movement beyond COMFORTABLE_HAND_SPEED ramps up
+ * steeply, and movement beyond MAX_HAND_SPEED additionally takes
+ * SPEED_LIMIT_PENALTY so it can never be mistaken for a reasonable option. Use
+ * `exceedsHandSpeedLimit` to ask whether a transition is physically possible.
  *
  * The per-finger component tracks how far each individual finger moves between
  * poses. This catches cases where a single finger jumps across the grid while
@@ -324,8 +349,12 @@ export function calculateTransitionCost(
   // Centroid-based cost (original Fitts's Law component)
   const centroidDistance = fingerCoordinateDistance(prev.centroid, curr.centroid);
   const speed = centroidDistance > 0 ? centroidDistance / timeDelta : 0;
-  if (speed > MAX_HAND_SPEED) return Infinity;
-  const centroidCost = centroidDistance + speed * SPEED_COST_WEIGHT;
+  const overComfort = Math.max(0, speed - COMFORTABLE_HAND_SPEED);
+  const speedPenalty =
+    speed * SPEED_COST_WEIGHT +
+    overComfort * OVER_SPEED_RAMP_WEIGHT +
+    (speed > MAX_HAND_SPEED ? SPEED_LIMIT_PENALTY : 0);
+  const centroidCost = centroidDistance + speedPenalty;
 
   // Per-finger movement cost: sum distance each shared finger travels
   let perFingerTotal = 0;

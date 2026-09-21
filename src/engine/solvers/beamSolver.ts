@@ -31,14 +31,16 @@ import {
 } from '../../types/executionPlan';
 import { MOMENT_EPSILON } from '../../types/performanceEvent';
 import { buildNoteToPadIndex, buildVoiceIdToPadIndex, resolveEventToPad, hashLayout } from '../mapping/mappingResolver';
-import { allPadsInZone, isZoneValid } from '../surface/handZone';
+import { isZoneValid } from '../surface/handZone';
 import { generateValidGripsWithTier } from '../prior/feasibility';
 import {
   calculateHandShapeDeviation,
   buildNaturalPairwiseDistances,
   calculateTransitionCost,
+  exceedsHandSpeedLimit,
   calculateFingerPreferenceCost,
   calculateHandBalanceCost,
+  calculateAlternationCost,
 } from '../evaluation/costFunction';
 import { computePlanScore } from '../evaluation/planScore';
 import {
@@ -70,8 +72,9 @@ import { type SolverConfig, type NeutralPadPositions } from '../../types/engineC
 // Beam Score Weights for Previously Diagnostic-Only Costs
 // ============================================================================
 
-// V1 (D-15): Alternation cost removed from V1 beam score entirely.
-// See costFunction.ts for the retained (but unused) alternation logic.
+// Alternation (same-finger repetition at speed) is part of the beam score and is
+// reported as its own canonical factor. It was previously excluded entirely, which
+// made the Alternation bar read zero for every layout the beam analysed.
 
 /**
  * Weight for hand balance cost in beam score.
@@ -80,6 +83,57 @@ import { type SolverConfig, type NeutralPadPositions } from '../../types/engineC
  * legitimate one-hand-only passages.
  */
 const HAND_BALANCE_BEAM_WEIGHT = 0.3;
+
+/**
+ * Cost of deviating from a pad's established (hand, finger) ownership.
+ *
+ * Consistent fingering is what makes a layout learnable — the same pad should be
+ * struck by the same finger every time, because that stable mapping is what the
+ * player memorises and what PushFlow ultimately delivers. It is also what the
+ * product's own PadFingerAssignment can represent: one finger per pad.
+ *
+ * It is a strong PREFERENCE rather than a law of physics — a player can re-finger
+ * a pad when the context demands it — so it is priced, not forbidden. Treating it
+ * as a hard constraint (the previous behaviour) made the beam dead-end on ordinary
+ * material and report the dead end to the user as "Unplayable", a false physical
+ * claim. Pricing it below BEST_EFFORT_PENALTY keeps the ordering right: re-finger
+ * if you must, rather than give up on the moment.
+ */
+const OWNERSHIP_DEVIATION_PENALTY = 25.0;
+
+/** Extra cost when the deviation also switches the pad to the other hand. */
+const OWNERSHIP_HAND_SWITCH_PENALTY = 15.0;
+
+/**
+ * Cost per pad played outside a hand's comfortable column zone.
+ *
+ * The Push 3 playing surface is only ~17cm wide, so either hand can physically
+ * reach any column; crossing the midline is awkward, not impossible. Modelling
+ * this as cost (rather than the previous hard rejection) keeps the distinction
+ * the product canon requires: impossible vs merely awkward.
+ */
+const ZONE_REACH_PENALTY = 10.0;
+
+/**
+ * Additional cost per column of reach beyond the hand's zone boundary.
+ *
+ * Steep on purpose. Crossing the hands mid-groove is a real commitment, and a
+ * shallow ramp had the solver casually sending a far-left pad to the right hand
+ * to dodge a re-fingering penalty — which then cost far more in hand travel than
+ * it saved.
+ */
+const ZONE_REACH_PENALTY_PER_COL = 6.0;
+
+/**
+ * Cost applied to a best-effort assignment produced when every ergonomically
+ * preferred option for a moment was rejected. Large enough to rank last, finite
+ * so the moment still receives a real assignment and an honest difficulty.
+ */
+const BEST_EFFORT_PENALTY = 40.0;
+
+/** Maximum number of hand partitions enumerated for a simultaneous group. */
+const MAX_SPLIT_PARTITIONS = 64;
+
 
 // ============================================================================
 // Beam Search Internal Types
@@ -116,6 +170,13 @@ interface BeamNode {
    * must use the same finger for that pad.
    */
   padOwnership: Map<string, { hand: 'left' | 'right'; finger: FingerType }>;
+  /**
+   * The (hand, finger) pairs used at the previous moment, and when that was.
+   * Needed to charge same-finger repetition — the canonical `alternation` factor,
+   * which the beam score previously omitted entirely.
+   */
+  prevFingers: Array<{ hand: 'left' | 'right'; finger: FingerType }>;
+  prevTimestamp: number;
 }
 
 interface PerformanceGroup {
@@ -131,8 +192,77 @@ interface PerformanceGroup {
 // Helper Functions
 // ============================================================================
 
+/**
+ * Soft zone cost for playing `pads` with `hand`.
+ *
+ * Returns 0 while every pad sits inside the hand's comfortable zone, and grows
+ * with how far past the midline the hand has to reach.
+ */
+function zoneReachCost(pads: PadCoord[], hand: 'left' | 'right'): number {
+  let cost = 0;
+  for (const pad of pads) {
+    if (isZoneValid(pad, hand)) continue;
+    const overshoot = hand === 'left' ? pad.col - 4 : 3 - pad.col;
+    cost += ZONE_REACH_PENALTY + Math.max(0, overshoot) * ZONE_REACH_PENALTY_PER_COL;
+  }
+  return cost;
+}
+
+/**
+ * Soft cost for re-fingering pads that already have an established owner.
+ */
+function ownershipDeviationCost(
+  ownership: Map<string, { hand: 'left' | 'right'; finger: FingerType }>,
+  entries: Array<{ padKey: string; hand: 'left' | 'right'; finger: FingerType }>,
+): number {
+  let cost = 0;
+  for (const entry of entries) {
+    const existing = ownership.get(entry.padKey);
+    if (!existing) continue;
+    if (existing.hand !== entry.hand) {
+      cost += OWNERSHIP_DEVIATION_PENALTY + OWNERSHIP_HAND_SWITCH_PENALTY;
+    } else if (existing.finger !== entry.finger) {
+      cost += OWNERSHIP_DEVIATION_PENALTY;
+    }
+  }
+  return cost;
+}
+
+/**
+ * Enumerates every non-empty two-hand division of a simultaneous pad group.
+ *
+ * Both hands must receive at least one pad, and neither may receive more than
+ * five (a hand has five fingers). Partitions are produced in a deterministic
+ * order and capped at MAX_SPLIT_PARTITIONS so a dense moment cannot blow up the
+ * beam; the cap is far above the realistic case (a 5-pad moment yields 30).
+ */
+function enumerateHandPartitions(
+  pads: PadCoord[],
+): Array<{ leftPads: PadCoord[]; rightPads: PadCoord[] }> {
+  const partitions: Array<{ leftPads: PadCoord[]; rightPads: PadCoord[] }> = [];
+  const n = pads.length;
+  if (n < 2 || n > 10) return partitions;
+
+  const combinations = 1 << n;
+  for (let mask = 1; mask < combinations - 1; mask++) {
+    const leftPads: PadCoord[] = [];
+    const rightPads: PadCoord[] = [];
+    for (let i = 0; i < n; i++) {
+      if (mask & (1 << i)) leftPads.push(pads[i]);
+      else rightPads.push(pads[i]);
+    }
+    if (leftPads.length > 5 || rightPads.length > 5) continue;
+    partitions.push({ leftPads, rightPads });
+    if (partitions.length >= MAX_SPLIT_PARTITIONS) break;
+  }
+  return partitions;
+}
+
 function getDifficulty(cost: number): 'Easy' | 'Medium' | 'Hard' | 'Unplayable' {
-  if (cost === Infinity || cost > 100) return 'Unplayable';
+  // "Unplayable" means there is no assignment at all. A finite cost means the
+  // solver found a way to play the moment, however strained — reporting that as
+  // Unplayable made the difficulty label contradict the headline counters.
+  if (!Number.isFinite(cost)) return 'Unplayable';
   if (cost > 10) return 'Hard';
   if (cost > 3) return 'Medium';
   return 'Easy';
@@ -216,6 +346,8 @@ export class BeamSolver implements SolverStrategy {
       leftCount: 0,
       rightCount: 0,
       padOwnership: new Map(this.initialPadOwnership),
+      prevFingers: [],
+      prevTimestamp: 0,
     }];
   }
 
@@ -246,21 +378,12 @@ export class BeamSolver implements SolverStrategy {
 
       if (uniquePads.length === 0 || uniquePads.length > 5) continue;
 
-      // === Invariant B: Check if any pad in this group is already owned
-      //     by the OTHER hand. If so, skip this hand for the entire group. ===
-      let handConflict = false;
-      for (const pad of uniquePads) {
-        const key = `${pad.row},${pad.col}`;
-        const existing = node.padOwnership.get(key);
-        if (existing && existing.hand !== hand) {
-          handConflict = true;
-          break;
-        }
-      }
-      if (handConflict) continue;
+      // Consistent fingering is a strong preference, not a hard rule. Pads already
+      // owned by the other hand stay playable here, they just cost more (see
+      // ownershipDeviationCost below, applied once the exact fingers are known).
 
-      // V1 (D-02): Hard zone constraint — skip hand if any pad is outside its zone
-      if (!allPadsInZone(uniquePads, hand)) continue;
+      // Reaching outside the hand's comfortable zone is awkward, not impossible.
+      const zoneCost = zoneReachCost(uniquePads, hand);
 
       const prevPose = hand === 'left' ? node.leftPose : node.rightPose;
 
@@ -270,10 +393,11 @@ export class BeamSolver implements SolverStrategy {
         const { pose: grip } = gripResult;
         const transitionCost = calculateTransitionCost(prevPose, grip, timeDelta);
 
-        // V1 (D-01): All grips are strict — reject impossible transitions
-        if (transitionCost === Infinity && !isFirstGroup) continue;
+        // Reject transitions that exceed physiological hand speed. Everything
+        // slower is merely expensive, and its cost is already finite.
+        if (!isFirstGroup && exceedsHandSpeedLimit(prevPose, grip, timeDelta)) continue;
 
-        const effectiveTransitionCost = transitionCost === Infinity ? 0 : transitionCost;
+        const effectiveTransitionCost = transitionCost;
 
         // V1 (D-05, D-20): Translation-invariant hand shape deviation + finger preference
         const handNaturalDist = naturalDistances
@@ -281,9 +405,6 @@ export class BeamSolver implements SolverStrategy {
           : new Map<string, number>();
         const handShapeDeviation = calculateHandShapeDeviation(grip, handNaturalDist);
         const fingerPreferenceCost = calculateFingerPreferenceCost(grip);
-
-        // V1 (D-01): No tier penalties — all grips are strict tier
-        const constraintPenalty = 0;
 
         const gripFingers = Object.keys(grip.fingers) as FingerType[];
 
@@ -300,18 +421,16 @@ export class BeamSolver implements SolverStrategy {
           resolvedFingers.push(assignedFinger ?? gripFingers[0]);
         }
 
-        // === Invariant B: Check pad ownership consistency ===
-        // Reject grips where a pad's resolved finger conflicts with prior ownership.
-        let ownershipViolation = false;
-        for (let i = 0; i < group.positions.length; i++) {
-          const pKey = `${group.positions[i].row},${group.positions[i].col}`;
-          const existing = node.padOwnership.get(pKey);
-          if (existing && (existing.hand !== hand || existing.finger !== resolvedFingers[i])) {
-            ownershipViolation = true;
-            break;
-          }
-        }
-        if (ownershipViolation) continue;
+        // Re-fingering an already-established pad is allowed but penalised, so the
+        // solver keeps fingering stable unless the context genuinely requires a change.
+        const ownershipCost = ownershipDeviationCost(
+          node.padOwnership,
+          group.positions.map((pos, i) => ({
+            padKey: `${pos.row},${pos.col}`,
+            hand,
+            finger: resolvedFingers[i],
+          })),
+        );
 
         const newLeftCount = node.leftCount + (hand === 'left' ? group.notes.length : 0);
         const newRightCount = node.rightCount + (hand === 'right' ? group.notes.length : 0);
@@ -319,6 +438,17 @@ export class BeamSolver implements SolverStrategy {
 
         // === PRIMARY SCORE (V1: hand shape deviation + finger preference + transition) ===
         const poseNaturalness = handShapeDeviation + fingerPreferenceCost;
+        // Soft ergonomic constraints (zone reach + fingering consistency) are reported
+        // as the canonical `constraintPenalty` factor rather than silently rejecting
+        // the option. This is what keeps "awkward" distinguishable from "impossible".
+        const constraintPenalty = zoneCost + ownershipCost;
+
+        // Same-finger repetition at speed — the commonest real-world reason a drum
+        // layout is unplayable. Previously absent from the beam score entirely.
+        const currentFingers = resolvedFingers.map(finger => ({ hand, finger }));
+        const alternationCost = calculateAlternationCost(
+          node.prevFingers, currentFingers, group.timestamp - node.prevTimestamp,
+        );
         const perfComponents: PerformabilityObjective = {
           poseNaturalness,
           transitionDifficulty: effectiveTransitionCost,
@@ -328,7 +458,8 @@ export class BeamSolver implements SolverStrategy {
 
         // === HAND BALANCE COST (prevents single-hand dominance) ===
         stepCostForBeam += handBalanceCost * HAND_BALANCE_BEAM_WEIGHT;
-        // Note: alternation cost (D-15) removed from V1 beam score entirely.
+        stepCostForBeam += alternationCost;
+        // constraintPenalty is already folded in by combinePerformabilityComponents.
 
         const newTotalCost = node.totalCost + stepCostForBeam;
 
@@ -336,6 +467,7 @@ export class BeamSolver implements SolverStrategy {
         const stepComponents: V1CostBreakdown = {
           fingerPreference: fingerPreferenceCost,
           handShapeDeviation: handShapeDeviation,
+          alternation: alternationCost,
           transitionCost: effectiveTransitionCost,
           handBalance: handBalanceCost,
           constraintPenalty,
@@ -384,6 +516,8 @@ export class BeamSolver implements SolverStrategy {
           leftCount: newLeftCount,
           rightCount: newRightCount,
           padOwnership: newPadOwnership,
+          prevFingers: currentFingers,
+          prevTimestamp: group.timestamp,
         });
       }
     }
@@ -418,38 +552,42 @@ export class BeamSolver implements SolverStrategy {
     const isFirstGroup = node.depth === 0 || prevTimestamp === 0;
     const timeDelta = isFirstGroup ? Math.max(rawTimeDelta, 1.0) : rawTimeDelta;
 
-    // === Invariant B: Determine hand split respecting prior ownership ===
-    // If prior ownership constrains a pad to a specific hand, honor that.
-    const sortedPads = [...uniquePads].sort((a, b) => a.col - b.col);
+    // Sort left-to-right so partitions are enumerated in a stable, deterministic order.
+    const sortedPads = [...uniquePads].sort((a, b) =>
+      a.col !== b.col ? a.col - b.col : a.row - b.row);
 
-    // Check if any pad has prior ownership forcing a specific hand
-    const forcedLeft: PadCoord[] = [];
-    const forcedRight: PadCoord[] = [];
-    const unforced: PadCoord[] = [];
-    for (const pad of sortedPads) {
-      const key = `${pad.row},${pad.col}`;
-      const existing = node.padOwnership.get(key);
-      if (existing) {
-        if (existing.hand === 'left') forcedLeft.push(pad);
-        else forcedRight.push(pad);
-      } else {
-        unforced.push(pad);
+    // Enumerate every way of dividing the pads between the two hands, rather than the
+    // single midpoint split used previously. A three-pad moment has three useful
+    // splits; trying only one of them was a common source of "no valid expansion",
+    // which the solver then reported to the user as an unplayable moment.
+    for (const partition of enumerateHandPartitions(sortedPads)) {
+      const { leftPads, rightPads } = partition;
+      for (const child of this.expandSplitPartition(
+        node, group, leftPads, rightPads, timeDelta, isFirstGroup, naturalDistances,
+      )) {
+        children.push(child);
       }
     }
 
-    // If all pads are forced to the same hand, this isn't a valid split
-    if (forcedLeft.length > 0 && forcedRight.length === 0 && unforced.length === 0) return children;
-    if (forcedRight.length > 0 && forcedLeft.length === 0 && unforced.length === 0) return children;
+    return children;
+  }
 
-    // Split unforced pads by position
-    const midpoint = Math.ceil(unforced.length / 2);
-    const leftPads = [...forcedLeft, ...unforced.slice(0, midpoint)];
-    const rightPads = [...forcedRight, ...unforced.slice(midpoint)];
+  /**
+   * Builds beam children for one specific left/right division of a simultaneous group.
+   */
+  private expandSplitPartition(
+    node: BeamNode,
+    group: PerformanceGroup,
+    leftPads: PadCoord[],
+    rightPads: PadCoord[],
+    timeDelta: number,
+    isFirstGroup: boolean,
+    naturalDistances?: { left: Map<string, number>; right: Map<string, number> },
+  ): BeamNode[] {
+    const children: BeamNode[] = [];
 
-    if (leftPads.length === 0 || rightPads.length === 0) return children;
-
-    // V1 (D-02): Hard zone constraint — skip if pads violate hand zones
-    if (!allPadsInZone(leftPads, 'left') || !allPadsInZone(rightPads, 'right')) return children;
+    // Reaching across the midline is awkward, not impossible — charge for it.
+    const zoneCost = zoneReachCost(leftPads, 'left') + zoneReachCost(rightPads, 'right');
 
     const leftPadKeys = new Set(leftPads.map(p => `${p.row},${p.col}`));
     const leftNoteIndices: number[] = [];
@@ -474,10 +612,13 @@ export class BeamSolver implements SolverStrategy {
         const leftTransition = calculateTransitionCost(node.leftPose, leftResult.pose, timeDelta);
         const rightTransition = calculateTransitionCost(node.rightPose, rightResult.pose, timeDelta);
 
-        if ((leftTransition === Infinity || rightTransition === Infinity) && !isFirstGroup) continue;
+        if (!isFirstGroup && (
+          exceedsHandSpeedLimit(node.leftPose, leftResult.pose, timeDelta) ||
+          exceedsHandSpeedLimit(node.rightPose, rightResult.pose, timeDelta)
+        )) continue;
 
-        const effectiveLeftTransition = leftTransition === Infinity ? 0 : leftTransition;
-        const effectiveRightTransition = rightTransition === Infinity ? 0 : rightTransition;
+        const effectiveLeftTransition = leftTransition;
+        const effectiveRightTransition = rightTransition;
 
         // V1 (D-05, D-20): Translation-invariant hand shape deviation
         const leftShapeDev = calculateHandShapeDeviation(
@@ -491,9 +632,9 @@ export class BeamSolver implements SolverStrategy {
         const leftFingerPref = calculateFingerPreferenceCost(leftResult.pose);
         const rightFingerPref = calculateFingerPreferenceCost(rightResult.pose);
 
-        // V1 (D-01): No tier penalties — all grips are strict tier
-        const leftConstraintPenalty = 0;
-        const rightConstraintPenalty = 0;
+        // Soft ergonomic cost is split evenly across the two hands for reporting.
+        const leftConstraintPenalty = zoneCost / 2;
+        const rightConstraintPenalty = zoneCost / 2;
 
         // Map notes to exact fingers based on their target pad coordinates
         const resolvedLeftFingers: FingerType[] = [];
@@ -516,29 +657,30 @@ export class BeamSolver implements SolverStrategy {
           resolvedRightFingers.push(assignedFinger ?? Object.keys(rightResult.pose.fingers)[0] as FingerType);
         }
 
-        // === Invariant B: Check pad ownership consistency ===
-        let ownershipViolation = false;
-        for (let j = 0; j < leftNoteIndices.length; j++) {
-          const i = leftNoteIndices[j];
-          const pKey = `${group.positions[i].row},${group.positions[i].col}`;
-          const existing = node.padOwnership.get(pKey);
-          if (existing && (existing.hand !== 'left' || existing.finger !== resolvedLeftFingers[j])) {
-            ownershipViolation = true;
-            break;
-          }
-        }
-        if (!ownershipViolation) {
-          for (let j = 0; j < rightNoteIndices.length; j++) {
-            const i = rightNoteIndices[j];
-            const pKey = `${group.positions[i].row},${group.positions[i].col}`;
-            const existing = node.padOwnership.get(pKey);
-            if (existing && (existing.hand !== 'right' || existing.finger !== resolvedRightFingers[j])) {
-              ownershipViolation = true;
-              break;
-            }
-          }
-        }
-        if (ownershipViolation) continue;
+        // Re-fingering an established pad is penalised, not forbidden.
+        const ownershipCost = ownershipDeviationCost(node.padOwnership, [
+          ...leftNoteIndices.map((i, j) => ({
+            padKey: `${group.positions[i].row},${group.positions[i].col}`,
+            hand: 'left' as const,
+            finger: resolvedLeftFingers[j],
+          })),
+          ...rightNoteIndices.map((i, j) => ({
+            padKey: `${group.positions[i].row},${group.positions[i].col}`,
+            hand: 'right' as const,
+            finger: resolvedRightFingers[j],
+          })),
+        ]);
+
+        const splitConstraintPenalty =
+          leftConstraintPenalty + rightConstraintPenalty + ownershipCost;
+
+        const splitFingers = [
+          ...resolvedLeftFingers.map(finger => ({ hand: 'left' as const, finger })),
+          ...resolvedRightFingers.map(finger => ({ hand: 'right' as const, finger })),
+        ];
+        const alternationCost = calculateAlternationCost(
+          node.prevFingers, splitFingers, group.timestamp - node.prevTimestamp,
+        );
 
         const newLeftCount = node.leftCount + leftNoteIndices.length;
         const newRightCount = node.rightCount + rightNoteIndices.length;
@@ -549,20 +691,21 @@ export class BeamSolver implements SolverStrategy {
         const perfComponents: PerformabilityObjective = {
           poseNaturalness: totalPoseNat,
           transitionDifficulty: effectiveLeftTransition + effectiveRightTransition,
-          constraintPenalty: leftConstraintPenalty + rightConstraintPenalty,
+          constraintPenalty: splitConstraintPenalty,
         };
         let stepCostForBeam = combinePerformabilityComponents(perfComponents);
 
-        // Note: alternation cost (D-15) removed from beam score in V1.
         stepCostForBeam += handBalanceCost * HAND_BALANCE_BEAM_WEIGHT;
+        stepCostForBeam += alternationCost;
 
         // === V1 COST BREAKDOWN (moment-level — NOT divided per-note) ===
         const stepComponents: V1CostBreakdown = {
           fingerPreference: leftFingerPref + rightFingerPref,
           handShapeDeviation: leftShapeDev + rightShapeDev,
+          alternation: alternationCost,
           transitionCost: effectiveLeftTransition + effectiveRightTransition,
           handBalance: handBalanceCost,
-          constraintPenalty: leftConstraintPenalty + rightConstraintPenalty,
+          constraintPenalty: splitConstraintPenalty,
           total: stepCostForBeam,
         };
 
@@ -631,11 +774,146 @@ export class BeamSolver implements SolverStrategy {
           leftCount: newLeftCount,
           rightCount: newRightCount,
           padOwnership: newPadOwnership,
+          prevFingers: splitFingers,
+          prevTimestamp: group.timestamp,
         });
       }
     }
 
     return children;
+  }
+
+  /**
+   * Produces a guaranteed assignment for a moment whose ergonomically preferred
+   * options were all rejected.
+   *
+   * The beam used to simply drop such moments, and the UI reported the resulting
+   * gaps as "Unplayable" — telling the user a passage was physically impossible
+   * when the truth was that the search had run out of options. A best-effort
+   * assignment is always produced instead: pads are divided at the grid midline,
+   * fingers are laid out in anatomical order, and a large but finite penalty is
+   * charged so the moment ranks last and is surfaced as genuinely hard.
+   *
+   * Returns null only when the moment is beyond any pair of hands — more
+   * simultaneous pads than a player has fingers. That is the one honest
+   * "unplayable" verdict this solver can make.
+   */
+  private buildBestEffortChild(
+    node: BeamNode,
+    group: PerformanceGroup,
+    prevTimestamp: number,
+  ): BeamNode | null {
+    const uniquePads: PadCoord[] = [];
+    const seen = new Set<string>();
+    for (const pad of group.activePads) {
+      const key = `${pad.row},${pad.col}`;
+      if (!seen.has(key)) { seen.add(key); uniquePads.push(pad); }
+    }
+    if (uniquePads.length === 0 || uniquePads.length > 10) return null;
+
+    const sorted = [...uniquePads].sort((a, b) =>
+      a.col !== b.col ? a.col - b.col : a.row - b.row);
+
+    // Divide at the midline, then rebalance so neither hand exceeds five fingers.
+    let splitAt = sorted.findIndex(pad => pad.col > 3);
+    if (splitAt === -1) splitAt = sorted.length;
+    splitAt = Math.min(Math.max(splitAt, sorted.length - 5), 5);
+    const leftPads = sorted.slice(0, splitAt);
+    const rightPads = sorted.slice(splitAt);
+
+    // Anatomical finger order, left-to-right across the grid.
+    const LEFT_ORDER: FingerType[] = ['pinky', 'ring', 'middle', 'index', 'thumb'];
+    const RIGHT_ORDER: FingerType[] = ['thumb', 'index', 'middle', 'ring', 'pinky'];
+
+    const padToOwner = new Map<string, { hand: 'left' | 'right'; finger: FingerType }>();
+    const leftFingers: Partial<Record<FingerType, { x: number; y: number }>> = {};
+    const rightFingers: Partial<Record<FingerType, { x: number; y: number }>> = {};
+
+    leftPads.forEach((pad, i) => {
+      const finger = LEFT_ORDER[LEFT_ORDER.length - leftPads.length + i] ?? LEFT_ORDER[i];
+      padToOwner.set(`${pad.row},${pad.col}`, { hand: 'left', finger });
+      leftFingers[finger] = { x: pad.col, y: pad.row };
+    });
+    rightPads.forEach((pad, i) => {
+      const finger = RIGHT_ORDER[i] ?? RIGHT_ORDER[RIGHT_ORDER.length - 1];
+      padToOwner.set(`${pad.row},${pad.col}`, { hand: 'right', finger });
+      rightFingers[finger] = { x: pad.col, y: pad.row };
+    });
+
+    const centroidOf = (fingers: Partial<Record<FingerType, { x: number; y: number }>>) => {
+      const coords = Object.values(fingers) as Array<{ x: number; y: number }>;
+      if (coords.length === 0) return null;
+      return {
+        x: coords.reduce((a, c) => a + c.x, 0) / coords.length,
+        y: coords.reduce((a, c) => a + c.y, 0) / coords.length,
+      };
+    };
+    const leftCentroid = centroidOf(leftFingers);
+    const rightCentroid = centroidOf(rightFingers);
+    const leftPose: HandPose = leftCentroid
+      ? { centroid: leftCentroid, fingers: leftFingers }
+      : node.leftPose;
+    const rightPose: HandPose = rightCentroid
+      ? { centroid: rightCentroid, fingers: rightFingers }
+      : node.rightPose;
+
+    const newLeftCount = node.leftCount + leftPads.length;
+    const newRightCount = node.rightCount + rightPads.length;
+    const handBalanceCost = calculateHandBalanceCost(newLeftCount, newRightCount);
+    const stepCost = BEST_EFFORT_PENALTY + handBalanceCost * HAND_BALANCE_BEAM_WEIGHT;
+
+    const stepComponents: V1CostBreakdown = {
+      fingerPreference: 0,
+      handShapeDeviation: 0,
+      alternation: 0,
+      transitionCost: 0,
+      handBalance: handBalanceCost,
+      constraintPenalty: BEST_EFFORT_PENALTY,
+      total: stepCost,
+    };
+
+    const assignments: NoteAssignment[] = [];
+    for (let i = 0; i < group.notes.length; i++) {
+      const pos = group.positions[i];
+      const owner = padToOwner.get(`${pos.row},${pos.col}`);
+      if (!owner) continue;
+      assignments.push({
+        eventIndex: group.eventIndices[i],
+        eventKey: group.eventKeys[i],
+        noteNumber: group.notes[i].noteNumber,
+        voiceId: group.notes[i].voiceId,
+        startTime: group.notes[i].startTime,
+        hand: owner.hand,
+        finger: owner.finger,
+        grip: owner.hand === 'left' ? leftPose : rightPose,
+        cost: stepCost,
+        row: pos.row,
+        col: pos.col,
+        costComponents: stepComponents,
+      });
+    }
+    if (assignments.length === 0) return null;
+
+    const newPadOwnership = new Map(node.padOwnership);
+    for (const [key, owner] of padToOwner) {
+      if (!newPadOwnership.has(key)) newPadOwnership.set(key, owner);
+    }
+
+    void prevTimestamp;
+
+    return {
+      leftPose,
+      rightPose,
+      totalCost: node.totalCost + stepCost,
+      parent: node,
+      assignments,
+      depth: node.depth + 1,
+      leftCount: newLeftCount,
+      rightCount: newRightCount,
+      padOwnership: newPadOwnership,
+      prevFingers: [...padToOwner.values()],
+      prevTimestamp: group.timestamp,
+    };
   }
 
   private pruneBeam(beam: BeamNode[], beamWidth: number): BeamNode[] {
@@ -846,6 +1124,7 @@ export class BeamSolver implements SolverStrategy {
       // Accumulate V1CostBreakdown for averageMetrics and diagnostics
       totalV1Cost.fingerPreference += costBreakdown.fingerPreference;
       totalV1Cost.handShapeDeviation += costBreakdown.handShapeDeviation;
+      totalV1Cost.alternation += costBreakdown.alternation;
       totalV1Cost.transitionCost += costBreakdown.transitionCost;
       totalV1Cost.handBalance += costBreakdown.handBalance;
       totalV1Cost.constraintPenalty += costBreakdown.constraintPenalty;
@@ -876,6 +1155,7 @@ export class BeamSolver implements SolverStrategy {
     const averageMetrics: V1CostBreakdown = eventCount > 0 ? {
       fingerPreference: totalV1Cost.fingerPreference / eventCount,
       handShapeDeviation: totalV1Cost.handShapeDeviation / eventCount,
+      alternation: totalV1Cost.alternation / eventCount,
       transitionCost: totalV1Cost.transitionCost / eventCount,
       handBalance: totalV1Cost.handBalance / eventCount,
       constraintPenalty: totalV1Cost.constraintPenalty / eventCount,
@@ -887,12 +1167,6 @@ export class BeamSolver implements SolverStrategy {
       fatigueMap[`L-${finger.charAt(0).toUpperCase() + finger.slice(1)}`] = 0;
       fatigueMap[`R-${finger.charAt(0).toUpperCase() + finger.slice(1)}`] = 0;
     }
-
-    const score = computePlanScore({
-      hardCount,
-      unplayableCount,
-      avgErgonomicCost: averageMetrics.total,
-    });
 
     // V1: Build canonical diagnostics payload from V1CostBreakdown
     const canonicalFactors = v1CostBreakdownToCanonicalFactors(totalV1Cost);
@@ -991,6 +1265,16 @@ export class BeamSolver implements SolverStrategy {
       });
     }
 
+    // computePlanScore is calibrated in MOMENTS (see planScore.ts), so it must be
+    // fed the moment counters, not the per-event ones. Passing event counts here
+    // made the beam path report 0/100 for layouts the greedy path scored 96, even
+    // though both claim to produce the same comparable 0-100 "Score".
+    const score = computePlanScore({
+      hardCount: hardMomentCount,
+      unplayableCount: unplayableMomentCount,
+      avgErgonomicCost: averageMetrics.total,
+    });
+
     // Post-hoc diagnostics for unplayable events
     const rejectionReasons = unplayableCount > 0 && eventsWithPositions
       ? this.diagnoseUnplayableEvents(assignments, totalEvents, unmappedIndices, sortedEvents, eventsWithPositions, groups, exhaustedGroupIndices)
@@ -1027,6 +1311,7 @@ export class BeamSolver implements SolverStrategy {
           transition: totalV1Cost.transitionCost,
           fingerPreference: totalV1Cost.fingerPreference,
           handShapeDeviation: totalV1Cost.handShapeDeviation,
+          alternation: 0,
           handBalance: totalV1Cost.handBalance,
           constraintPenalty: totalV1Cost.constraintPenalty,
         },
@@ -1127,8 +1412,10 @@ export class BeamSolver implements SolverStrategy {
     let beam = this.createInitialBeam(effectiveConfig);
     let prevTimestamp = 0;
 
-    // Track which groups had beam exhaustion (no valid expansions)
+    // Track which groups had beam exhaustion (no valid expansions at all)
     const exhaustedGroupIndices = new Set<number>();
+    // Track which groups needed a best-effort assignment (playable, but strained)
+    const bestEffortGroupIndices = new Set<number>();
 
     // Process each group
     for (let gi = 0; gi < groups.length; gi++) {
@@ -1155,9 +1442,21 @@ export class BeamSolver implements SolverStrategy {
 
           if (override) {
             const gripResults = generateValidGripsWithTier(group.activePads, override.hand);
-            const matchingResult = gripResults.find(r =>
-              Object.keys(r.pose.fingers).includes(override.finger)
-            ) || gripResults[0];
+            // The user's preference is about ONE pad, so pick a grip that puts the
+            // requested finger on THAT pad. Previously any grip merely containing
+            // the finger was accepted, and the finger then landed on whichever note
+            // happened to share its index — so the panels showed a fingering the
+            // user never asked for.
+            const overridePos = group.positions[overrideIdx];
+            const matchingResult =
+              gripResults.find(r => {
+                const coord = r.pose.fingers[override.finger];
+                return coord !== undefined
+                  && coord.x === overridePos.col
+                  && coord.y === overridePos.row;
+              })
+              ?? gripResults.find(r => Object.keys(r.pose.fingers).includes(override.finger))
+              ?? gripResults[0];
 
             if (matchingResult) {
               const timeDelta = group.timestamp - prevTimestamp;
@@ -1171,7 +1470,7 @@ export class BeamSolver implements SolverStrategy {
 
               // V1 (D-01): No tier penalties — all grips are strict tier
               const manualConstraintPenalty = 0;
-              const effectiveTransition = transitionCost === Infinity ? 100 : transitionCost;
+              const effectiveTransition = transitionCost;
 
               // Primary score (V1: shape deviation + finger preference + transition)
               const poseNat = manualShapeDev + manualFingerPref;
@@ -1185,6 +1484,7 @@ export class BeamSolver implements SolverStrategy {
               const stepComponents: V1CostBreakdown = {
                 fingerPreference: manualFingerPref,
                 handShapeDeviation: manualShapeDev,
+                alternation: 0,
                 transitionCost: effectiveTransition,
                 handBalance: 0,
                 constraintPenalty: manualConstraintPenalty,
@@ -1195,6 +1495,15 @@ export class BeamSolver implements SolverStrategy {
               const n = group.notes.length;
               const gripFingers = Object.keys(matchingResult.pose.fingers) as FingerType[];
 
+              // Match each note to the finger standing on that note's pad — the same
+              // resolution the normal expansion paths use.
+              const overrideFingers: FingerType[] = group.positions.map((pos) => {
+                for (const [f, coord] of Object.entries(matchingResult.pose.fingers)) {
+                  if (coord.x === pos.col && coord.y === pos.row) return f as FingerType;
+                }
+                return gripFingers[0] ?? override.finger;
+              });
+
               for (let i = 0; i < n; i++) {
                 assignments.push({
                   eventIndex: group.eventIndices[i],
@@ -1203,7 +1512,7 @@ export class BeamSolver implements SolverStrategy {
                   voiceId: group.notes[i].voiceId,
                   startTime: group.notes[i].startTime,
                   hand: override.hand,
-                  finger: gripFingers[i % gripFingers.length] || override.finger,
+                  finger: overrideFingers[i],
                   grip: matchingResult.pose,
                   cost: stepComponents.total,
                   row: group.positions[i].row,
@@ -1222,7 +1531,7 @@ export class BeamSolver implements SolverStrategy {
                 if (!newPadOwnership.has(pKey)) {
                   newPadOwnership.set(pKey, {
                     hand: override.hand,
-                    finger: gripFingers[i % gripFingers.length] || override.finger,
+                    finger: overrideFingers[i],
                   });
                 }
               }
@@ -1237,6 +1546,8 @@ export class BeamSolver implements SolverStrategy {
                 leftCount: newLeftCount,
                 rightCount: newRightCount,
                 padOwnership: newPadOwnership,
+                prevFingers: overrideFingers.map(finger => ({ hand: override.hand, finger })),
+                prevTimestamp: group.timestamp,
               });
             }
             continue;
@@ -1255,14 +1566,25 @@ export class BeamSolver implements SolverStrategy {
         }
       }
 
-      // V1 (D-03): No emergency fallback. If beam expansion produces no valid
-      // children for this group, carry the previous beam forward unchanged.
-      // Events in this group become infeasible (no assignment in backtrack).
+      // If no ergonomically preferred option survived for this moment, fall back to
+      // a best-effort assignment rather than dropping the notes. Dropped notes were
+      // previously surfaced to the user as "Unplayable", which misreported a search
+      // dead end as a physical impossibility.
+      if (newBeam.length === 0) {
+        for (const node of beam) {
+          const child = this.buildBestEffortChild(node, group, prevTimestamp);
+          if (child) newBeam.push(child);
+        }
+        if (newBeam.length > 0) {
+          bestEffortGroupIndices.add(gi);
+        } else {
+          // Genuinely beyond two hands — the one honest unplayable verdict.
+          exhaustedGroupIndices.add(gi);
+        }
+      }
+
       if (newBeam.length > 0) {
         beam = this.pruneBeam(newBeam, effectiveConfig.beamWidth);
-      } else {
-        // Record which event indices had beam exhaustion
-        exhaustedGroupIndices.add(gi);
       }
       prevTimestamp = group.timestamp;
     }
