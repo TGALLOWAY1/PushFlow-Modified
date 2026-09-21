@@ -14,6 +14,7 @@ import { useProject } from '../state/ProjectContext';
 import { getDisplayedExecutionPlan, type SoundStream } from '../state/projectState';
 import { useLaneImport } from '../hooks/useLaneImport';
 import { type FingerAssignment } from '../../types/executionPlan';
+import { RehearsalAudio, type RehearsalHit } from '../audio/rehearsalAudio';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -103,34 +104,115 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
     };
   }, [state.soundStreams, barDuration]);
 
+  // ─── Rehearsal Audio ────────────────────────────────────────────────────
+
+  // One audio engine for the lifetime of the timeline. Created eagerly but only
+  // opens an AudioContext when the user actually presses play, since browsers
+  // require a gesture before audio may start.
+  const audioRef = useRef<RehearsalAudio | null>(null);
+  if (audioRef.current === null) audioRef.current = new RehearsalAudio();
+  useEffect(() => () => audioRef.current?.dispose(), []);
+
+  useEffect(() => {
+    audioRef.current?.setOptions(state.rehearsalAudio);
+  }, [state.rehearsalAudio]);
+
+  // Every hit in the performance, flattened for the audio scheduler. Muted
+  // streams are excluded so the mute buttons affect what you hear, not just
+  // what the solver sees.
+  const audibleHits = useMemo<RehearsalHit[]>(() => {
+    const hits: RehearsalHit[] = [];
+    for (const stream of state.soundStreams) {
+      if (stream.muted) continue;
+      for (const event of stream.events) {
+        hits.push({ soundId: stream.id, time: event.startTime, velocity: event.velocity });
+      }
+    }
+    return hits.sort((a, b) => a.time - b.time);
+  }, [state.soundStreams]);
+
   // ─── Playback RAF Loop (with looping) ───────────────────────────────────
 
   const maxTimeRef = useRef(maxTime);
   const minTimeRef = useRef(minTime);
   useEffect(() => { maxTimeRef.current = maxTime; minTimeRef.current = minTime; }, [maxTime, minTime]);
 
-  useEffect(() => {
-    let handle: number;
-    let lastTime = performance.now();
+  // The loop reads live state through refs so the effect can be created once per
+  // play/stop rather than torn down and rebuilt on every frame. Rebuilding it each
+  // frame (the previous behaviour, caused by depending on state.currentTime) reset
+  // the frame clock continuously and made the playhead drift against the audio.
+  const clockRef = useRef({
+    currentTime: state.currentTime,
+    rate: state.playbackRate,
+    loopEnabled: state.loopEnabled,
+    loopStart: state.loopStart,
+    loopEnd: state.loopEnd,
+    tempo: state.tempo,
+    hits: audibleHits,
+  });
+  clockRef.current = {
+    currentTime: state.currentTime,
+    rate: state.playbackRate,
+    loopEnabled: state.loopEnabled,
+    loopStart: state.loopStart,
+    loopEnd: state.loopEnd,
+    tempo: state.tempo,
+    hits: audibleHits,
+  };
 
-    const loop = (time: number) => {
-      const dt = (time - lastTime) / 1000;
-      lastTime = time;
-      const newTime = state.currentTime + dt;
-      if (newTime >= maxTimeRef.current) {
-        dispatch({ type: 'SET_CURRENT_TIME', payload: minTimeRef.current });
-      } else {
-        dispatch({ type: 'TICK_TIME', payload: dt });
+  useEffect(() => {
+    if (!state.isPlaying) return;
+
+    let handle = 0;
+    let lastFrame = performance.now();
+    let position = clockRef.current.currentTime;
+    const audio = audioRef.current;
+    audio?.reset();
+    void audio?.resume();
+
+    const loop = (frameTime: number) => {
+      const wallDelta = (frameTime - lastFrame) / 1000;
+      lastFrame = frameTime;
+
+      const {
+        rate, loopEnabled, loopStart, loopEnd, tempo, hits,
+      } = clockRef.current;
+
+      // Rehearsal speed scales transport time, not wall time.
+      const advance = wallDelta * rate;
+      const from = position;
+      const regionStart = loopEnabled && loopStart !== null ? loopStart : minTimeRef.current;
+      const regionEnd = loopEnabled && loopEnd !== null ? loopEnd : maxTimeRef.current;
+      let to = position + advance;
+
+      let wrapped = false;
+      if (to >= regionEnd) {
+        to = regionEnd;
+        wrapped = true;
       }
+
+      // Sound the slice of time that just elapsed, so hits land when the playhead
+      // crosses them rather than whenever a re-render happens.
+      audio?.playMetronomeWindow(from, to, tempo);
+      audio?.playWindow(hits, from, to);
+
+      if (wrapped) {
+        position = regionStart;
+        audio?.reset();
+        dispatch({ type: 'SET_CURRENT_TIME', payload: regionStart });
+      } else {
+        position = to;
+        dispatch({ type: 'SET_CURRENT_TIME', payload: to });
+      }
+
       handle = requestAnimationFrame(loop);
     };
 
-    if (state.isPlaying) {
-      lastTime = performance.now();
-      handle = requestAnimationFrame(loop);
-    }
+    handle = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(handle);
-  }, [state.isPlaying, state.currentTime, dispatch]);
+    // Intentionally excludes currentTime: the loop owns the playhead while running.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.isPlaying, dispatch]);
 
   // Auto-fit zoom: measure container width and fill it with the clip
   // Re-measure when totalDuration changes (e.g. after MIDI import)
@@ -154,6 +236,48 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
   // Minimum zoom is the auto-fit level (max zoom-out shows all content)
   const effectiveMinZoom = Math.max(MIN_ZOOM, autoFitZoom);
   const zoom = zoomOverride !== null ? Math.max(effectiveMinZoom, zoomOverride) : autoFitZoom;
+
+  // ─── Loop Region Selection ──────────────────────────────────────────────
+
+  // Dragging across the bar ruler marks the passage to rehearse. Click (no drag)
+  // just moves the playhead, which is what a ruler click normally means.
+  const [dragRegion, setDragRegion] = useState<{ from: number; to: number } | null>(null);
+  const rulerRef = useRef<HTMLDivElement | null>(null);
+
+  const timeFromRulerEvent = useCallback((clientX: number): number | null => {
+    const el = rulerRef.current;
+    if (!el || zoom <= 0) return null;
+    const rect = el.getBoundingClientRect();
+    return Math.max(0, (clientX - rect.left) / zoom);
+  }, [zoom]);
+
+  const handleRulerMouseDown = useCallback((e: React.MouseEvent) => {
+    const t = timeFromRulerEvent(e.clientX);
+    if (t === null) return;
+    setDragRegion({ from: t, to: t });
+  }, [timeFromRulerEvent]);
+
+  const handleRulerMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!dragRegion) return;
+    const t = timeFromRulerEvent(e.clientX);
+    if (t === null) return;
+    setDragRegion({ from: dragRegion.from, to: t });
+  }, [dragRegion, timeFromRulerEvent]);
+
+  const handleRulerMouseUp = useCallback(() => {
+    if (!dragRegion) return;
+    const { from, to } = dragRegion;
+    setDragRegion(null);
+    // A drag shorter than ~1px of travel is a click, not a region.
+    if (Math.abs(to - from) * zoom < 4) {
+      dispatch({ type: 'SET_CURRENT_TIME', payload: from });
+      return;
+    }
+    dispatch({ type: 'SET_LOOP_REGION', payload: { start: from, end: to } });
+    dispatch({ type: 'SET_LOOP_ENABLED', payload: true });
+    dispatch({ type: 'SET_CURRENT_TIME', payload: Math.min(from, to) });
+  }, [dragRegion, zoom, dispatch]);
+
 
   // Build per-stream finger assignments (or dummies pre-analysis),
   // then overlay voiceConstraints so user hand/finger selections show immediately
@@ -474,6 +598,80 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
           </button>
         </div>
 
+        {/* Rehearsal controls — practising a hard passage means slowing it down,
+            looping it, and hearing it. */}
+        <div className="flex items-center gap-2 pl-2 border-l border-[var(--border-default)]">
+          <label className="flex items-center gap-1 text-pf-xs text-[var(--text-tertiary)]">
+            Speed
+            <select
+              className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-pf-sm px-1 py-0.5 text-pf-xs text-[var(--text-primary)]"
+              value={state.playbackRate}
+              onChange={(e) => dispatch({ type: 'SET_PLAYBACK_RATE', payload: Number(e.target.value) })}
+              title="Rehearsal speed — the layout and analysis are unchanged"
+            >
+              {[0.25, 0.5, 0.75, 1, 1.25, 1.5].map(rate => (
+                <option key={rate} value={rate}>{rate}x</option>
+              ))}
+            </select>
+          </label>
+
+          <button
+            className={`px-2 py-1 rounded-pf-sm text-pf-xs font-semibold transition-colors ${
+              state.loopEnabled
+                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] border border-[var(--border-default)]'
+            }`}
+            onClick={() => dispatch({ type: 'SET_LOOP_ENABLED', payload: !state.loopEnabled })}
+            title={
+              state.loopStart !== null && state.loopEnd !== null
+                ? `Loop ${state.loopStart.toFixed(2)}s - ${state.loopEnd.toFixed(2)}s`
+                : 'Loop the whole performance (shift-drag the beat ruler to set a region)'
+            }
+          >
+            LOOP
+          </button>
+
+          <button
+            className={`px-2 py-1 rounded-pf-sm text-pf-xs font-semibold transition-colors ${
+              state.rehearsalAudio.metronome
+                ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] border border-[var(--border-default)]'
+            }`}
+            onClick={() => dispatch({
+              type: 'SET_REHEARSAL_AUDIO',
+              payload: { metronome: !state.rehearsalAudio.metronome },
+            })}
+            title="Click track at the project tempo"
+          >
+            CLICK
+          </button>
+
+          <button
+            className={`px-2 py-1 rounded-pf-sm text-pf-xs font-semibold transition-colors ${
+              state.rehearsalAudio.hits
+                ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] border border-[var(--border-default)]'
+            }`}
+            onClick={() => dispatch({
+              type: 'SET_REHEARSAL_AUDIO',
+              payload: { hits: !state.rehearsalAudio.hits },
+            })}
+            title="Hear each sound as the playhead reaches it"
+          >
+            SOUND
+          </button>
+
+          {state.loopStart !== null && state.loopEnd !== null && (
+            <button
+              className="px-2 py-1 rounded-pf-sm bg-[var(--bg-card)]/50 text-pf-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+              onClick={() => dispatch({ type: 'SET_LOOP_REGION', payload: { start: null, end: null } })}
+              title="Clear the loop region"
+            >
+              ✕ REGION
+            </button>
+          )}
+        </div>
+
       </div>
 
       {/* ─── Timeline Body ────────────────────────────────────────────────── */}
@@ -509,7 +707,16 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
           <div className="relative" style={{ width: timelineWidth, minWidth: '100%', minHeight: totalHeight + TOTAL_HEADER_HEIGHT }}>
             {/* ─── Sticky Beat Header ──────────────────────────────── */}
             {/* Row 1: Bar numbers */}
-            <div className="sticky top-0 z-40 bg-[var(--bg-app)] border-b border-[var(--border-default)]" style={{ height: BAR_HEADER_HEIGHT, width: timelineWidth }}>
+            <div
+              ref={rulerRef}
+              className="sticky top-0 z-40 bg-[var(--bg-app)] border-b border-[var(--border-default)] cursor-text select-none"
+              style={{ height: BAR_HEADER_HEIGHT, width: timelineWidth }}
+              onMouseDown={handleRulerMouseDown}
+              onMouseMove={handleRulerMouseMove}
+              onMouseUp={handleRulerMouseUp}
+              onMouseLeave={handleRulerMouseUp}
+              title="Click to move the playhead, or drag to mark a passage to loop"
+            >
               <div className="flex" style={{ height: BAR_HEADER_HEIGHT, width: timelineWidth }}>
                 {headerBars.map(bar => (
                   <div
@@ -536,6 +743,31 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
                 ))}
               </div>
             </div>
+
+            {/* Loop / drag region shading — shows the passage being rehearsed */}
+            {(() => {
+              const start = dragRegion
+                ? Math.min(dragRegion.from, dragRegion.to)
+                : state.loopEnabled ? state.loopStart : null;
+              const end = dragRegion
+                ? Math.max(dragRegion.from, dragRegion.to)
+                : state.loopEnabled ? state.loopEnd : null;
+              if (start === null || end === null || end <= start) return null;
+              return (
+                <div
+                  className="absolute pointer-events-none"
+                  style={{
+                    left: start * zoom,
+                    width: (end - start) * zoom,
+                    top: TOTAL_HEADER_HEIGHT,
+                    height: totalHeight,
+                    backgroundColor: 'rgba(59, 130, 246, 0.10)',
+                    borderLeft: '1px solid rgba(59, 130, 246, 0.55)',
+                    borderRight: '1px solid rgba(59, 130, 246, 0.55)',
+                  }}
+                />
+              );
+            })()}
 
             {/* Beat grid lines (offset below header) */}
             {beatLines.map((line, i) => (
@@ -628,15 +860,21 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
                     const pillBg = isUnplayable ? '#ef4444' : stream.color;
                     const pillText = isRaw ? '#ffffff' : (HAND_COLORS[a.assignedHand] ?? HAND_COLORS.raw).text;
 
-                    // Difficulty indicator: colored bottom border for analyzed events
+                    // Difficulty indicator: colored bottom border for analyzed events.
+                    // The middle band is 'Medium' (see DifficultyLevel); this tested
+                    // 'Moderate', a value the engine never produces, so the bulk of a
+                    // typical performance carried no marking at all and the difficulty
+                    // map the user rehearses against was effectively blank.
                     const difficulty = a.difficulty as string;
-                    const difficultyBorder = !isRaw && difficulty === 'Hard'
-                      ? '2px solid #f59e0b'
-                      : !isRaw && difficulty === 'Moderate'
-                        ? '2px solid #a3a3a3'
-                        : isUnplayable
-                          ? '2px solid #ef4444'
-                          : undefined;
+                    const difficultyBorder = isUnplayable
+                      ? '2px solid #ef4444'
+                      : isRaw
+                        ? undefined
+                        : difficulty === 'Hard'
+                          ? '2px solid #f59e0b'
+                          : difficulty === 'Medium'
+                            ? '2px solid #a3a3a3'
+                            : undefined;
 
                     return (
                       <button
@@ -650,8 +888,14 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
                           height: TRACK_HEIGHT - 8,
                           backgroundColor: pillBg,
                           opacity: isSelected ? 1 : isRaw ? 0.5 : isUnplayable ? 0.6 : 0.85,
-                          border: isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined,
-                          borderBottom: difficultyBorder,
+                          // Longhand only: mixing the `border` shorthand with
+                          // `borderBottom` makes React drop one of them between
+                          // renders, which silently loses the difficulty marker.
+                          borderTop: isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined,
+                          borderLeft: isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined,
+                          borderRight: isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined,
+                          borderBottom: difficultyBorder
+                            ?? (isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined),
                         }}
                         onClick={() => handleEventClick(a.eventIndex ?? ai)}
                         title={`${a.startTime.toFixed(3)}s${fingerLabel ? ` | ${handPrefix}-${fingerLabel}` : ''}${a.cost ? ` | cost: ${a.cost.toFixed(1)} | ${a.difficulty}` : ''}`}

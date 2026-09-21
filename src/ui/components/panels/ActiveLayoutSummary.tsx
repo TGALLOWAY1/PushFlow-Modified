@@ -189,9 +189,30 @@ export function ActiveLayoutSummary() {
               />
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-1.5">
-              <QuickStat label="Mapped" value={`${mappedCount} pads`} />
-              <QuickStat label="Sounds" value={String(activeStreams.length)} />
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-1.5">
+                <QuickStat label="Mapped" value={`${mappedCount} pads`} />
+                <QuickStat label="Sounds" value={String(activeStreams.length)} />
+              </div>
+
+              {/* An empty grid is not an unplayable layout — it is an unfinished one.
+                  Say so, and offer a starting point the user explicitly asks for. */}
+              {mappedCount === 0 && activeStreams.length > 0 && (
+                <div className="rounded-pf-sm border border-[var(--border-default)] bg-[var(--bg-card)]/60 p-2.5 space-y-2">
+                  <p className="text-pf-xs text-[var(--text-secondary)] leading-relaxed">
+                    No sounds are on the grid yet, so there is nothing to analyse.
+                    Drag {activeStreams.length === 1 ? 'your sound' : `your ${activeStreams.length} sounds`} onto
+                    pads, or start from a comfortable two-hand shape and adjust.
+                  </p>
+                  <button
+                    className="w-full px-2 py-1.5 rounded-pf-sm bg-[var(--accent-primary)]/15 text-[var(--accent-primary)] border border-[var(--accent-primary)]/30 text-pf-xs font-semibold hover:bg-[var(--accent-primary)]/25 transition-colors"
+                    onClick={() => dispatch({ type: 'SUGGEST_STARTING_LAYOUT' })}
+                    title="Places your sounds in a natural hand position as a Working/Test Layout you can edit, discard, or promote"
+                  >
+                    Suggest a starting layout
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

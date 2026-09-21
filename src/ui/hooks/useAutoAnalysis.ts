@@ -165,6 +165,19 @@ export function useAutoAnalysis() {
       return;
     }
 
+    // An empty grid has nothing to analyse. Running the solver against one produced
+    // a verdict of "Infeasible — 48 unmapped, 48 unplayable, score 0%", which is the
+    // first thing a user saw after importing a MIDI file. It reads as a damning
+    // judgement on their layout when the truth is simply that no sounds have been
+    // placed yet, and the product forbids placing them automatically. Clear the
+    // analysis instead and let the UI ask for placements.
+    if (Object.keys(layout.padToVoice).length === 0) {
+      // SET_ANALYSIS_RESULT also clears analysisStale, so this settles rather than
+      // re-triggering on every render.
+      dispatch({ type: 'SET_ANALYSIS_RESULT', payload: null });
+      return;
+    }
+
     // Clear existing debounce
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
