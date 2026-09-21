@@ -1083,6 +1083,7 @@ export class BeamSolver implements SolverStrategy {
 
     let totalCost = 0;
     let unplayableCount = unmappedIndices.size;
+    let mediumCount = 0;
     let hardCount = 0;
     let totalDrift = 0;
     let driftCount = 0;
@@ -1140,6 +1141,7 @@ export class BeamSolver implements SolverStrategy {
 
       const difficulty = getDifficulty(assignment.cost);
       if (difficulty === 'Hard') hardCount++;
+      else if (difficulty === 'Medium') mediumCount++;
 
       const fingerKey = `${assignment.hand === 'left' ? 'L' : 'R'}-${assignment.finger.charAt(0).toUpperCase() + assignment.finger.slice(1)}`;
       fingerUsageStats[fingerKey] = (fingerUsageStats[fingerKey] || 0) + 1;
@@ -1331,6 +1333,7 @@ export class BeamSolver implements SolverStrategy {
       score,
       unplayableCount,
       hardCount,
+      mediumCount,
       fingerAssignments,
       padFingerOwnership,
       momentAssignments,

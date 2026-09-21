@@ -218,15 +218,24 @@ export function ActiveLayoutSummary() {
 
           {/* Three-layer cost breakdown: feasibility + ergonomics + difficulty */}
           {currentPlan && (
+            <>
+            <WhatIsLimitingThis
+              constraints={displayedCandidate?.difficultyAnalysis?.bindingConstraints}
+              infeasibleSounds={currentPlan.diagnostics?.infeasibleSounds}
+              streams={activeStreams}
+            />
+
             <CostBreakdownBars
               metrics={selectedEventMetrics ?? currentPlan.averageMetrics}
               diagnostics={selectedEventMetrics ? undefined : currentPlan.diagnostics}
               hardCount={selectedEventMetrics ? undefined : currentPlan.hardCount}
               unplayableCount={selectedEventMetrics ? undefined : currentPlan.unplayableCount}
+              mediumCount={selectedEventMetrics ? undefined : currentPlan.mediumCount}
               eventLabel={selectedEventMetrics && state.selectedEventIndex !== null
                 ? `Event ${state.selectedEventIndex + 1} (t=${assignment?.startTime.toFixed(3) ?? '?'}s)`
                 : undefined}
             />
+            </>
           )}
 
           {/* Event difficulty chart (collapsible) */}
@@ -394,6 +403,65 @@ function DetailChip({ label, value, color }: { label: string; value: string; col
     <div className="rounded-pf-sm border border-[var(--border-subtle)] bg-[var(--bg-card)]/60 px-2 py-1.5">
       <div className="text-pf-micro text-[var(--text-tertiary)] uppercase tracking-wider">{label}</div>
       <div className={`text-pf-xs font-medium ${color ?? 'text-[var(--text-primary)]'}`}>{value}</div>
+    </div>
+  );
+}
+
+/**
+ * "What is limiting this layout" — the engine's own plain-English reasons.
+ *
+ * The canon asks for event-level explanation, and the engine already produces
+ * exactly the sentences a user can act on ("45 Hard events (94% of total) — grip
+ * or stretch limit reached", "Average drift 3.7 — hands frequently far from home
+ * positions"). None of it reached the screen: the user saw factor bars and a
+ * score and had to infer the cause. Numbers say a layout is worse; these say why.
+ */
+function WhatIsLimitingThis({
+  constraints,
+  infeasibleSounds,
+  streams,
+}: {
+  constraints?: string[];
+  infeasibleSounds?: Array<{ soundId: string; violationCount: number; totalEvents: number }>;
+  streams: Array<{ id: string; name: string }>;
+}) {
+  const hasConstraints = constraints && constraints.length > 0;
+  const hasSounds = infeasibleSounds && infeasibleSounds.length > 0;
+  if (!hasConstraints && !hasSounds) return null;
+
+  const nameFor = (soundId: string) =>
+    streams.find(s => s.id === soundId)?.name ?? soundId;
+
+  return (
+    <div className="rounded-pf-sm border border-[var(--border-default)] bg-[var(--bg-card)]/50 p-2.5 space-y-1.5">
+      <div className="text-pf-xs font-semibold text-[var(--text-secondary)]">
+        What is limiting this layout
+      </div>
+      {hasConstraints && (
+        <ul className="space-y-1">
+          {constraints!.map((reason, i) => (
+            <li key={i} className="text-pf-xs text-[var(--text-tertiary)] leading-relaxed flex gap-1.5">
+              <span className="text-[var(--text-quaternary)]">•</span>
+              <span>{reason}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {hasSounds && (
+        <div className="pt-1 space-y-0.5">
+          <div className="text-pf-micro uppercase text-[var(--text-quaternary)]">
+            Sounds that cannot be played
+          </div>
+          {infeasibleSounds!.slice(0, 5).map(entry => (
+            <div key={entry.soundId} className="flex justify-between text-pf-xs">
+              <span className="text-[var(--text-secondary)] truncate">{nameFor(entry.soundId)}</span>
+              <span className="font-mono text-[var(--text-tertiary)]">
+                {entry.violationCount}/{entry.totalEvents}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

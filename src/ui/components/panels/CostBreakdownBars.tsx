@@ -19,6 +19,8 @@ interface CostBreakdownBarsProps {
   diagnostics?: DiagnosticsPayload;
   hardCount?: number;
   unplayableCount?: number;
+  /** Events classified Medium — playable but needing attention. */
+  mediumCount?: number;
   /** When set, shows event-specific metrics with a label */
   eventLabel?: string;
 }
@@ -175,13 +177,15 @@ function ErgonomicFactors({ metrics, diagnostics }: {
 // Difficulty summary
 // ────────────────────────────────────────────────────────────────────────────
 
-function DifficultySummary({ hardCount, unplayableCount }: {
+function DifficultySummary({ hardCount, unplayableCount, mediumCount }: {
   hardCount?: number;
   unplayableCount?: number;
+  mediumCount?: number;
 }) {
   if (hardCount === undefined && unplayableCount === undefined) return null;
   const hard = hardCount ?? 0;
   const unplay = unplayableCount ?? 0;
+  const medium = mediumCount ?? 0;
   const total = hard + unplay;
 
   return (
@@ -190,7 +194,19 @@ function DifficultySummary({ hardCount, unplayableCount }: {
         Difficulty
       </h4>
       {total === 0 ? (
-        <div className="text-pf-xs text-green-400">No hard or unplayable events</div>
+        // The green all-clear is reserved for a plan that is genuinely easy
+        // throughout. It previously fired whenever nothing was Hard or Unplayable,
+        // so a layout the engine considered mediocre — two thirds of its notes
+        // classified Medium — was presented as clean.
+        medium > 0 ? (
+          <div className="text-pf-xs text-[var(--text-secondary)]">
+            Nothing hard or unplayable, but{' '}
+            <span className="text-[var(--text-primary)]">{medium}</span> event
+            {medium !== 1 ? 's' : ''} need attention
+          </div>
+        ) : (
+          <div className="text-pf-xs text-green-400">Comfortable throughout</div>
+        )
       ) : (
         <div className="flex gap-3 text-pf-xs">
           {hard > 0 && (
@@ -213,7 +229,7 @@ function DifficultySummary({ hardCount, unplayableCount }: {
 // Composite component
 // ────────────────────────────────────────────────────────────────────────────
 
-export function CostBreakdownBars({ metrics, diagnostics, hardCount, unplayableCount, eventLabel }: CostBreakdownBarsProps) {
+export function CostBreakdownBars({ metrics, diagnostics, hardCount, unplayableCount, eventLabel , mediumCount }: CostBreakdownBarsProps) {
   return (
     <div className="space-y-3">
       {/* Event-specific label */}
@@ -233,7 +249,7 @@ export function CostBreakdownBars({ metrics, diagnostics, hardCount, unplayableC
       <ErgonomicFactors metrics={metrics} diagnostics={diagnostics} />
 
       {/* Layer 3: Difficulty summary */}
-      <DifficultySummary hardCount={hardCount} unplayableCount={unplayableCount} />
+      <DifficultySummary hardCount={hardCount} unplayableCount={unplayableCount} mediumCount={mediumCount} />
     </div>
   );
 }

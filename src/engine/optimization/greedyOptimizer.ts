@@ -848,6 +848,7 @@ class GreedyOptimizer implements OptimizerMethod {
     const momentAssignments: MomentAssignment[] = [];
     let unplayableCount = 0;
     let hardCount = 0;
+    let mediumCount = 0;
 
     // Build pad resolution indices from layout (handles voiceId and noteNumber lookups)
     const voiceIdIndex = buildVoiceIdToPadIndex(layout.padToVoice);
@@ -968,6 +969,8 @@ class GreedyOptimizer implements OptimizerMethod {
 
       if (momentDifficulty === 'Hard') {
         hardCount += noteAssignments.length;
+      } else if (momentDifficulty === 'Medium') {
+        mediumCount += noteAssignments.length;
       }
 
       momentAssignments.push({
@@ -999,6 +1002,7 @@ class GreedyOptimizer implements OptimizerMethod {
       score,
       unplayableCount,
       hardCount,
+      mediumCount,
       fingerAssignments,
       padFingerOwnership: assignment,
       momentAssignments,

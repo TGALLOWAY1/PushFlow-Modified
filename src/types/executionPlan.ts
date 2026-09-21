@@ -236,6 +236,15 @@ export interface ExecutionPlanResult {
   unplayableMomentCount?: number;
   /** Count of moments classified as Hard. */
   hardMomentCount?: number;
+  /**
+   * Count of events classified as Medium — playable, but requiring attention.
+   *
+   * Reported so the difficulty summary can stop showing a green "no hard or
+   * unplayable events" all-clear for a layout the engine considers mediocre.
+   * On a spread-out layout two thirds of the notes can be Medium while the
+   * summary reads clean.
+   */
+  mediumCount?: number;
 
   /** Per-finger usage counts. */
   fingerUsageStats: FingerUsageStats;

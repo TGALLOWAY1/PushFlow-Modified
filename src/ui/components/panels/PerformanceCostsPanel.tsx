@@ -157,6 +157,7 @@ export function PerformanceCostsPanel() {
               diagnostics={selectedEventMetrics ? undefined : currentPlan.diagnostics}
               hardCount={selectedEventMetrics ? undefined : currentPlan.hardCount}
               unplayableCount={selectedEventMetrics ? undefined : currentPlan.unplayableCount}
+              mediumCount={selectedEventMetrics ? undefined : currentPlan.mediumCount}
               eventLabel={selectedEventMetrics && state.selectedEventIndex !== null
                 ? `Event ${state.selectedEventIndex + 1} (t=${assignment?.startTime.toFixed(3) ?? '?'}s)`
                 : undefined}
