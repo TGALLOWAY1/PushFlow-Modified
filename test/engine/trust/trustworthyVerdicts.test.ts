@@ -34,6 +34,7 @@ import {
   exceedsHandSpeedLimit,
 } from '../../../src/engine/evaluation/costFunction';
 import { buildFingerAssignmentFromLayout } from '../../../src/engine/optimization/greedyEvaluation';
+import { computePlanScore } from '../../../src/engine/evaluation/planScore';
 import { type PadFingerAssignment } from '../../../src/types/executionPlan';
 import { padKey } from '../../../src/types/padGrid';
 import { DEFAULT_TEST_INSTRUMENT_CONFIG, DEFAULT_ENGINE_CONFIG } from '../../helpers/testHelpers';
@@ -295,4 +296,39 @@ describe('finger assignment respects simultaneity', () => {
     const used = Object.values(assignment).map(o => `${o.hand}:${o.finger}`);
     expect(new Set(used).size).toBe(used.length);
   });
+});
+
+describe('one cost story across engines', () => {
+  it('scores the same layout comparably through both solvers', async () => {
+    const { events, uniqueNotes } = loadReferenceMidi();
+    const { perf, layout } = referenceLayout(events, uniqueNotes);
+
+    const solver = createBeamSolver({ instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG, layout });
+    const plan = await solver.solve(perf, { ...DEFAULT_ENGINE_CONFIG, beamWidth: 15 });
+
+    // Both paths read their ergonomic term from the canonical evaluator, so the
+    // beam score must track the canonical cost of its own result. Feeding each
+    // engine its own internal cost left the same layout scoring 94 through
+    // Generate and 82 through auto-analysis on a scale documented as shared.
+    const moments = buildPerformanceMoments(perf.events);
+    const canonical = evaluatePerformance({
+      moments,
+      layout,
+      padFingerAssignment: plan.padFingerOwnership ?? {},
+      config: {
+        restingPose: DEFAULT_ENGINE_CONFIG.restingPose,
+        stiffness: DEFAULT_ENGINE_CONFIG.stiffness,
+        instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG,
+        neutralHandCenters: getNeutralHandCenters(layout, DEFAULT_TEST_INSTRUMENT_CONFIG),
+      },
+    });
+
+    const expected = computePlanScore({
+      hardCount: plan.hardMomentCount ?? 0,
+      unplayableCount: plan.unplayableMomentCount ?? 0,
+      avgErgonomicCost: canonical.costPerMoment,
+    });
+
+    expect(plan.score).toBeCloseTo(expected, 5);
+  }, 60_000);
 });

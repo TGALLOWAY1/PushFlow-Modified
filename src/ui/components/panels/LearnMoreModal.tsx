@@ -556,7 +556,7 @@ const HARD_CONSTRAINTS = [
       {
         name: 'Transition Speed',
         key: 'speed',
-        description: 'Hand movement between consecutive events cannot exceed 12.0 grid units/second. Faster transitions are physically impossible.',
+        description: 'Hand movement between consecutive events cannot exceed 80 grid units/second (about 1.8 m/s on the Push 3\u2019s ~2.2\u202Fcm pad pitch \u2014 a hand crossing the full grid in roughly 100\u202Fms). Above 24 units/second the movement is still playable but costs steeply more.',
       },
       {
         name: 'Outward Rotation',
@@ -566,23 +566,30 @@ const HARD_CONSTRAINTS = [
     ],
   },
   {
-    category: 'Hand Zones',
+    // These are graded ergonomic costs, not hard limits — the distinction the
+    // product canon requires between "impossible" and "merely awkward".
+    category: 'Hand Zones (soft)',
     color: '#3b82f6',
     rules: [
       {
         name: 'Left Hand Zone',
         key: 'zone-left',
-        description: 'Left hand is restricted to columns 0\u20134 of the 8\u00d78 grid.',
+        description: 'The left hand is comfortable in columns 0\u20134. Reaching further right is allowed \u2014 the whole pad area is only about 17\u202Fcm wide \u2014 but costs more the further past the midline it goes.',
       },
       {
         name: 'Right Hand Zone',
         key: 'zone-right',
-        description: 'Right hand is restricted to columns 3\u20137 of the 8\u00d78 grid.',
+        description: 'The right hand is comfortable in columns 3\u20137, with the same graded cost for reaching further left.',
       },
       {
         name: 'Shared Zone',
         key: 'zone-shared',
-        description: 'Columns 3\u20134 are a shared zone accessible by either hand.',
+        description: 'Columns 3\u20134 sit under either hand at no extra cost.',
+      },
+      {
+        name: 'Fingering Consistency',
+        key: 'zone-consistency',
+        description: 'A pad keeps the same hand and finger for the whole performance, because that stable mapping is what you memorise. Re-fingering a pad is allowed where the music requires it, but is charged for.',
       },
     ],
   },

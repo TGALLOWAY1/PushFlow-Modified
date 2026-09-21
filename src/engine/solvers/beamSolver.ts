@@ -43,6 +43,8 @@ import {
   calculateAlternationCost,
 } from '../evaluation/costFunction';
 import { computePlanScore } from '../evaluation/planScore';
+import { evaluatePerformance } from '../evaluation/canonicalEvaluator';
+import { buildPerformanceMoments } from '../structure/momentBuilder';
 import {
   type PerformabilityObjective,
   combinePerformabilityComponents,
@@ -1027,6 +1029,42 @@ export class BeamSolver implements SolverStrategy {
     return reasons;
   }
 
+  /**
+   * Scores this solver's own result with the canonical evaluator.
+   *
+   * Every user-facing figure should come from one model. The beam solver's
+   * internal cost exists to guide its search and is not on the same scale as the
+   * canonical evaluator that the greedy path, Compare and Calculate Cost all use.
+   * Returns null when the layout or events are unavailable, in which case the
+   * caller falls back to the internal average.
+   */
+  private canonicalPerMomentCost(
+    padFingerAssignment: PadFingerAssignment,
+    sortedEvents: Array<{ event: PerformanceEvent; originalIndex: number }>,
+    config: EngineConfiguration,
+  ): number | null {
+    if (!this.layout || Object.keys(padFingerAssignment).length === 0) return null;
+    try {
+      const moments = buildPerformanceMoments(sortedEvents.map(e => e.event));
+      if (moments.length === 0) return null;
+      const breakdown = evaluatePerformance({
+        moments,
+        layout: this.layout,
+        padFingerAssignment,
+        config: {
+          restingPose: config.restingPose,
+          stiffness: config.stiffness,
+          instrumentConfig: this.instrumentConfig,
+          neutralHandCenters: getNeutralHandCenters(this.layout, this.instrumentConfig),
+        },
+      });
+      return breakdown.costPerMoment;
+    } catch {
+      // Scoring must never break solving.
+      return null;
+    }
+  }
+
   private buildResult(
     assignments: NoteAssignment[],
     totalEvents: number,
@@ -1269,10 +1307,19 @@ export class BeamSolver implements SolverStrategy {
     // fed the moment counters, not the per-event ones. Passing event counts here
     // made the beam path report 0/100 for layouts the greedy path scored 96, even
     // though both claim to produce the same comparable 0-100 "Score".
+    //
+    // The ergonomic term comes from the canonical evaluator rather than this
+    // solver's own internal cost. The two are on different scales, so feeding
+    // each path its own number left the same layout scoring 94 through Generate
+    // and 82 through auto-analysis — the engine contract asks for ONE coherent
+    // cost story, and this is where the user reads it.
+    const canonicalPerMomentCost = this.canonicalPerMomentCost(
+      padFingerOwnership, sortedEvents, config,
+    );
     const score = computePlanScore({
       hardCount: hardMomentCount,
       unplayableCount: unplayableMomentCount,
-      avgErgonomicCost: averageMetrics.total,
+      avgErgonomicCost: canonicalPerMomentCost ?? averageMetrics.total,
     });
 
     // Post-hoc diagnostics for unplayable events
