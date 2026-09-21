@@ -12,7 +12,8 @@ import { type PerformanceMoment } from '../../types/performanceEvent';
 import { type PerformanceEvent } from '../../types/performanceEvent';
 import { type CostToggles } from '../../types/costToggles';
 import { type FingerType, type HandSide } from '../../types/fingerModel';
-import { type PadCoord } from '../../types/padGrid';
+import { type PadCoord, padKey } from '../../types/padGrid';
+import { buildVoiceIdToPadIndex, buildNoteToPadIndex } from '../mapping/mappingResolver';
 
 // ============================================================================
 // Co-occurrence Matrix
@@ -142,7 +143,7 @@ function rankFingerOptions(col: number): Array<{ hand: HandSide; finger: FingerT
  */
 export function buildFingerAssignmentFromLayout(
   layout: Layout,
-  moments?: Array<{ notes: Array<{ padId?: string }> }>,
+  moments?: Array<{ notes: Array<{ padId?: string; soundId?: string; noteNumber?: number }> }>,
   /**
    * Per-Sound finger preferences set by the user, keyed by voice id.
    *
@@ -172,11 +173,30 @@ export function buildFingerAssignmentFromLayout(
   }
 
   // Which pads ever sound at the same instant as which others.
+  //
+  // Each note is resolved through the LAYOUT rather than read from its `padId`.
+  // The production caller builds moments with `buildPerformanceMoments(events)`
+  // and no padLookup, which leaves every `padId` as the empty string — so a
+  // padId-based graph was always empty and this whole collision-avoidance step
+  // silently did nothing, handing three simultaneous pads the same finger.
+  const voiceIdToPad = buildVoiceIdToPadIndex(layout.padToVoice);
+  const noteToPad = buildNoteToPadIndex(layout.padToVoice);
+
+  const knownPads = new Set(padKeys);
+  const resolvePad = (note: { padId?: string; soundId?: string; noteNumber?: number }) => {
+    if (note.padId && knownPads.has(note.padId)) return note.padId;
+    const byVoice = note.soundId ? voiceIdToPad.get(note.soundId) : undefined;
+    if (byVoice) return padKey(byVoice.row, byVoice.col);
+    const byNote = note.noteNumber != null ? noteToPad.get(note.noteNumber) : undefined;
+    if (byNote) return padKey(byNote.row, byNote.col);
+    return null;
+  };
+
   const coOccurring = new Map<string, Set<string>>();
   for (const padKeyStr of padKeys) coOccurring.set(padKeyStr, new Set());
   for (const moment of moments) {
     const active = moment.notes
-      .map(n => n.padId)
+      .map(resolvePad)
       .filter((id): id is string => !!id && coOccurring.has(id));
     for (const a of active) {
       for (const b of active) {

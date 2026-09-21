@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import { generateGreedyCandidates } from '../../../src/engine/optimization/greedyCandidatePipeline';
 import { buildFingerAssignmentFromLayout } from '../../../src/engine/optimization/greedyEvaluation';
+import { buildPerformanceMoments } from '../../../src/engine/structure/momentBuilder';
 import { buildSoundStreamsFromLanes } from '../../../src/ui/state/lanesToStreams';
 import { projectReducer, createEmptyProjectState } from '../../../src/ui/state/projectState';
 import { createEmptyLayout, type Layout } from '../../../src/types/layout';
@@ -171,4 +172,43 @@ describe('layout identity covers what analysis depends on', () => {
     expect(hashLayout(baseLayout({ fingerConstraints: { '2,1': 'L5' } })))
       .not.toBe(hashLayout(baseLayout()));
   });
+});
+
+describe('collision avoidance is wired up, not just implemented', () => {
+  it('avoids same-finger collisions on moments built the way production builds them', () => {
+    // The production caller is buildPerformanceMoments(events) with NO padLookup,
+    // which leaves every note's padId as the empty string. A padId-keyed
+    // co-occurrence graph was therefore always empty, so this step silently did
+    // nothing and three simultaneous pads all received right:index. The unit test
+    // above passed only because it hand-built moments carrying real padIds.
+    const layout: Layout = {
+      ...createEmptyLayout('L', 'L', 'active'),
+      padToVoice: {
+        '0,4': voice('a', 36),
+        '4,4': voice('b', 37),
+        '7,5': voice('c', 38),
+      },
+    };
+    const moments = buildPerformanceMoments([
+      { noteNumber: 36, startTime: 0, duration: 0.1, velocity: 100, voiceId: 'a', eventKey: 'a1' },
+      { noteNumber: 37, startTime: 0, duration: 0.1, velocity: 100, voiceId: 'b', eventKey: 'b1' },
+      { noteNumber: 38, startTime: 0, duration: 0.1, velocity: 100, voiceId: 'c', eventKey: 'c1' },
+    ]);
+    expect(moments[0].notes.every(n => n.padId === '')).toBe(true); // the trap
+
+    const assignment = buildFingerAssignmentFromLayout(layout, moments);
+    const used = Object.values(assignment).map(o => `${o.hand}:${o.finger}`);
+    expect(new Set(used).size).toBe(used.length);
+  });
+});
+
+describe('candidate order matches the score on the card', () => {
+  it('lists candidates by descending displayed score', async () => {
+    const { candidates } = await generate(baseLayout());
+    expect(candidates.length).toBeGreaterThan(1);
+    const scores = candidates.map(c => c.executionPlan.score);
+    // Ranking by a different measure than the one printed left the list visibly
+    // contradicting itself: #1 at 94.0 above a #2 at 95.5.
+    expect([...scores].sort((a, b) => b - a)).toEqual(scores);
+  }, 120_000);
 });

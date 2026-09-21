@@ -526,6 +526,14 @@ export async function generateCandidates(
     const unplayableA = a.executionPlan.unplayableMomentCount ?? a.executionPlan.unplayableCount;
     const unplayableB = b.executionPlan.unplayableMomentCount ?? b.executionPlan.unplayableCount;
     if (unplayableA !== unplayableB) return unplayableA - unplayableB;
+    // Order by the score PRINTED on the card. Ranking by the composite tradeoff
+    // score instead left the list visibly contradicting itself — #1 showing 94.0
+    // above a #2 showing 95.5 — so the numbering gave the user no reason to trust
+    // the order. Composite score is still what diversity selection uses to choose
+    // WHICH candidates to offer; it just must not decide how they are presented.
+    if (b.executionPlan.score !== a.executionPlan.score) {
+      return b.executionPlan.score - a.executionPlan.score;
+    }
     return compositeScore(b.tradeoffProfile) - compositeScore(a.tradeoffProfile);
   });
 

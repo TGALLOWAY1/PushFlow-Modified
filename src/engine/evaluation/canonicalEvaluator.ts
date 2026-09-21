@@ -137,10 +137,11 @@ export function evaluateEvent(input: EvaluateEventInput): EventCostBreakdown {
         hand: owner.hand,
         finger: owner.finger,
       });
-    } else {
-      // Pad exists in layout but not in finger assignment
-      unmappedCount++;
     }
+    // A pad that exists in the layout but has no finger owner is an ASSIGNMENT
+    // failure, and buildMomentPoses already records it in `unmappedPads`. Counting
+    // it here as well reported one missing assignment as two unmapped notes, which
+    // could push the stated count above the number of notes in the moment.
   }
 
   // Step 2: Build hand poses from the assignment
@@ -341,9 +342,7 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
   const infeasibleMomentIndices = new Set<number>();
   let leftCount = 0;
   let rightCount = 0;
-  let unmappedNoteCount = 0;
-  let collisionCount = 0;
-  let overSpeedCount = 0;
+
 
   let prevAssignments: Array<{ hand: HandSide; finger: FingerType }> = [];
   let prevTimestamp = 0;
@@ -374,8 +373,6 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
     // impossibility; everything else that strains the hand is merely hard.
     if (eventResult.violations.collisions > 0 || eventResult.violations.unmapped > 0) {
       infeasibleMomentIndices.add(i);
-      unmappedNoteCount += eventResult.violations.unmapped;
-      collisionCount += eventResult.violations.collisions;
     } else if (eventResult.feasibilityTier === 'fallback') {
       hardMomentIndices.add(i);
     }
@@ -404,7 +401,6 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
       // expensive transition. Attribute it to the destination moment.
       if (transitionResult.exceedsSpeedLimit) {
         infeasibleMomentIndices.add(i + 1);
-        overSpeedCount++;
       }
     }
   }
@@ -460,13 +456,25 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
     transitionCount: transitionCosts.length,
   };
 
-  // Each reason is counted from its own source. Previously the same number was
-  // passed as both "unplayable" and "unmapped", so one underlying problem was
-  // reported to the user twice as two unrelated failures.
+  // Each reason is counted from its own source, and in the same unit as the
+  // denominator the summary prints against — MOMENTS.
+  //
+  // Previously the same number was passed as both "unplayable" and "unmapped", so
+  // one problem was reported twice as two unrelated failures; then the counts
+  // became collisions (extra pads sharing a finger) plus over-speed transitions,
+  // neither of which is a moment count. A single ten-note chord on one finger
+  // could read "9 unplayable of 1 total".
+  // The two reasons must be disjoint: a moment whose notes have no pad is already
+  // counted as unmapped, so counting it as unplayable too reported one problem
+  // twice as two unrelated failures.
+  const unmappedMomentCount = eventCosts.filter(e => e.violations.unmapped > 0).length;
+  const unplayableMomentCount = Math.max(
+    0, infeasibleMomentIndices.size - unmappedMomentCount,
+  );
   const feasibility = deriveFeasibilityVerdict(
-    collisionCount + overSpeedCount,
+    unplayableMomentCount,
     hardMomentIndices.size,
-    unmappedNoteCount,
+    unmappedMomentCount,
     eventCosts.filter(e => e.feasibilityTier === 'fallback' && e.violations.collisions === 0).length,
     moments.length,
   );

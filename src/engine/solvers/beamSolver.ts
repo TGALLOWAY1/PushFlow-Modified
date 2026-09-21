@@ -860,16 +860,34 @@ export class BeamSolver implements SolverStrategy {
       ? { centroid: rightCentroid, fingers: rightFingers }
       : node.rightPose;
 
+    // A best-effort assignment must not launder a HARD physical rejection into a
+    // merely-expensive one. If reaching this moment would need a hand to move
+    // faster than physiologically possible, there is no fallback to offer: the
+    // moment is genuinely unplayable, and saying otherwise would reintroduce the
+    // over-optimism this whole change set exists to remove.
+    const timeDelta = group.timestamp - prevTimestamp;
+    if (
+      exceedsHandSpeedLimit(node.leftPose, leftPose, timeDelta) ||
+      exceedsHandSpeedLimit(node.rightPose, rightPose, timeDelta)
+    ) {
+      return null;
+    }
+
     const newLeftCount = node.leftCount + leftPads.length;
     const newRightCount = node.rightCount + rightPads.length;
     const handBalanceCost = calculateHandBalanceCost(newLeftCount, newRightCount);
-    const stepCost = BEST_EFFORT_PENALTY + handBalanceCost * HAND_BALANCE_BEAM_WEIGHT;
+    // Real movement cost, not zero — the hands genuinely travel to reach this pose.
+    const transitionCost =
+      calculateTransitionCost(node.leftPose, leftPose, timeDelta) +
+      calculateTransitionCost(node.rightPose, rightPose, timeDelta);
+    const stepCost =
+      BEST_EFFORT_PENALTY + transitionCost + handBalanceCost * HAND_BALANCE_BEAM_WEIGHT;
 
     const stepComponents: V1CostBreakdown = {
       fingerPreference: 0,
       handShapeDeviation: 0,
       alternation: 0,
-      transitionCost: 0,
+      transitionCost,
       handBalance: handBalanceCost,
       constraintPenalty: BEST_EFFORT_PENALTY,
       total: stepCost,
@@ -902,7 +920,6 @@ export class BeamSolver implements SolverStrategy {
       if (!newPadOwnership.has(key)) newPadOwnership.set(key, owner);
     }
 
-    void prevTimestamp;
 
     return {
       leftPose,
