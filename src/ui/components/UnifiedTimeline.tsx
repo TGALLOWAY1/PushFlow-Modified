@@ -340,16 +340,21 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
           ? a.voiceId
           : noteToStream.get(a.noteNumber);
         if (streamId) {
+          // Show the Execution Plan, not the preference. Overwriting the plan
+          // with the user's preference meant that as soon as any preference was
+          // set, every pill displayed it — even for events where the solver chose
+          // a different finger, a different hand, or could not play the event at
+          // all. The costs and the verdict were computed from the plan, so the
+          // fingering on screen and the numbers beside it described different
+          // performances, and a preference the solver had NOT honoured looked
+          // honoured. Divergence is marked instead of hidden.
           const constraint = state.voiceConstraints[streamId];
-          const overlaid = constraint
-            ? {
-                ...a,
-                assignedHand: constraint.hand ?? a.assignedHand,
-                finger: (constraint.finger ?? a.finger) as any,
-              }
-            : a;
+          const diverges = !!constraint
+            && a.assignedHand !== 'Unplayable'
+            && ((constraint.hand !== undefined && constraint.hand !== a.assignedHand)
+              || (constraint.finger !== undefined && constraint.finger !== a.finger));
           const list = map.get(streamId) ?? [];
-          list.push(overlaid);
+          list.push(diverges ? { ...a, constraintDiverges: true } as FingerAssignment : a);
           map.set(streamId, list);
         }
       }
@@ -941,8 +946,14 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
                             ?? (isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined),
                         }}
                         onClick={() => handleEventClick(a.eventIndex ?? ai)}
-                        title={`${a.startTime.toFixed(3)}s${fingerLabel ? ` | ${handPrefix}-${fingerLabel}` : ''}${a.cost ? ` | cost: ${a.cost.toFixed(1)} | ${a.difficulty}` : ''}`}
+                        title={`${a.startTime.toFixed(3)}s${fingerLabel ? ` | ${handPrefix}-${fingerLabel}` : ''}${a.cost ? ` | cost: ${a.cost.toFixed(1)} | ${a.difficulty}` : ''}${a.constraintDiverges ? ' | differs from your finger preference' : ''}`}
                       >
+                        {a.constraintDiverges && (
+                          <span
+                            className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full"
+                            style={{ backgroundColor: '#fbbf24' }}
+                          />
+                        )}
                         {fingerLabel && (
                           <span className="text-[7px] font-bold leading-none" style={{ color: pillText }}>
                             {handPrefix}{fingerLabel}

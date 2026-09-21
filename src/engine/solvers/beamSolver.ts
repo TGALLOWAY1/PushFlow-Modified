@@ -44,6 +44,7 @@ import {
 } from '../evaluation/costFunction';
 import { computePlanScore } from '../evaluation/planScore';
 import { evaluatePerformance } from '../evaluation/canonicalEvaluator';
+import { type PerformanceCostBreakdown } from '../../types/costBreakdown';
 import { buildPerformanceMoments } from '../structure/momentBuilder';
 import {
   type PerformabilityObjective,
@@ -1038,16 +1039,16 @@ export class BeamSolver implements SolverStrategy {
    * Returns null when the layout or events are unavailable, in which case the
    * caller falls back to the internal average.
    */
-  private canonicalPerMomentCost(
+  private canonicalBreakdown(
     padFingerAssignment: PadFingerAssignment,
     sortedEvents: Array<{ event: PerformanceEvent; originalIndex: number }>,
     config: EngineConfiguration,
-  ): number | null {
+  ): PerformanceCostBreakdown | null {
     if (!this.layout || Object.keys(padFingerAssignment).length === 0) return null;
     try {
       const moments = buildPerformanceMoments(sortedEvents.map(e => e.event));
       if (moments.length === 0) return null;
-      const breakdown = evaluatePerformance({
+      return evaluatePerformance({
         moments,
         layout: this.layout,
         padFingerAssignment,
@@ -1058,7 +1059,6 @@ export class BeamSolver implements SolverStrategy {
           neutralHandCenters: getNeutralHandCenters(this.layout, this.instrumentConfig),
         },
       });
-      return breakdown.costPerMoment;
     } catch {
       // Scoring must never break solving.
       return null;
@@ -1208,8 +1208,33 @@ export class BeamSolver implements SolverStrategy {
       fatigueMap[`R-${finger.charAt(0).toUpperCase() + finger.slice(1)}`] = 0;
     }
 
-    // V1: Build canonical diagnostics payload from V1CostBreakdown
-    const canonicalFactors = v1CostBreakdownToCanonicalFactors(totalV1Cost);
+    // === Build pad-to-finger ownership map (Invariant B) ===
+    const padFingerOwnership: PadFingerAssignment = {};
+    if (winningPadOwnership) {
+      for (const [key, value] of winningPadOwnership) {
+        padFingerOwnership[key] = { hand: value.hand, finger: value.finger };
+      }
+    }
+
+    // Evaluate this result with the canonical evaluator so every user-facing
+    // figure comes from one model, whichever path produced it.
+    const canonical = this.canonicalBreakdown(padFingerOwnership, sortedEvents, config);
+    const canonicalDims = canonical?.dimensions ?? null;
+
+    // Publish the canonical dimensions rather than this solver's internal V1 cost.
+    // The two are on different scales, so the same layout's Movement bar read 16
+    // through Generate and 122 through auto-analysis under one label. Falls back
+    // to the internal breakdown only when canonical evaluation is unavailable.
+    const canonicalFactors = canonicalDims
+      ? {
+          transition: canonicalDims.transitionCost,
+          gripNaturalness: canonicalDims.poseNaturalness,
+          alternation: canonicalDims.alternation,
+          handBalance: canonicalDims.handBalance,
+          constraintPenalty: canonicalDims.constraintPenalty,
+          total: canonicalDims.total,
+        }
+      : v1CostBreakdownToCanonicalFactors(totalV1Cost);
     const feasibility = deriveFeasibilityVerdict(
       unplayableCount,
       hardCount,
@@ -1245,13 +1270,6 @@ export class BeamSolver implements SolverStrategy {
       infeasibleSounds,
     };
 
-    // === Build pad-to-finger ownership map (Invariant B) ===
-    const padFingerOwnership: PadFingerAssignment = {};
-    if (winningPadOwnership) {
-      for (const [key, value] of winningPadOwnership) {
-        padFingerOwnership[key] = { hand: value.hand, finger: value.finger };
-      }
-    }
 
     // === Build moment assignments (Invariant E: full moment cost) ===
     const momentAssignments: MomentAssignment[] = [];
@@ -1315,13 +1333,10 @@ export class BeamSolver implements SolverStrategy {
     // each path its own number left the same layout scoring 94 through Generate
     // and 82 through auto-analysis — the engine contract asks for ONE coherent
     // cost story, and this is where the user reads it.
-    const canonicalPerMomentCost = this.canonicalPerMomentCost(
-      padFingerOwnership, sortedEvents, config,
-    );
     const score = computePlanScore({
       hardCount: hardMomentCount,
       unplayableCount: unplayableMomentCount,
-      avgErgonomicCost: canonicalPerMomentCost ?? averageMetrics.total,
+      avgErgonomicCost: canonical?.costPerMoment ?? averageMetrics.total,
     });
 
     // Post-hoc diagnostics for unplayable events

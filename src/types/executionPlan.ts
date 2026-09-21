@@ -115,6 +115,14 @@ export interface FingerAssignment {
   eventIndex?: number;
   padId?: string;
   eventKey?: string;
+  /**
+   * True when the plan's fingering differs from the preference the user set for
+   * this Sound — i.e. the solver did not honour it.
+   *
+   * A UI-side annotation, so the divergence can be shown rather than hidden by
+   * rendering the preference in place of what was actually scored.
+   */
+  constraintDiverges?: boolean;
 }
 
 /**
