@@ -223,6 +223,7 @@ export function ActiveLayoutSummary() {
             <StructuralRulesStatus
               relaxation={currentPlan.constraintRelaxation}
               streams={activeStreams}
+              hasFingerChoices={activeStreams.some(s => !!state.voiceConstraints[s.id]?.finger)}
             />
 
             <WhatIsLimitingThis
@@ -434,9 +435,12 @@ function DetailChip({ label, value, color }: { label: string; value: string; col
 function StructuralRulesStatus({
   relaxation,
   streams,
+  hasFingerChoices,
 }: {
   relaxation?: ConstraintRelaxationSummary;
   streams: Array<{ id: string; name: string }>;
+  /** Whether the user set a finger for any sound — then that may be the cause. */
+  hasFingerChoices: boolean;
 }) {
   if (!relaxation) return null;
 
@@ -461,7 +465,7 @@ function StructuralRulesStatus({
         Fingering rules relaxed
       </div>
       <p className="text-pf-xs text-[var(--text-tertiary)] leading-relaxed">
-        No plan keeps both rules for this layout and your finger choices, so {relaxation.relaxedMomentCount === 1
+        No plan keeps both rules for this layout{hasFingerChoices ? ' with your finger choices' : ''}, so {relaxation.relaxedMomentCount === 1
           ? 'one moment breaks'
           : `${relaxation.relaxedMomentCount} moments break`} one. These strikes are outlined in the timeline.
       </p>

@@ -7,6 +7,7 @@
  */
 
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 
 interface LearnMoreModalProps {
   open: boolean;
@@ -76,7 +77,10 @@ export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
 
   if (!open) return null;
 
-  return (
+  // Rendered into <body>: opened from a side panel whose styling makes it the
+  // containing block for fixed-position children, the modal was otherwise
+  // squeezed into that ~300px panel and most of its text was cut off.
+  return createPortal(
     <>
       <div className="fixed inset-0 z-[60] bg-black/50" onClick={onClose} />
       <div className="fixed inset-6 z-[61] max-w-3xl mx-auto rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-app)] shadow-pf-xl flex flex-col overflow-hidden">
@@ -123,7 +127,8 @@ export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
           {tab === 'constraints' && <ConstraintsSection />}
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 
@@ -610,9 +615,10 @@ function ConstraintsSection() {
   return (
     <div className="space-y-5">
       <p className="text-pf-sm text-[var(--text-tertiary)]">
-        PushFlow enforces hard biomechanical constraints during solver execution. Violations result in infeasibility
-        (the grip is rejected entirely), not soft penalties. These constraints model the physical limits of human hands
-        on an 8&times;8 Push grid.
+        PushFlow enforces hard constraints during solver execution. Biomechanical limits model what a human hand can
+        physically do on an 8&times;8 Push grid: a grip that breaks one is rejected entirely, never merely penalised.
+        The two structural rules &mdash; hand separation and one finger per sound &mdash; are just as firm, and give way
+        only where no plan at all can keep them.
       </p>
 
       {HARD_CONSTRAINTS.map(group => (
