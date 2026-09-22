@@ -99,11 +99,10 @@ export function buildMomentPoses(
     (Object.keys(leftFingers).length > 0 && !isStrictGripValid(leftFingers, 'left') ? 1 : 0) +
     (Object.keys(rightFingers).length > 0 && !isStrictGripValid(rightFingers, 'right') ? 1 : 0);
 
-  // Only genuine impossibility downgrades the tier. Reaching a column past the
-  // grid midline is a graded ergonomic cost (see `zoneViolations`, priced by the
-  // evaluator), not a feasibility failure — a Push 3's pad area is only ~17 cm
-  // wide, so either hand can reach any column. Letting a single reach force
-  // 'fallback' reported comfortable layouts as degraded.
+  // Only physical impossibility downgrades the grip tier. A hand outside its
+  // zone breaks the hand-separation rule, which is a different matter: it is
+  // counted (`zoneViolations`), priced by the evaluator, and reported as a rule
+  // relaxation in the feasibility verdict — not disguised as a fallback grip.
   const tier = collisions > 0
     ? 'fallback'
     : classifyGripTier(leftFingers, rightFingers);

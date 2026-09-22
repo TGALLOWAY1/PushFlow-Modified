@@ -924,6 +924,16 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
                             ? '2px solid #a3a3a3'
                             : undefined;
 
+                    // A strike that breaks one of the structural rules (hand
+                    // separation, one finger per sound) is outlined, so the few
+                    // places the plan had to give way can be found by eye.
+                    const relaxed = a.relaxedConstraints ?? [];
+                    const relaxedNote = relaxed.length === 0 ? '' : ` | rule relaxed: ${relaxed
+                      .map(kind => kind === 'hand-zone'
+                        ? 'hand outside its zone'
+                        : "not this sound's own finger")
+                      .join(', ')}`;
+
                     return (
                       <button
                         key={`pill-${stream.id}-${ai}`}
@@ -944,9 +954,11 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
                           borderRight: isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined,
                           borderBottom: difficultyBorder
                             ?? (isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined),
+                          outline: relaxed.length > 0 ? '1.5px dashed #c084fc' : undefined,
+                          outlineOffset: relaxed.length > 0 ? 1 : undefined,
                         }}
                         onClick={() => handleEventClick(a.eventIndex ?? ai)}
-                        title={`${a.startTime.toFixed(3)}s${fingerLabel ? ` | ${handPrefix}-${fingerLabel}` : ''}${a.cost ? ` | cost: ${a.cost.toFixed(1)} | ${a.difficulty}` : ''}${a.constraintDiverges ? ' | differs from your finger preference' : ''}`}
+                        title={`${a.startTime.toFixed(3)}s${fingerLabel ? ` | ${handPrefix}-${fingerLabel}` : ''}${a.cost ? ` | cost: ${a.cost.toFixed(1)} | ${a.difficulty}` : ''}${a.constraintDiverges ? ' | differs from your finger preference' : ''}${relaxedNote}`}
                       >
                         {a.constraintDiverges && (
                           <span

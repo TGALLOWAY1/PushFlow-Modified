@@ -188,6 +188,9 @@ describe('TEST MIDI 1.mid end-to-end', () => {
 
       // THIS IS THE KEY ASSERTION: candidates must have playable events
       expect(playableRatio).toBeGreaterThan(0.5);
+      // Hand separation and one finger per sound are hard rules, and this
+      // performance can be played within them.
+      expect(candidate.executionPlan.constraintRelaxation?.mode).toBe('strict');
     }
   });
 
@@ -284,6 +287,7 @@ describe('TEST MIDI 1.mid end-to-end', () => {
     // Zero unplayable — this is the exit criterion
     expect(usage.unplayable).toBe(0);
     expect(usage.left + usage.right).toBe(total);
+    expect(planResult.constraintRelaxation?.mode).toBe('strict');
   });
 
   it('should produce candidates with 0 unplayable events via greedy candidate pipeline', { timeout: 60000 }, async () => {
@@ -346,6 +350,7 @@ describe('TEST MIDI 1.mid end-to-end', () => {
 
       // KEY ASSERTION: 0 unplayable events on TEST MIDI 1
       expect(usage.unplayable).toBe(0);
+      expect(candidate.executionPlan.constraintRelaxation?.mode).toBe('strict');
     }
 
     // All candidates should have explanation cards

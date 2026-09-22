@@ -60,6 +60,7 @@ export interface FeasibilityReason {
     | 'unplayable_event'    // Event classified as Unplayable
     | 'unmapped_note'       // Note has no pad mapping in the layout
     | 'fallback_grip'       // Grip required constraint relaxation (Tier 3)
+    | 'constraint_relaxed'  // Hand-zone separation or one-finger-per-sound had to give way
     | 'extreme_stretch'     // Grip requires extreme finger spread
     | 'hard_event';         // Event classified as Hard
   /** Human-readable explanation. */
@@ -338,6 +339,11 @@ export function computeTopContributors(factors: DiagnosticFactors): string[] {
 
 /**
  * Derive a FeasibilityVerdict from execution plan summary stats.
+ *
+ * `relaxation` reports strikes that had to break one of the two structural
+ * rules (hand-zone separation, one finger per Sound). Those rules are hard by
+ * default, so a plan that breaks either is playable but not what was asked for:
+ * it is 'degraded', never silently 'feasible'.
  */
 export function deriveFeasibilityVerdict(
   unplayableCount: number,
@@ -345,8 +351,11 @@ export function deriveFeasibilityVerdict(
   unmappedCount: number,
   fallbackGripCount: number,
   totalEvents: number,
+  relaxation?: { handZoneStrikes: number; fingerOwnershipStrikes: number },
 ): FeasibilityVerdict {
   const reasons: FeasibilityReason[] = [];
+  const zoneStrikes = relaxation?.handZoneStrikes ?? 0;
+  const ownershipStrikes = relaxation?.fingerOwnershipStrikes ?? 0;
 
   if (unmappedCount > 0) {
     reasons.push({
@@ -372,6 +381,22 @@ export function deriveFeasibilityVerdict(
     });
   }
 
+  if (zoneStrikes > 0) {
+    reasons.push({
+      type: 'constraint_relaxed',
+      message: `Hand separation relaxed: ${zoneStrikes} strike${zoneStrikes > 1 ? 's need' : ' needs'} a hand outside its zone, because no plan keeps both hands on their own side`,
+      eventCount: zoneStrikes,
+    });
+  }
+
+  if (ownershipStrikes > 0) {
+    reasons.push({
+      type: 'constraint_relaxed',
+      message: `One finger per sound relaxed: ${ownershipStrikes} strike${ownershipStrikes > 1 ? 's use' : ' uses'} a different finger than the sound's own, because no plan keeps every sound on one finger`,
+      eventCount: ownershipStrikes,
+    });
+  }
+
   if (hardCount > 0) {
     reasons.push({
       type: 'hard_event',
@@ -384,7 +409,7 @@ export function deriveFeasibilityVerdict(
   let level: FeasibilityLevel;
   if (unplayableCount > 0 || unmappedCount > 0) {
     level = 'infeasible';
-  } else if (fallbackGripCount > 0 || hardCount > 0) {
+  } else if (fallbackGripCount > 0 || hardCount > 0 || zoneStrikes > 0 || ownershipStrikes > 0) {
     level = 'degraded';
   } else {
     level = 'feasible';
@@ -402,6 +427,8 @@ export function deriveFeasibilityVerdict(
   } else {
     const issues: string[] = [];
     if (fallbackGripCount > 0) issues.push(`${fallbackGripCount} fallback grips`);
+    if (zoneStrikes > 0) issues.push(`hand separation relaxed on ${zoneStrikes} strike${zoneStrikes > 1 ? 's' : ''}`);
+    if (ownershipStrikes > 0) issues.push(`one finger per sound relaxed on ${ownershipStrikes} strike${ownershipStrikes > 1 ? 's' : ''}`);
     if (hardCount > 0) issues.push(`${hardCount} hard events`);
     summary = `Layout is playable but degraded: ${issues.join(', ')}`;
   }

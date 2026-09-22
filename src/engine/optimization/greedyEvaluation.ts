@@ -14,6 +14,7 @@ import { type CostToggles } from '../../types/costToggles';
 import { type FingerType, type HandSide } from '../../types/fingerModel';
 import { type PadCoord, padKey } from '../../types/padGrid';
 import { buildVoiceIdToPadIndex, buildNoteToPadIndex } from '../mapping/mappingResolver';
+import { isZoneValid } from '../surface/handZone';
 
 // ============================================================================
 // Co-occurrence Matrix
@@ -227,6 +228,13 @@ export function buildFingerAssignmentFromLayout(
     return a.localeCompare(b);
   });
 
+  // Hand separation is a hard rule: first look for an assignment that keeps
+  // every pad on a hand whose zone it lies in, with no shared finger between
+  // pads that sound together. Only if none exists does the first-fit pass below
+  // let a pad cross to the other hand.
+  const withinZones = assignWithinZones(ordered, coOccurring, assignment);
+  if (withinZones) return withinZones;
+
   for (const padKeyStr of ordered) {
     const parts = padKeyStr.split(',');
     const col = parseInt(parts[1], 10);
@@ -243,6 +251,56 @@ export function buildFingerAssignmentFromLayout(
   }
 
   return assignment;
+}
+
+/** Upper bound on backtracking steps in `assignWithinZones`. */
+const ZONE_ASSIGNMENT_STEP_BUDGET = 20_000;
+
+/**
+ * Finds a finger for every pad in `ordered` that keeps hand-zone separation and
+ * never shares a finger with a pad it sounds together with, or returns null if
+ * the search finds none.
+ *
+ * Depth-first with backtracking, trying each pad's options in anatomical rank
+ * order — so whenever the simple first-fit choice already keeps the rules, the
+ * first path explored IS that choice and the result is unchanged. Backtracking
+ * only matters where first-fit would have run a pad out of in-zone fingers and
+ * sent it across to the other hand even though a rule-keeping assignment
+ * existed. Bounded by ZONE_ASSIGNMENT_STEP_BUDGET so a dense layout cannot stall
+ * the optimizer; exhausting the budget is treated like finding no assignment.
+ */
+function assignWithinZones(
+  ordered: string[],
+  coOccurring: Map<string, Set<string>>,
+  fixed: PadFingerAssignment,
+): PadFingerAssignment | null {
+  const result: PadFingerAssignment = { ...fixed };
+  const domains = ordered.map(padKeyStr => {
+    const [row, col] = padKeyStr.split(',').map(Number);
+    return rankFingerOptions(col).filter(option => isZoneValid({ row, col }, option.hand));
+  });
+  let steps = 0;
+
+  const place = (index: number): boolean => {
+    if (index === ordered.length) return true;
+    if (++steps > ZONE_ASSIGNMENT_STEP_BUDGET) return false;
+    const padKeyStr = ordered[index];
+    const taken = new Set<string>();
+    for (const neighbour of coOccurring.get(padKeyStr) ?? []) {
+      const owner = result[neighbour];
+      if (owner) taken.add(`${owner.hand}:${owner.finger}`);
+    }
+    for (const option of domains[index]) {
+      if (taken.has(`${option.hand}:${option.finger}`)) continue;
+      result[padKeyStr] = { hand: option.hand, finger: option.finger };
+      if (place(index + 1)) return true;
+      delete result[padKeyStr];
+      if (steps > ZONE_ASSIGNMENT_STEP_BUDGET) return false;
+    }
+    return false;
+  };
+
+  return place(0) ? result : null;
 }
 
 // ============================================================================

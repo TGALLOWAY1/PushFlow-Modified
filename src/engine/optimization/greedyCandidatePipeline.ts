@@ -31,6 +31,7 @@ import { type SoundFeatureMap, extractSoundFeatures } from '../structure/soundFe
 import { type SeedContext, SEED_GENERATORS } from './seedGenerators';
 import { UPDATE_POLICIES } from './updatePolicies';
 import { type GreedyRunOptions, GreedyOptimizer } from './greedyOptimizer';
+import { countRelaxedStrikes } from '../evaluation/constraintRelaxation';
 import { analyzeDifficulty, computeTradeoffProfile } from '../evaluation/difficultyScoring';
 import { compositeScore } from './candidateRanker';
 import {
@@ -360,6 +361,11 @@ export async function generateGreedyCandidates(
     const unplayableA = a.executionPlan.unplayableMomentCount ?? a.executionPlan.unplayableCount;
     const unplayableB = b.executionPlan.unplayableMomentCount ?? b.executionPlan.unplayableCount;
     if (unplayableA !== unplayableB) return unplayableA - unplayableB;
+    // Then by the structural rules: a candidate whose plan keeps hand
+    // separation and one finger per sound outranks one that has to break them.
+    const relaxedA = countRelaxedStrikes(a.executionPlan);
+    const relaxedB = countRelaxedStrikes(b.executionPlan);
+    if (relaxedA !== relaxedB) return relaxedA - relaxedB;
     // Order by the score PRINTED on the card. Ranking by the composite tradeoff
     // score instead left the list visibly contradicting itself — #1 showing 94.0
     // above a #2 showing 95.5 — so the numbering gave the user no reason to trust

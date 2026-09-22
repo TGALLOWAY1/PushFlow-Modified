@@ -27,6 +27,20 @@ import {
 } from '../../types/engineConfig';
 import { type SolverStrategy, type SolverType } from '../solvers/types';
 import { createBeamSolver } from '../solvers/beamSolver';
+import { countRelaxedStrikes } from '../evaluation/constraintRelaxation';
+
+/**
+ * Cost added per strike whose plan breaks a structural rule (hand separation or
+ * one finger per sound).
+ *
+ * The annealer minimises the plan's average per-event cost, which is a few
+ * units for any playable layout. A relaxed strike adds far more than any
+ * ergonomic difference between layouts, so a move into a layout that needs a
+ * rule broken is effectively never accepted, while a layout that starts out
+ * needing one can still improve toward one that does not. That keeps the rules
+ * ahead of cost here too, rather than something a cheaper layout can buy.
+ */
+const RELAXED_STRIKE_PENALTY = 100;
 import { applyRandomMutation, applyZoneTransferMutation } from './mutationService';
 import { computeMappingCoverage } from '../mapping/mappingCoverage';
 import { createSeededRng } from '../../utils/seededRng';
@@ -138,7 +152,7 @@ export class AnnealingSolver implements SolverStrategy {
 
     return {
       result,
-      cost: result.averageMetrics.total,
+      cost: result.averageMetrics.total + RELAXED_STRIKE_PENALTY * countRelaxedStrikes(result),
     };
   }
 

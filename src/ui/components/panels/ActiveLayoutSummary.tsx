@@ -15,6 +15,7 @@ import {
   getActiveStreams,
 } from '../../state/projectState';
 import { type FingerType, ALL_FINGERS } from '../../../types/fingerModel';
+import { type ConstraintRelaxationSummary } from '../../../types/executionPlan';
 import { CostBreakdownBars } from './CostBreakdownBars';
 import { EventCostChart } from './EventCostChart';
 import { LearnMoreModal } from './LearnMoreModal';
@@ -219,6 +220,11 @@ export function ActiveLayoutSummary() {
           {/* Three-layer cost breakdown: feasibility + ergonomics + difficulty */}
           {currentPlan && (
             <>
+            <StructuralRulesStatus
+              relaxation={currentPlan.constraintRelaxation}
+              streams={activeStreams}
+            />
+
             <WhatIsLimitingThis
               constraints={displayedCandidate?.difficultyAnalysis?.bindingConstraints}
               infeasibleSounds={currentPlan.diagnostics?.infeasibleSounds}
@@ -416,6 +422,77 @@ function DetailChip({ label, value, color }: { label: string; value: string; col
  * positions"). None of it reached the screen: the user saw factor bars and a
  * score and had to infer the cause. Numbers say a layout is worse; these say why.
  */
+/**
+ * Whether the plan keeps the two structural rules — each hand on its own side
+ * of the grid, and one finger per sound — and, if not, exactly where it gives way.
+ *
+ * The rules are hard: the engine breaks them only when no plan can keep them
+ * (or when the user's own finger choice asks for it). Saying so up front is what
+ * lets a user trust a clean plan, and find the few exceptions in a relaxed one
+ * without scanning the timeline pill by pill.
+ */
+function StructuralRulesStatus({
+  relaxation,
+  streams,
+}: {
+  relaxation?: ConstraintRelaxationSummary;
+  streams: Array<{ id: string; name: string }>;
+}) {
+  if (!relaxation) return null;
+
+  if (relaxation.mode === 'strict') {
+    return (
+      <div
+        className="text-pf-xs text-emerald-400/80 flex items-center gap-1.5"
+        title="Each hand stays in its own zone (left: the left five columns, right: the right five) and every sound is played by one finger for the whole performance."
+      >
+        <span>{'\u2713'}</span>
+        <span>Hands stay on their own side {'\u00b7'} one finger per sound</span>
+      </div>
+    );
+  }
+
+  const nameFor = (soundId: string) =>
+    streams.find(s => s.id === soundId)?.name ?? soundId;
+
+  return (
+    <div className="rounded-pf-sm border border-violet-400/30 bg-violet-500/5 p-2.5 space-y-1.5">
+      <div className="text-pf-xs font-semibold text-violet-300">
+        Fingering rules relaxed
+      </div>
+      <p className="text-pf-xs text-[var(--text-tertiary)] leading-relaxed">
+        No plan keeps both rules for this layout and your finger choices, so {relaxation.relaxedMomentCount === 1
+          ? 'one moment breaks'
+          : `${relaxation.relaxedMomentCount} moments break`} one. These strikes are outlined in the timeline.
+      </p>
+      <ul className="space-y-0.5">
+        {relaxation.handZoneStrikes > 0 && (
+          <li className="text-pf-xs text-[var(--text-secondary)]">
+            Hand separation: {relaxation.handZoneStrikes} strike{relaxation.handZoneStrikes === 1 ? '' : 's'} outside the hand{'\u2019'}s zone
+          </li>
+        )}
+        {relaxation.fingerOwnershipStrikes > 0 && (
+          <li className="text-pf-xs text-[var(--text-secondary)]">
+            One finger per sound: {relaxation.fingerOwnershipStrikes} strike{relaxation.fingerOwnershipStrikes === 1 ? '' : 's'} on another finger
+          </li>
+        )}
+      </ul>
+      <div className="pt-1 space-y-0.5">
+        {relaxation.sounds.slice(0, 5).map(sound => (
+          <div key={sound.soundId} className="flex justify-between gap-2 text-pf-xs">
+            <span className="text-[var(--text-secondary)] truncate">{nameFor(sound.soundId)}</span>
+            <span className="font-mono text-[var(--text-tertiary)] whitespace-nowrap">
+              {sound.fingersUsed.join(' + ')}
+              {sound.handZoneStrikes > 0 ? ` \u00b7 ${sound.handZoneStrikes} cross-zone` : ''}
+              {sound.fingerOwnershipStrikes > 0 ? ` \u00b7 ${sound.fingerOwnershipStrikes} re-fingered` : ''}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function WhatIsLimitingThis({
   constraints,
   infeasibleSounds,

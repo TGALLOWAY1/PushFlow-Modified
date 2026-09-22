@@ -27,6 +27,8 @@ import {
 import { registerOptimizer } from './optimizerRegistry';
 import { evaluatePerformance } from '../evaluation/canonicalEvaluator';
 import { computePlanScore } from '../evaluation/planScore';
+import { summarizeConstraintRelaxation } from '../evaluation/constraintRelaxation';
+import { isZoneValid } from '../surface/handZone';
 import { buildPerformanceMoments } from '../structure/momentBuilder';
 import { type Layout } from '../../types/layout';
 import {
@@ -253,6 +255,12 @@ class GreedyOptimizer implements OptimizerMethod {
     let currentPeerCost = computeRhythmPeerCost(layout, rhythmPeers);
 
     for (let iter = 0; iter < maxIterations; iter++) {
+      // Hand separation is a hard rule: a move may not add a strike outside its
+      // hand's zone unless it makes an unplayable moment playable. Cost alone
+      // must never buy a crossing, however much cheaper it would be.
+      const currentZoneStrikes = countZoneStrikes(currentCost);
+      const currentUnplayable = countUnplayableMoments(currentCost);
+
       // Enumerate all candidate moves
       const candidateMoves = this.enumerateMoves(layout, assignment, input, voicePreferences);
       if (candidateMoves.length === 0) {
@@ -277,6 +285,12 @@ class GreedyOptimizer implements OptimizerMethod {
         const newCostResult = this.evaluateLayout(
           moments, newLayout, newAssignment, input.evaluationConfig, input.costToggles,
         );
+        if (
+          countZoneStrikes(newCostResult) > currentZoneStrikes &&
+          countUnplayableMoments(newCostResult) >= currentUnplayable
+        ) {
+          continue;
+        }
 
         // Include rhythm peer alignment cost in move comparison
         const newPeerCost = (move.type === 'pad_move' || move.type === 'pad_swap')
@@ -955,6 +969,9 @@ class GreedyOptimizer implements OptimizerMethod {
           padId: padKeyStr,
           eventIndex: moment.momentIndex,
           eventKey: note.noteKey,
+          // One finger per Sound always holds here (the assignment is per pad);
+          // hand separation is the rule that can give way, and is flagged.
+          ...(isZoneValid(pad, owner.hand) ? {} : { relaxedConstraints: ['hand-zone' as const] }),
         });
       }
 
@@ -1004,6 +1021,7 @@ class GreedyOptimizer implements OptimizerMethod {
       hardCount,
       mediumCount,
       fingerAssignments,
+      constraintRelaxation: summarizeConstraintRelaxation(fingerAssignments),
       padFingerOwnership: assignment,
       momentAssignments,
       unplayableMomentCount,
@@ -1154,6 +1172,22 @@ function combineMomentDimensions(
     handBalance,
     total: poseNaturalness + transitionCost + constraintPenalty + alternation + handBalance,
   };
+}
+
+/** Strikes played by a hand outside its zone (hand separation relaxed). */
+function countZoneStrikes(breakdown: PerformanceCostBreakdown): number {
+  let count = 0;
+  for (const event of breakdown.eventCosts) count += event.violations.zoneReaches;
+  return count;
+}
+
+/** Moments that cannot be played at all: a finger on two pads, or a note with no pad. */
+function countUnplayableMoments(breakdown: PerformanceCostBreakdown): number {
+  let count = 0;
+  for (const event of breakdown.eventCosts) {
+    if (event.violations.collisions > 0 || event.violations.unmapped > 0) count++;
+  }
+  return count;
 }
 
 function canonicalDimensionsToV1Breakdown(dimensions: CostDimensions) {

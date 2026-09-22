@@ -94,6 +94,7 @@ export { analyzeTransition } from './evaluation/transitionAnalyzer';
 export { scorePassage, scorePassagesFromSections, scorePassagesFixedWindow } from './evaluation/passageDifficulty';
 export { analyzeDifficulty, classifyDifficulty, computeTradeoffProfile } from './evaluation/difficultyScoring';
 export { checkPlanFreshness, getEffectiveLayoutBinding, type FreshnessCheck } from './evaluation/executionPlanValidation';
+export { summarizeConstraintRelaxation, countRelaxedStrikes } from './evaluation/constraintRelaxation';
 export {
   scoreStructuralCoherence,
   type StructuralCoherenceScore,

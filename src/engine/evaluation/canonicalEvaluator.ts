@@ -477,6 +477,12 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
     unmappedMomentCount,
     eventCosts.filter(e => e.feasibilityTier === 'fallback' && e.violations.collisions === 0).length,
     moments.length,
+    // A static pad→finger assignment keeps one finger per Sound by construction;
+    // hand separation is the structural rule it can break.
+    {
+      handZoneStrikes: eventCosts.reduce((n, e) => n + e.violations.zoneReaches, 0),
+      fingerOwnershipStrikes: 0,
+    },
   );
 
   return {

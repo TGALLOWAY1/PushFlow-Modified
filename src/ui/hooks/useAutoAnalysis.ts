@@ -137,9 +137,9 @@ function buildSolverConstraints(
 function constraintsToManualAssignments(
   constraints: SolverConstraints,
 ): Record<string, { hand: 'left' | 'right'; finger: FingerType }> | undefined {
-  // For now, soft preferences are still passed as hard assignments to preserve
-  // existing solver behavior. The solver interface accepts both parameters —
-  // when full soft-preference support is added, this function can be removed.
+  // The beam solver reads each preference as the finger that owns that Sound:
+  // the one-finger-per-sound rule keeps it unless no plan can, and any strike
+  // that has to depart from it is flagged as a relaxation.
   const prefs = constraints.softPreferences;
   if (!prefs || Object.keys(prefs).length === 0) return undefined;
   return prefs;

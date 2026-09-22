@@ -29,7 +29,7 @@ const COST_DEFINITIONS = [
   {
     name: 'Hard Constraints',
     color: '#ef4444',
-    description: 'Penalty for biomechanically infeasible grips (relaxed/fallback tier). When the required hand shape exceeds physical limits, this cost increases. Hard constraints can be toggled off for experimental evaluation.',
+    description: 'Charged when a plan has to break a rule: one finger on two pads at once, a grip beyond the strict geometry limits, or \u2014 only where no plan can avoid it \u2014 a hand outside its zone or a sound played by a second finger. A plan that breaks a rule always ranks behind one that keeps it. Hard constraints can be toggled off for experimental evaluation.',
   },
   {
     name: 'Repetition',
@@ -47,12 +47,12 @@ const OPTIMIZER_METHODS = [
   {
     name: 'Greedy Hill Climb',
     key: 'greedy',
-    description: 'Builds an initial layout by placing sounds one at a time (most-used first), assigns fingers by hand zone, then iteratively makes the single best local move. Every step is explainable. Best for understanding and debugging.',
+    description: 'Builds an initial layout by placing sounds one at a time (most-used first), gives each sound one finger on the hand whose zone it sits in, then iteratively makes the single best local move. A move may never push a sound across to the other hand just to save cost. Every step is explainable. Best for understanding and debugging.',
   },
   {
     name: 'Beam Search',
     key: 'beam',
-    description: 'Fast finger assignment via beam search. Keeps the K best candidates at each event step. Does not modify the layout. Best for quick analysis of a fixed layout.',
+    description: 'Fast finger assignment via beam search. Keeps the K best candidates at each event step, looking ahead so it never commits a sound to a finger that will fail later. Keeps hand separation and one finger per sound, relaxing them only when no plan can. Does not modify the layout. Best for quick analysis of a fixed layout.',
   },
   {
     name: 'Simulated Annealing',
@@ -566,30 +566,25 @@ const HARD_CONSTRAINTS = [
     ],
   },
   {
-    // These are graded ergonomic costs, not hard limits — the distinction the
-    // product canon requires between "impossible" and "merely awkward".
-    category: 'Hand Zones (soft)',
-    color: '#3b82f6',
+    // Hard rules that shape every plan. Unlike the biomechanical limits above
+    // they CAN give way — but only where no plan keeps them, never to save cost.
+    category: 'Structural Rules (hard, relaxed only when no plan keeps them)',
+    color: '#a78bfa',
     rules: [
       {
-        name: 'Left Hand Zone',
-        key: 'zone-left',
-        description: 'The left hand is comfortable in columns 0\u20134. Reaching further right is allowed \u2014 the whole pad area is only about 17\u202Fcm wide \u2014 but costs more the further past the midline it goes.',
+        name: 'Hand Separation',
+        key: 'zone',
+        description: 'Each hand stays on its own side of the grid: the left hand plays columns 0\u20134 and the right hand columns 3\u20137 (columns 3\u20134 are shared). A plan that keeps this always wins over one that breaks it, however much cheaper the rule-breaking plan would be.',
       },
       {
-        name: 'Right Hand Zone',
-        key: 'zone-right',
-        description: 'The right hand is comfortable in columns 3\u20137, with the same graded cost for reaching further left.',
+        name: 'One Finger Per Sound',
+        key: 'ownership',
+        description: 'Every sound is played by the same finger for the whole performance, so the pad\u2192finger mapping is something you can memorise. If you set a finger for a sound, that is its finger; otherwise the solver picks one, looking ahead so it never picks a finger that will fail at a later moment.',
       },
       {
-        name: 'Shared Zone',
-        key: 'zone-shared',
-        description: 'Columns 3\u20134 sit under either hand at no extra cost.',
-      },
-      {
-        name: 'Fingering Consistency',
-        key: 'zone-consistency',
-        description: 'A pad keeps the same hand and finger for the whole performance, because that stable mapping is what you memorise. Re-fingering a pad is allowed where the music requires it, but is charged for.',
+        name: 'When a Rule Gives Way',
+        key: 'relaxation',
+        description: 'Only when no plan can keep both rules \u2014 for example two pads in the right hand\u2019s zone too far apart for one hand to reach at once \u2014 does the solver break one, on as few strikes as possible. Those strikes are outlined in the timeline, listed per sound under the layout summary, and mark the plan as degraded rather than fully feasible. Re-fingering on the same hand is preferred to switching hands, and a short reach over the boundary to a long one.',
       },
     ],
   },
@@ -650,9 +645,10 @@ function ConstraintsSection() {
       <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
         <h4 className="text-pf-sm font-medium text-[var(--text-primary)] mb-1">Enforcement</h4>
         <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
-          When any constraint is violated, the candidate grip is rejected entirely (returns infeasibility).
-          The solver only considers grips that pass all hard constraints at the strict tier. Relaxed and fallback
-          tiers widen limits slightly when no strict solution exists, flagged by the feasibility verdict.
+          When a biomechanical constraint is violated, the candidate grip is rejected entirely. Hand separation and
+          one finger per sound are enforced just as strictly: the solver first searches only among plans that keep
+          them, and considers breaking one only when that search cannot finish the performance. Any break is
+          counted, shown per strike, and reflected in the feasibility verdict.
         </p>
       </div>
     </div>
