@@ -75,24 +75,24 @@ Sessions are listed in S0.1 … S8.3 order, as in [UI_IMPLEMENTATION_PROMPTS.md]
 
 #### S0.1 — Test runner, CI, hooks and fonts
 
-- **Status:** In progress (claude/pushflow-ui-roadmap-266eqz, PR #TBD)
+- **Status:** In progress (claude/pushflow-ui-roadmap-266eqz, PR #93)
 - **Prerequisites:** Prompt 0 merged.
 - **Mode:** solo, so the Flags deliverable is skipped.
 
 **Deliverables**
-- [x] Playwright runner · *PR / verified by:* PR #TBD. playwright.config.ts: webServer on 5199 --strictPort with VITE_E2E=1, projects chromium-1366 and chromium-1600 (deviceScaleFactor 1), firefox-1366 only with PW_FIREFOX, PW_CHROMIUM → executablePath. `PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test` runs 6 specs locally (the 2 screenshot specs wait for CI baselines). No 1920×1080 project yet: the C1 menu spec that needs it arrives in S0.2.
-- [x] Test hooks · *PR / verified by:* PR #TBD. window.__pf (state copy, layoutHash, history depth, dispatch/undo/redo) in src/ui/testing/e2eHook.ts, installed by ProjectProvider only when VITE_E2E is set; test/e2e/hook.spec.ts. data-testids: pad-{row}-{col}, pad-menu, verdict-badge (+ data-level), compare-dialog, candidate-row (+ data-candidate-id), transport, transport-play, drawer-tab-timeline, drawer-tab-composer.
-- [x] Component tests · *PR / verified by:* PR #TBD. happy-dom + @testing-library/react; vitest includes test/**/*.test.tsx with a per-file `@vitest-environment` docblock; ResizeObserver and matchMedia shims in test/helpers/domShims.ts. test/ui/components/FeasibilityBadge.test.tsx; test/e2e/a11y-library.spec.ts (@axe-core/playwright).
+- [x] Playwright runner · *PR / verified by:* PR #93. playwright.config.ts: webServer on 5199 --strictPort with VITE_E2E=1, projects chromium-1366 and chromium-1600 (deviceScaleFactor 1), firefox-1366 only with PW_FIREFOX, PW_CHROMIUM → executablePath. `PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test` runs 6 specs locally (the 2 screenshot specs wait for CI baselines). No 1920×1080 project yet: the C1 menu spec that needs it arrives in S0.2.
+- [x] Test hooks · *PR / verified by:* PR #93. window.__pf (state copy, layoutHash, history depth, dispatch/undo/redo) in src/ui/testing/e2eHook.ts, installed by ProjectProvider only when VITE_E2E is set; test/e2e/hook.spec.ts. data-testids: pad-{row}-{col}, pad-menu, verdict-badge (+ data-level), compare-dialog, candidate-row (+ data-candidate-id), transport, transport-play, drawer-tab-timeline, drawer-tab-composer.
+- [x] Component tests · *PR / verified by:* PR #93. happy-dom + @testing-library/react; vitest includes test/**/*.test.tsx with a per-file `@vitest-environment` docblock; ResizeObserver and matchMedia shims in test/helpers/domShims.ts. test/ui/components/FeasibilityBadge.test.tsx; test/e2e/a11y-library.spec.ts (@axe-core/playwright).
 - [ ] CI · *PR / verified by:* —
-- [x] Deterministic fonts and screenshots · *PR / verified by:* PR #TBD. Inter and Space Grotesk variable woff2 (latin + latin-ext, OFL licenses alongside) in public/fonts with @font-face in src/index.css; build rewrites them to /PushFlow-Modified/fonts/. test/e2e/fixtures.ts aborts fonts.googleapis.com and fonts.gstatic.com for every spec; toHaveScreenshot disables animations and hides the caret. Before/after: docs/screenshots/S0.1/.
-- [x] Fixtures · *PR / verified by:* PR #TBD. TEST MIDI 1 copied to test/fixtures/midi/ and public/demo/; the archive copy stays.
+- [x] Deterministic fonts and screenshots · *PR / verified by:* PR #93. Inter and Space Grotesk variable woff2 (latin + latin-ext, OFL licenses alongside) in public/fonts with @font-face in src/index.css; build rewrites them to /PushFlow-Modified/fonts/. test/e2e/fixtures.ts aborts fonts.googleapis.com and fonts.gstatic.com for every spec; toHaveScreenshot disables animations and hides the caret. Before/after: docs/screenshots/S0.1/.
+- [x] Fixtures · *PR / verified by:* PR #93. TEST MIDI 1 copied to test/fixtures/midi/ and public/demo/; the archive copy stays.
 - Flags: skipped, because the working mode is solo.
 
 **Exit criteria**
 - [ ] **P0-1** A deliberately failing commit on a scratch branch turns the ci.yml check red for each of typecheck, a unit test and an e2e spec. Link the three red runs in the slot. · *PR / verified by:* —
 - [ ] **P0-2** The e2e suite passes twice in a row in CI with identical screenshots while fonts.googleapis.com is blocked. · *PR / verified by:* —
-- [x] **P0-4** A happy-dom component test renders FeasibilityBadge (expected-fail on the "feasible" default until S1b.1), and the axe smoke spec runs on the Library. · *PR / verified by:* PR #TBD. FeasibilityBadge.test.tsx renders all three tiers; its `it.fails` case fails with "expected 'feasible' not to be 'feasible'" (checked by removing the marker). a11y-library.spec.ts passes at both viewports and attaches the violations list.
-- [x] **P0-7** A grep of dist/ finds no window.__pf. · *PR / verified by:* PR #TBD. `npm run check:no-test-hook` passes after `npm run build`, and finds the hook in a VITE_E2E=1 build (so the check can fail). Runs in ci.yml and deploy.yml.
+- [x] **P0-4** A happy-dom component test renders FeasibilityBadge (expected-fail on the "feasible" default until S1b.1), and the axe smoke spec runs on the Library. · *PR / verified by:* PR #93. FeasibilityBadge.test.tsx renders all three tiers; its `it.fails` case fails with "expected 'feasible' not to be 'feasible'" (checked by removing the marker). a11y-library.spec.ts passes at both viewports and attaches the violations list.
+- [x] **P0-7** A grep of dist/ finds no window.__pf. · *PR / verified by:* PR #93. `npm run check:no-test-hook` passes after `npm run build`, and finds the hook in a VITE_E2E=1 build (so the check can fail). Runs in ci.yml and deploy.yml.
 
 #### S0.2 — C1–C9 regression specs and the TEST MIDI 1 gate
 
