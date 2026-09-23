@@ -2,7 +2,7 @@
 
 *Date: 2026-09-23 · Scope: the live app at `main` (2070ae4), desktop Chromium, screenshots at 1600×1000 and 1366×768 with spot measurements at 1280×800, 1440×900 and 1920×1080, using TEST MIDI 1 (7 sounds, 48 notes, 32 events).*
 
-Companion documents: **[UI_ENHANCEMENT_ROADMAP.md](UI_ENHANCEMENT_ROADMAP.md)** (the full, implementation-level plan) and **[UI_ISSUE_REGISTER.md](UI_ISSUE_REGISTER.md)** (all 70 problems and the 307 verified findings behind them).
+Companion documents: **[UI_ENHANCEMENT_ROADMAP.md](UI_ENHANCEMENT_ROADMAP.md)** (the full, implementation-level plan), **[UI_ISSUE_REGISTER.md](UI_ISSUE_REGISTER.md)** (all 70 problems and the 307 verified findings behind them) and **[UI_IMPLEMENTATION_PROMPTS.md](UI_IMPLEMENTATION_PROMPTS.md)** (ready-to-paste prompts for the agents that implement the plan).
 
 ## At a glance
 
@@ -919,7 +919,7 @@ These are the only genuinely blocking product questions. Each has a recommended 
 | Q7 | before P2 | Is "moment" a UI word, or only "event"? | The canon term is Performance Event, and the app has an Events tab. **Recommendation:** labels say "Event 12 · 3.2.3", single hits are "notes", and "moment" appears only in explanations; adopting "moment" as a label would need a PUSHFLOW_TERMINOLOGY.md update. |
 | Q6 | before P5 | What is the Pattern Composer's model? | (a) a quantised editor of the whole project timeline, or (b) named pattern sections inserted into the timeline at a chosen bar. **Recommendation: (b).** Either way it stays a bottom-drawer tab using the project tempo. |
 
-The full plan — deliverables, exit criteria and risks per phase, what is deliberately deferred, and how each of the 70 problems maps to a phase — is in **[UI_ENHANCEMENT_ROADMAP.md](UI_ENHANCEMENT_ROADMAP.md)**.
+The full plan — deliverables, exit criteria and risks per phase, what is deliberately deferred, and how each of the 70 problems maps to a phase — is in **[UI_ENHANCEMENT_ROADMAP.md](UI_ENHANCEMENT_ROADMAP.md)**. Ready-to-paste prompts for the agent sessions that implement it are in **[UI_IMPLEMENTATION_PROMPTS.md](UI_IMPLEMENTATION_PROMPTS.md)**.
 
 ## Appendix A — How this review was done
 

@@ -2,6 +2,8 @@
 
 *Date: 2026-09-23 · Companion to [UI_CORE_FLOWS_CRITIQUE.md](UI_CORE_FLOWS_CRITIQUE.md). Theme IDs (T01–T70) link to [UI_ISSUE_REGISTER.md](UI_ISSUE_REGISTER.md).*
 
+Ready-to-paste prompts for the agent sessions that implement this plan, one per work package, are in [UI_IMPLEMENTATION_PROMPTS.md](UI_IMPLEMENTATION_PROMPTS.md).
+
 This is the implementation-level plan. It was produced by three independent planners (trust-first, journey-first, impact-per-effort), scored by a judge, checked by a completeness critic, and revised. The critique document has the condensed, user-facing version.
 
 ## Principles
