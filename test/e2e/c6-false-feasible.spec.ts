@@ -1,0 +1,54 @@
+/**
+ * C6 · Selecting an event shows a false "Feasible · All events playable" (T07).
+ *
+ * Register root cause: FeasibilityBadge falls back to 'feasible' when it is
+ * given no verdict (CostBreakdownBars.tsx), and the selected-event view passes
+ * none. The no-analysis "Unknown" case is covered by the FeasibilityBadge
+ * component test (test/ui/components/FeasibilityBadge.test.tsx).
+ *
+ * Flips in S1b.1 (honest verdict).
+ */
+
+import { test, expect, EXPECTED_FAIL } from './fixtures';
+import { openTestMidi1, placeSounds, waitForAnalysis, selectMoment, SPREAD_PADS } from './project';
+import type { Page } from '@playwright/test';
+import type { PfHandle } from './fixtures';
+
+/** Level of every verdict badge on screen after selecting each of the first `n` events. */
+async function badgeLevelsWhileSelecting(page: Page, pf: PfHandle, n: number): Promise<string[]> {
+  const seen = new Set<string>();
+  for (let i = 0; i < n; i++) {
+    await selectMoment(page, i);
+    await page.getByRole('button', { name: 'Costs', exact: true }).click();
+    await expect.poll(async () => (await pf.call('state')).selectedMomentIndex ?? (await pf.call('state')).selectedEventIndex).not.toBeNull();
+    for (const badge of await page.getByTestId('verdict-badge').all()) {
+      seen.add(`${await badge.getAttribute('data-level')}: ${(await badge.innerText()).replace(/\s+/g, ' ')}`);
+    }
+  }
+  return [...seen];
+}
+
+test.describe('C6 · verdict with an event selected', () => {
+  test('an Infeasible layout never shows "Feasible" while an event is selected', async ({ page, pf }) => {
+    test.fail(EXPECTED_FAIL, 'C6: the selected-event badge gets no verdict and defaults to feasible (flips in S1b.1)');
+    await openTestMidi1(page, pf);
+    // Four of seven Sounds placed: the unplaced Sounds' events are unplayable.
+    await placeSounds(pf, ['3,3', '3,4', '4,2', '4,5']);
+    await waitForAnalysis(pf);
+    await page.getByRole('button', { name: 'Costs', exact: true }).click();
+    await expect(page.getByTestId('verdict-badge').first()).toHaveAttribute('data-level', 'infeasible');
+    const levels = await badgeLevelsWhileSelecting(page, pf, 6);
+    expect(levels.filter(l => l.startsWith('feasible'))).toEqual([]);
+  });
+
+  test('a Degraded layout never shows "Feasible" while an event is selected', async ({ page, pf }) => {
+    test.fail(EXPECTED_FAIL, 'C6: the selected-event badge gets no verdict and defaults to feasible (flips in S1b.1)');
+    await openTestMidi1(page, pf);
+    await placeSounds(pf, SPREAD_PADS);
+    await waitForAnalysis(pf);
+    await page.getByRole('button', { name: 'Costs', exact: true }).click();
+    await expect(page.getByTestId('verdict-badge').first()).toHaveAttribute('data-level', 'degraded');
+    const levels = await badgeLevelsWhileSelecting(page, pf, 6);
+    expect(levels.filter(l => l.startsWith('feasible'))).toEqual([]);
+  });
+});

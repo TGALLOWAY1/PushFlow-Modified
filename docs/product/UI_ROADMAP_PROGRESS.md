@@ -96,17 +96,51 @@ Sessions are listed in S0.1 … S8.3 order, as in [UI_IMPLEMENTATION_PROMPTS.md]
 
 #### S0.2 — C1–C9 regression specs and the TEST MIDI 1 gate
 
-- **Status:** Not started
+- **Status:** In progress (claude/pushflow-ui-roadmap-a53q8j)
 - **Prerequisites:** S0.1.
 
 **Deliverables**
-- [ ] C1-C9 as specs · *PR / verified by:* —
-- [ ] Extended TEST MIDI 1 gate, including deep annealing in nightly.yml · *PR / verified by:* —
+- [x] C1-C9 as specs · *PR / verified by:* this PR. test/e2e/c1-pad-menu … c9-presets.spec.ts: 37 cases, 36 of them `test.fail(EXPECTED_FAIL, …)` naming the session that flips it (table below); C3's greedy lock case passes today and is a normal test. Shared steps in test/e2e/project.ts (import TEST MIDI 1 through the real file input, place Sounds with the drag's action, wait for analysis, Generate, save and reload). `PF_UNMARK=1` runs every case with its marker off; each was run that way at 1600×1000 (C1 also at 1366 and 1920) and fails on the assertion listed below. New testids (VITE_E2E-free, plain attributes): variant-row (+ data-variant-id), compare-card (+ data-candidate-id), compare-toggle-active. Playwright project chromium-1920 runs c1 only.
+- [x] Extended TEST MIDI 1 gate, including deep annealing in nightly.yml · *PR / verified by:* this PR. testMidi1Integration.test.ts imports through buildLanesFromMidiProject (extracted unchanged from useLaneImport) and IMPORT_LANES, then SUGGEST_STARTING_LAYOUT; greedy, beam and annealing Quick each run as useAutoAnalysis.generateFull does, with strict 0-unplayable, fixed-seed snapshots (Sounds named, not id'd, so they are stable across imports; verified identical in two separate runs) and the [7,0] lock case. nightly.yml's deep-annealing job runs `npm run test:nightly` (vitest.nightly.config.ts, test/nightly/*.nightly.ts) and writes durations to the job summary.
 
 **Exit criteria**
-- [ ] **P0-3** C1–C9 exist as test.fail specs that fail today for the documented reason. A grep finds no `__reactFiber` or `_reactInternals` in test/. · *PR / verified by:* —
-- [ ] **P0-5** testMidi1Integration.test.ts has greedy, beam and annealing cases with strict 0-unplayable assertions, a lock case and seed-0 snapshots, and reads from test/fixtures. It builds no Map keyed by MIDI pitch. Any method that fails the strict check today is recorded as expected-fail and becomes a P1a (S1a.3) blocker. · *PR / verified by:* —
-- [ ] **P0-6** The nightly job runs deep annealing and reports its duration (record it in the slot). · *PR / verified by:* —
+- [x] **P0-3** C1–C9 exist as test.fail specs that fail today for the documented reason. A grep finds no `__reactFiber` or `_reactInternals` in test/. · *PR / verified by:* this PR. Every case run with `PF_UNMARK=1` fails on the assertion recorded in the table below; `grep -rn "__reactFiber\|_reactInternals" test/` finds nothing. The full suite with markers passes at 1366, 1600 and (C1) 1920.
+- [x] **P0-5** testMidi1Integration.test.ts has greedy, beam and annealing cases with strict 0-unplayable assertions, a lock case and seed-0 snapshots, and reads from test/fixtures. It builds no Map keyed by MIDI pitch. Any method that fails the strict check today is recorded as expected-fail and becomes a P1a (S1a.3) blocker. · *PR / verified by:* this PR. All three methods report 0 unplayable in strict mode today, so nothing is expected-fail on that check. Lock case: greedy passes; beam and annealing Quick are `it.fails` (candidates come back with `soundAt7_0: undefined` and `placementLocks: {}`), flipped by S1a.3. Snapshots pin the fixed seeds the pipelines use (see Deviations).
+- [ ] **P0-6** The nightly job runs deep annealing and reports its duration (record it in the slot). · *PR / verified by:* this PR adds the job. Measured locally (4-core container, sharing the CPU with browser runs): deep annealing 46.8 min (2811 s), 0 unplayable in strict mode; the deep lock case 47.6 min, failing as expected (`it.fails` until S1a.3). The CI duration is recorded here after the first nightly run.
+
+**C1–C9 cases and why each fails today** (run with `PF_UNMARK=1`)
+
+| Spec | Case | Flips in | Failing assertion today |
+|---|---|---|---|
+| C1 | menu at the cursor or clamped, all 64 pads (1366, 1600, 1920) | S1b.2 | every pad listed: e.g. `[0,0] cursor 622,450 menu 1105,434` at 1600 (≈480 px right of the cursor) |
+| C1 | 12/12 items clickable on occupied pads | S1b.2 | e.g. `[0,0] 6/12`, `[3,7] 8/12`, `[4,3] 9/12` at 1366 |
+| C1 | first Escape closes, focus returns to the pad | S1b.2 | menu count after Escape: expected 0, received 1 |
+| C2 | Generate leaves the draft hash unchanged | S1a.2 | working hash replaced by candidate #1's pads |
+| C2 | an edit made while Generate runs is kept | S1a.2 | `[7,7]` expected the moved Sound, received undefined |
+| C2 | draft recoverable after Preview / card-body click / Load Draft / candidate Promote / variant Promote, and after reload (5 cases) | S1a.2 | "hand-made draft is the draft or a Recovered draft": expected true, received false |
+| C2 | inspecting candidates never writes workingLayout | S3.2 | working hash changes on the first Preview |
+| C3 | greedy: lock at [7,0] holds (normal test, passes today) | — | — |
+| C3 | beam / annealing Quick: lock holds in every candidate | S1a.3 | `soundAt7_0: null`, `locks: {}` for every candidate |
+| C3 | drag onto / off a locked pad is refused | S1a.3 | the drop replaces the locked Sound; the drag-out moves it to [4,4] |
+| C4 | 3 placements, analysis settles, 3 Undos → empty grid | S1a.1 | `pads: {"3,3": …}` remains |
+| C4 | one Undo after Suggest restores the pre-Suggest grid | S1a.1 | the six suggested pads remain |
+| C4 | one Undo after Generate reverts the applied candidate, keeps candidates and trace | S1a.1 (S1a.2 rewords) | `candidates: []` after Undo |
+| C4 | Undo during playback keeps playing | S1a.1 | `isPlaying: false`, rewound |
+| C4 | a reopened project has an empty history | S1a.1 | `undo: 1` |
+| C5 | onion toggle changes grid pixels | S1b.4 | pixels identical off and on |
+| C6 | Infeasible / Degraded layout with an event selected never shows Feasible (2 cases) | S1b.1 | `"feasible: ✓ Feasible All events playable"` badge appears |
+| C7 | Active side shows real fingering and score, or "Couldn't analyse" | S1b.3 | `Active Layout Easy SCORE 0.0 … Playability 0` |
+| C7 | Escape closes Compare | S1b.3 | dialog count 1 after Escape |
+| C7 | Compare disabled after promoting / deleting a compared candidate (2 cases) | S1b.3 | Compare button still enabled |
+| C7 | Active's score in Compare equals its standalone analysis | S3.3 | expected ≈79.4, received 0 |
+| C8 | with an event selected, no pad greyed while playing; Stop restores the overlay | S1b.4 | 29 greyed frames while playing |
+| C8 | ArrowRight while playing neither seeks nor selects | S1b.4 | `selectedEventIndex: 0` |
+| C9 | a drop on empty pads places the preset's Sounds | S1b.4 | grid stays empty (drop never fires) |
+| C9 | a drop over an occupied pad is refused with a reason | S1b.4 | no reason text |
+| C9 | a Mirror toggle set before dragging is honoured | S1b.4 | the unmirrored drop already places nothing |
+| C9 | a foreign preset is refused with "This preset's Sounds aren't in this project" | S1b.4 | message not found |
+| C9 | Save Preset leaves fingers blank | S1b.4 | `finger: "index", hand: "left"` stored |
+| C9 | "Add to timeline at bar…" inserts the preset's notes | S8.2 | no such button |
 
 ### Phase P1a · Stop losing work
 
@@ -1060,6 +1094,12 @@ Record each one with the date, the session, what differs from the roadmap or the
 - **2026-09-23 · S0.1 · Baseline job trigger.** The prompt asks for a workflow_dispatch update-snapshots job. update-snapshots.yml has that trigger and a second one, the `update-snapshots` PR label, because GitHub can only dispatch workflows that are already on main, so the first baselines could not otherwise be made in CI from the PR that adds them. Approved by: none needed (an addition, not a change); flagged in PR #93.
 - **2026-09-23 · S0.1 · No 1920×1080 project yet.** The roadmap's 1920×1080 viewport is only for the C1 menu spec, so S0.2 adds it together with that spec rather than S0.1 adding an empty project. Approved by: none needed; flagged in PR #93.
 
+- **2026-09-23 · S0.2 · One PR for both deliverables.** The session's branch is fixed (`claude/pushflow-ui-roadmap-a53q8j`), so the TEST MIDI 1 gate and the C1–C9 specs land as separate commits in one PR rather than two. Approved by: none needed; flagged in the PR.
+- **2026-09-23 · S0.2 · "Seed-0" snapshots pin the pipelines' fixed seeds.** The app's greedy pipeline seeds from 42 + i·7919 and the beam strategies from 42/49/56; there is no seed-0 entry point in the Generate path. The snapshots pin those fixed seeds (the deterministic path the app runs), which is what the criterion protects. Approved by: none needed; flagged in the PR.
+- **2026-09-23 · S0.2 · Annealing "Quick" is the beam path.** In the app, Annealing + Quick calls generateCandidates with optimizationMode 'fast', which runs beam search only (annealing runs only in 'deep'), so the beam and annealing Quick cases exercise the same code. Both are kept so each method the UI offers has its own gate; the annealing solver itself is covered by the nightly deep run.
+- **2026-09-23 · S0.2 · C3 greedy uses one strategy; C2's mid-run edit uses Coordination.** Greedy with All Strategies blocks the page's main thread for several minutes in the browser (see Follow-ups), so the C3 greedy case runs Natural Pose and the C2 mid-run case runs Coordination (long enough to edit during). The unit gate covers all greedy strategies.
+- **2026-09-23 · S0.2 · Two C6 criteria stay in unit/component tests.** "A layout with no analysis renders Unknown" is the FeasibilityBadge component test (S0.1); C7's "served from the cache without re-solving, storage unchanged" is a unit test S1b.3 adds with getAnalysisForLayout. The e2e specs cover the rest.
+
 ## 6. Follow-ups
 
 Record each one with the date, the session that found it, what and where (file:line or repro), and the session or phase it belongs to.
@@ -1067,3 +1107,9 @@ Record each one with the date, the session that found it, what and where (file:l
 - **2026-09-23 · S0.1 · Delete the scratch branches.** `scratch/s0.1-red-typecheck`, `scratch/s0.1-red-unit` and `scratch/s0.1-red-e2e` (PRs #94–#96, closed) are still on the remote: the implementing session's git access could not delete branches other than its own. Delete them from the closed PRs. Owner: the repository owner.
 - **2026-09-23 · S0.1 · e2e specs aren't type-checked.** tsconfig.json includes only src/, so test/ (vitest and Playwright specs) is never run through tsc; Playwright transpiles without checking. Add a tsconfig for test/ and run it in ci.yml. Belongs to: any P0/P1a session touching CI.
 - **2026-09-23 · S0.1 · Node 20 actions deprecation.** CI warns that actions/checkout@v4, setup-node@v4 and upload-artifact@v4 target Node 20 and are forced onto Node 24 (all workflows, including the existing deploy.yml). Bump the action versions when newer majors are available. Belongs to: any session touching CI.
+- **2026-09-23 · S0.2 · Toolbar Generate never sets the trace.** useAutoAnalysis.generateFull clears moveHistory (`SET_MOVE_HISTORY` with null) and neither branch sets it again, so MoveTracePanel is empty after every toolbar run (CLAUDE.md Do-Not-Regress: trace must stay wired to optimizer output). C4's Generate case compares an empty trace until this is fixed. Belongs to: S3.4 (trace per candidate).
+- **2026-09-23 · S0.2 · Greedy Generate freezes the page for minutes.** With All Strategies, the greedy pipeline runs on the main thread and the page stops responding for several minutes in Chromium (about 40 s for the same work in node); even one strategy (Coordination) leaves the page unresponsive for about two minutes after its progress text clears. Belongs to: S3.4 (progress, Cancel and time budget).
+- **2026-09-23 · S0.2 · Engine APIs keyed by MIDI pitch.** seedLayoutFromPose0 takes `existingVoices: Map<number, Voice>`, generateCandidates' pose0-offset strategy builds that map from `originalMidiNote` (multiCandidateGenerator.ts), and buildSolverConstraints falls back to noteNumber (useAutoAnalysis.ts). The TEST MIDI 1 gate no longer calls them with a pitch map, but the app's beam/annealing path still does. Belongs to: S1a.3 (strict Sound identity).
+- **2026-09-23 · S0.2 · Deep annealing takes about 47 minutes.** Locally, annealing Thorough on TEST MIDI 1 took 46.8 min for 3 candidates (the critique measured about 33.5 min in the browser). nightly.yml allows 180 minutes. Belongs to: S3.4 (time budget).
+- **2026-09-23 · S0.2 · The top grid row is clipped at 1366×768.** Row 7 is partly hidden by the grid wrapper, so C1 right-clicks the visible part of each pad. Belongs to: S2.1 (measured grid, T04).
+

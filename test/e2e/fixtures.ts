@@ -48,3 +48,10 @@ export const test = base.extend<{ pf: PfHandle }>({
 });
 
 export { expect };
+
+/**
+ * Condition for the C1–C9 expected-fail markers: `test.fail(EXPECTED_FAIL, reason)`.
+ * Run with PF_UNMARK=1 to see each case's real failure (as if its marker were removed).
+ * The session that fixes a case deletes its test.fail line.
+ */
+export const EXPECTED_FAIL = !process.env.PF_UNMARK;

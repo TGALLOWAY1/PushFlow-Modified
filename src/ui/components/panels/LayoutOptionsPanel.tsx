@@ -121,6 +121,7 @@ export function LayoutOptionsPanel({
                 <div className="flex items-center gap-2">
                   {/* Compare checkbox */}
                   <div
+                    data-testid="compare-toggle-active"
                     className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
                       selectedForCompare.has('__active__')
                         ? 'bg-purple-600 border-purple-500'
@@ -340,7 +341,11 @@ function SavedVariantCard({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
-    <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
+    <div
+      data-testid="variant-row"
+      data-variant-id={variant.id}
+      className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3"
+    >
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="min-w-0">
           <div className="text-pf-sm text-[var(--text-primary)] font-medium truncate">{variant.name}</div>
