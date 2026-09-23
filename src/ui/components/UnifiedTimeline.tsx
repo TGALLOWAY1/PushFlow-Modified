@@ -619,11 +619,12 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
         </div>
 
         {/* Transport */}
-        <div className="flex items-center gap-2 pl-2 border-l border-[var(--border-default)]">
+        <div data-testid="transport" className="flex items-center gap-2 pl-2 border-l border-[var(--border-default)]">
           <span className="text-[var(--text-tertiary)] font-mono text-pf-sm w-14 text-right">
             {state.currentTime.toFixed(2)}s
           </span>
           <button
+            data-testid="transport-play"
             className={`px-2.5 py-1 rounded-pf-sm text-pf-xs font-bold transition-colors ${
               state.isPlaying
                 ? 'bg-amber-500 text-amber-950'

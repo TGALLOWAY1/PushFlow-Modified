@@ -16,6 +16,10 @@ export interface UndoRedoControls<S> {
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  /** Number of undo steps available. */
+  undoDepth: number;
+  /** Number of redo steps available. */
+  redoDepth: number;
   clearHistory: () => void;
 }
 
@@ -112,6 +116,8 @@ export function useUndoRedo<S, A extends { type: string }>(
     redo,
     canUndo: past.length > 0,
     canRedo: future.length > 0,
+    undoDepth: past.length,
+    redoDepth: future.length,
     clearHistory,
   };
 }

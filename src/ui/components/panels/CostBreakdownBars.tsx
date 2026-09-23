@@ -29,7 +29,7 @@ interface CostBreakdownBarsProps {
 // Feasibility badge
 // ────────────────────────────────────────────────────────────────────────────
 
-function FeasibilityBadge({ verdict, unplayableCount }: {
+export function FeasibilityBadge({ verdict, unplayableCount }: {
   verdict?: FeasibilityVerdict;
   unplayableCount?: number;
 }) {
@@ -57,7 +57,11 @@ function FeasibilityBadge({ verdict, unplayableCount }: {
   };
 
   return (
-    <div className={`flex items-center gap-2 px-2 py-1.5 rounded-pf-sm border text-pf-xs ${styles[level]}`}>
+    <div
+      data-testid="verdict-badge"
+      data-level={level}
+      className={`flex items-center gap-2 px-2 py-1.5 rounded-pf-sm border text-pf-xs ${styles[level]}`}
+    >
       <span className="text-pf-sm">{icons[level]}</span>
       <div>
         <div className="font-medium capitalize">{level}</div>

@@ -25,3 +25,8 @@ Thumbs.db
 
 # UI critique repro output
 .ui-repro-out/
+
+# Playwright output (baselines live in test/e2e/__screenshots__ and are committed)
+test-results/
+playwright-report/
+blob-report/

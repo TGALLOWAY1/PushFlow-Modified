@@ -97,7 +97,15 @@ npm run typecheck        # TypeScript type checking only
 npm test                 # Run Vitest in watch mode
 npm run test:run         # Run tests once (CI mode)
 npm run test:coverage    # Run tests with coverage report
+npx playwright test      # e2e specs in test/e2e/ (Chromium at 1366x768 and 1600x1000)
+npm run check:no-test-hook  # after a build: fails if window.__pf leaked into dist/
 ```
+
+In a cloud session, point Playwright at the preinstalled browser:
+`PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test`. Screenshot baselines
+(`test/e2e/__screenshots__/`) are generated only in CI: run the "Update screenshot
+baselines" workflow or add the `update-snapshots` label to a PR. Never commit
+locally generated baselines.
 
 ### Running Individual Tests
 
@@ -111,6 +119,8 @@ npx vitest test/engine/solvers/                                # Watch mode on d
 ### Key Configuration Details
 
 - **Path alias**: `@/*` maps to `src/*` (configured in both tsconfig.json and vite.config.ts)
+- **Test environments**: vitest runs `test/**/*.test.ts(x)` in node; component tests opt into happy-dom with a `// @vitest-environment happy-dom` docblock (shims in `test/helpers/domShims.ts`)
+- **E2E test hook**: `window.__pf` (read-only state snapshot, layout hash, undo depth, dispatch helpers; `src/ui/testing/e2eHook.ts`) exists only when `VITE_E2E` is set. Specs use it, never React internals
 - **No linter**: TypeScript strict mode with `noUnusedLocals` and `noUnusedParameters` serves as the linter
 - **Production base path**: `/PushFlow-Modified/` (for GitHub Pages deployment)
 - **Build output**: `dist/`
@@ -180,7 +190,10 @@ test/
 │   ├── pattern/           # Rhythm resolvers, pattern engine
 │   └── structure/         # Constraint corrections
 ├── ui/state/              # Lanes reducer, lanes-to-streams conversion
-└── golden/                # End-to-end golden scenario tests
+├── ui/components/         # happy-dom component tests (*.test.tsx)
+├── golden/                # End-to-end golden scenario tests
+├── e2e/                   # Playwright specs (*.spec.ts) + fixtures.ts
+└── fixtures/midi/         # TEST MIDI 1 copy for tests (archive copy stays)
 ```
 
 Key test invariants:
@@ -213,7 +226,11 @@ The UI uses CSS custom properties (defined in `src/index.css`) consumed via Tail
 
 ### CI/CD
 
-GitHub Actions (`.github/workflows/deploy.yml`) deploys to GitHub Pages on push to `main`: `npm ci` + `npm run build` + deploy `dist/`.
+GitHub Actions:
+- `ci.yml` (every PR and push to `main`): typecheck, `test:run`, build + `check:no-test-hook`, Playwright (Chromium, 2 shards).
+- `nightly.yml` (schedule + manual): Playwright in Firefox.
+- `update-snapshots.yml` (manual, or the `update-snapshots` PR label): regenerates screenshot baselines and commits them.
+- `deploy.yml` (push to `main`): typecheck + `test:run` + build + `check:no-test-hook`, then deploys `dist/` to GitHub Pages.
 
 ## Product Mission
 

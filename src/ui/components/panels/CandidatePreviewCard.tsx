@@ -66,6 +66,8 @@ export function CandidatePreviewCard({
 
   return (
     <div
+      data-testid="candidate-row"
+      data-candidate-id={candidate.id}
       className={`rounded-pf-lg border transition-all cursor-pointer relative ${
         isSelected
           ? 'border-blue-500 bg-blue-500/5 ring-1 ring-blue-500/20'
