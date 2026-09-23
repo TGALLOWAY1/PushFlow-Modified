@@ -20,7 +20,7 @@ Recorded 2026-09-23. "Default" means the recommendation in the "Decisions needed
 
 **Q1 · Does the Working/Test Layout persist across reloads?** Answer: default, so yes.
 - Resolved: the draft is saved with the project, as it is today, and restored on reload together with Recovered drafts, so it never silently expires. A reopened project whose draft differs from Active shows "Draft from 23 Sep restored · 3 pads differ · Keep editing / Discard".
-- Affects: S1a.2 (the draft and Recovered drafts survive a reload), S1a.4 (truthful save covers the draft), S2.3 (Library thumbnails use working ?? active, with a "Draft, not promoted" badge), S5.4 (the reopened-draft banner).
+- Affects: S1a.2 (the draft and Recovered drafts survive a reload), S1a.4 (truthful save covers the draft), S2.3 (a Library card shows the Working/Test Layout, badged "Draft, not promoted", when it differs from the Active Layout, and otherwise the Active Layout), S5.4 (the reopened-draft banner).
 
 **Q2 · Do finger preferences survive Discard?** Answer: default, so yes.
 - Resolved: finger preferences live in voiceConstraints, the Sound-level source of truth (invariant 6), so Discard reverts the layout but keeps them. Pad fingerConstraints are re-derived from voiceConstraints, and the Discard toast says the preferences were kept.
@@ -346,7 +346,7 @@ Sessions are listed in S0.1 … S8.3 order, as in [UI_IMPLEMENTATION_PROMPTS.md]
 
 - **Status:** Not started
 - **Prerequisites:** S1a.2, S1b.3.
-- **Decisions:** Q1 (thumbnails use working ?? active, with a "Draft, not promoted" badge).
+- **Decisions:** Q1 (a card's thumbnail shows the Working/Test Layout, badged "Draft, not promoted", when it differs from the Active Layout; otherwise it shows the Active Layout, badged "Active layout").
 
 **Deliverables**
 - [ ] Library honesty and entry (T52, T51 slices, T53) · *PR / verified by:* —
