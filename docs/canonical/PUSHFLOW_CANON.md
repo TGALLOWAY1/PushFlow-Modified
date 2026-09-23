@@ -73,7 +73,7 @@ It must remain consistent across:
 - compare
 - diagnostics
 - saved outputs
-Imported MIDI pitch is provenance and not tied to an important aspect of the sound or project. It is stripped from the sound.
+Imported MIDI pitch is provenance and not tied to an important aspect of the sound or project. It is kept only as provenance metadata: it never determines a sound's identity, default name or grid position, and it is shown only in the import review and a sound's details tooltip. A sound is named from its pitch only when the user explicitly asks, for example with 'Name from GM drum map'.
 ### 11. Explicit placement locks are the main hard user-facing preserve rule
 An explicit placement lock preserves a `Sound identity` at a specific `Grid Position`.
 Locks are the main hard placement rule the user should rely on.

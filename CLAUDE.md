@@ -368,14 +368,14 @@ These rules are non-negotiable and must be preserved across all changes:
 
 6. **Finger assignment sync.** Finger assignment changes in any panel (Sounds panel, Grid Editor, Pattern Composer) must propagate to all other panels. `voiceConstraints` is the single source of truth for per-sound finger preferences. Pad-level `fingerConstraints` in the layout are derived from voice constraints and kept in sync automatically. Any change to one must update the others.
 
-7. **No automatic grid layout.** The system must NEVER automatically place sounds on the grid or assign fingers without explicit user action. Auto-layout on empty grids is forbidden. The user must manually place each sound.
+7. **No automatic grid layout.** Nothing is placed or fingered without a named user action. Import, Generate and analysis never place Sounds. 'Suggest a starting layout' and applying a candidate are explicit one-click actions, each one undo step; 'Place remaining N' produces a candidate.
 
 8. **Composer BPM is project BPM.** The Pattern Composer must always use the project's tempo (`projectState.tempo`). There must be no separate BPM control in the composer.
 
 ## Default Decision Handling
 
 If a still-open question blocks progress, use these defaults unless the user says otherwise:
-- `Working/Test Layout` is session-scoped unless saved or promoted
+- `Working/Test Layout` persists with the project across reloads (decision Q1, recorded in `docs/product/UI_ROADMAP_PROGRESS.md`)
 - replaced `Active Layout` should be auto-saved if it can be done cleanly
 - per-sound hand/finger preferences are deferred unless clearly soft
 - a real `Candidate Solution` must show at least one unlocked placement change or a materially different tradeoff profile
