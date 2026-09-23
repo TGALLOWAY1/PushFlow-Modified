@@ -1,0 +1,12 @@
+import { chromium } from 'playwright';
+import { readFileSync } from 'fs';
+const D = '.ui-repro-out/C8/clock-1600/';
+const pairs = [['0-t0.03','3,4 R2 + 2,3 L1 + 2,4 R1 struck'],['2-t1.01','3,3 L2 struck'],['3-t1.50','4,1 L4 struck'],['4-t2.00','4,0 L5 + 2,3 L1 struck']];
+const img = f => 'data:image/png;base64,' + readFileSync(D + f).toString('base64');
+let rows = pairs.map(([k, d]) => `<tr><td class=l>t=${k.split('-t')[1]}s<br><small>${d}</small></td><td><img src="${img('A-noselect-' + k + '.png')}"></td><td><img src="${img('B-selected-' + k + '.png')}"></td></tr>`).join('');
+const html = `<html><body style="background:#111;color:#ddd;font:14px sans-serif;margin:10px"><h3 style="margin:4px">C8: same transport time, fake clock stepped identically. Left = no event selected (control). Right = Event 13 (t=4.000s) selected via Events tab.</h3><table><tr><th></th><th>No selection (control)</th><th>Event selected</th></tr>${rows}</table><style>img{width:300px}td.l{width:170px;vertical-align:middle}</style></body></html>`;
+const b = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined });
+const p = await b.newPage({ viewport: { width: 820, height: 1300 } });
+await p.setContent(html); await p.waitForTimeout(300);
+await p.screenshot({ path: D + 'COMPOSITE-flash-comparison.png', fullPage: true });
+await b.close();

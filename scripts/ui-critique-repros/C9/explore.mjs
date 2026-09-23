@@ -1,0 +1,21 @@
+// Exploration: open composer in a fresh project, dump structure, add lanes.
+import { DIR, launch, wirePage, makeLogger, shot, newProject } from './lib.mjs';
+const { note, flush } = makeLogger('explore');
+const { browser, ctx } = await launch();
+const page = await ctx.newPage();
+wirePage(page, note);
+await newProject(page);
+await shot(page, 'x01-new-project', note);
+const tabs = await page.locator('button').allTextContents();
+note('BUTTONS: ' + JSON.stringify(tabs.map(s => s.trim()).filter(Boolean).slice(0, 80)));
+await page.locator('button:has-text("Composer")').first().click();
+await page.waitForTimeout(700);
+await page.locator('button[title="Add lane"]').click();
+await page.waitForTimeout(200);
+await page.locator('button[title="Add lane"]').click();
+await page.waitForTimeout(600);
+await shot(page, 'x02-composer-2-lanes', note);
+const cellCount = await page.locator('div.relative.cursor-pointer[style*="height: 32px"]').count();
+note('cells: ' + cellCount);
+flush();
+await browser.close();

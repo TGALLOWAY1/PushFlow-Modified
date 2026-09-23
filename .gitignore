@@ -22,3 +22,6 @@ Thumbs.db
 
 # MCP configuration (contains API keys)
 .mcp.json
+
+# UI critique repro output
+.ui-repro-out/
