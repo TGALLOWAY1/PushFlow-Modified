@@ -1,0 +1,60 @@
+/**
+ * E2E test hook (window.__pf).
+ *
+ * Gives Playwright specs a read-only view of project state and a few dispatch
+ * helpers, so specs never have to read React internals. It is installed only
+ * when the app is built or served with VITE_E2E set; ProjectProvider guards the
+ * call with import.meta.env.VITE_E2E, so production builds drop this module
+ * entirely (checked by scripts/check-no-test-hook.mjs).
+ */
+
+import { hashLayout } from '@/engine';
+import type { ProjectAction, ProjectState } from '../state/projectState';
+
+export interface E2EHookSource {
+  state: ProjectState;
+  dispatch: (action: ProjectAction) => void;
+  undo: () => void;
+  redo: () => void;
+  undoDepth: number;
+  redoDepth: number;
+}
+
+export interface PfTestHook {
+  /** Deep copy of the current project state; mutating it changes nothing. */
+  state(): ProjectState;
+  /** Layout hash of the Active Layout, the Working/Test Layout (null if none), or whichever is shown. */
+  layoutHash(which?: 'active' | 'working' | 'shown'): string | null;
+  /** Number of undo and redo steps currently available. */
+  history(): { undo: number; redo: number };
+  dispatch(action: ProjectAction): void;
+  undo(): void;
+  redo(): void;
+}
+
+declare global {
+  interface Window {
+    __pf?: PfTestHook;
+  }
+}
+
+/** Installs window.__pf, reading through `get` so it always sees the latest render. Returns an uninstaller. */
+export function installE2EHook(get: () => E2EHookSource): () => void {
+  const hook: PfTestHook = {
+    state: () => structuredClone(get().state),
+    layoutHash(which = 'shown') {
+      const { activeLayout, workingLayout } = get().state;
+      if (which === 'active') return hashLayout(activeLayout);
+      if (which === 'working') return workingLayout ? hashLayout(workingLayout) : null;
+      return hashLayout(workingLayout ?? activeLayout);
+    },
+    history: () => ({ undo: get().undoDepth, redo: get().redoDepth }),
+    dispatch: action => get().dispatch(action),
+    undo: () => get().undo(),
+    redo: () => get().redo(),
+  };
+  window.__pf = hook;
+  return () => {
+    if (window.__pf === hook) delete window.__pf;
+  };
+}

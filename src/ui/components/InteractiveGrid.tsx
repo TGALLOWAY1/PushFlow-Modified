@@ -624,6 +624,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       cells.push(
         <div
           key={padKey}
+          data-testid={`pad-${row}-${col}`}
           className={`
             group relative flex flex-col items-center justify-center
             w-14 h-14 rounded-lg text-[10px] font-mono leading-tight

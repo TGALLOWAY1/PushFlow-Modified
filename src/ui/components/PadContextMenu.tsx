@@ -78,6 +78,7 @@ export function PadContextMenu({ padKey, x, y, onClose }: PadContextMenuProps) {
   return (
     <div
       ref={menuRef}
+      data-testid="pad-menu"
       className="fixed z-50 bg-[var(--bg-panel)] border border-[var(--border-default)] rounded-pf-lg shadow-pf-xl py-1 min-w-[160px]"
       style={{ left: position.left, top: position.top }}
     >

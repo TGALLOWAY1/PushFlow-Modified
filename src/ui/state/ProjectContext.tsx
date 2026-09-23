@@ -4,7 +4,7 @@
  * Provides project state + undo/redo to the component tree.
  */
 
-import { createContext, useContext, useMemo } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef } from 'react';
 import {
   type ProjectState,
   type ProjectAction,
@@ -13,6 +13,7 @@ import {
   createEmptyProjectState,
 } from './projectState';
 import { useUndoRedo } from './useUndoRedo';
+import { installE2EHook } from '../testing/e2eHook';
 
 interface ProjectContextValue {
   state: ProjectState;
@@ -39,11 +40,28 @@ export function ProjectProvider({
   initialState: ProjectState;
   children: React.ReactNode;
 }) {
-  const { state, dispatch, undo, redo, canUndo, canRedo } = useUndoRedo(
+  const { state, dispatch, undo, redo, canUndo, canRedo, undoDepth, redoDepth } = useUndoRedo(
     projectReducer,
     initialState,
     isEphemeralAction,
   );
+
+  // E2E test hook (window.__pf). The env check is a build-time constant, so
+  // production builds drop the hook module entirely.
+  const e2eSourceRef = useRef({
+    state: state as ProjectState,
+    dispatch: dispatch as (action: ProjectAction) => void,
+    undo, redo, undoDepth, redoDepth,
+  });
+  e2eSourceRef.current = {
+    state: state as ProjectState,
+    dispatch: dispatch as (action: ProjectAction) => void,
+    undo, redo, undoDepth, redoDepth,
+  };
+  useEffect(() => {
+    if (!import.meta.env.VITE_E2E) return;
+    return installE2EHook(() => e2eSourceRef.current);
+  }, []);
 
   const value = useMemo(
     () => ({

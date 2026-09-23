@@ -668,12 +668,14 @@ function PerformanceWorkspaceInner() {
             {/* Tab bar */}
             <div className="flex items-center border-b border-[var(--border-subtle)] flex-shrink-0 px-1">
               <button
+                data-testid="drawer-tab-timeline"
                 className={`pf-tab ${timelineTab === 'timeline' ? 'active' : ''}`}
                 onClick={() => setTimelineTab('timeline')}
               >
                 Timeline
               </button>
               <button
+                data-testid="drawer-tab-composer"
                 className={`pf-tab ${timelineTab === 'composer' ? 'active' : ''}`}
                 onClick={() => setTimelineTab('composer')}
               >

@@ -72,7 +72,7 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
     return (
       <>
         <div className="fixed inset-0 z-[70] bg-black/60" onClick={onClose} />
-        <div className="fixed inset-8 z-[71] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex items-center justify-center">
+        <div data-testid="compare-dialog" className="fixed inset-8 z-[71] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex items-center justify-center">
           <div className="text-[var(--text-tertiary)] text-pf-lg">Not enough candidates to compare.</div>
         </div>
       </>
@@ -96,7 +96,7 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
   return (
     <>
       <div className="fixed inset-0 z-[70] bg-black/60" onClick={onClose} />
-      <div className="fixed inset-6 z-[71] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex flex-col overflow-hidden">
+      <div data-testid="compare-dialog" className="fixed inset-6 z-[71] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)] flex-shrink-0">
           <h3 className="text-pf-lg font-semibold text-[var(--text-primary)]">Compare Layouts</h3>
