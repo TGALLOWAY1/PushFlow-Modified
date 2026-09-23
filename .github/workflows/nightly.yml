@@ -1,0 +1,38 @@
+name: Nightly
+
+# Roadmap P0 "CI": the slower checks that don't run on every PR.
+# - The Playwright suite in Firefox.
+# S0.2 adds the deep-annealing TEST MIDI 1 gate to this workflow.
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-firefox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PW_FIREFOX: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps firefox
+      - run: npx playwright test --project=firefox-1366
+      - name: Upload traces and report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-firefox
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14

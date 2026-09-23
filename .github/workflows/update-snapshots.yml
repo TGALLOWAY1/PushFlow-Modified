@@ -1,0 +1,57 @@
+name: Update screenshot baselines
+
+# Screenshot baselines are generated here, on CI's Linux runner, never locally
+# (font rasterisation differs between machines). Two ways to run it:
+# - Actions > "Update screenshot baselines" > Run workflow, choosing the branch; or
+# - add the `update-snapshots` label to a pull request from this repository.
+# It rewrites only baselines that are missing or differ, commits them to the
+# branch, and (for the label) removes the label again. Commits pushed with
+# GITHUB_TOKEN don't start CI, so CI re-checks them on the branch's next push.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-snapshots-${{ github.head_ref || github.ref }}
+
+jobs:
+  update:
+    if: github.event_name == 'workflow_dispatch' || (github.event.label.name == 'update-snapshots' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PW_FIREFOX: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium firefox
+      - name: Regenerate missing or changed baselines (all projects)
+        run: npx playwright test --update-snapshots=changed || echo "::warning::Some specs failed; committing the baselines that were written anyway. Check CI for the failures."
+      - name: Commit baselines
+        run: |
+          git add test/e2e/__screenshots__
+          if git diff --cached --quiet; then
+            echo "Baselines already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898699+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update e2e screenshot baselines"
+          git push
+      - name: Remove the label
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr edit ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --remove-label update-snapshots
