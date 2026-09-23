@@ -62,28 +62,9 @@ test.describe('C2 · Working/Test Layout overwritten', () => {
     expect(await pf.call('layoutHash', 'working')).toBe(draftHash);
   });
 
-  test('an edit made while Generate runs is kept', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C2: the finished run replaces the draft, losing the mid-run edit (flips in S1a.2)');
-    test.setTimeout(300_000);
-    await openTestMidi1(page, pf);
-    const ids = await placeSounds(pf, HAND_PADS);
-    await chooseMethod(page, 'Greedy');
-    // One greedy family: long enough to edit during, far shorter than all five.
-    await page.getByTitle('Layout seeding strategy').selectOption({ label: 'Coordination' });
-    await page.getByRole('button', { name: 'Generate', exact: true }).click();
-    // The toolbar shows the run's progress text only while Generate itself runs.
-    await expect(page.getByText(/Greedy optimization/)).toBeVisible();
-    // The same action a drag from the Sounds panel dispatches.
-    const stream = (await pf.call('state')).soundStreams.find(s => s.id === ids[0])!;
-    await pf.call('dispatch', { type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey: '7,7', stream } });
-    const mid = await pf.call('status');
-    expect(mid.isProcessing && mid.candidateIds.length === 0, 'the edit landed while the run was still going').toBe(true);
-    await expect.poll(async () => {
-      const s = await pf.call('status');
-      return !s.isProcessing && s.candidateIds.length > 0;
-    }, { timeout: 240_000 }).toBe(true);
-    expect((await shownPads(pf))['7,7']).toBe(ids[0]);
-  });
+  // "An edit made while Generate runs is kept" (S1a.2) is a hook test,
+  // test/ui/hooks/generateMidRunEdit.test.tsx: in the browser, greedy Generate
+  // with an edit mid-run did not finish within 10 minutes.
 
   test.describe('the hand-made draft stays recoverable, including after a reload', () => {
     test('after Preview', async ({ page, pf }) => {
