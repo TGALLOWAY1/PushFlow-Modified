@@ -96,7 +96,7 @@ Sessions are listed in S0.1 … S8.3 order, as in [UI_IMPLEMENTATION_PROMPTS.md]
 
 #### S0.2 — C1–C9 regression specs and the TEST MIDI 1 gate
 
-- **Status:** In progress (claude/pushflow-ui-roadmap-a53q8j, PR #97)
+- **Status:** Done (PR #97)
 - **Prerequisites:** S0.1.
 
 **Deliverables**
@@ -106,7 +106,7 @@ Sessions are listed in S0.1 … S8.3 order, as in [UI_IMPLEMENTATION_PROMPTS.md]
 **Exit criteria**
 - [x] **P0-3** C1–C9 exist as test.fail specs that fail today for the documented reason. A grep finds no `__reactFiber` or `_reactInternals` in test/. · *PR / verified by:* PR #97. Every case run with `PF_UNMARK=1` fails on the assertion recorded in the table below; `grep -rn "__reactFiber\|_reactInternals" test/` finds nothing. The full suite with markers passes at 1366, 1600 and (C1) 1920.
 - [x] **P0-5** testMidi1Integration.test.ts has greedy, beam and annealing cases with strict 0-unplayable assertions, a lock case and seed-0 snapshots, and reads from test/fixtures. It builds no Map keyed by MIDI pitch. Any method that fails the strict check today is recorded as expected-fail and becomes a P1a (S1a.3) blocker. · *PR / verified by:* PR #97. All three methods report 0 unplayable in strict mode today, so nothing is expected-fail on that check. Lock case: greedy passes; beam and annealing Quick are `it.fails` (candidates come back with `soundAt7_0: undefined` and `placementLocks: {}`), flipped by S1a.3. Snapshots pin the fixed seeds the pipelines use (see Deviations).
-- [ ] **P0-6** The nightly job runs deep annealing and reports its duration (record it in the slot). · *PR / verified by:* PR #97 adds the job. Measured locally (4-core container, sharing the CPU with browser runs): deep annealing 46.8 min (2811 s), 0 unplayable in strict mode; the deep lock case 47.6 min, failing as expected (`it.fails` until S1a.3). The CI duration is recorded here after the first nightly run.
+- [x] **P0-6** The nightly job runs deep annealing and reports its duration (record it in the slot). · *PR / verified by:* PR #97. [Nightly run 35927549915](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/35927549915) (workflow_dispatch on the PR branch, commit bedfb13), deep-annealing job green: annealing Thorough on TEST MIDI 1 took **49.7 min (2980 s)** for 3 candidates, 0 unplayable in strict mode; the deep lock case took 49.4 min (2963 s) and failed as expected (`it.fails` until S1a.3). The two files run in parallel, so the job took about 50 min of its 180-minute limit. Locally: 46.8 min.
 
 **C1–C9 cases and why each fails today** (run with `PF_UNMARK=1`)
 
@@ -1110,6 +1110,6 @@ Record each one with the date, the session that found it, what and where (file:l
 - **2026-09-23 · S0.2 · Toolbar Generate never sets the trace.** useAutoAnalysis.generateFull clears moveHistory (`SET_MOVE_HISTORY` with null) and neither branch sets it again, so MoveTracePanel is empty after every toolbar run (CLAUDE.md Do-Not-Regress: trace must stay wired to optimizer output). C4's Generate case compares an empty trace until this is fixed. Belongs to: S3.4 (trace per candidate).
 - **2026-09-23 · S0.2 · Greedy Generate freezes the page for minutes.** With All Strategies, the greedy pipeline runs on the main thread and the page stops responding for several minutes in Chromium (about 40 s for the same work in node); even one strategy (Coordination) leaves the page unresponsive for about two minutes after its progress text clears. Belongs to: S3.4 (progress, Cancel and time budget).
 - **2026-09-23 · S0.2 · Engine APIs keyed by MIDI pitch.** seedLayoutFromPose0 takes `existingVoices: Map<number, Voice>`, generateCandidates' pose0-offset strategy builds that map from `originalMidiNote` (multiCandidateGenerator.ts), and buildSolverConstraints falls back to noteNumber (useAutoAnalysis.ts). The TEST MIDI 1 gate no longer calls them with a pitch map, but the app's beam/annealing path still does. Belongs to: S1a.3 (strict Sound identity).
-- **2026-09-23 · S0.2 · Deep annealing takes about 47 minutes.** Locally, annealing Thorough on TEST MIDI 1 took 46.8 min for 3 candidates (the critique measured about 33.5 min in the browser). nightly.yml allows 180 minutes. Belongs to: S3.4 (time budget).
+- **2026-09-23 · S0.2 · Deep annealing takes about 50 minutes.** Annealing Thorough on TEST MIDI 1 took 49.7 min in CI and 46.8 min locally for 3 candidates (the critique measured about 33.5 min in the browser). nightly.yml allows 180 minutes. Belongs to: S3.4 (time budget).
 - **2026-09-23 · S0.2 · The top grid row is clipped at 1366×768.** Row 7 is partly hidden by the grid wrapper, so C1 right-clicks the visible part of each pad. Belongs to: S2.1 (measured grid, T04).
 - **2026-09-23 · S0.2 · A pad edit during greedy Generate stalls the run.** In Chromium, greedy Generate with the Exploratory strategy finishes in about 17 s, but after a pad edit mid-run it had not finished after 10 minutes (the page stays responsive; a CPU profile shows the time inside greedyOptimizer.runSingleAttempt). Probably tied to the run racing the edited draft; re-check once S1a.2 stops Generate writing the draft. Belongs to: S1a.2, else S3.4.
