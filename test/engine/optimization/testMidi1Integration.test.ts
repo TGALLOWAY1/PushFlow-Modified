@@ -182,15 +182,26 @@ describe('TEST MIDI 1.mid end-to-end', () => {
       expect(candidates.map(unplayableCount)).toEqual(candidates.map(() => 0));
     }, SLOW);
 
-    // Expected to fail until S1a.3 (C3 / T11): generateCandidates re-seeds every
-    // candidate from the natural hand pose and returns placementLocks {}.
-    it.fails('beam: holds in every candidate (fails until S1a.3)', async () => {
-      expectLockHeld(await generateBeamAnnealingAsApp(locked, 'fast'), lockedId);
-    });
+    describe.each(['beam', 'annealing-quick'] as const)('%s', method => {
+      let candidates: CandidateSolution[];
 
-    // Expected to fail until S1a.3 (C3 / T11): same path as beam.
-    it.fails('annealing Quick: holds in every candidate (fails until S1a.3)', async () => {
-      expectLockHeld(await generateBeamAnnealingAsApp(locked, 'fast'), lockedId);
+      // Generation runs outside the expected failure, so a crash or an empty
+      // result fails the suite; only the lock assertion is expected to fail.
+      beforeAll(async () => {
+        candidates = await generate(method, locked);
+      });
+
+      it('produces candidates with 0 unplayable events', () => {
+        expect(candidates.length).toBeGreaterThan(0);
+        expect(candidates.map(unplayableCount)).toEqual(candidates.map(() => 0));
+      });
+
+      // Expected to fail until S1a.3 (C3 / T11): generateCandidates re-seeds every
+      // candidate from the natural hand pose and returns placementLocks {}.
+      // Annealing Quick runs the same path as beam.
+      it.fails('holds in every candidate (fails until S1a.3)', () => {
+        expectLockHeld(candidates, lockedId);
+      });
     });
   });
 });

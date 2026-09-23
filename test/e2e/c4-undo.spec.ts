@@ -85,10 +85,10 @@ test.describe('C4 · undo', () => {
     await placeSounds(pf, ['3,3', '3,4']);
     await waitForAnalysis(pf);
     await page.getByTestId('transport-play').click();
-    await expect.poll(async () => (await pf.call('state')).currentTime).toBeGreaterThan(0.5);
-    const before = (await pf.call('state')).currentTime;
+    await expect.poll(async () => (await pf.call('status')).currentTime).toBeGreaterThan(0.5);
+    const before = (await pf.call('status')).currentTime;
     await clickUndo(page);
-    const s = await pf.call('state');
+    const s = await pf.call('status');
     expect({ isPlaying: s.isPlaying, notRewound: s.currentTime >= before }).toEqual({ isPlaying: true, notRewound: true });
   });
 

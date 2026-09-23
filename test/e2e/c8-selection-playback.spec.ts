@@ -61,10 +61,10 @@ test.describe('C8 · selected event during playback', () => {
     await selectMoment(page, 8);
     await expect.poll(async () => (await greyedPads(page)).length, { message: 'selection overlay is shown while stopped' }).toBeGreaterThan(0);
     await page.getByTestId('transport-play').click();
-    await expect.poll(async () => (await pf.call('state')).isPlaying).toBe(true);
+    await expect.poll(async () => (await pf.call('status')).isPlaying).toBe(true);
     const selected = await framesWithGreyedPads(page, 1500);
     await page.getByTestId('transport-play').click();
-    await expect.poll(async () => (await pf.call('state')).isPlaying).toBe(false);
+    await expect.poll(async () => (await pf.call('status')).isPlaying).toBe(false);
     await page.waitForTimeout(500);
     const afterStop = (await greyedPads(page)).length;
     expect({ greyedFramesWhilePlaying: selected.greyed, overlayBackAfterStop: afterStop > 0 })
@@ -74,11 +74,11 @@ test.describe('C8 · selected event during playback', () => {
   test('ArrowRight during playback neither seeks nor selects the first event', async ({ page, pf }) => {
     test.fail(EXPECTED_FAIL, 'C8: ArrowRight while playing selects the t=0 event (flips in S1b.4)');
     await page.getByTestId('transport-play').click();
-    await expect.poll(async () => (await pf.call('state')).currentTime).toBeGreaterThan(1);
-    const before = (await pf.call('state')).currentTime;
+    await expect.poll(async () => (await pf.call('status')).currentTime).toBeGreaterThan(1);
+    const before = (await pf.call('status')).currentTime;
     await page.mouse.click(2, 300);
     await page.keyboard.press('ArrowRight');
-    const s = await pf.call('state');
+    const s = await pf.call('status');
     expect({ selectedEventIndex: s.selectedEventIndex, playing: s.isPlaying, seekedBack: s.currentTime < before })
       .toEqual({ selectedEventIndex: null, playing: true, seekedBack: false });
   });

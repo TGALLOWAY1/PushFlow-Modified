@@ -76,11 +76,11 @@ test.describe('C2 · Working/Test Layout overwritten', () => {
     // The same action a drag from the Sounds panel dispatches.
     const stream = (await pf.call('state')).soundStreams.find(s => s.id === ids[0])!;
     await pf.call('dispatch', { type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey: '7,7', stream } });
-    const mid = await pf.call('state');
-    expect(mid.isProcessing && mid.candidates.length === 0, 'the edit landed while the run was still going').toBe(true);
+    const mid = await pf.call('status');
+    expect(mid.isProcessing && mid.candidateIds.length === 0, 'the edit landed while the run was still going').toBe(true);
     await expect.poll(async () => {
-      const s = await pf.call('state');
-      return !s.isProcessing && s.candidates.length > 0;
+      const s = await pf.call('status');
+      return !s.isProcessing && s.candidateIds.length > 0;
     }, { timeout: 240_000 }).toBe(true);
     expect((await shownPads(pf))['7,7']).toBe(ids[0]);
   });

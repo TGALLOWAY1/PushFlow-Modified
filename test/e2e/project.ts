@@ -24,7 +24,7 @@ export async function newProject(page: Page, pf: PfHandle): Promise<void> {
 /** Imports TEST MIDI 1 through the timeline's file input and waits for its 7 Sounds. */
 export async function importTestMidi1(page: Page, pf: PfHandle): Promise<void> {
   await page.locator('input[type="file"][accept=".mid,.midi"]').first().setInputFiles(TEST_MIDI_1);
-  await expect.poll(async () => (await pf.call('state')).soundStreams.length).toBe(7);
+  await expect.poll(async () => (await pf.call('status')).soundCount).toBe(7);
 }
 
 /** New project with TEST MIDI 1 imported and nothing placed. */
@@ -64,8 +64,8 @@ export async function suggestStartingLayout(page: Page, pf: PfHandle): Promise<v
 /** Waits until auto-analysis has finished: nothing stale, nothing processing, and a result exists. */
 export async function waitForAnalysis(pf: PfHandle, timeout = 30_000): Promise<void> {
   await expect.poll(async () => {
-    const s = await pf.call('state');
-    return !s.analysisStale && !s.isProcessing && !!s.analysisResult;
+    const s = await pf.call('status');
+    return !s.analysisStale && !s.isProcessing && s.hasAnalysis;
   }, { timeout }).toBe(true);
 }
 
@@ -86,13 +86,12 @@ export async function chooseMethod(page: Page, method: 'Greedy' | 'Beam' | 'Anne
  * false. Generate is disabled while analysis runs, so wait for that first.
  */
 export async function generateAndWait(page: Page, pf: PfHandle, timeout = 120_000): Promise<void> {
-  await expect.poll(async () => (await pf.call('state')).isProcessing, { timeout: 30_000 }).toBe(false);
-  const before = (await pf.call('state')).candidates.length;
-  const beforeIds = (await pf.call('state')).candidates.map(c => c.id).join();
+  await expect.poll(async () => (await pf.call('status')).isProcessing, { timeout: 30_000 }).toBe(false);
+  const beforeIds = (await pf.call('status')).candidateIds.join();
   await page.getByRole('button', { name: 'Generate', exact: true }).click();
   await expect.poll(async () => {
-    const s = await pf.call('state');
-    return !s.isProcessing && s.candidates.length > 0 && (s.candidates.length !== before || s.candidates.map(c => c.id).join() !== beforeIds);
+    const s = await pf.call('status');
+    return !s.isProcessing && s.candidateIds.length > 0 && s.candidateIds.join() !== beforeIds;
   }, { timeout }).toBe(true);
 }
 
@@ -102,7 +101,7 @@ export async function saveAndReload(page: Page, pf: PfHandle): Promise<void> {
   await expect(page.getByTitle('Save project')).toHaveText('Saved');
   await page.reload();
   await pf.ready();
-  await expect.poll(async () => (await pf.call('state')).soundStreams.length).toBeGreaterThan(0);
+  await expect.poll(async () => (await pf.call('status')).soundCount).toBeGreaterThan(0);
 }
 
 /**

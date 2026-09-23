@@ -32,7 +32,7 @@ async function buildPreset(page: Page, pf: PfHandle): Promise<[string, string]> 
   const perLane = (await cells.count()) / 2;
   for (const step of [0, 8]) await cells.nth(step).click();
   for (const step of [4, 12]) await cells.nth(perLane + step).click();
-  await expect.poll(async () => (await pf.call('state')).soundStreams.length).toBe(2);
+  await expect.poll(async () => (await pf.call('status')).soundCount).toBe(2);
   const [a, b] = (await pf.call('state')).soundStreams;
   await pf.call('dispatch', { type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey: '0,0', stream: a } });
   await pf.call('dispatch', { type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey: '0,1', stream: b } });

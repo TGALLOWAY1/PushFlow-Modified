@@ -76,7 +76,7 @@ test.describe('C7 · Compare with the Active Layout', () => {
     const promote = first.getByRole('button', { name: /Promote|Confirm\?/ });
     await promote.click();
     await promote.click();
-    await expect.poll(async () => (await pf.call('state')).workingLayout).toBeNull();
+    await expect.poll(async () => (await pf.call('status')).hasWorkingLayout).toBe(false);
     await expect(compareButton(page)).toBeDisabled();
   });
 

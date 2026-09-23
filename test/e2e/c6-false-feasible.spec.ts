@@ -20,7 +20,7 @@ async function badgeLevelsWhileSelecting(page: Page, pf: PfHandle, n: number): P
   for (let i = 0; i < n; i++) {
     await selectMoment(page, i);
     await page.getByRole('button', { name: 'Costs', exact: true }).click();
-    await expect.poll(async () => (await pf.call('state')).selectedMomentIndex ?? (await pf.call('state')).selectedEventIndex).not.toBeNull();
+    await expect.poll(async () => { const s = await pf.call('status'); return s.selectedMomentIndex ?? s.selectedEventIndex; }).not.toBeNull();
     for (const badge of await page.getByTestId('verdict-badge').all()) {
       seen.add(`${await badge.getAttribute('data-level')}: ${(await badge.innerText()).replace(/\s+/g, ' ')}`);
     }
