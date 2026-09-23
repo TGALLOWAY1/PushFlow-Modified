@@ -1,14 +1,14 @@
 # PushFlow UI Critique — Core User Flows
 
-*Date: 2026-09-23 · Scope: the live app at `main` (2070ae4), desktop Chromium at 1600×1000 and 1366×768, using TEST MIDI 1 (7 sounds, 48 notes, 32 moments).*
+*Date: 2026-09-23 · Scope: the live app at `main` (2070ae4), desktop Chromium, screenshots at 1600×1000 and 1366×768 with spot measurements at 1280×800, 1440×900 and 1920×1080, using TEST MIDI 1 (7 sounds, 48 notes, 32 events).*
 
 Companion documents: **[UI_ENHANCEMENT_ROADMAP.md](UI_ENHANCEMENT_ROADMAP.md)** (the full, implementation-level plan) and **[UI_ISSUE_REGISTER.md](UI_ISSUE_REGISTER.md)** (all 70 problems and the 307 verified findings behind them).
 
 ## At a glance
 
-PushFlow's foundations are right: the canon's Active / Working-Test / Candidate model exists, the grid is never filled automatically, the analysis is layered the way the canon asks (feasibility → ergonomics → difficulty), and the rehearsal transport already speaks musician. What undermines it is **trust**. Today PushFlow behaves like a DAW where auditioning a take silently records over your comp, Undo sometimes skips a step, and a meter shows green whenever you solo a channel. Each problem is fixable on its own, but together they make experimenting feel risky — and experimenting is the point of the product.
+PushFlow's foundations are right: the canon's Active / Working-Test / Candidate model exists, import never touches the grid, the analysis is layered the way the canon asks (feasibility → ergonomics → difficulty), and the rehearsal transport already speaks musician. What undermines it is **trust**. Today PushFlow behaves like a DAW where auditioning a take silently records over your comp, Undo often does nothing, and a meter shows green whenever you solo a channel. Each problem is fixable on its own, but together they make experimenting feel risky — and experimenting is the point of the product.
 
-The review found **307 verified findings**, which consolidate into **70 distinct problems**: 9 critical, 38 high, 23 medium. **All 9 critical problems were reproduced a second time, independently, in the live app.** Most fixes are small (one file or one reducer rule); a few need one new shared concept — a read-only "inspected layout" — that several flows are missing.
+The review found **307 verified findings**, which consolidate into **70 distinct problems**: 9 critical, 38 high, 23 medium. **All 9 critical problems were reproduced a second time, independently, in the live app** (the reproducers rated two of them critical and seven high; the register shows both ratings). Many fixes are small: a third of the 70 problems, and most of the 307 individual findings, are one-file or one-rule changes, and each critical problem gets a small stop-gap first. A few need one new shared concept — a read-only "inspected layout" — that several flows are missing.
 
 | # | Flow | Health | Verdict |
 |---|------|--------|---------|
@@ -25,11 +25,11 @@ The review found **307 verified findings**, which consolidate into **70 distinct
 | X1 | Visual design, layout & information architecture *(cross-cutting)* | **Rough** | The layout is sound in principle, but the grid gets only leftover space (28px pads and cut-off rows at 1366x768), its state is rarely readable, and colours and names change meaning between panels. |
 | X2 | Accessibility, keyboard, feedback & terminology *(cross-cutting)* | **Rough** | Mouse users can finish every flow, but feedback is often wrong or missing, labels use engine code names, and the keyboard barely works. |
 
-*Health scale: Solid → Workable → Rough → Broken. "Broken" means a core step of the flow gives a wrong result or loses work in normal use.*
+*Health scale: Solid → Workable → Rough → Broken. "Broken" means the flow's main outcome can't be reached, or is lost, in normal use; "Rough" means the outcome is reachable but some answers along the way are wrong or costly.*
 
 ## 1. The core user flows
 
-Your seven flows are F1–F7. Three more are added because they are steps of the canon's workflow spine that cut across yours: defining Sound identity (canon step 2), composing material in-app (the Pattern Composer, which CLAUDE.md protects), and the layout lifecycle (canon steps 3–9: inspect Active, explore a draft, compare, save a variant, promote). Two cross-cutting lenses (X1, X2) cover problems that show up in every flow.
+Your seven flows are F1–F7. Three more are added: two are steps of the canon's workflow spine that cut across yours (defining Sound identity, step 2; the layout lifecycle, steps 3–9: inspect Active, explore a draft, compare, save a variant, promote), and one is a surface CLAUDE.md protects (composing in the Pattern Composer). Two cross-cutting lenses (X1, X2) cover problems that show up in every flow.
 
 | # | Flow | How the user does it today |
 |---|------|----------------------------|
@@ -38,7 +38,7 @@ Your seven flows are F1–F7. Three more are added because they are steps of the
 | F3 | **Automatically arranging sounds on the grid** | **Suggest a starting layout** (empty grid) or **Generate** (method + strategy selects) → candidate cards → Preview / Promote |
 | F4 | **Viewing the performance on a layout** | Events tab → select a moment → grid shows pads + fingers; onion-skin toggle; timeline note click; "Show Finger Assignment" |
 | F5 | **Analyzing costs and comparing layouts** | Layout Summary + Costs tab (score, verdict, factor bars, difficulty chart) → tick 2 candidates → **Compare** → Learn More |
-| F6 | **Saving and loading performances** | Autosave + **Save**; ← Library; hero "Resume Session"; project cards; Export / Import project file |
+| F6 | **Saving and loading performances** | Autosave + **Save**; ← Library; the big top banner ("hero") with "Resume Session"; project cards; Export / Import project file |
 | F7 | **Rehearsing a performance** | Timeline transport: PLAY/STOP/RESET, Speed, LOOP (drag ruler), CLICK (metronome), SOUND (hits); grid flashes pads |
 | F8 | **Defining and managing Sound identity** *(added)* | Sounds tab rows: rename (double-click), colour swatch, group (Ctrl/Cmd+G), S/M, finger preference chip |
 | F9 | **Composing patterns in-app** *(added)* | Bottom-drawer **Composer** tab (step sequencer) + left **Presets** tab (drag a preset onto the grid) |
@@ -52,36 +52,36 @@ The canonical journey strings these together: **import (F1) → name the sounds 
 
 Ranked by harm to the user and by how many flows they touch. Theme IDs link to the full write-up in the register.
 
-1. **Your draft gets overwritten without warning** — *Critical · affects F2, F3, F4, F5, F10, X2 · [T01](UI_ISSUE_REGISTER.md#t01)*  
+1. **Your draft gets overwritten without warning** — *Critical · affects F2, F3, F4, F5, F6, F10, X2 · [T01](UI_ISSUE_REGISTER.md#t01)*  
    Generate, Preview, a stray click on a candidate card, or Load Draft replaces your hand-built Working/Test Layout, and autosave makes the loss permanent within seconds. There is also no way to *look at* the Active Layout while a draft exists.  
    **Fix:** Looking is read-only; Generate only proposes; replacing a draft is an explicit, undoable action.
 
-2. **Undo doesn't reliably undo** — *Critical · affects F2, F3, F6, F8, F10, X2 · [T02](UI_ISSUE_REGISTER.md#t02)*  
-   Background analysis results are recorded as undo steps, so the first press (or two) appears to do nothing, and "Suggest a starting layout" is never recorded at all. Undo is the safety net for every other problem here, and today it has a hole in it.  
+2. **Undo doesn't reliably undo** — *Critical · affects F1, F2, F3, F6, F8, F9, F10, X2 · [T02](UI_ISSUE_REGISTER.md#t02)*  
+   Background analysis results are recorded as undo steps and re-recorded about a second after each Undo, so at a normal pace Undo never gets back past your last change (only a fast double-press does), and "Suggest a starting layout" is never recorded at all. Undo is the safety net for every other problem here, and today it has a hole in it.  
    **Fix:** Undo covers only your edits, exactly one step per action, and names what it will undo.
 
-3. **A green "Feasible" on unplayable layouts** — *Critical · affects F4, F5, X2 · [T07](UI_ISSUE_REGISTER.md#t07)*  
+3. **A green "Feasible" on unplayable layouts** — *Critical · affects F2, F4, F5, X2 · [T07](UI_ISSUE_REGISTER.md#t07)*  
    Select any event and the verdict banner flips to "Feasible · All events playable", even on a layout with 22 unplayable events. The verdict is wrong at the exact moment you are investigating a problem.  
    **Fix:** Pin the whole-layout verdict; show the selected moment in its own card with its own verdict.
 
 4. **Locks are ignored by two of the three optimizers** — *Critical · affects F2, F3 · [T11](UI_ISSUE_REGISTER.md#t11)*  
    Placement locks are the canon's one hard user rule. Beam and Annealing move locked sounds, delete the locks and say nothing; manual drags ignore locks too.  
-   **Fix:** Every method seeds from and validates against locks; locked pads refuse drags.
+   **Fix:** Every method starts from your current layout with locked sounds already in place and rejects any result that moves them; locked pads refuse drags.
 
 5. **Compare misreports the Active Layout** — *Critical · affects F3, F5, F10 · [T08](UI_ISSUE_REGISTER.md#t08)*  
-   With any draft present, Compare draws the Active Layout as an empty grid scored 0, labels it "Easy", and names the wrong winner. Stale selections can also produce a self-compare or a screen with no close button.  
-   **Fix:** Evaluate every side properly (cached per layout); never show a stub.
+   Whenever the on-screen draft differs from Active (always the case after Generate), Compare draws the Active Layout as an empty grid scored 0, labels it "Easy", and names the wrong winner. Stale selections can also produce a self-compare or a screen with no close button.  
+   **Fix:** Evaluate every side properly (cached per layout); never show a placeholder of zeros.
 
 6. **Every sound looks the same** — *High · affects F1, F2, F8, X1, X2 · [T17](UI_ISSUE_REGISTER.md#t17)*  
    All imported sounds get the same amber colour and numbered names ("TEST MIDI 1 1"…"7") that truncate to identical "TEST M…" labels. The grid, timeline, candidate mini-grids and Compare become unreadable, so this one issue degrades almost every flow.  
    **Fix:** Distinct colour-blind-safe palette, sensible default names (track/file), easy rename.
 
 7. **The grid, the "visual center", is clipped and starved of space** — *High · affects F1, F2, F4, F7, X1 · [T04](UI_ISSUE_REGISTER.md#t04)*  
-   The grid is shrunk with a CSS scale against a wrong size constant, so rows and the state badge are cut off at every tested size. At 1366×768 pads are ~28 px while the timeline keeps a fixed 480 px.  
+   The grid is shrunk with a CSS scale against a wrong size constant, so the state badge and hand-zone labels are cut off at every tested size, and at 1366×768 the top and bottom pad rows are cut off too. There, pads are ~28 px while the timeline keeps a fixed 480 px.  
    **Fix:** Size the grid by measuring its container; timeline sized to its lanes with a resizable splitter.
 
 8. **The pad right-click menu opens off-screen** — *Critical · affects F2, F5, X2 · [T06](UI_ISSUE_REGISTER.md#t06)*  
-   It is the only way to set placement locks, and it renders hundreds of pixels from the cursor, often fully off-screen (0 of 12 items clickable on most pads tested at 1600×1000). It also ignores Escape.  
+   It is the only way to set placement locks, and it renders hundreds of pixels from the cursor, often fully off-screen (0 of 12 items clickable on most pads tested at 1600×1000). It also takes two Escape presses to close.  
    **Fix:** One shared popover/dialog component that renders at page level, at the cursor, and closes on Escape.
 
 9. **Nothing says which layout you're looking at** — *High · affects F2, F4, F5, F10, X1, X2 · [T03](UI_ISSUE_REGISTER.md#t03)*  
@@ -90,7 +90,7 @@ Ranked by harm to the user and by how many flows they touch. Theme IDs link to t
 
 10. **There is no single cost story** — *High · affects F3, F5, F9 · [T21](UI_ISSUE_REGISTER.md#t21)*  
    Four or more score systems with different scales and directions (Score %, raw cost, difficulty words, compare bars), and different evaluators before and after Generate, so part of each "improvement" is just a change of units.  
-   **Fix:** One headline everywhere (e.g. "Playability 0–100, higher = easier") from one evaluator.
+   **Fix:** One headline everywhere (e.g. "Playability 0–100, higher = easier") from one scoring engine.
 
 11. **Mute quietly changes the analysis, and Generate deletes muted sounds** — *High · affects F3, F7, F8, X2 · [T15](UI_ISSUE_REGISTER.md#t15)*  
    Muting a sound to listen also removes it from analysis (which can turn a failing layout green), and Generating while it is muted removes it from the layout.  
@@ -125,7 +125,7 @@ Two more critical problems are narrower in reach: **onion skin has no visible ef
 ### What works well — keep these
 
 - Manual edits automatically create a Working/Test Layout and never touch the Active Layout. Promote, Save Variant and Discard appear only while a draft exists, which matches the canon lifecycle (F2, F10, X1).
-- The no-automatic-layout invariant holds at the entry points: import never touches the grid, pitch stays metadata with bottomLeftNote at 36, an empty grid is treated as unfinished rather than '0% infeasible', and 'Suggest a starting layout' is an explicit, discardable action that never moves placed pads (F1, F2, F5, F10).
+- The no-automatic-layout invariant holds at import: import never touches the grid, pitch stays metadata with bottomLeftNote at 36, an empty grid is treated as unfinished rather than '0% infeasible', and 'Suggest a starting layout' is an explicit, discardable action that never moves placed pads (F1, F2, F5, F10). Generate on an empty grid does still auto-apply a full layout (T37), which P1a removes; whether one-click Suggest is explicit enough is decision Q4.
 - A fast, automatic feedback loop: about 1 second after an edit, finger codes appear on pads, dimmed solver suggestions in the Sounds panel and 'L2'-style labels on timeline notes (F2, F4).
 - The timeline is honest: every stream is shown, unplayable strikes are solid red, muted lanes are dimmed rather than hidden, pills carry hand and finger, and ignored preferences and relaxed rules are marked (F4, F7, X1).
 - Card Promote keeps the Execution Plan the user reviewed, every promote auto-saves the replaced Active Layout as a variant, and the draft, the Active Layout and the variants are stored in separate slots, so committing never destroys the previous baseline (F6, F10).
@@ -133,7 +133,7 @@ Two more critical problems are narrower in reach: **onion skin has no visible ef
 - Candidate cards already have the right skeleton: a mini grid, 'Best for / Why / Tradeoff' text, and 'Rules relaxed' and 'N unplayable' chips with explanations shown up front, plus lightweight inline confirmation for delete and card promote (F3, F5, F10).
 - The analysis is layered the way the canon asks (feasibility, then ergonomics, then difficulty). The verdict pairs an icon, a word and a colour, 'What is limiting this layout' names the actual sounds, and the difficulty summary doesn't give a false all-clear when Medium events exist (F5, X2).
 - Rehearsal basics are sound and written for musicians: a real click with an accented downbeat, a stable per-sound synth voice, velocity-scaled hits, a speed control that is explicitly rehearsal-only, a playhead that follows while zoomed, and tooltips in musician language (F7, X2).
-- Invariants are respected elsewhere too. The Pattern Composer is always a bottom-drawer tab and uses the project tempo. Renames and recolours reach every layout, candidate and analysis. Inline editors share one Enter/Escape contract. Analysis-only state is never persisted, and one corrupt library record doesn't break the library (F1, F6, F9, X2).
+- Invariants are respected elsewhere too. The Pattern Composer is always a bottom-drawer tab and uses the project tempo. Renames and recolours reach every layout, candidate and analysis (except Composer lanes, which can revert a rename; see F9 and T66). Inline editors share one Enter/Escape contract. Analysis-only state is never persisted, and one corrupt library record doesn't break the library (F1, F6, F9, X2).
 
 ## 3. Flow-by-flow critique
 
@@ -223,19 +223,19 @@ Think of a line check before soundcheck: every channel is labelled and coloured 
   - Dropping a row on a locked pad silently deletes the lock.
   - Beam and Annealing delete all locks.
 
-  Fix: locks should refuse edits, re-run analysis, be listed visibly, and be pruned on Discard. [T14, T12, T11]
+  Fix: locks should refuse edits, re-run analysis, be listed visibly, and be pruned on Discard. [T14](UI_ISSUE_REGISTER.md#t14), [T12](UI_ISSUE_REGISTER.md#t12), [T11](UI_ISSUE_REGISTER.md#t11)
 - **High** — The grid is cropped. At 1366x768 pads are about 28 px and the top and bottom rows are cut off. At 1600 px the state badge is cut off, while the timeline keeps about 110 px of empty space. Fix: size the pads to the space available, and add a draggable divider. [T04](UI_ISSUE_REGISTER.md#t04)
 - **High** — Pads are indistinguishable: every sound is the same orange and every name is truncated to "TEST M…". Fix: distinct colours and short labels. [T17](UI_ISSUE_REGISTER.md#t17)
 - **High** — Clicking a dimmed suggestion chip and then clicking away saves the solver's guess as the user's own preference, and Discard doesn't undo it. Fix: commit only real edits. [T19](UI_ISSUE_REGISTER.md#t19)
-- **Medium** — A row dropped on an occupied pad silently evicts its sound, with no preview or notice. Pressing Backspace while stepping through events deletes the selected event's pad. Fix: show a drag hint and an Undo toast. [T46, T28]
-- **Medium** — Discard and toolbar Promote act instantly (Promote accepts a 1-of-7 layout), while card Promote asks first. Fix: confirm both consistently. [T31](UI_ISSUE_REGISTER.md#t31)
-- **Medium** — Muting a sound freezes its pad, and Solo freezes every other pad. Fix: mute should affect audio and analysis only. [T16](UI_ISSUE_REGISTER.md#t16)
-- **Low** — Dropping a pad onto the list reorders the list, and a drag that ends where it started still creates a draft. [T46, T14]
+- **Medium** — A row dropped on an occupied pad silently evicts its sound, with no preview or notice. Pressing Backspace while stepping through events deletes the selected event's pad. Fix: show a drag hint and an Undo toast. [T46](UI_ISSUE_REGISTER.md#t46), [T28](UI_ISSUE_REGISTER.md#t28)
+- **Medium** — Discard and toolbar Promote act instantly (Promote accepts a 1-of-7 layout), while card Promote asks first. Fix: make both act at once and show a toast that says what changed, with Undo. [T31](UI_ISSUE_REGISTER.md#t31)
+- **Medium** — Muting a sound freezes its pad, and Solo freezes every other pad. Fix: keep muted pads fully editable; mute affects only what you hear, and "Exclude from analysis" is a separate action. [T16](UI_ISSUE_REGISTER.md#t16)
+- **Low** — Dropping a pad onto the list reorders the list, and a drag that ends where it started still creates a draft. [T46](UI_ISSUE_REGISTER.md#t46), [T14](UI_ISSUE_REGISTER.md#t14)
 
 #### What's confusing
-- **High** — Clicking a pad selects its first *event*. The grid dims, and a green "Feasible · All events playable" appears under "UNPLAY 22". That verdict is wrong whenever an event is selected. Fix: separate pad selection from event selection. [T28, T07]
+- **High** — Clicking a pad selects its first *event*. The grid dims, and a green "Feasible · All events playable" appears under "UNPLAY 22". That verdict is wrong whenever an event is selected. Fix: separate pad selection from event selection. [T28](UI_ISSUE_REGISTER.md#t28), [T07](UI_ISSUE_REGISTER.md#t07)
 - **High** — Partly placed layouts look like failures. Unplaced sounds show as "cannot be played", in unplayable red, under "Infeasible". Fix: a neutral "not placed" style and a "3 of 7 placed" indicator. [T25](UI_ISSUE_REGISTER.md#t25)
-- **Medium** — The draft state has three different labels, nothing shows what changed compared with Active, and a promoted layout is still named "Default (draft)". Fix: one persistent state bar. [T03, T32]
+- **Medium** — The draft state has three different labels, nothing shows what changed compared with Active, and a promoted layout is still named "Default (draft)". Fix: one persistent state bar. [T03](UI_ISSUE_REGISTER.md#t03), [T32](UI_ISSUE_REGISTER.md#t32)
 - **Medium** — There are three finger-preference controls, each with its own notation. None can express "left hand, any finger". Fix: one shared, soft control. [T19](UI_ISSUE_REGISTER.md#t19)
 - **Low** — The copy says "Generate to analyze", but analysis is already automatic. [T44](UI_ISSUE_REGISTER.md#t44)
 
@@ -249,7 +249,7 @@ Think of a line check before soundcheck: every channel is labelled and coloured 
 - **Low** — Every empty pad prints a coordinate, and pad positions appear in four 0-indexed formats. [T43](UI_ISSUE_REGISTER.md#t43)
 
 #### What good looks like
-It should feel like building a Drum Rack in Ableton: every pad has its own colour and name, you drag or click a sound onto a pad, and Cmd+Z undoes exactly your last move. A bar above a properly sized grid says "Working/Test Layout · 3 changes vs Active", and Promote and Discard each confirm what they will do. Clicking a pad opens a small inspector with a soft finger preference, a lock that holds, and Remove, without dimming the grid. Generate and Preview never touch your draft.
+It should feel like building a Drum Rack in Ableton: every pad has its own colour and name, you drag or click a sound onto a pad, and Cmd+Z undoes exactly your last move. A bar above a properly sized grid says "Working/Test Layout · 3 changes vs Active", and Promote and Discard act at once and show a toast with Undo. Clicking a pad opens a small inspector with a soft finger preference, a lock that holds, and Remove, without dimming the grid. Generate and Preview never touch your draft.
 
 ![At 1366x768 the right-click menu opens half-size and far from pad (3,3). The grid is cropped, the pads look identical, and three placed sounds are scored Infeasible.](../screenshots/ui-critique/f2-context-menu-1366.png)
 
@@ -284,15 +284,15 @@ It should feel like building a Drum Rack in Ableton: every pad has its own colou
 - **High** — There's no progress, ETA or Cancel. Discard and Promote stay live and are overwritten when the run ends. The work also shares the thread that draws the screen, so the app lags. Fix: show "candidate 2 of 4 · ~8 s left", add Cancel, and lock conflicting actions. [T35](UI_ISSUE_REGISTER.md#t35)
 - **Medium** — Toolbar Promote re-analyses the layout (4 of 7 fingers changed, 95% became 94%); card Promote keeps the reviewed fingering. Fix: one Promote action. [T13](UI_ISSUE_REGISTER.md#t13)
 - **Medium** — After Generate, comparing Active with a candidate shows Active as an empty grid scoring 0 and labelled "easier". Stale ticks can also produce a self-compare, or a screen with no close button. Fix: evaluate Active properly. [T08](UI_ISSUE_REGISTER.md#t08)
-- **Medium** — Candidates are buried in one long column; at 1366x768 only card #1's header is visible. Fix: give them their own tab. [T38](UI_ISSUE_REGISTER.md#t38)[T04](UI_ISSUE_REGISTER.md#t04)
-- **Low** — Cards can't be reached by keyboard, targets are 16 px, and Beam/Annealing ignore the gear menu's cost toggles. Fix: real buttons, 24 px targets. [T63](UI_ISSUE_REGISTER.md#t63)[T34](UI_ISSUE_REGISTER.md#t34)
+- **Medium** — Candidates are buried in one long column; at 1366x768 only card #1's header is visible. Fix: give them their own tab. [T38](UI_ISSUE_REGISTER.md#t38), [T04](UI_ISSUE_REGISTER.md#t04)
+- **Low** — Cards can't be reached by keyboard, targets are 16 px, and Beam/Annealing ignore the gear menu's cost toggles. Fix: real buttons, 24 px targets. [T63](UI_ISSUE_REGISTER.md#t63), [T34](UI_ISSUE_REGISTER.md#t34)
 
 #### What's confusing
-- **High** — The screen doesn't say what it's showing. Clicking the highlighted ACTIVE card leaves a candidate on the grid, and a promoted layout keeps "(draft)" in its name. Fix: add an Active | My draft | Candidate switcher. [T01](UI_ISSUE_REGISTER.md#t01)[T03](UI_ISSUE_REGISTER.md#t03)
+- **High** — The screen doesn't say what it's showing. Clicking the highlighted ACTIVE card leaves a candidate on the grid, and a promoted layout keeps "(draft)" in its name. Fix: add an Active | My draft | Candidate switcher. [T01](UI_ISSUE_REGISTER.md#t01), [T03](UI_ISSUE_REGISTER.md#t03)
 - **High** — Different engines score before and after. The same layout reads "7 events need attention" as Greedy candidate #1 and "29" after promotion. On the cards, Score % and raw cost rank #3 and #4 in opposite orders, and every Tradeoff reads "balanced across all dimensions". Fix: use one scoring engine and one score relative to Active. [T21](UI_ISSUE_REGISTER.md#t21)
-- **High** — The method choice is partly fake. Beam and Annealing/Quick run the same code and give identical results, and Quick claims "3000 iterations" that never ran. Thorough took about 23 min and still scored worse than a 20 s Greedy run (93% vs 95%). Fix: offer outcomes (Quick / Deep), not algorithms. [T34](UI_ISSUE_REGISTER.md#t34)
+- **High** — The method choice is partly fake. Beam and Annealing/Quick run the same code and give identical results, and Quick claims "3000 iterations" that never ran. Thorough took about 23 min and still scored worse than a 20 s Greedy run (93% vs 95%). Fix: lead with outcomes (Quick / Deep); Greedy, Beam and Annealing stay available under Advanced. [T34](UI_ISSUE_REGISTER.md#t34)
 - **Medium** — Every error, even a failed MIDI import, shows as "Generation failed" with a Retry that runs Generate. Fix: label errors by source. [T48](UI_ISSUE_REGISTER.md#t48)
-- **Low** — An empty grid shows Suggest next to "Assign sounds to pads, then Generate to analyze", which mixes up Generate with Analyze. Fix: one next-step message. [T37](UI_ISSUE_REGISTER.md#t37)[T44](UI_ISSUE_REGISTER.md#t44)
+- **Low** — An empty grid shows Suggest next to "Assign sounds to pads, then Generate to analyze", which mixes up Generate with Analyze. Fix: one next-step message. [T37](UI_ISSUE_REGISTER.md#t37), [T44](UI_ISSUE_REGISTER.md#t44)
 
 #### What's missing
 - **High** — Cards don't show what changed. The mini grid is colour-only (all orange here), with no names or lock marks. The engine computes what moved, but nothing displays it, and it compares against the draft, not Active. Fix: mark moved sounds and locks. [T26](UI_ISSUE_REGISTER.md#t26)
@@ -301,7 +301,7 @@ It should feel like building a Drum Rack in Ableton: every pad has its own colou
 - **Medium** — Beam/Annealing's three "alternatives" are one shape shifted up a row each time. Fix: drop near-copies and explain why. [T36](UI_ISSUE_REGISTER.md#t36)
 
 #### What's unnecessary (remove, hide, or demote)
-- **High** — Optimizer internals as the main UI: three unlabeled selects, names like "pose0-offset-0" or "Clustered M…" (cut off at 80 px), subtitles like "Greedy Motif-Preserving Greedy: 6 moves, cost 25.87", and always-zero trace counters. Fix: move them behind "Advanced"; demote, don't delete, since CLAUDE.md requires every method to stay available. [T34](UI_ISSUE_REGISTER.md#t34)[T33](UI_ISSUE_REGISTER.md#t33)
+- **High** — Optimizer internals as the main UI: three unlabeled selects, names like "pose0-offset-0" or "Clustered M…" (cut off at 80 px), subtitles like "Greedy Motif-Preserving Greedy: 6 moves, cost 25.87", and always-zero trace counters. Fix: move them behind "Advanced"; demote, don't delete, since CLAUDE.md requires every method to stay available. [T34](UI_ISSUE_REGISTER.md#t34), [T33](UI_ISSUE_REGISTER.md#t33)
 
 #### What good looks like
 Generate should work like take lanes in a DAW: you can audition every take, and your comp stays untouched until you commit one. The draft stays on the grid while a cancellable "Find alternatives" (Quick / Deep) shows progress. Each card has a musician-facing name, one score against Active ("+16 vs Active, 0 hard moments"), highlighted moved sounds and "Keeps your 2 locks". Selecting a card previews it read-only under a banner ("Use as draft / Keep / Promote / Back to my draft"). Locks hold for every method, and each commit is one Undo step.
@@ -342,14 +342,14 @@ Generate should work like take lanes in a DAW: you can audition every take, and 
 - **High** — With a moment selected, Play keeps the grid frozen on it, so strikes show as faint grey blips or not at all, even after Stop. Selecting doesn't move the playhead. Release the grey-out while playing and seek to the selection. [T10](UI_ISSUE_REGISTER.md#t10)
 - **High** — At 1366x768 the grid gets ~210 px: rows are clipped (part of a selected chord can vanish) and the transition line falls off-screen. Make the drawer resizable (keeping the Composer tab) and size the grid to fit. [T04](UI_ISSUE_REGISTER.md#t04)
 - **Medium** — Pad actions hijack inspection: Backspace removes the selected sound from the grid (a silent layout edit), and clicking a placed pad jumps to that sound's first hit. Keep inspection read-only. [T28](UI_ISSUE_REGISTER.md#t28)
-- **Medium** — With a track muted, its notes reuse moment numbers, so clicking one jumps to an unrelated moment. Don't let muted notes select. [T24](UI_ISSUE_REGISTER.md#t24)
+- **Medium** — With a track muted, its notes reuse moment numbers, so clicking one jumps to an unrelated moment. Resolve every timeline click by moment time, so clicking any note, muted or not, selects its whole moment. [T24](UI_ISSUE_REGISTER.md#t24)
 - **Medium** — Off-beat moments share labels (four 16th hats all read "1.1"); show bar.beat.16th. [T43](UI_ISSUE_REGISTER.md#t43)
 - **Medium** — ←/→ wraps silently from the end to bar 1 while ↑/↓ stops; keys fire while the Speed dropdown has focus. Use one stepping rule and a shortcut sheet. [T61](UI_ISSUE_REGISTER.md#t61)
-- **Low** — Clicks inside an expanded row don't select it; timeline finger labels are 7 px; hand is shown by colour only; pads aren't Tab-reachable. [T27, T64]
+- **Low** — Clicks inside an expanded row don't select it; timeline finger labels are 7 px; hand is shown by colour only; pads aren't Tab-reachable. [T27](UI_ISSUE_REGISTER.md#t27), [T64](UI_ISSUE_REGISTER.md#t64)
 
 #### What's confusing
 - **Medium** — Struck pads lose their sound colour and name, leaving only "L3", so you can't link "L3" to "the snare". Keep a short name, add a hand ring, and dim the rest to about 45% without greying. [T09](UI_ISSUE_REGISTER.md#t09)
-- **Medium** — List row 08 is labelled "Event 12 (t=3.500s)" in the right panel; gaps are in seconds while the list uses bars. Use "Moment 8 · bar 2 beat 4" and note values ("1/16"). [T24, T43]
+- **Medium** — List row 08 is labelled "Event 12 (t=3.500s)" in the right panel; gaps are in seconds while the list uses bars. Use "Event 8 · bar 2 beat 4" (label wording is decision Q7) and note values ("1/16"). [T24](UI_ISSUE_REGISTER.md#t24), [T43](UI_ISSUE_REGISTER.md#t43)
 - **Medium** — Five finger notations ("L3", "L-1", "left/thumb", "TH IN MI", "L-MI") and three hand-colour schemes. Pick one of each. [T42](UI_ISSUE_REGISTER.md#t42)
 - **Medium** — List colours use their own thresholds (a timeline "Medium" is green), and the moment card covers only a chord's first note, on the Layouts tab only. Use the plan's difficulty classes and list every strike. [T27](UI_ISSUE_REGISTER.md#t27)
 - **Low** — The Events tab never names the layout it analyses; add a subject chip. [T03](UI_ISSUE_REGISTER.md#t03)
@@ -398,16 +398,16 @@ Generate should work like take lanes in a DAW: you can audition every take, and 
 - **High** — Clicking the Active card highlights it but keeps the draft on screen, and the numbers shift (95% → 94%) because a different solver re-scores the same pads. Show Active read-only. [T01](UI_ISSUE_REGISTER.md#t01)
 - **Medium** — After Generate, muting, soloing or a tempo change leaves the panel on the old plan, and the "outdated" cue disappears. [T14](UI_ISSUE_REGISTER.md#t14)
 - **Medium** — "Enlarge" opens the chart inside the narrow side panel and ignores Escape. [T06](UI_ISSUE_REGISTER.md#t06)
-- **Low** — Overlays lack keyboard and dialog behaviour; Compare's grids are small, with Promote below the fold even at 1600 px. [T63](UI_ISSUE_REGISTER.md#t63)[T26](UI_ISSUE_REGISTER.md#t26)
+- **Low** — Overlays lack keyboard and dialog behaviour; Compare's grids are small, with Promote below the fold even at 1600 px. [T63](UI_ISSUE_REGISTER.md#t63), [T26](UI_ISSUE_REGISTER.md#t26)
 
 #### What's confusing
 - **High** — Four-plus score systems: "95%" and "95.1", "Easy", "Playability 87", "cost 25.87" (lower is better), "Per moment 0.374". Pick one headline, e.g. Playability 0–100, higher = easier. [T21](UI_ISSUE_REGISTER.md#t21)
-- **High** — The five factors have 7+ names ("Stretch", "Grip", "gripNaturalness", "Grip Quality") and two colour schemes. Drive every surface, Learn More included, from one table. [T20](UI_ISSUE_REGISTER.md#t20)
+- **High** — The five factors have 3–7 names each ("Stretch", "Grip", "gripNaturalness", "Grip Quality") and two colour schemes. Drive every surface, Learn More included, from one table. [T20](UI_ISSUE_REGISTER.md#t20)
 - **High** — Compare lists sounds as raw ids (lane_1790…) and says "11 voices moved" for 7 sounds, because it counts pads. Use names and a per-sound move list. [T20](UI_ISSUE_REGISTER.md#t20)
-- **Medium** — "Events" means notes in one line and moments in the next ("EVENTS 32" beside "37 events need attention"), and one moment is Event 10 or 16 depending on the surface. Label moments by bar and beat. [T23](UI_ISSUE_REGISTER.md#t23)[T24](UI_ISSUE_REGISTER.md#t24)
+- **Medium** — "Events" means notes in one line and moments in the next ("EVENTS 32" beside "37 events need attention"), and one moment is Event 10 or 16 depending on the surface. Label moments by bar and beat. [T23](UI_ISSUE_REGISTER.md#t23), [T24](UI_ISSUE_REGISTER.md#t24)
 - **Medium** — A half-built layout (3 of 7 sounds) shows red "Infeasible, Score 0%". Say "3 of 7 sounds placed". [T25](UI_ISSUE_REGISTER.md#t25)
 - **Medium** — The Costs tab never names the layout it describes, and Generate or Preview silently changes it. [T03](UI_ISSUE_REGISTER.md#t03)
-- **Medium** — Bars scale to the layout's own largest factor (Movement 3, 14 and 92 all draw full width); the chart has no y values, no Hard/Medium lines and an axis of 0 / 16 / 31. Event rows turn red past a fixed number, even when the summary says "Nothing hard". [T40](UI_ISSUE_REGISTER.md#t40)[T27](UI_ISSUE_REGISTER.md#t27)
+- **Medium** — Bars scale to the layout's own largest factor (Movement 3, 14 and 92 all draw full width); the chart has no y values, no Hard/Medium lines and an axis of 0 / 16 / 31. Event rows turn red past a fixed number, even when the summary says "Nothing hard". [T40](UI_ISSUE_REGISTER.md#t40), [T27](UI_ISSUE_REGISTER.md#t27)
 - **Medium** — In testing, all four candidate cards said "Easy" and "balanced across all dimensions", under headers like "Greedy Soft Greedy (Boltzmann): 92 moves", so they don't help you choose. [T34](UI_ISSUE_REGISTER.md#t34)
 - **Low** — In Compare, blue/purple mean both "layout A/B" and "left/right hand". [T42](UI_ISSUE_REGISTER.md#t42)
 
@@ -419,7 +419,7 @@ Generate should work like take lanes in a DAW: you can audition every take, and 
 
 #### What's unnecessary (remove, hide, or demote)
 - **Medium** — Costs and Layouts duplicate the analysis in two code copies, each missing parts of the other. Merge them. [T38](UI_ISSUE_REGISTER.md#t38)
-- **Medium** — The gear's cost toggles don't affect the main panel, and "Calculate Cost" adds yet another number system. Move them to the debug page. [T39](UI_ISSUE_REGISTER.md#t39)
+- **Medium** — The gear's cost toggles don't affect the main panel, and "Calculate Cost" adds yet another number system. Move them to the Analysis header as "Custom weighting" with Re-analyse, and mark the analysis stale when they change. [T39](UI_ISSUE_REGISTER.md#t39)
 - **Low** — Optimizer figures on cards belong behind a link to the trace (which stays). [T34](UI_ISSUE_REGISTER.md#t34)
 
 #### What good looks like
@@ -457,10 +457,10 @@ One Analysis panel names its subject ("Candidate #2 vs Active") and leads with o
 - **Medium** — Edits can be silently lost. A rename or pad drop in the ~2 s before a reload reverts, with no unsaved-changes warning. Two tabs on one project overwrite each other (like two people handing in edited copies of one setlist: the last one in wins), and both say "Saved". Save one-off actions (rename, promote) immediately; detect tab conflicts. [T57](UI_ISSUE_REGISTER.md#t57)
 - **Medium** — Delete is a hover-only X 6 px from Export, and it's permanent. Neither is on the hero and the editor has no Export, so the current project is the hardest to back up. Icons come from a font downloaded from the web and render as words ("downloclose") when it fails. Use a "..." menu everywhere and make delete undoable briefly. [T53](UI_ISSUE_REGISTER.md#t53)
 - **Medium** — Cards can't be opened from the keyboard, Tab stops on invisible buttons, and title and BPM need a mouse. [T63](UI_ISSUE_REGISTER.md#t63)
-- **Low** — Re-importing a backup piles up identical "(imported)" copies; the hero fills a 1366x768 screen, with no sort or list view; BPM silently clamps (5 becomes 20). [T53, T55, T49]
+- **Low** — Re-importing a backup piles up identical "(imported)" copies; the hero fills a 1366x768 screen, with no sort or list view; BPM silently clamps (5 becomes 20). [T53](UI_ISSUE_REGISTER.md#t53), [T55](UI_ISSUE_REGISTER.md#t55), [T49](UI_ISSUE_REGISTER.md#t49)
 
 #### What's confusing
-- **High** — Draft work looks empty in the Library. Edits, Suggest and Generate write to the Working/Test Layout, but thumbnails draw only the Active Layout. A 7-pad draft shows as a blank grid, so users conclude their work was lost; previews also clip the bottom pad row, where Push's drum layout starts. Show the layout they'll land on, with a "Draft — not promoted" badge. [T52, T55]
+- **High** — Draft work looks empty in the Library. Edits, Suggest and Generate write to the Working/Test Layout, but thumbnails draw only the Active Layout. A 7-pad draft shows as a blank grid, so users conclude their work was lost; previews also clip the bottom pad row, where Push's drum layout starts. Show the layout they'll land on, with a "Draft — not promoted" badge. [T52](UI_ISSUE_REGISTER.md#t52), [T55](UI_ISSUE_REGISTER.md#t55)
 - **Medium** — "Current Session" just means "last written". Importing, or just viewing a project and clicking **← Library** (which re-saves unchanged work), makes it the hero, "Last edited Just now". An abandoned New Project does too, and then can't be deleted. Track "last opened" separately; skip unchanged saves. [T52](UI_ISSUE_REGISTER.md#t52)
 - **Medium** — One object has five names (Project, Performance, Add Performance, ACTIVE PERFORMANCES, Session). "Active" collides with "Active Layout", and the copy promises "practice tracking", which doesn't exist. Use "Project" everywhere, per canon. [T56](UI_ISSUE_REGISTER.md#t56)
 - **Medium** — Candidates and the trace vanish on leaving, without warning. The top candidate survives as the draft; the alternatives don't. Label them temporary and ask "Keep any as variants?" on leave. [T30](UI_ISSUE_REGISTER.md#t30)
@@ -511,20 +511,20 @@ The Library should work like a record crate where every sleeve shows what's insi
 - **High** — Space doesn't play or stop. On the page it does nothing; after clicking LOOP it switches LOOP off. Fix: a global Space shortcut. [T61](UI_ISSUE_REGISTER.md#t61)
 - **Medium** — The loop isn't DAW-like. LOOP off still loops forever; after a wrap the opening chord at 0.00 s is silent while its pads flash; and the drag ends if the pointer leaves the 40 px ruler (the tooltip also wrongly says "shift-drag"). Fix: LOOP off plays once, include the loop start, keep the drag alive. [T58](UI_ISSUE_REGISTER.md#t58)
 - **Medium** — Opening the Composer tab silently freezes playback, and the Composer has its own separate Play. Fix: one transport above the drawer, keeping the Composer tab. [T60](UI_ISSUE_REGISTER.md#t60)
-- **Low** — Position shows in seconds (sometimes "-0.00s") while the ruler uses bar.beat; RESET ignores the loop start; loop and speed are forgotten between sessions. [T43, T58]
+- **Low** — Position shows in seconds (sometimes "-0.00s") while the ruler uses bar.beat; RESET ignores the loop start; loop and speed are forgotten between sessions. [T43](UI_ISSUE_REGISTER.md#t43), [T58](UI_ISSUE_REGISTER.md#t58)
 
 #### What's confusing
 - **Medium** — Mute and Solo change the analysis, not just what you hear. Soloing one sound re-analyses a one-sound performance ("Score 100%", "Comfortable throughout"), and each press is an undo step and an autosaved change. It is deliberate in the code, but nothing on screen says "analysing 1 of 7 sounds". Fix: audio-only mute/solo, plus a labelled "Exclude from analysis". [T15](UI_ISSUE_REGISTER.md#t15)
 - **Medium** — On/off states are unclear: idle PLAY is the same green as CLICK/SOUND when on, off is grey on grey, and an engaged Solo has no style. Fix: one icon-toggle style. [T64](UI_ISSUE_REGISTER.md#t64)
 - **Medium** — The key information is the smallest text: 7 px timeline finger labels, pad names cut to "TEST M…", hand colours that differ between grid and timeline, and one orange for every imported Sound. [T64](UI_ISSUE_REGISTER.md#t64)
-- **Low** — The "SOUND" pill collides with the canonical noun Sound, and rehearsal voices are random blips unrelated to the part. [T56, T59]
+- **Low** — The "SOUND" pill collides with the canonical noun Sound, and rehearsal voices are random blips unrelated to the part. [T56](UI_ISSUE_REGISTER.md#t56), [T59](UI_ISSUE_REGISTER.md#t59)
 
 #### What's missing
 - **High** — No path from a hard event to practising it. Selecting an event doesn't move the playhead, and no Events row, selected-event card or difficulty chart offers "Rehearse" or "Loop this". Fix: a Rehearse action that sets a bar-snapped loop, a practice speed and a count-in. [T10](UI_ISSUE_REGISTER.md#t10)
 - **Medium** — No look-ahead: the grid flashes only at the moment of the hit, too late to guide your hands. Fix: ghost the next moments with finger labels. [T09](UI_ISSUE_REGISTER.md#t09)
 - **Medium** — Pausing leaves the grid blank, so "stop and check your hands" doesn't work. Fix: when stopped, show the moment at the playhead. [T10](UI_ISSUE_REGISTER.md#t10)
 - **Medium** — No count-in, although the project data already holds an unused count-in setting. [T59](UI_ISSUE_REGISTER.md#t59)
-- **Low** — No volume or click balance, no pad audition, no hands-separate practice, no speed trainer. [T59, T58]
+- **Low** — No volume or click balance, no pad audition, no hands-separate practice, no speed trainer. [T59](UI_ISSUE_REGISTER.md#t59), [T58](UI_ISSUE_REGISTER.md#t58)
 
 #### What's unnecessary (remove, hide, or demote)
 - Import MIDI and Zoom crowd the transport row and push the rehearsal toggles off-screen. [T05](UI_ISSUE_REGISTER.md#t05)
@@ -584,7 +584,7 @@ A persistent transport bar sits above the drawer at every window size, with Play
 - **Medium** — Grouping is half-built: it can only be done by multi-select plus Ctrl+G, the delete × never appears, and the timeline ignores groups entirely. [T45](UI_ISSUE_REGISTER.md#t45)
 
 #### What's unnecessary (remove, hide, or demote)
-- **Low** — S/M appear twice per sound (Sounds row and timeline header); keep them in the timeline. Unused lane components (*dead code*: code nothing calls) already contain the missing search and filter. Reuse that logic, then delete them. [T45](UI_ISSUE_REGISTER.md#t45)
+- **Low** — S/M appear twice per sound (Sounds row and timeline header); keep them only in the Sounds row, and let lane headers select their Sound. Unused lane components (*dead code*: code nothing calls) already contain the missing search and filter. Reuse that logic, then delete them. [T45](UI_ISSUE_REGISTER.md#t45)
 
 #### What good looks like
 After import, each sound gets its own high-contrast color and you land in a quick rename pass: type 'Kick', Tab, 'Snare'. The Sounds header reads '7 sounds · 3 on grid · 1 locked', with search and filters. Each row works from the keyboard and has a clear 'Auto L2' or 'Pinned L2' chip, a lock toggle, and Unplace, Exclude and Delete actions. S/M affect listening only; excluding a sound from analysis is deliberate and badged. The same name and color show up everywhere, and one Undo reverses one edit. Like a DAW track list: name and color a track once and it looks the same in every view. Muting it changes what you hear, not what's in the arrangement.
@@ -670,7 +670,7 @@ The Composer stays a drawer tab, but it can be enlarged and has a preset shelf b
 - Manual edits never touch the Active Layout, and the amber-draft / green-active colours are the same everywhere.
 - Promote never loses the *previous* Active Layout: it is auto-saved as a variant.
 - The candidate card's Promote keeps the fingering the user previewed.
-- "Suggest a starting layout" runs only on click and can be discarded, so it respects the rule against automatic layout.
+- "Suggest a starting layout" runs only on click and can be discarded. Whether that is explicit enough for the rule against automatic layout is decision Q4.
 
 #### What doesn't work well
 - **Critical** — Looking at a suggestion destroys your draft. Generate, Preview, any click on a card, and Load Draft all overwrite the Working/Test Layout with no warning, including edits made while Generate runs. Autosave saves over it within seconds. Make preview read-only, and ask before replacing a changed draft. [T01](UI_ISSUE_REGISTER.md#t01)
@@ -700,7 +700,7 @@ The Composer stays a drawer tab, but it can be enlarged and has a preset shelf b
 - **Low** — "Duplicate Layout" in the settings gear is a hidden second Save Variant that also clears the current selection. Remove it. [T39](UI_ISSUE_REGISTER.md#t39)
 
 #### What good looks like
-A fixed bar above the grid always names what you're seeing: green "Active", amber "Draft · 3 pads differ", or violet "Previewing suggestion · read-only". The Layouts tab is one list (Active, Draft, Suggestions, Variants), and any two entries can be compared on real scores. Previewing never writes to the draft. Promote uses one small pop-up that says what gets replaced, and then offers Undo. It should work like take lanes in a DAW (digital audio workstation): audition any take freely, and your comp changes only when you commit.
+A fixed bar above the grid always names what you're seeing: green "Active Layout", amber "Working/Test Layout · 3 pads differ", or violet "Inspecting Candidate B · read-only". The Layouts tab is one list (Active Layout, your Working/Test Layout, Candidates, Saved Layout Variants), and any two entries can be compared on real scores. Inspecting never writes to the draft. Promote acts at once and shows a toast that says what was replaced, with Undo. It should work like take lanes in a DAW (digital audio workstation): audition any take freely, and your comp changes only when you commit.
 
 ![Before/after: one Generate click replaced the hand-placed draft with candidate #1, renamed and autosaved it, with no warning](../screenshots/ui-critique/f10-generate-overwrites-draft.png)
 
@@ -732,14 +732,14 @@ A fixed bar above the grid always names what you're seeing: green "Active", ambe
 - **High** — Text is too small and too faint. The type scale starts at 11px, yet the code uses 6–10px sizes 128 times, and finger labels are 7px. Link text is below the 4.5:1 contrast minimum. The Hard marker is amber on the default amber pills, so it's invisible. Fix: enforce the type scale and contrast, and give pills a minimum width so the 'L2' label still fits. [T64](UI_ISSUE_REGISTER.md#t64)
 - **Medium** — Keyboard focus (the outline showing where a key press will land) is invisible. In the grid, Tab lands only on hidden '×' Remove buttons, so Enter can clear a pad with no visible cue. Fix: show focus, or skip those buttons. [T63](UI_ISSUE_REGISTER.md#t63)
 - **Medium** — The Library feels like a separate product. Its web icon font has no fallback, so 'search' overlaps the search box. Two resume buttons do the same thing, and the newest project can't be exported or deleted. Fix: reuse the workspace components and list every project. [T55](UI_ISSUE_REGISTER.md#t55)
-- **Low** — Side panels are wide and mostly empty, resize handles are a 1px line, and dropdowns have no arrow. The blur and glow effects are invisible, the Push frame leaves about 60px of empty plate, and first-run hints are spread over four panels. [T38](UI_ISSUE_REGISTER.md#t38)[T34](UI_ISSUE_REGISTER.md#t34)[T04](UI_ISSUE_REGISTER.md#t04)[T44](UI_ISSUE_REGISTER.md#t44)
+- **Low** — Side panels are wide and mostly empty, resize handles are a 1px line, and dropdowns have no arrow. The blur and glow effects are invisible, the Push frame leaves about 60px of empty plate, and first-run hints are spread over four panels. [T38](UI_ISSUE_REGISTER.md#t38), [T34](UI_ISSUE_REGISTER.md#t34), [T04](UI_ISSUE_REGISTER.md#t04), [T44](UI_ISSUE_REGISTER.md#t44)
 
 #### What's confusing
 - **High** — Nothing reliably says which layout is on screen. The grid's state badge is clipped on every tested screen up to 1080px tall. A previewed candidate is labelled 'Working Draft', and the Costs tab never names its layout. Fix: an always-visible state strip above the grid, e.g. 'CANDIDATE #2'. [T03](UI_ISSUE_REGISTER.md#t03)
 - **High** — Related information is scattered and duplicated. One moment is split across four panels. The Layouts summary nearly repeats the Costs tab. S/M and Compare each appear twice. No button reads as the primary one. Save Variant ends up with the brightest outline, because its 'accent at 80%' style silently does nothing. 25 other styles fail the same way. Fix: keep the Events tab (canon), pin the moment card, and use one primary button per region. [T38](UI_ISSUE_REGISTER.md#t38)
-- **Medium** — Colours have several meanings. The right hand is orange-red on the grid and purple in Compare. Green means Promote, Saved and Feasible. The Costs bars colour Alternation green and Balance blue, and the chart swaps those two colours. Fix: named colour roles and one shared factor table. [T42](UI_ISSUE_REGISTER.md#t42)[T20](UI_ISSUE_REGISTER.md#t20)
+- **Medium** — Colours have several meanings. The right hand is orange-red on the grid and purple in Compare. Green means Promote, Saved and Feasible. The Costs bars colour Alternation green and Balance blue, and the chart swaps those two colours. Fix: named colour roles and one shared factor table. [T42](UI_ISSUE_REGISTER.md#t42), [T20](UI_ISSUE_REGISTER.md#t20)
 - **Medium** — 'Events' means 32 moments in one place and 48 notes in another, and list row '05' is 'Event 7' in the right panel. Fix: canon terms and one moment ID. [T23](UI_ISSUE_REGISTER.md#t23)
-- **Medium** — The gear mixes view and cost toggles. Changing a cost toggle never marks the analysis outdated, and 'Calculate Cost' shows a separate card with its own units. Fix: move the cost toggles to Costs, and mark the analysis stale when they change. [T39](UI_ISSUE_REGISTER.md#t39)
+- **Medium** — The gear mixes view and cost toggles. Changing a cost toggle never marks the analysis outdated, and 'Calculate Cost' shows a separate card with its own units. Fix: move the cost toggles to the Analysis header as "Custom weighting", and mark the analysis stale when they change. [T39](UI_ISSUE_REGISTER.md#t39)
 
 #### What's missing
 - **Medium** — Sounds can be placed only by mouse drag. There's no keyboard grid navigation and no click-to-place. Fix: arrow-key focus on pads and select-then-click placement. [T62](UI_ISSUE_REGISTER.md#t62)
@@ -790,7 +790,7 @@ The grid gets its space first: 64 pads at 40–72px with labels that don't shrin
   - Generate shows no progress and has no Cancel.
   - Confirmations come in five different styles.
 
-  Add one toast system with Undo, a Generate button that shows progress and becomes Cancel, and one themed dialog for actions that can't be undone. [T31](UI_ISSUE_REGISTER.md#t31)[T35](UI_ISSUE_REGISTER.md#t35)
+  Add one toast system with Undo, a Generate button that shows progress and becomes Cancel, and one themed dialog for actions that can't be undone. [T31](UI_ISSUE_REGISTER.md#t31), [T35](UI_ISSUE_REGISTER.md#t35)
 - **Medium** — The overlays ignore Escape and leave keyboard focus behind them, so Tab reaches hidden Promote and Delete buttons. View All is squeezed into the 274 px side panel. Use one shared dialog component. [T06](UI_ISSUE_REGISTER.md#t06)
 - **Medium** — Global key handlers take keys meant for other controls. In the Events tab, ↓ on the Speed dropdown changes the moment, and Backspace on a focused button silently removes a pad. Route all shortcuts through one handler that skips form controls. [T61](UI_ISSUE_REGISTER.md#t61)
 - **Medium** — Hard to read and hard to hit:
@@ -801,31 +801,31 @@ The grid gets its space first: 64 pads at 40–72px with labels that don't shrin
   Use a 24 px minimum target, fixed text sizes, and a second cue besides colour. [T64](UI_ISSUE_REGISTER.md#t64)
 
 #### What's confusing
-- **High** — Engine names leak into the UI, for example "Main burden: transition, gripNaturalness" and "Affected sounds: lane_1790…". Each cost factor has 3–6 names. The Alternation and Balance colours swap between the bars and the chart below them. Keep one list of factor names and colours that every panel and Learn More read from. [T20](UI_ISSUE_REGISTER.md#t20)
+- **High** — Engine names leak into the UI, for example "Main burden: transition, gripNaturalness" and "Affected sounds: lane_1790…". Each cost factor has 3–7 names. The Alternation and Balance colours swap between the bars and the chart below them. Keep one list of factor names and colours that every panel and Learn More read from. [T20](UI_ISSUE_REGISTER.md#t20)
 - **High** — The only "Active / Working Draft" badge is clipped off above the grid, and there is no Candidate state. Put a permanent state label in the toolbar. [T03](UI_ISSUE_REGISTER.md#t03)
 - **High** — Every imported sound gets the same amber colour, so every pad reads "TEST M…". [T17](UI_ISSUE_REGISTER.md#t17)
-- **Medium** — "Events" means 32 moments on the tile but 48 notes in the sentence beside it. Compare says "9 voices moved" in a 7-sound project. [T23](UI_ISSUE_REGISTER.md#t23)[T20](UI_ISSUE_REGISTER.md#t20)
+- **Medium** — "Events" means 32 moments on the tile but 48 notes in the sentence beside it. Compare says "9 voices moved" in a 7-sound project. [T23](UI_ISSUE_REGISTER.md#t23), [T20](UI_ISSUE_REGISTER.md#t20)
 - **Medium** — The copy says "then Generate to analyze", but analysis already runs automatically after edits. [T44](UI_ISSUE_REGISTER.md#t44)
-- **Medium** — "Suggest a starting layout", and Generate on an empty grid, place all 7 sounds in one click. That is an explicit action, but invariant 7 forbids "auto-layout on empty grids", so you need to decide which rule wins. Either way, the button should say that it places sounds. [T37](UI_ISSUE_REGISTER.md#t37)
+- **Medium** — "Suggest a starting layout", and Generate on an empty grid, place all 7 sounds in one click. Suggest is an explicit click, but invariant 7 forbids "auto-layout on empty grids", so whether Suggest may stay one-click is decision Q4. Generate becomes proposal-only in P1a either way, and the Suggest button should say that it places sounds. [T37](UI_ISSUE_REGISTER.md#t37)
 - **Low** — The wording drifts:
   - A layout can read "ACTIVE … (draft)".
   - Project, Performance and Session are used for the same thing.
   - Fingers appear as "L2", "L-2", "L2 (Index)" and "IN".
 
-  [T32](UI_ISSUE_REGISTER.md#t32)[T56](UI_ISSUE_REGISTER.md#t56)
+  [T32](UI_ISSUE_REGISTER.md#t32), [T56](UI_ISSUE_REGISTER.md#t56)
 
 #### What's missing
 - **Medium** — Space doesn't play or stop, and there is no shortcut list and there are no key hints. [T61](UI_ISSUE_REGISTER.md#t61)
 - **Medium** — Pads, sound rows and project cards can't be reached from the keyboard. Add an arrow-key grid with Enter to pick up and drop a sound; that is still an explicit user action. [T62](UI_ISSUE_REGISTER.md#t62)
 - **Medium** — Tabs, toggles and checkboxes don't tell screen readers what they are or whether they're on. The workspace has 0 tab roles, and 35 buttons are named just "S" or "M". [T63](UI_ISSUE_REGISTER.md#t63)
-- **Low** — Disabled buttons never show their "why" tooltip. The hover-only Delete takes keyboard focus while invisible. The search box has no label. [T31](UI_ISSUE_REGISTER.md#t31)[T63](UI_ISSUE_REGISTER.md#t63)
+- **Low** — Disabled buttons never show their "why" tooltip. The hover-only Delete takes keyboard focus while invisible. The search box has no label. [T31](UI_ISSUE_REGISTER.md#t31), [T63](UI_ISSUE_REGISTER.md#t63)
 
 #### What's unnecessary (remove, hide, or demote)
 - **Medium** — Optimizer internals crowd the toolbar and cards ("Greedy Motif-Preserving Greedy: 6 moves, cost 25.87", "(seed 1)"). Each card shows Score % (higher is better) next to cost (lower is better). Move the methods into a "Generation options" popover with friendly names, keep every method and the trace, and show one score. [T34](UI_ISSUE_REGISTER.md#t34)
-- **Low** — The save status appears twice, and Learn More shows constraint code names such as "thumbDelta". [T31](UI_ISSUE_REGISTER.md#t31)[T20](UI_ISSUE_REGISTER.md#t20)
+- **Low** — The save status appears twice, and Learn More shows constraint code names such as "thumbDelta". [T31](UI_ISSUE_REGISTER.md#t31), [T20](UI_ISSUE_REGISTER.md#t20)
 
 #### What good looks like
-Think of Ableton's Session View. You always know what's playing, Space starts and stops, Cmd+Z reliably steps back, and a clip keeps its name and colour everywhere. In PushFlow, a label in the toolbar would always read "Active · Default", "Working layout (unsaved)" or "Previewing Candidate #2", with Promote, Save as variant and Discard next to it. Every commit would show a toast with an Undo that works, and every surface would use the same words. Menus would open where you click and close on Escape, and no state would rely on colour or hover alone.
+Think of Ableton's Session View. You always know what's playing, Space starts and stops, Cmd+Z reliably steps back, and a clip keeps its name and colour everywhere. In PushFlow, a bar above the grid would always read "Active Layout · Default", "Working/Test Layout (unsaved)" or "Inspecting Candidate B · read-only", with Promote, Save as variant and Discard next to it. Every commit would show a toast with an Undo that works, and every surface would use the same words. Menus would open where you click and close on Escape, and no state would rely on colour or hover alone.
 
 ![Right-click on pad (0,0) (red ring = cursor): the menu opens about 480 px to the right and is cut off. The panel also shows the raw "Main burden: transition, gripNaturalness"](../screenshots/ui-critique/x2-context-menu-off-cursor.png)
 
@@ -890,18 +890,18 @@ Primary Promote only in the state bar; rows and Compare keep a secondary Promote
 
 | Stage | Phase | What changes for the user | Done when | Size* |
 |-------|-------|---------------------------|-----------|-------|
-| A · Stop the harm | **P0 · Safety net** | Nothing visible — CI starts running the unit tests plus browser checks at 1366×768 and 1600×1000, and the 9 reproduced critical bugs become automated tests that must flip to passing. | A deliberately broken commit turns CI red; C1–C9 exist as expected-fail tests. | ~1 wk |
-| A · Stop the harm | **P1a · Stop losing work** | Undo covers only your edits (one step per action). Generate **only proposes** — your draft is never overwritten; anything replaced is auto-kept in "Recovered drafts". Locks hold for every method and for manual drags. Sounds are matched by identity, not MIDI pitch. "Saved" only appears when it's true. Composer edits survive tab switches. | Place 3 sounds → Undo ×3 → empty grid. After Generate, the draft is unchanged. A lock at [7,0] survives Greedy, Beam and Annealing. | 3–4 wks |
+| A · Stop the harm | **P0 · Safety net** | Nothing visible — CI starts running the unit tests plus browser checks at 1366×768 and 1600×1000, and the 9 reproduced critical bugs become automated tests that must flip to passing. | A deliberately broken commit turns CI red; the 9 reproduced bugs (C1–C9 in the register) exist as tests marked "expected to fail" until each fix lands. | ~1 wk |
+| A · Stop the harm | **P1a · Stop losing work** | Undo covers only your edits (one step per action). Generate **only proposes** and never touches your draft; Preview, card clicks and Load Draft still replace it, but the replaced draft is auto-kept in "Recovered drafts" (read-only inspection arrives in P3). Locks hold for every method and for manual drags. Sounds are matched by identity, not MIDI pitch. "Saved" only appears when it's true. Composer edits survive tab switches. | Place 3 sounds → Undo ×3 → empty grid. After Generate, the draft is unchanged. A lock at [7,0] survives Greedy, Beam and Annealing. | 3–4 wks |
 | A · Stop the harm | **P1b · Stop false verdicts & broken overlays** | The verdict is never falsely green (the selected moment gets its own card). The pad menu opens at the cursor and closes on Escape. Compare evaluates Active properly. Onion skin actually shows previous/next. Pads flash during playback even with a moment selected. Preset drops either work or say why not. Chords count once per moment. | An unplayable layout with a moment selected never shows "Feasible"; the menu is fully clickable on all 64 pads at three screen sizes. | ~3 wks (overlaps P1a) |
 | B · Make it legible | **P2 · Quick-win sprint** | The grid is sized by measurement (no clipping, pads ≥32 px at 1366). Transport controls are always reachable. Distinct colours and sensible names for Sounds. Readable text (≥11 px) and musical notation (bar.beat, "Row 4 · Col 4"). The Library imports MIDI, opens a demo, and shows real project data. Named, scored variants. Click-a-Sound-then-a-pad placement. Space plays. | All 64 pads and every transport button are inside the viewport at both sizes; 7 imported Sounds get 7 visibly distinct colours and labels. | 3–4 wks |
 | B · Make it legible | **P3 · One inspected layout** | You can **inspect** Active, any candidate or any variant read-only without touching your draft. A layout-state bar above the grid names what you're seeing, how it differs from Active, and offers only the actions that fit (Use as my draft / Keep / Promote / Back to my draft). One Promote. Partly placed layouts read "Unfinished · 5 of 7 placed", not "Infeasible". Generate shows progress, an ETA and Cancel. One scoring yardstick everywhere. | Inspecting every layout 20× leaves the draft unchanged; the bar, Costs, Events and timeline headers always name the same subject. | 3–4 wks |
 | C · Make it musical | **P4 · The moment loop** | Find a hard moment (filters, Prev/Next hard), understand it (inspector: every strike, fingers, one-sentence "why"), then press **Rehearse** to loop its bars at 75% after a count-in. The grid shows Now / Now+Next / Prev·Now·Next with finger badges. A DAW-grade transport (tight timing, bar-snapped loops). Mute/Solo become audio-only; "Exclude from analysis" is separate. A "Rehearse view" that collapses side panels. | "Rehearse" on a Hard row starts a bar-aligned loop containing the moment after a 1-bar count-in; muting changes no score. | 4–6 wks |
 | C · Make it musical | **P5 · Sounds, import & projects you can trust** | An import review sheet (names, colours, include). Replace/Remove source files (re-import keeps placements). Notes stored in beats, so tempo changes keep every hit on its bar. A Sounds panel with filters, placement status, lock toggle and an actions menu. Drag hints ("Swap with Snare"). Presets placeable by mapping to your Sounds. Drop-a-MIDI-anywhere import; developer tools moved to a footer link. | Re-importing the same file offers Replace and creates no duplicates; 120→90 BPM keeps every note's bar.beat. | 4–5 wks |
 | D · Make it coherent | **P6 · One cost story & baseline-aware compare** | One headline ("Playability 0–100") in every place a layout appears, with deltas against Active on every row. Compare answers "what changed, is it worth keeping" in words (per-Sound moves, re-fingerings). Generate options in musician terms (Comfort / Fast alternation / Memorable shapes) with Greedy/Beam/Annealing under Advanced. Weighting toggles move to the Analyze side. Honest charts with bands and bar ticks. | The same layout shows the same integer in the state bar, Analysis, its row and Compare. | 4–5 wks |
-| D · Make it coherent | **P7 · Workspace by job + accessibility** | Each region gets one job and one primary action: Left = Sounds | Events; Centre = state bar, grid, moment inspector, transport, Timeline | Composer drawer; Right = Analysis | Trace above a pinned Layouts list. Duplicate panels deleted. Full keyboard, focus, contrast and 24 px target sweep. | At 1440×900 pads are ≥56 px and the first candidate row is visible without scrolling; axe finds 0 serious violations. | 3–4 wks |
+| D · Make it coherent | **P7 · Workspace by job + accessibility** | Each region gets one job and one primary action: Left = Sounds / Events; Centre = state bar, grid, moment inspector, transport, Timeline / Composer drawer; Right = Analysis / Trace above a pinned Layouts list. Duplicate panels deleted. Full keyboard, focus, contrast and 24 px target sweep. | At 1440×900 pads are ≥56 px and the first candidate row is visible without scrolling; an automated accessibility checker (axe) finds 0 serious problems. | 3–4 wks |
 | D · Make it coherent | **P8 · The Composer joins the project** | Composer patterns are saved, exported and undoable with the project, bound to real Sounds, inserted into the one timeline at a chosen bar, and played through the shared transport. Sequencer basics (1/16, velocity, copy). Full keyboard placement on the grid. | Composer edits survive reload + export/import; one Ctrl+Z reverts one note toggle. | 5–7 wks (overlaps P7) |
 
-\* *Sizes are the planners' estimates for two engineers working conventionally; treat them as relative weights, not a schedule.* A **solo "trust release"** — P0 + P1a + P1b + the core of P2 (measured grid, reachable transport, full-width timeline, distinct Sounds, truthful Library cards) + the core of P3 (read-only inspection, state bar, single Promote) — removes every critical harm and every CLAUDE.md UI-rule violation, and is the recommended first milestone.
+\* *Sizes are the planners' estimates for two engineers working conventionally; treat them as relative weights, not a schedule.* A **solo "trust release"** — P0 + P1a + P1b + the core of P2 (measured grid, reachable transport, full-width timeline, distinct Sounds, truthful Library cards) + the core of P3 (read-only inspection, state bar, single Promote) — removes every critical harm and fixes the CLAUDE.md UI-rule violations found (timeline width, Library cards), and is the recommended first milestone. Whole-moment selection for played-in chords follows in P4.
 
 Every phase is gated by the same checks: typecheck, unit tests, browser checks at both laptop sizes, the C1–C9 regression tests, TEST MIDI 1 with 0 unplayable events for all three optimizer methods on any optimizer change, and a Learn More update whenever a metric, verdict or constraint changes (invariant 2).
 
@@ -914,8 +914,9 @@ These are the only genuinely blocking product questions. Each has a recommended 
 | Q1 | before P1a | Should the Working/Test Layout survive a reload? | CLAUDE.md's default is "session-scoped", but the app persists it today, and dropping it would create a new way to lose work. **Recommendation: keep persisting it.** |
 | Q2 | before P1a | Do finger preferences survive Discard? | They live in `voiceConstraints` (Sound-level truth, invariant 6), so the plan keeps them and the Discard toast says so. **Recommendation: keep them.** |
 | Q3 | before P2 | May default Sound names ever use MIDI pitch? | Canon §10 says pitch "is stripped from the sound"; invariant 5 keeps it as metadata. **Recommendation:** default names from track/file name + a letter; pitch only as provenance; an opt-in "Name from GM drum map" action. |
-| Q4 | before P3 | May "Place remaining N sounds" place them directly? | Invariant 7 forbids automatic placement. **Recommendation:** it produces a candidate you inspect and apply with one click (proposal-only). |
+| Q4 | before P3 | Which one-click placements count as "explicit" under invariant 7? | Invariant 7 forbids auto-layout on empty grids. Open cases: may **Suggest a starting layout** keep placing every Sound in one click (today it does, as a discardable draft), and may **Place remaining N** place directly? Also, is auto-inspecting candidate A read-only after an empty-grid Generate acceptable, since nothing is written? **Recommendation:** keep one-click Suggest (a deliberate, undoable click), make Place remaining N produce a candidate you apply with one click, and allow read-only auto-inspect. |
 | Q5 | before P3 | Confirm the single headline score and evaluator. | **Recommendation:** "Playability 0–100, higher = easier" from the canonical evaluator, plus Hard/Unplayable counts and each factor's share of the burden. |
+| Q7 | before P2 | Is "moment" a UI word, or only "event"? | The canon term is Performance Event, and the app has an Events tab. **Recommendation:** labels say "Event 12 · 3.2.3", single hits are "notes", and "moment" appears only in explanations; adopting "moment" as a label would need a PUSHFLOW_TERMINOLOGY.md update. |
 | Q6 | before P5 | What is the Pattern Composer's model? | (a) a quantised editor of the whole project timeline, or (b) named pattern sections inserted into the timeline at a chosen bar. **Recommendation: (b).** Either way it stays a bottom-drawer tab using the project tempo. |
 
 The full plan — deliverables, exit criteria and risks per phase, what is deliberately deferred, and how each of the 70 problems maps to a phase — is in **[UI_ENHANCEMENT_ROADMAP.md](UI_ENHANCEMENT_ROADMAP.md)**.
@@ -929,7 +930,7 @@ The full plan — deliverables, exit criteria and risks per phase, what is delib
 5. **Independent reproduction.** Each of the 9 critical problems was reproduced from scratch by a fresh agent with its own browser script. All 9 reproduced; the root cause of each is recorded in the register.
 6. **Planning.** Three planners drafted roadmaps from different angles (trust-first, journey-first, impact-per-effort). A judge scored them (impact-per-effort 8.2, trust-first 7.7, journey-first 6.3), took impact-per-effort as the base and grafted the best of the others; a completeness critic found 23 gaps (missing test infrastructure, foundations arriving late, canon conflicts), and the plan was revised to close them.
 
-**Limits.** Chromium only; two desktop viewports; one reference file (a 7-sound drum groove). Audio timing was judged from code and frame sampling, not by ear. No real users were observed, so severity reflects expected impact rather than measured behaviour.
+**Limits.** Chromium only; screenshots at two desktop viewports (1600×1000, 1366×768), with spot measurements at 1280×800, 1440×900 and 1920×1080; one reference file (a 7-sound drum groove). Audio timing was judged from code and frame sampling, not by ear. No real users were observed, so severity reflects expected impact rather than measured behaviour.
 
 ## Appendix B — Jargon, briefly
 
@@ -941,7 +942,13 @@ The full plan — deliverables, exit criteria and risks per phase, what is delib
 - **Portal (for menus and dialogs)** — Rendering a popup at the top of the page instead of inside its panel, so a scaled or clipped parent can't hide or displace it.
 - **Look-ahead audio scheduler** — Queuing sounds slightly ahead on the audio clock (as DAWs do) instead of firing them from screen refreshes, which jitter.
 - **Cache per layout (LRU)** — Remembering the analysis of recently viewed layouts so switching between them is instant and consistent; the oldest entries are dropped first.
-- **CI / regression test** — Automated checks that run on every change; a regression test fails if a fixed bug comes back.
+- **CI / regression test / "expected to fail"** — Automated checks that run on every change; a regression test fails if a fixed bug comes back. A test marked "expected to fail" documents a known bug and becomes a normal test when the fix lands.
+- **Greedy / Beam / Annealing (optimizers)** — The app's three ways of searching for a better layout: improving one step at a time (Greedy), keeping the best few partial answers at each step (Beam), and trying random changes while gradually settling down, like metal cooling (Annealing).
+- **Evaluator / scoring engine** — The part of the engine that scores a layout. Two evaluators are like two meters with different calibration: the same signal reads differently on each.
+- **Stub** — A placeholder standing in for real data; here, a layout full of zeros that Compare shows when it has no real analysis.
+- **State logic ("reducer")** — The code that decides how the app's memory changes in response to each action; many fixes are a single rule there.
+- **axe** — An automated accessibility checker that scans a page for missing labels, roles and contrast problems.
+- **Hero** — Web-design term for the big banner at the top of a page (the Library's "Current Session" card).
 - **Migration** — A one-time, backed-up upgrade of saved projects when the storage format changes.
 - **Design tokens** — Named colours and sizes (e.g. `--hand-left`) used everywhere instead of raw values, so one meaning keeps one look.
 - **ARIA roles / focus** — Labels that tell assistive tech what a control is; "focus" is which control the keyboard is on.

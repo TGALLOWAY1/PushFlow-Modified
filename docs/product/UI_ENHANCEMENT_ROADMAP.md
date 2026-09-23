@@ -11,26 +11,26 @@ This is the implementation-level plan. It was produced by three independent plan
 - Every number names its subject and scope (canon section 8). A SubjectChip (Active / Working/Test / Candidate B / Saved variant), a scope line ('5 of 7 Sounds placed, 1 excluded') and a freshness state sit beside every verdict, score, event list, Compare side and the timeline header.
 - Missing data reads 'Unknown', 'Unfinished' or 'Analysing...', never 'Feasible', 0 or 'Easy'.
 - One source per truth, introduced once and reused:
-- Sound identity by voiceId, with MIDI pitch as provenance only (invariant 5);
-- finger preferences in voiceConstraints (invariant 6);
-- one groupIntoMoments/momentKey and one getAnalysisForLayout cache (P1b);
-- FACTOR_META (P1b), with semantic tokens introduced with the surface that first needs them;
-- one input table for pointer and key meanings (P2);
-- one migration runner (P1a);
-- notes stored in musical time (P5).
+  - Sound identity by voiceId, with MIDI pitch as provenance only (invariant 5);
+  - finger preferences in voiceConstraints (invariant 6);
+  - one groupIntoMoments/momentKey and one getAnalysisForLayout cache (P1b);
+  - FACTOR_META (P1b), with semantic tokens introduced with the surface that first needs them;
+  - one input table for pointer and key meanings (P2);
+  - one migration runner (P1a);
+  - notes stored in musical time (P5).
 - Locks are hard and visibly enforced by every optimizer method and every manual gesture. Preferences are soft and labelled soft.
 - Proposals stay proposals. From P1a on, Generate never applies anything. Suggest, 'Place remaining' and presets are explicit and undoable. Nothing lands on the grid without a click (invariant 7), and import never places Sounds.
 - The grid is the hero and the truth surface. It is sized by measurement (ResizeObserver, desktop-only, no breakpoints), never CSS-scaled or clipped, and every overlay portals out of it.
 - Musician language first, engine detail one click away, and Analyze visibly distinct from Generate (canon section 9).
-- Weighting and Re-analyse live in the Analysis header.
-- Method, restarts, strategy, intensity and seed live under Generate > Advanced.
-- The trace and debug routes stay.
-- Greedy, Beam and Annealing all stay available.
+  - Weighting and Re-analyse live in the Analysis header.
+  - Method, restarts, strategy, intensity and seed live under Generate > Advanced.
+  - The trace and debug routes stay.
+  - Greedy, Beam and Annealing all stay available.
 - Thin slices before redesigns. Each critical theme first ships a small stop-gap that removes the harm, then gets its full fix once its prerequisites exist. Every PR ships on its own and leaves the app better.
 - Gates are infrastructure, not intentions.
-- From P0, every PR runs typecheck, vitest (node and happy-dom) and Playwright at 1366x768 and 1600x1000 in CI. A nightly job runs deep annealing.
-- The C1-C9 repros live in test/e2e as expected-fail specs that the fixing PR flips.
-- Optimizer PRs must pass TEST MIDI 1: 0 unplayable events, locks held and seed-0 determinism, for Greedy, Beam and Annealing.
+  - From P0, every PR runs typecheck, vitest (node and happy-dom) and Playwright at 1366x768 and 1600x1000 in CI. A nightly job runs deep annealing.
+  - The C1-C9 repros live in test/e2e as expected-fail specs that the fixing PR flips.
+  - Optimizer PRs must pass TEST MIDI 1: 0 unplayable events, locks held and seed-0 determinism, for Greedy, Beam and Annealing.
 - Learn More moves with the metrics (invariant 2). Any PR that changes a metric, verdict tier or constraint ships its Learn More change. A test renders the Constraints and verdict sections from the same lists the solvers and the badge use.
 - Accessible by construction. The Dialog, Popover and Toast primitives (P1a/P1b) and Tabs, Toggle, Checkbox and IconButton (P3) require labels and render roles and states. Colour is always paired with a second cue. Text is at least 11px and targets at least 24px.
 
@@ -39,13 +39,16 @@ This is the implementation-level plan. It was produced by three independent plan
 A three-column desktop workspace, laid out by job and tuned from 1366x768 to 1920x1080 by measurement rather than breakpoints. The grid always shows exactly what the user is looking at, and every number says which layout it describes.
 
 TOP BAR
+
 - '< Projects' and the project name (editable).
 - One passive save status: 'Saved 14:02', or a red 'Couldn't save · Retry · Export a copy'.
 - A labelled Tempo field ('Tempo affects difficulty').
 - Undo and Redo, each naming its target ('Undo: Move Kick'). They undo user edits only, never analysis, candidates or playback.
 - The '?' shortcut sheet (generated from the one input table) and Learn more.
 
+
 LEFT PANEL (Sounds | Events)
+
 - Sounds header:
   - search;
   - filter chips with counts (All / To place / On grid / Locked);
@@ -64,7 +67,9 @@ LEFT PANEL (Sounds | Events)
   - each row shows bar.beat.sub, Sound chips, finger chips (L2 R1) and a text difficulty badge;
   - filter chips All / Medium+ / Hard / Unplayable, plus Prev/Next hard.
 
+
 CENTRE
+
 - A layout-state bar, fixed and unscaled. It shows:
   - a role chip in --role-* colours with an icon;
   - the clean name, and 'N pads vs Active' (plus 'vs your draft' when relevant);
@@ -84,7 +89,9 @@ CENTRE
 - The timeline header names the layout it shows, and its pills use that layout's fingering.
 - The timeline fills its width and shows every stream. Unplaced notes are outlined, excluded Sounds dimmed and unplayable notes hatched. Pills read 'L2', and clicking a note selects its whole moment.
 
+
 RIGHT PANEL
+
 - Analysis | Trace tabs above a pinned, resizable Layouts list.
 - The Analysis header is the Analyze surface: SubjectChip, 'Weights: default / Custom weighting' (the cost toggles) and Re-analyse.
 - Below the header:
@@ -102,7 +109,9 @@ RIGHT PANEL
   - Then Saved variants (renameable, scored), then a capped 'Recovered drafts' group that holds anything the app auto-kept.
 - Trace: 'How candidate B was found · Stopped: <reason>'. MoveTracePanel shows greedy moves, an annealing sparkline and a beam summary.
 
+
 INPUT MODEL (one table, registry-tested)
+
 - Pad click:
   - with a Sound armed, places it;
   - with a moment selected, keeps the moment and shows the pad Sound's hits;
@@ -114,7 +123,9 @@ INPUT MODEL (one table, registry-tested)
 - ←/→ step moments when stopped and seek by moment while playing.
 - Escape peels back one layer at a time.
 
+
 CORE FLOWS
+
 - Import: drop or pick a .mid from the Library or the workspace. A review sheet lets the user name, colour and include Sounds. Default names come from the track or file, never from pitch. Nothing is placed.
 - Arrange: drag, or click a Sound and then a pad, with a hint that says what will happen. Locked pads refuse moves. 'Place remaining N' proposes a completion that the user applies with one click.
 - Analyse: refreshes about 1 s after an edit. Previous numbers stay dimmed.
@@ -189,12 +200,14 @@ Primary Promote only in the state bar; rows and Compare keep a secondary Promote
 **Why now.**
 
 Today no gate in this plan can actually run:
+
 - .github/workflows/deploy.yml runs only `npm ci` and `npm run build`, so no test runs on a push or a PR.
 - vitest.config.ts uses environment 'node', and no DOM library is installed, so component checks such as FeasibilityBadge (C6) cannot run.
 - `playwright` is installed only as a library, with no runner or config.
 - The C1-C9 repro scripts in scripts/ui-critique-repros/ are exploratory probes, not tests, and C4 reads React fiber internals.
 - index.html loads Inter, Space Grotesk and Material Symbols from fonts.googleapis.com, so pixel diffs would flake.
 - testMidi1Integration.test.ts has no annealing case. It asserts only playableRatio > 0.5, has no lock case, and keys existingVoices by MIDI pitch.
+
 Without P0, the TEST MIDI 1 rule and every 'C# flipped' exit criterion are promises, not checks.
 
 **Deliverables**
@@ -229,6 +242,7 @@ Without P0, the TEST MIDI 1 rule and every 'C# flipped' exit criterion are promi
   - a lock case: a Sound locked at [7,0] holds in every candidate and placementLocks is non-empty (expected-fail until P1a);
   - a seed-0 determinism snapshot per method;
   - Sounds keyed by id, not pitch.
+
   A deep-annealing variant runs only nightly and records its duration.
 - Flags, for team mode only: a tiny src/utils/flags.ts that reads VITE_FLAG_* at build time, with a dev-only localStorage override. It is used only where a phase says 'behind a flag'. A solo developer skips flags and uses short-lived branches instead.
 
@@ -258,11 +272,13 @@ Without P0, the TEST MIDI 1 rule and every 'C# flipped' exit criterion are promi
 **Why now.**
 
 Several data-loss paths are live today:
+
 - useUndoRedo snapshots and restores the whole ProjectState, including candidates, moveHistory, currentTime and isPlaying. Undoing Generate loses the candidates (C2), and undo during playback restores a stale transport.
 - Generate auto-applies candidate A through two dispatches in useAutoAnalysis.ts (about lines 310 and 343). This overwrites drafts mid-run and places every Sound on an empty grid (invariant 7).
 - Beam and Annealing drop locks (C3).
 - A pitch fallback plays an unplaced Sound on another Sound's pad (F8-V01), which would corrupt every 'placed' count built later.
 - Composer sync reverts renames, Composer fingers never reach voiceConstraints (invariant 6), and Clear has no undo.
+
 This is CLAUDE.md priority 1. Open questions Q1 (draft persistence) and Q2 (finger preferences on Discard) must be settled first.
 
 **Deliverables**
@@ -331,7 +347,7 @@ This is CLAUDE.md priority 1. Open questions Q1 (draft persistence) and Q2 (fing
   - An edit made during a run is kept.
   - After Preview, a card-body click, Load Draft, card Promote and variant Promote, a hand-built draft is recoverable as the draft or in 'Recovered drafts', including after a reload.
 - [ ] After 5 auto-keeps, a user-named variant is still visible. Recovered drafts are deduped by hash and capped at 5, with a notice on pruning.
-- [ ] Generate on an empty grid leaves the grid empty (invariant 7).
+- [ ] Generate on an empty grid leaves the draft (workingLayout) empty (invariant 7).
 - [ ] C3 flipped for greedy, beam and annealing quick (deep annealing runs nightly):
   - A lock at [7,0] holds in every candidate, and placementLocks is non-empty.
   - Manual drags onto and out of a locked pad are refused.
@@ -374,6 +390,7 @@ This is CLAUDE.md priority 1. Open questions Q1 (draft persistence) and Q2 (fing
 
 C1 (an unportaled menu inside transform and backdrop-filter), C5/C8 (inline opacity overrides, and the selection frozen during play), C6 (FeasibilityBadge defaults to 'feasible'), C7 (a zero stub in Compare) and C9 (preset drops) each have a one-file cause.
 Four shared pieces are built here once, so nothing is built twice:
+
 - groupIntoMoments + momentKey (T22), reused by T23 in P2 and T24 in P4;
 - FACTOR_META, reused by P2-P6;
 - getAnalysisForLayout, reused by P2 variant scores and P3 inspection;
@@ -461,11 +478,13 @@ Four shared pieces are built here once, so nothing is built twice:
 **Why now.**
 
 Once trust is restored, these are the biggest wins for their size:
+
 - the clipped, CSS-scaled grid, whose transform is also the structural cause of C1;
 - seven identical amber 'TEST M...' Sounds;
 - an off-screen transport;
 - a timeline that doesn't fill its width (T50) and Library cards that misreport projects (T52), both violations of explicit CLAUDE.md UI rules;
 - a Library that can't start from a MIDI file or open a demo.
+
 The measured grid also frees the unscaled space the P3 state bar needs. Pad click is about to gain several meanings (click-to-place here, then inspect, show-hits and audition in P4), so the input table must exist first. The canon §10 naming question (Q3) must be settled before the default-names change.
 
 **Deliverables**
@@ -624,7 +643,7 @@ Q4 ('Place remaining') and Q5 (headline and evaluator) must be settled before th
 - Keep candidates (T30).
   - 'Keep' on every row and on each Compare side calls SAVE_AS_VARIANT(source: candidate), naming the variant after its strategy.
   - Runs are grouped ('Run 2 · Quick · 1 min ago'). Older runs fold into 'Earlier runs' (capped at 3), with 'Clear older runs'.
-  - The caption reads 'Suggestions are temporary · Keep the ones you like', and leaving warns when unkept candidates exist.
+  - The caption reads 'Candidates are temporary · Save the ones you like as variants', and leaving warns when unkept candidates exist.
   - Candidates stay unpersisted (canon).
 - Clean names (T32).
   - Layouts store a base name plus provenance (manual | suggested | candidate:<strategy> | variant:<id> | recovered). Labels are built from role and base name ('Draft of Default').
@@ -644,7 +663,7 @@ Q4 ('Place remaining') and Q5 (headline and evaluator) must be settled before th
 
 **Exit criteria**
 
-- [ ] Inspecting Active, every candidate and every variant 20 times in a row leaves the workingLayout hash unchanged. After Generate, the grid still shows the user's draft. Drag, menu, click-to-place and Delete are each blocked while inspecting (one test per path).
+- [ ] Inspecting Active, every candidate and every variant 20 times in a row leaves the workingLayout hash unchanged. After Generate, the workingLayout hash is unchanged; the grid shows candidate A read-only under the violet bar, and "Back to my draft" shows the untouched draft. Drag, menu, click-to-place and Delete are each blocked while inspecting (one test per path).
 - [ ] The state bar shows the correct role and name for Active, Working/Test, Candidate and Variant at 1366 and 1600. The Analysis, Events and timeline headers name the same subject. While candidate B is inspected, timeline pill fingering equals B's plan (test).
 - [ ] Bar, card, variant and modal Promote of the same candidate produce an identical activeLayout and plan hash, as one undo step with one toast.
 - [ ] C7 on the cache: with a differing draft, Active's Playability in Compare equals Active's standalone analysis. A greedy candidate shows the same score before and after 'Use as my draft'.
@@ -679,6 +698,7 @@ The critical T09 and T10 got only stop-gaps in P1b. T24 blocks their full fixes,
 The groupIntoMoments/momentKey helper (P1b) and strict identity (P1a) already exist, so the only analysis-shifting engine change left is the solver eventIndex semantics, which goes through one Solver Change Checklist run.
 The scheduler rewrite (T58) is also the right moment to lift the transport into a workspace service (T60), so it isn't rewritten twice. The P2 input table defines what the new pad-click and audition behaviours mean.
 The work runs in two parallel tracks:
+
 - Moment: T24, T09, T27, T28, T42.
 - Transport: T10, T58, T60, T15, T16, T59, T61, T43.
 
@@ -687,8 +707,8 @@ The work runs in two parallel tracks:
 - Single moment identity (T24). Solver Change Checklist applies.
   - Both solvers give eventIndex the same meaning (beamSolver numbers notes and greedyOptimizer numbers moments today), and both add an explicit momentIndex derived from the P1b groupIntoMoments.
   - The selection is stored as the P1b momentKey and re-resolved when the plan changes.
-  - Placeholder pills for muted or excluded streams carry no index and read 'Not analysed'.
-  - 'Moment 12 · 3.2.3' is the label everywhere.
+  - Placeholder pills for excluded (not muted) streams read 'Not analysed' and select by momentKey/time, so a click still highlights every note at that moment; muted streams keep normal analysed pills.
+  - 'Event 12 · 3.2.3' is the label everywhere (canon term Performance Event; see Q7).
 - Rebuilt moment view (T09).
   - Current strikes keep the Sound's colour and short name, and add a hand ring and an 'L2' badge.
   - Next strikes get a dashed hand-coloured outline and '+1'; previous strikes a faint outline and '-1'. Other pads sit at about 45%.
@@ -786,10 +806,12 @@ The work runs in two parallel tracks:
 **Why now.**
 
 P2 fixed the most visible identity symptoms. What remains are correctness and data issues:
+
 - re-importing duplicates every Sound;
 - a tempo change or multi-file import shifts notes off the bar grid;
 - saves can overwrite each other across tabs;
 - cross-project presets can't be placed at all.
+
 These must land before the P6 cost story, because scores only mean something on correct identity and timing. The preset mapping step needs only strict ids (P1a) and working undo (P1a), not the Composer-model decision.
 Q6 (Composer model) must be settled before this phase, because the musical-time schema reserves a pattern slot only under model (b).
 
@@ -1035,6 +1057,7 @@ The P1a Composer slice already removed the live invariant-6 break, the rename re
   - role=grid with a roving tabindex: arrows move focus, Enter places the armed Sound or picks up/drops a pad to swap, and Delete clears. Space stays play/stop, per the P2 input table.
   - Pads, which already have aria-labels from P1b, gain state ('Row 4, column 4, Kick, locked, left index').
   - Sound rows are focusable options.
+- Learn More (invariant 2): how presets and Composer patterns are scored with the canonical evaluator.
 
 **Exit criteria**
 
@@ -1066,6 +1089,7 @@ The base is impact per effort, reordered where dependencies demand it.
 P0 comes first. Every exit criterion in this plan was a promise until CI can run it: deploy.yml only builds, vitest has no DOM, Playwright has no runner, the C1-C9 repros are only exploratory scripts, remote fonts make screenshots flake, and the TEST MIDI 1 test has no annealing case, no lock case and a >50% threshold instead of 0 unplayable. One week of infrastructure turns each later fix into a regression test that runs on every PR. Each C# spec lands as expected-fail and is flipped by the PR that fixes it.
 
 P1 is split by harm:
+
 - P1a stops data loss, since it is the recovery path for everything else:
   - undo on the document slice only, so candidates, trace and playback survive an Undo;
   - Generate only proposes (deleting two dispatches), which removes today's invariant-7 exposure and the mid-run overwrite;
@@ -1078,46 +1102,60 @@ P1 is split by harm:
 - P1b stops false verdicts and broken overlays: the portal, the honest verdict, the moment stop-gaps and the refuse-first presets with a Mirror toggle. It also introduces, once, the shared pieces later phases reuse: groupIntoMoments/momentKey, FACTOR_META, the getAnalysisForLayout cache and the --status tokens.
 - Every critical harm is neutralised by the end of P1b, about 7-8 weeks in with 2 engineers.
 
+
 P2 is quick wins that pay off in every flow: the measured grid, distinct Sounds (--sound tokens, names per the §10 decision), transport reach, click-to-place, the Library MIDI entry, and the two CLAUDE.md UI Non-Regression violations (T50, T52). It also defines the one input table that later pad-click, audition and keyboard work must follow. Variant scores use the P1b cache.
 
 The medium redesigns follow in dependency order:
+
 - P3 builds the inspected-layout selector on the P1b cache, now scored by the Q5 evaluator, so the 'two yardsticks' problem is fixed once. It adds the state bar (--role tokens), one Promote, Keep, proposal-only fill-in, the full Compare and an annealing time budget.
 - P4 changes only the solver eventIndex semantics on top of the shared moment key, then builds the moment loop and a DAW-grade transport lifted into a workspace service, so the Composer never needs a second transport rewrite.
 - P5 fixes import, the Sounds panel (filter chips plus group sections, never an 'On grid' section), musical time and persistence, and makes presets placeable by mapping them to project Sounds.
 
+
 The large items come last:
+
 - P6 presents the one headline and adds baseline-aware Compare. It keeps weighting on the Analyze side and method options under Generate.
 - P7 consolidates the workspace and runs the accessibility and raw-hex sweeps.
 - P8 moves the Composer into the project and adds timeline insertion. It can overlap with P7.
 
+
 Decisions are timed to their first dependent phase:
+
 - Q1 and Q2 before P1a;
 - Q3 (§10 naming) before P2;
 - Q4 and Q5 before P3;
 - Q6 before P5.
 
+
 Gates on every phase:
+
 - CI (typecheck, vitest node plus happy-dom, Playwright at 1366x768 and 1600x1000);
 - expected-fail C1-C9 specs flipped by their fix;
 - reducer tests per user intent;
-- the Learn More sync test plus a Learn More deliverable in every phase that changes a metric, verdict tier or constraint (P1a, P1b, P3, P4, P5, P6);
+- the Learn More sync test plus a Learn More deliverable in every phase that changes a metric, verdict tier or constraint (P1a, P1b, P2, P3, P4, P5, P6, P8);
 - on optimizer-touching PRs, TEST MIDI 1 with 0 unplayable events, the lock case and seed-0 determinism for greedy, beam and annealing, plus the Solver Change Checklist;
 - deep annealing nightly within its budget.
 
+
 Effort, team:
+
 - P0 1 week, P1a 3-4, P1b ~3 (overlapping P1a by about 1.5), P2 3-4, P3 3-4, P4 4-6, P5 4-5, P6 4-5, P7 3-4, P8 5-7 (overlapping P7 by about 3).
 - Roughly 30-42 weeks for 2-3 engineers, about 120 PRs and 70-110 engineer-weeks.
 
-Solo 'trust release' cut line: P0 + P1a + P1b + the P2 core (T04, T05, T50, the T17 slice, the T52 slice) + the P3 core (T01, T03, T13 on the P1b cache). That is about 20-25 weeks for one developer, and it leaves no critical harm and no CLAUDE.md UI violation live.
+
+Solo 'trust release' cut line: P0 + P1a + P1b + the P2 core (T04, T05, T50, the T17 slice, the T52 slice) + the P3 core (T01, T03, T13 on the P1b cache). That is about 20-25 weeks for one developer, and leaves no critical harm live and fixes the CLAUDE.md UI-rule violations found (timeline width, Library cards); whole-moment selection for played-in chords (T24) follows in P4.
 
 Cuttable without breaking any invariant:
+
 - P4: the hands filter, the volume popover and audition;
 - P5: cross-tab compare-and-swap and the BroadcastChannel banner;
 - P7: the flag rollout;
 - P8: T70 sequencer basics and the full T62 keyboard grid.
+
 Solo work replaces every 'behind a flag' with a short-lived branch. Team work uses the P0 flags module.
 
 Where each theme lands:
+
 - Criticals: T01 P1a/P3; T02 P1a; T06 P1b; T07 P1b; T08 P1b/P3; T09 P1b/P4; T10 P1b/P4; T11 P1a; T65 P1b/P5/P8.
 - Highs: T03 P3; T04 P2/P4; T05 P2; T12 P1a; T13 P3; T14 P1a/P3; T15 P1a/P1b/P4; T17 P2/P5; T18 P1a; T19 P1b/P5; T20 P1b/P2; T21 P1b/P3/P6; T22 P1b; T23 P2; T24 P1b/P4; T25 P3; T26 P6; T27 P4; T28 P1b/P4; T29 P2; T31 P1a-P3; T33 P3/P6; T34 P6; T35 P3; T38 P2/P7; T47 P5; T49 P5; T50 P2; T51 P2/P5; T52 P2/P5; T58 P4; T61 P1b/P2/P4; T64 P2/P4/P7; T66 P1a/P8; T67 P1a/P8; T68 P8; T69 P2/P8; T70 P8 (rest deferred).
 - Mediums: T16 P4; T30 P3; T32 P3; T36 P6; T37 P3; T39 P2/P6; T40 P6; T41 P6; T42 P4/P7; T43 P2/P4; T44 P2; T45 P5; T46 P5; T48 P5; T53 P2; T54 P5; T55 P0/P5; T56 P2; T57 P1a/P5; T59 P4; T60 P1a/P4/P8; T62 P2/P8; T63 P3/P7.
@@ -1134,11 +1172,12 @@ Where each theme lands:
 - T30 persistent candidate history. The canon says a Candidate Solution is a proposal, not project truth. 'Keep' (save as a Saved Layout Variant) is the durable path, and the list stays unpersisted with a capped 'Earlier runs' group.
 - Cloud or multi-device sync. The app stays local-first in IndexedDB.
 - Solver-family redesign or new optimization methods. Excluded by the CLAUDE.md priority order. Engine changes are limited to:
-- lock seeding and carry-through, and strict identity resolution;
-- the diversity baseline and translation dedupe;
-- abort flags and the annealing time budget (restarts and schedule kept);
-- trace attachment, eventIndex semantics and costToggles pass-through.
-Greedy, Beam and Annealing all stay.
+  - lock seeding and carry-through, and strict identity resolution;
+  - the diversity baseline and translation dedupe;
+  - abort flags and the annealing time budget (restarts and schedule kept);
+  - trace attachment, eventIndex semantics and costToggles pass-through.
+
+  Greedy, Beam and Annealing all stay.
 - Touch, mobile and responsive breakpoints. Out of scope under the desktop-only invariant; all sizing uses measurement.
 
 ## Open questions for the product owner
@@ -1146,16 +1185,19 @@ Greedy, Beam and Annealing all stay.
 - Q1 (needed before P1a). Does the Working/Test Layout persist across sessions? The CLAUDE.md default is 'session-scoped unless saved or promoted', but the app persists it today, and dropping it on reload would create a new way to lose work. The plan assumes it stays persisted. Four pieces depend on that: P1a's truthful save and Recovered drafts, P2's 'Draft, not promoted' Library badge, and P5's 'Draft restored · Keep editing / Discard' banner.
 - Q2 (needed before P1a). Do finger preferences survive Discard (T12)? Option one: they are Sound-level truth in voiceConstraints (invariant 6), so Discard keeps them and its toast says so. Option two: they belong to the draft, so Discard reverts them. The P1a reducer tests encode option one unless the owner decides otherwise.
 - Q3 (needed before P2). Canon section 10 says imported MIDI pitch 'is stripped from the sound', while CLAUDE.md invariant 5 keeps originalMidiNote as metadata. May default Sound names or labels ever use pitch? The default proposal:
-- Default names use the track or file name plus a short sequence letter, never a note name.
-- originalMidiNote stays stored as provenance and appears only in the import review and a Sound's details tooltip.
-- An opt-in 'Name from GM drum map' action renames Sounds on request, as one undo step.
-This blocks the P2 T17 defaults slice and the P5 review sheet.
-- Q4 (needed before P3). Invariant 7 says 'The user must manually place each sound'. From P1a on, Generate never applies anything, so the only open case is 'Place remaining N' on a partly placed grid. May it place the remaining Sounds directly, as one undo step with an Undo toast? Or must it produce a candidate that the user inspects and applies with 'Use as my draft'? The plan defaults to the candidate route, which is proposal-only. This blocks P3's T37.
+  - Default names use the track or file name plus a short sequence letter, never a note name.
+  - originalMidiNote stays stored as provenance and appears only in the import review and a Sound's details tooltip.
+  - An opt-in 'Name from GM drum map' action renames Sounds on request, as one undo step.
+
+  This blocks the P2 T17 defaults slice and the P5 review sheet.
+- Q4 (needed before P3). Invariant 7 says 'Auto-layout on empty grids is forbidden. The user must manually place each sound.' From P1a on, Generate never applies anything. Two cases remain open. (1) May 'Suggest a starting layout' keep placing every Sound on an empty grid in one click, as one undo step, or must it produce a proposal the user inspects and applies with 'Use as my draft'? (2) May 'Place remaining N' place the remaining Sounds directly, or must it produce a candidate? Also confirm that auto-inspecting candidate A read-only after an empty-grid Generate is acceptable, since nothing is written to the draft. The plan defaults to the proposal route for 'Place remaining N' and keeps one-click Suggest as an explicit action until the owner decides. This blocks P3's T37.
 - Q5 (needed before P3). Confirm the single headline and evaluator (T21). The proposal is 'Playability 0-100, higher = easier', computed by canonicalEvaluator, with Hard and Unplayable moment counts and each factor's share of the burden. It replaces Score %, difficulty words as the headline, and the per-card optimizer cost, while Beam keeps PerformabilityObjective for ranking. P3's per-hash cache scores every layout with this evaluator, and P6 only presents it, so deciding late would force a cache rebuild and leave the 'two yardsticks' problem live through P3-P5.
 - Q6 (needed before P5). What is the Pattern Composer's model (T68)?
-- Option (a): a quantised editor of the whole project timeline, where every Sound is a lane with its imported notes. No separate pattern storage is needed.
-- Option (b): named pattern sections inserted into the one timeline at a chosen bar. P5's musical-time schema reserves a pattern slot in beats.
-The plan defaults to (b). This decides P5's schema and P8's placement records and header UX. Either way, the Composer tab stays in the bottom drawer and uses the project tempo.
+  - Option (a): a quantised editor of the whole project timeline, where every Sound is a lane with its imported notes. No separate pattern storage is needed.
+  - Option (b): named pattern sections inserted into the one timeline at a chosen bar. P5's musical-time schema reserves a pattern slot in beats.
+
+  The plan defaults to (b). This decides P5's schema and P8's placement records and header UX. Either way, the Composer tab stays in the bottom drawer and uses the project tempo.
+- Q7 (needed before P2). The canon term is 'Performance Event', and the UI already has an Events tab. May the UI also use 'moment' for the same object (everything struck at one instant), or should labels stay 'Event 12 · 3.2.3' with 'moment' used only in explanatory text? The plan defaults to 'Event' in labels and 'notes' for single hits; adopting 'moment' would need a PUSHFLOW_TERMINOLOGY.md update.
 
 ## How the plan was chosen
 
@@ -1170,9 +1212,9 @@ Base: **impact-per-effort**. Grafted from the others:
 - From trust-first: the stronger principles (undo records user intent, never computed state; missing data reads 'Unknown'; one source per truth), stated as rules that apply in every phase.
 - From trust-first: every phase is gated by the C1-C9 repro scripts inverted into Playwright regressions at 1366x768 and 1600x1000, plus TEST MIDI 1 (0 unplayable, all methods), the Solver Change Checklist and a Learn More sync check.
 - From trust-first: the Composer stop-gap (both drawer tabs mounted, pending saves flushed, playhead removed from save deps) and truthful 'Saved' move into P1, because both are silent data loss.
-- From trust-first dependency argument: the P1 preset slice refuses the drop first. A drop is accepted only when every slot already resolves to a project Sound id, and nothing overwrites occupied pads. Cross-project placement waits for the P8 mapping step, so no drop can create a voice that orphan pruning would later delete.
-- From trust-first: the cost-family toggles stay in Generate > Advanced and become honest (they mark the analysis stale and re-run it, and the SubjectChip reads 'Custom weighting') instead of moving to the debug page.
-- From trust-first: the MIDI-pitch fallback removal (T18) moves from P5 to P4, so it lands with the eventIndex change under one Solver Change Checklist run and one 'scores changed' note. P5's musical-time schema also reserves a Composer pattern slot in beats, so P8 only moves data and doesn't need a second time-model migration.
+- From trust-first dependency argument: the P1 preset slice refuses the drop first. A drop is accepted only when every slot already resolves to a project Sound id, and nothing overwrites occupied pads. Cross-project placement waits for the P5 mapping step, so no drop can create a voice that orphan pruning would later delete.
+- From trust-first: the cost-family toggles become honest (they mark the analysis stale and re-run it, and the SubjectChip reads 'Custom weighting'), placed on the Analyze side in the Analysis header rather than on the debug page.
+- From trust-first: the MIDI-pitch fallback removal (T18) moves to P1a, so it lands with lock seeding under one Solver Change Checklist run and one 'scores changed' note. P5's musical-time schema also reserves a Composer pattern slot in beats, so P8 only moves data and doesn't need a second time-model migration.
 - From journey-first: each phase names the canonical workflow-spine steps it serves.
 - From journey-first: the wireframe elements (Layouts rows with delta chips, Compare as a portaled A | B | Change dialog, a Source files section, outlined and dimmed timeline rows for unplaced and excluded Sounds).
 - From journey-first: the transport and audio engine are lifted into a workspace-level service in P4, together with the look-ahead scheduler, so P8 only wires Composer Play to it.

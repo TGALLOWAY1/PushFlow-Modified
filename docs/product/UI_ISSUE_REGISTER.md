@@ -6,29 +6,31 @@
 
 ## Critical problems: independent reproduction
 
+Each critical problem was reproduced from scratch by a separate agent with its own browser script (kept in `scripts/ui-critique-repros/`). The reproducers rated two of the nine critical and seven high; the severity used elsewhere is the consolidated theme severity.
+
 | # | Problem | Reproduced | Reproducer's severity | Root cause |
 |---|---------|------------|------------------------|------------|
-| C1 | Pad context menu renders off-cursor / off-screen ([T06](#t06)) | yes | critical | Position and clipping: - src/ui/components/InteractiveGrid.tsx:918-925 renders PadContextMenu inline, with no portal. It is inside src/ui/components/workspace/PerformanceWorkspace.tsx:644, a div with `transform: scale(gridScale)`, and :642, `.glass-panel-bl… |
-| C2 | Generate / Preview overwrite the Working/Test Layout ([T01](#t01)) | yes | critical | src/ui/state/projectState.ts:1239-1276. APPLY_GENERATION_TO_LAYOUT replaces workingLayout with a clone of the candidate. It does not check whether a Working draft already exists and differs, and it does not snapshot the draft first. It is fired from: - src/… |
-| C3 | Beam & Annealing ignore and delete placement locks ([T11](#t11)) | yes | high | src/ui/hooks/useAutoAnalysis.ts:327 |
-| C4 | Undo unreliable (analysis fills the history) ([T02](#t02)) | yes | high | src/ui/state/projectState.ts:393-416 (the EPHEMERAL_ACTIONS set) is the primary cause. It leaves out SET_ANALYSIS_RESULT (reducer at :1152-1153), SET_CANDIDATES and APPLY_GENERATION_TO_LAYOUT, and it includes SUGGEST_STARTING_LAYOUT (:411), so Suggest never… |
-| C5 | Onion skin has no visible effect ([T09](#t09)) | yes | high | src/ui/components/InteractiveGrid.tsx:666 is the main cause; lines 537, 635, 642, 698, 637 and 661-665 contribute. - :537 makes every non-selected pad greyed (`isGreyedOut = hasEventSelected && !isSelected`). That includes previ… |
-| C6 | Selecting an event shows a false "Feasible" ([T07](#t07)) | yes | high | src/ui/components/panels/CostBreakdownBars.tsx:37-45. FeasibilityBadge works out its level as `verdict?.level ?? (unplayableCount && unplayableCount > 0 ? 'infeasible' : 'feasible')`. When there is no verdict and no count, that … |
-| C7 | Compare shows Active as empty / zero-scored ([T08](#t08)) | yes | high | src/ui/components/panels/CompareModal.tsx:25-39 (buildActiveCandidate falls back to a zero stub, with score 0, fingerAssignments [], overallScore 0 and tradeoffs 0, whenever getAnalysisForLayout(state, activeLayout) is null) |
-| C8 | Selected event freezes the grid during playback ([T10](#t10)) | yes | high | src/ui/components/InteractiveGrid.tsx:537 |
-| C9 | Preset drop does nothing ([T65](#t65)) | yes | high | src/ui/components/InteractiveGrid.tsx:463. Two defects are involved. **Primary: the drop never fires.** - InteractiveGrid.tsx:463, in handleDragOver, sets `e.dataTransfer.dropEffect = 'move'` for every drag. - PresetCard.tsx:62 … |
+| C1 | Pad context menu renders off-cursor / off-screen ([T06](#t06)) | yes | critical | PadContextMenu renders inline inside the CSS-scaled, backdrop-filtered grid wrapper with no portal (InteractiveGrid.tsx:918-925, PerformanceWorkspace.tsx:641-644), so its fixed position is offset, scaled and clipped. Full detail: [T06](#t06). |
+| C2 | Generate / Preview overwrite the Working/Test Layout ([T01](#t01)) | yes | critical | APPLY_GENERATION_TO_LAYOUT replaces workingLayout with a clone of the candidate without checking for an existing draft (projectState.ts:1239-1276), and Generate dispatches it after every run (useAutoAnalysis.ts). Full detail: [T01](#t01). |
+| C3 | Beam & Annealing ignore and delete placement locks ([T11](#t11)) | yes | high | Beam and Annealing runs never receive the placement locks (useAutoAnalysis.ts:327), and Beam seeds from a fixed template rather than the current grid. Full detail: [T11](#t11). |
+| C4 | Undo unreliable (analysis fills the history) ([T02](#t02)) | yes | high | EPHEMERAL_ACTIONS (projectState.ts:393-416) omits SET_ANALYSIS_RESULT, SET_CANDIDATES and APPLY_GENERATION_TO_LAYOUT, so analysis results become undo steps, while SUGGEST_STARTING_LAYOUT is marked ephemeral and never recorded. Full detail: [T02](#t02). |
+| C5 | Onion skin has no visible effect ([T09](#t09)) | yes | high | Inline opacity and saturate(0) on every non-selected pad (InteractiveGrid.tsx:537, 642, 666) override the onion-skin classes, and the previous-event ghost renders only on empty pads (:698). Full detail: [T09](#t09). |
+| C6 | Selecting an event shows a false "Feasible" ([T07](#t07)) | yes | high | FeasibilityBadge falls back to 'feasible' when it is given no verdict (CostBreakdownBars.tsx:37-45), and the selected-event view passes none. Full detail: [T07](#t07). |
+| C7 | Compare shows Active as empty / zero-scored ([T08](#t08)) | yes | high | buildActiveCandidate falls back to a zero stub whenever the Active Layout has no fresh plan (CompareModal.tsx:25-39). Full detail: [T08](#t08). |
+| C8 | Selected event freezes the grid during playback ([T10](#t10)) | yes | high | The selected-event greying (InteractiveGrid.tsx:537) stays applied during playback, so it overrides the playback pad flash. Full detail: [T10](#t10). |
+| C9 | Preset drop does nothing ([T65](#t65)) | yes | high | handleDragOver sets dropEffect 'move' while preset cards allow only 'copy', so drop never fires (InteractiveGrid.tsx:463, PresetCard.tsx:62); the drop handler is also stale (InteractiveGrid.tsx:412-459). Full detail: [T65](#t65). |
 
 ## Themes
 
 | ID | Severity | Kind | Effort | Flows | Title |
 |----|----------|------|--------|-------|-------|
-| [T01](#t01) | critical | state-safety | M | F2, F3, F4, F5, F10, X2 | No read-only 'inspected layout': Preview, card clicks, Generate and Load Draft overwrite the Working/Test Layout, and the Active Layout can't be viewed |
-| [T02](#t02) | critical | state-safety | S | F2, F3, F6, F8, F10, X2 | Undo is unreliable: analysis, candidate and sync actions fill the history, while Suggest is never recorded |
+| [T01](#t01) | critical | state-safety | M | F2, F3, F4, F5, F6, F10, X2 | No read-only 'inspected layout': Preview, card clicks, Generate and Load Draft overwrite the Working/Test Layout, and the Active Layout can't be viewed |
+| [T02](#t02) | critical | state-safety | S | F1, F2, F3, F6, F8, F9, F10, X2 | Undo is unreliable: analysis, candidate and sync actions fill the history, while Suggest is never recorded |
 | [T03](#t03) | high | confusing | M | F2, F4, F5, F10, X1, X2 | No persistent layout-state bar: the screen never reliably says whether it shows Active, Working/Test or a Candidate |
 | [T04](#t04) | high | visual-layout | M | F1, F2, F4, F7, X1 | The pad grid is clipped and starved of space at every viewport |
 | [T05](#t05) | high | visual-layout | S | F7, X1 | The timeline transport toolbar pushes LOOP, CLICK, SOUND and '✕ REGION' off-screen |
 | [T06](#t06) | critical | bug | S | F2, F5, X2 | The pad context menu and other overlays render inside transformed containers, and modals lack dialog behaviour |
-| [T07](#t07) | critical | bug | S | F4, F5, X2 | Selecting an event turns the feasibility verdict into a false 'Feasible · All events playable' |
+| [T07](#t07) | critical | bug | S | F2, F4, F5, X2 | Selecting an event turns the feasibility verdict into a false 'Feasible · All events playable' |
 | [T08](#t08) | critical | bug | M | F3, F5, F10 | Compare shows wrong or dead-end content: a zeroed-out Active Layout, self-compare, and a fallback screen that can't be closed |
 | [T09](#t09) | critical | bug | M | F4, F7 | The moment view on the grid is broken: onion skin has no effect, next strikes are invisible, struck pads lose their identity, and nothing looks ahead during playback |
 | [T10](#t10) | critical | bug | M | F4, F7 | Event selection and the transport are disconnected: a selection freezes the grid during playback, the playhead ignores the selection, and a paused grid is blank |
@@ -96,7 +98,7 @@
 <a id="t01"></a>
 ### T01 — No read-only 'inspected layout': Preview, card clicks, Generate and Load Draft overwrite the Working/Test Layout, and the Active Layout can't be viewed
 
-**Severity:** critical · **Kind:** state-safety · **Effort:** M · **Flows:** F2, F3, F4, F5, F10, X2 · **Depends on:** —
+**Severity:** critical · **Kind:** state-safety · **Effort:** M · **Flows:** F2, F3, F4, F5, F6, F10, X2 · **Depends on:** —
 
 **Problem.** Every Generate applies candidate #1 as the Working/Test Layout. 'Preview', any click on a card body, and 'Load Draft' on a variant also replace the draft with a clone. A hand-built draft that was never promoted or saved is lost without warning, and because of T02 it can't be recovered. The reverse is also true: while a draft exists there is no way to look at the Active Layout. Clicking the green Active card only clears the candidate selection and lights its ring, while the grid keeps showing the draft, now re-scored by a hidden beam analysis. So the performer can't answer 'what did I change?' or 'is this candidate better than my draft?' without destroying one of the two.
 
@@ -111,7 +113,7 @@
 <a id="t02"></a>
 ### T02 — Undo is unreliable: analysis, candidate and sync actions fill the history, while Suggest is never recorded
 
-**Severity:** critical · **Kind:** state-safety · **Effort:** S · **Flows:** F2, F3, F6, F8, F10, X2 · **Depends on:** —
+**Severity:** critical · **Kind:** state-safety · **Effort:** S · **Flows:** F1, F2, F3, F6, F8, F9, F10, X2 · **Depends on:** —
 
 **Problem.** Auto-analysis results, candidate lists and lane-to-stream syncs are all recorded as undo steps. After an edit, Generate, Discard or Promote, the first one or more Undo presses change nothing visible, re-trigger analysis and clear Redo. A project that has just been opened already shows Undo enabled, and pressing it wipes the analysis. Renaming, recolouring or muting a sound takes 2-3 presses to revert. 'Suggest a starting layout', which rewrites the whole grid, is never recorded at all. The one safety net that could make the draft-loss and Discard problems recoverable doesn't work.
 
@@ -186,7 +188,7 @@
 <a id="t07"></a>
 ### T07 — Selecting an event turns the feasibility verdict into a false 'Feasible · All events playable'
 
-**Severity:** critical · **Kind:** bug · **Effort:** S · **Flows:** F4, F5, X2 · **Depends on:** —
+**Severity:** critical · **Kind:** bug · **Effort:** S · **Flows:** F2, F4, F5, X2 · **Depends on:** —
 
 **Problem.** Whenever an event is selected (Events list, timeline pill, pad click, arrow key), both analysis panels pass diagnostics and counts as undefined. The badge then defaults to a green 'Feasible · All events playable', directly under 'SCORE 0% · UNPLAY 22'. Even an event whose own hand reads 'Unplayable' with cost Infinity shows green. At the same time the ergonomics block switches to a 3-factor fallback without Alternation, and 'Main burden' and Difficulty disappear. A performer stepping through the song gets a false all-clear on exactly the moments they are checking.
 
@@ -252,7 +254,7 @@
 
 **Root cause.** useAutoAnalysis.ts:327-337 always passes createDefaultPose0(), so multiCandidateGenerator.ts:260-279, 356-378 takes the pose0-offset branch. seedFromPose.ts:77-87, 123-141 returns placementLocks: {} and never reads existing placements. multiCandidateGenerator.ts:434-445 runs the annealing solve without manualAssignments (the beam branch passes them at 456). In manual editing, projectState.ts:766-772, 803-818, 820-844 move the lock with a swap and delete it on replace or remove. Lock rendering: InteractiveGrid.tsx:738-745, VoicePalette.tsx:580.
 
-**Recommendation.** Seed Beam and Annealing candidates from the displayed layout, or at minimum pre-place locked sounds. Carry placementLocks through seeding, compaction and mutation, and post-validate every candidate (each locked sound on its pad), dropping failures with a stated reason. Pass manualAssignments or soft preferences into annealingSolver.solve, and show 'N finger preferences kept / relaxed' on each card. In manual editing, a locked pad refuses drags and drops with the tooltip 'Locked. Unlock to move'. If that is not wanted, relabel the lock honestly as 'Pinned for Generate' and ask before evicting. Draw a clear lock glyph outside the name area. Add a regression test with a lock for all three methods.
+**Recommendation.** Seed Beam and Annealing candidates from the displayed layout, or at minimum pre-place locked sounds. Carry placementLocks through seeding, compaction and mutation, and post-validate every candidate (each locked sound on its pad), dropping failures with a stated reason. Pass manualAssignments or soft preferences into annealingSolver.solve, and show 'N finger preferences kept / relaxed' on each card. In manual editing, a locked pad refuses drags and drops with the tooltip 'Locked. Unlock to move'. Locks stay hard for manual edits (canon §11) unless the product owner explicitly chooses a Generate-only pin. Draw a clear lock glyph outside the name area. Add a regression test with a lock for all three methods.
 
 **Invariants / canon.** Explicit placement locks are the hard rule; hand/finger preferences stay soft. The Solver Change Checklist applies: trace shape, seed=0 determinism, restart behaviour, isProcessing reset, and 0 unplayable events on TEST MIDI 1 for beam, annealing and greedy (testMidi1Integration.test.ts).
 
@@ -342,7 +344,7 @@
 
 **Root cause.** useLaneImport.ts:17-20, 60-62, 79-92: GROUP_COLORS is indexed by state.laneGroups.length, which is always 0; names are `${displayName} ${i+1}`; colorMode is 'inherited'. midiImport.ts:62-66, 89-112, 165-172 already builds distinct VOICE_COLORS and note-name voices, which go unused, and never reads track.name. InteractiveGrid.tsx:629, 713-716 truncates at text-[11px]. VoicePalette.tsx:568-574 renames only on double-click, and the tooltip is just the name.
 
-**Recommendation.** Give each new Sound a distinct colour from a 12-16 hue colour-blind-safe palette, continuing from the colours already in the project (colorMode 'custom'); keep the group colour as an optional tint. Default names: the MIDI track name when a track has one pitch; otherwise '<track or file> · <note name>' ('Groove · C1'); the file name for single-pitch files. On pads, show an optional 4-6 character short label, or trim the prefix all sounds share and truncate in the middle; allow two lines. Add a pencil on hover and F2/Enter to rename; Enter or Tab moves to the next Sound's name.
+**Recommendation.** Give each new Sound a distinct colour from a 12-16 hue colour-blind-safe palette, continuing from the colours already in the project (colorMode 'custom'); keep the group colour as an optional tint. Default names follow decision Q3: the MIDI track name when a track has one pitch, otherwise the track or file name plus a short sequence letter ('Groove A'); the file name for single-pitch files. Note names appear only as provenance or through an opt-in 'Name from GM drum map' action. On pads, show an optional 4-6 character short label, or trim the prefix all sounds share and truncate in the middle; allow two lines. Add a pencil on hover and F2/Enter to rename; Enter or Tab moves to the next Sound's name.
 
 **Invariants / canon.** Invariant 5: pitch and note names are provenance metadata and never drive placement; bottomLeftNote stays 36. Keep the current behaviour where a rename or recolour reaches every surface.
 
@@ -447,7 +449,7 @@
 
 **Root cause.** greedyOptimizer.ts:954, 990 set eventIndex = moment.momentIndex; beamSolver.ts:627-628 set eventIndex = group.eventIndices[i]. EventsPanel.tsx:100 groups with MOMENT_EPSILON 0.025 (performanceEvent.ts:25), while InteractiveGrid.tsx:186-188 and selectionModel.ts:46-58 match exact startTime. Labels differ in ActiveLayoutSummary.tsx:41-51, 241-243 and PerformanceCostsPanel.tsx:161-163. UnifiedTimeline.tsx:362-380, 960 give placeholder pills a per-stream eventIndex.
 
-**Recommendation.** Make both solvers give eventIndex the same meaning, and add an explicit momentIndex. Store the selection as selectedMomentIndex (or as a stable eventKey re-resolved when the plan changes), built from one MOMENT_EPSILON grouping (MomentAssignment[] / buildMomentTransitionModel). Grid, timeline, list, keyboard, chart and inspector all read that. Placeholder pills get no eventIndex and show 'Muted — not analysed'. Label moments the same way everywhere ('Moment 3 · bar 1.1.3').
+**Recommendation.** Make both solvers give eventIndex the same meaning, and add an explicit momentIndex. Store the selection as selectedMomentIndex (or as a stable eventKey re-resolved when the plan changes), built from one MOMENT_EPSILON grouping (MomentAssignment[] / buildMomentTransitionModel). Grid, timeline, list, keyboard, chart and inspector all read that. Placeholder pills for excluded streams show 'Excluded — not analysed' and resolve clicks by moment time, so the whole moment is still selected; muted streams are analysed normally (T15). Label moments the same way everywhere ('Event 3 · bar 1.1.3'; see decision Q7).
 
 **Invariants / canon.** UI rule: clicking a timeline note highlights every note of that moment. Unplayable and unassigned events stay visible (invariant 4). If eventIndex semantics change, the Solver Change Checklist applies (UI consumers, trace).
 
@@ -537,7 +539,7 @@
 
 **Root cause.** CandidatePreviewCard.tsx:233-265 has no save action. SAVE_AS_VARIANT with source 'candidate' is supported (projectState.ts:1045-1056) but has no UI caller. SET_CANDIDATES replaces the list (projectState.ts:1155-1162). Candidates are deliberately not persisted (projectSerializer.ts:79-80, 168-185).
 
-**Recommendation.** Add 'Keep' (save as variant, named after the candidate) to every card and to each side of Compare. Add each run as a collapsible group ('Run 2 · Structural · 1 min ago'), capped, with 'Clear older runs'; or add a pin that survives regeneration. Caption the list 'Suggestions are temporary · Keep the ones you like', and warn on leaving when unkept candidates exist.
+**Recommendation.** Add 'Keep' (save as variant, named after the candidate) to every card and to each side of Compare. Add each run as a collapsible group ('Run 2 · Structural · 1 min ago'), capped, with 'Clear older runs'; or add a pin that survives regeneration. Caption the list 'Candidates are temporary · Save the ones you like as variants', and warn on leaving when unkept candidates exist.
 
 **Invariants / canon.** A Candidate Solution is a proposal, not hidden project truth: keep candidates unpersisted and route 'keep' through Saved Layout Variant. Don't reduce multi-candidate generation to a single result.
 
@@ -762,7 +764,7 @@
 
 **Root cause.** VoicePalette.tsx:1-7, 40-77, 93-101, 148-166, 235-303, 345 (the parent lacks the 'group' class), 400-406, 478-638. SET_SOUND_COLOR leaves colorMode 'inherited' (projectState.ts:652-692), so group colours overwrite it (lanesReducer.ts:252-255, 321-326). UnifiedTimeline.tsx:77, 733-744, 1026-1031. src/ui/components/lanes/ (LaneSidebar, LaneRow, LaneGroupHeader) is never imported.
 
-**Recommendation.** Add a header with search, a segmented filter with counts ('7 sounds · 3 on grid · 4 to place · 0 locked') and a progress bar. Split rows into 'To place' and 'On grid', independent of groups. Each row shows its hit count, a pad locator or 'Not on grid' pill, a lock toggle, and an overflow menu: Rename, Colour, Group, Short label, Exclude from analysis, Unplace, Delete (with undo). Salvage the search, filter and drag-to-group logic from lanes/, then delete the folder. Make SET_SOUND_COLOR set colorMode 'custom', and apply a group colour only to members without a custom colour. Add a selection action bar (Group · Colour · Unplace), fix the hover class, share one ordering with the timeline, and make lane headers select their sound. Keep S/M in one place only.
+**Recommendation.** Add a header with search, a segmented filter with counts ('7 sounds · 3 on grid · 4 to place · 0 locked') and a progress bar. Keep group sections with 'Ungrouped' for the rest; show placement status only as filter chips (All / To place / On grid / Locked) and a per-row 'To place' pill or pad locator, never as a section label. Each row shows its hit count, a pad locator or 'Not on grid' pill, a lock toggle, and an overflow menu: Rename, Colour, Group, Short label, Exclude from analysis, Unplace, Delete (with undo). Salvage the search, filter and drag-to-group logic from lanes/, then delete the folder. Make SET_SOUND_COLOR set colorMode 'custom', and apply a group colour only to members without a custom colour. Add a selection action bar (Group · Colour · Unplace), fix the hover class, share one ordering with the timeline, and make lane headers select their sound. Keep S/M in one place only.
 
 **Invariants / canon.** CLAUDE.md sound grouping rules: ungrouped sounds are labelled 'Ungrouped', not 'On Grid', and Cmd/Ctrl+G toggles group/ungroup. The canon requires the Sounds-tab filter. Invariant 7: 'Place remaining' stays an explicit action.
 
@@ -1017,7 +1019,7 @@
 
 **Root cause.** InteractiveGrid.tsx:3-9 (the header comment), 492-500 (an empty-pad click only deselects), 625-682. VoicePalette.tsx:82-84 dispatches SELECT_STREAM on a row click. The probe found 64 pads and 0 focusable.
 
-**Recommendation.** With a sound selected, clicking an empty pad places it, with an optional 'Next unplaced' auto-advance; clicking a placed pad and then an empty one moves it. Make the grid role=grid with a roving tabindex: arrows move, Enter places the selected sound, Space picks up and drops to swap, Delete clears. Give pads aria-labels like 'Row 4, column 4, Kick, locked, left index', and make Sound rows focusable options.
+**Recommendation.** With a sound selected, clicking an empty pad places it, with an optional 'Next unplaced' auto-advance; clicking a placed pad and then an empty one moves it. Make the grid role=grid with a roving tabindex: arrows move, Enter places the selected sound or picks up/drops a pad to swap, Delete clears; Space stays play/stop (T61). Give pads aria-labels like 'Row 4, column 4, Kick, locked, left index', and make Sound rows focusable options.
 
 **Invariants / canon.** Invariant 7: placement happens only on explicit user action, and click-to-place is explicit. Desktop-only: no touch handling needed.
 
@@ -1137,7 +1139,7 @@
 
 **Root cause.** WorkspacePatternStudio.tsx:402 offers only ['1/8','1/4','1/2','1/1']. loopEditor.ts:95-101 caps stepsPerBar at 8. loopEditorReducer.ts:36-55 holds the unused actions.
 
-**Recommendation.** Make 1/16 the default and add 1/32 and triplets. Add velocity editing (drag vertically or Alt-click to cycle), duplicate bar, copy/paste of a selection, and lane reorder and colour. Offer an explicit 'Insert rudiment…' built on the existing rudiment generators.
+**Recommendation.** Make 1/16 the default and add 1/32 and triplets. Add velocity editing (drag vertically or Alt-click to cycle), duplicate bar, copy/paste of a selection, and lane reorder and colour. Offer an explicit 'Insert rudiment…' built on the existing rudiment generators. Rudiment insertion must add notes only and discard the generator's padAssignments and fingerAssignments; nothing is placed on the grid (invariant 7).
 
 **Invariants / canon.** The Composer uses the project tempo and has no BPM of its own (invariant 8). A lane's MIDI note is export metadata only (invariant 5).
 
