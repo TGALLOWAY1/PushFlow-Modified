@@ -151,7 +151,16 @@ function applyPlacementLocks(
     const voice = voices.get(voiceId);
     if (voice) {
       layout.padToVoice[pk] = voice;
+      // Sound features are keyed by `voiceId ?? String(noteNumber)`, so a lock
+      // recorded under one of those keys was invisible to a seed generator
+      // iterating the other. The locked sound was then placed a SECOND time on
+      // a different pad, leaving one sound occupying two pads and breaking the
+      // one hard placement guarantee the product makes. Register both keys.
       placedVoiceIds.add(voiceId);
+      if (voice.originalMidiNote != null) {
+        placedVoiceIds.add(String(voice.originalMidiNote));
+      }
+      if (voice.id) placedVoiceIds.add(voice.id);
     }
   }
   return placedVoiceIds;

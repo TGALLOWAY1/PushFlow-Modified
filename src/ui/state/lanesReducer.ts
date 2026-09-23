@@ -7,6 +7,7 @@
 
 import { type PerformanceLane, type LaneGroup, type SourceFile, type LaneColorMode } from '../../types/performanceLane';
 import { type ProjectState } from './projectState';
+import { type Layout } from '../../types/layout';
 import { buildSoundStreamsFromLanes } from './lanesToStreams';
 import { buildLegacySourceFile, buildPerformanceLanesFromStreams } from './streamsToLanes';
 
@@ -76,12 +77,63 @@ const LANE_ACTION_TYPES = new Set<string>([
  */
 function withSyncedStreams(next: ProjectState): ProjectState {
   if (next.performanceLanes.length === 0) {
-    return { ...next, soundStreams: [], analysisStale: true };
+    return withoutOrphanedVoices({ ...next, soundStreams: [], analysisStale: true });
   }
-  return {
+  return withoutOrphanedVoices({
     ...next,
     soundStreams: buildSoundStreamsFromLanes(next.performanceLanes),
     analysisStale: true,
+  });
+}
+
+/**
+ * Removes layout references to Sounds that no longer exist.
+ *
+ * Deleting a sound (or removing an imported source file) used to leave its voice
+ * on the grid forever: the pad kept rendering an assignment for something no
+ * longer in the Sounds panel, the pad stayed locked so the optimizer would not
+ * reuse that grid position, and a finger constraint for a dead sound kept being
+ * fed to the solver — all of it persisted.
+ */
+function withoutOrphanedVoices(next: ProjectState): ProjectState {
+  const liveIds = new Set(next.soundStreams.map(s => s.id));
+
+  const prune = (layout: Layout): Layout => {
+    const padToVoice: Layout['padToVoice'] = {};
+    let changed = false;
+    for (const [padKey, voice] of Object.entries(layout.padToVoice)) {
+      if (voice?.id && !liveIds.has(voice.id)) { changed = true; continue; }
+      padToVoice[padKey] = voice;
+    }
+
+    const placementLocks: Record<string, string> = {};
+    for (const [voiceId, padKey] of Object.entries(layout.placementLocks ?? {})) {
+      if (!liveIds.has(voiceId)) { changed = true; continue; }
+      placementLocks[voiceId] = padKey;
+    }
+
+    const fingerConstraints: Record<string, string> = {};
+    for (const [padKey, constraint] of Object.entries(layout.fingerConstraints ?? {})) {
+      if (!padToVoice[padKey]) { changed = true; continue; }
+      fingerConstraints[padKey] = constraint;
+    }
+
+    return changed ? { ...layout, padToVoice, placementLocks, fingerConstraints } : layout;
+  };
+
+  const voiceConstraints: ProjectState['voiceConstraints'] = {};
+  let constraintsChanged = false;
+  for (const [voiceId, constraint] of Object.entries(next.voiceConstraints ?? {})) {
+    if (!liveIds.has(voiceId)) { constraintsChanged = true; continue; }
+    voiceConstraints[voiceId] = constraint;
+  }
+
+  return {
+    ...next,
+    activeLayout: prune(next.activeLayout),
+    workingLayout: next.workingLayout ? prune(next.workingLayout) : next.workingLayout,
+    savedVariants: next.savedVariants.map(prune),
+    voiceConstraints: constraintsChanged ? voiceConstraints : next.voiceConstraints,
   };
 }
 

@@ -43,7 +43,8 @@ class BeamOptimizerAdapter implements OptimizerMethod {
       instrumentConfig: input.instrumentConfig,
       layout: input.layout,
       sourceLayoutRole: input.layout.role,
-      mappingResolverMode: 'allow-fallback',
+      // Strict: pitch must never stand in for a placement the user has not made.
+      mappingResolverMode: 'strict',
     };
 
     const solver = createBeamSolver(solverConfig);

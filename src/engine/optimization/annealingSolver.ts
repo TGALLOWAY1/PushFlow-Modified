@@ -27,9 +27,26 @@ import {
 } from '../../types/engineConfig';
 import { type SolverStrategy, type SolverType } from '../solvers/types';
 import { createBeamSolver } from '../solvers/beamSolver';
+import { countRelaxedStrikes } from '../evaluation/constraintRelaxation';
+
 import { applyRandomMutation, applyZoneTransferMutation } from './mutationService';
 import { computeMappingCoverage } from '../mapping/mappingCoverage';
 import { createSeededRng } from '../../utils/seededRng';
+
+/**
+ * Cost added per strike whose plan breaks a structural rule (hand separation or
+ * one finger per sound).
+ *
+ * The annealer minimises the plan's average per-event cost, which is a few
+ * units for any playable layout. A relaxed strike adds far more than any
+ * ergonomic difference between layouts, so whenever two layouts are compared
+ * — above all when choosing the best one found — a layout whose plan keeps the
+ * rules wins. Early in a run, at high temperature, moves into rule-breaking
+ * layouts are still accepted freely (that is how annealing explores); it is
+ * the choice of the final layout that is rules-first. Each iteration's trace
+ * snapshot records the relaxed strikes behind its cost.
+ */
+const RELAXED_STRIKE_PENALTY = 100;
 
 // ============================================================================
 // AnnealingSolver Implementation
@@ -86,7 +103,7 @@ export class AnnealingSolver implements SolverStrategy {
     performance: Performance,
     config: EngineConfiguration,
     beamWidth: number
-  ): Promise<{ result: ExecutionPlanResult; cost: number; invalidReason?: string }> {
+  ): Promise<{ result: ExecutionPlanResult; cost: number; relaxedStrikes?: number; invalidReason?: string }> {
     // Enforce full coverage: unmapped candidates are invalid
     const coverage = computeMappingCoverage(performance, layout);
     if (coverage.unmappedNotes.length > 0) {
@@ -99,7 +116,7 @@ export class AnnealingSolver implements SolverStrategy {
         fatigueMap: {},
         averageDrift: 0,
         averageMetrics: {
-          fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0,
+          fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0,
           handBalance: 0, constraintPenalty: 0, total: Number.POSITIVE_INFINITY,
         },
         metadata: {
@@ -135,10 +152,12 @@ export class AnnealingSolver implements SolverStrategy {
     };
 
     const result = await beamSolver.solve(performance, evaluationConfig);
+    const relaxedStrikes = countRelaxedStrikes(result);
 
     return {
       result,
-      cost: result.averageMetrics.total,
+      cost: result.averageMetrics.total + RELAXED_STRIKE_PENALTY * relaxedStrikes,
+      relaxedStrikes,
     };
   }
 
@@ -196,6 +215,8 @@ export class AnnealingSolver implements SolverStrategy {
     );
     let currentCost = initialEvaluation.cost;
     const initialCost = currentCost;
+    // The same costs without the rule penalty, for telemetry a person reads.
+    const initialErgonomicCost = initialEvaluation.result.averageMetrics.total;
 
     // Fail early if initial layout is invalid
     if (
@@ -211,6 +232,7 @@ export class AnnealingSolver implements SolverStrategy {
     // Track the global best layout across all restarts
     let globalBestLayout = this.deepCopyLayout(currentLayout);
     let globalBestCost = currentCost;
+    let globalBestErgonomicCost = initialErgonomicCost;
 
     const rng = createSeededRng(this.seed);
     const annealingTrace: AnnealingIterationSnapshot[] = [];
@@ -281,6 +303,7 @@ export class AnnealingSolver implements SolverStrategy {
           if (candidateCost < globalBestCost) {
             globalBestLayout = this.deepCopyLayout(candidateLayout);
             globalBestCost = candidateCost;
+            globalBestErgonomicCost = candidateEvaluation.result.averageMetrics.total;
             improvementCount++;
           }
         } else if (!candidateInvalid) {
@@ -320,6 +343,7 @@ export class AnnealingSolver implements SolverStrategy {
           handShapeDeviationSum: shapeDevSum,
           handBalanceSum,
           constraintPenaltySum,
+          relaxedStrikes: candidateEvaluation.relaxedStrikes ?? 0,
           restartIndex: restart,
         });
 
@@ -385,7 +409,12 @@ export class AnnealingSolver implements SolverStrategy {
       acceptanceRate: totalDecisions > 0 ? totalAccepted / totalDecisions : 0,
       improvementCount,
       improvementRate: iterationsCompleted > 0 ? improvementCount / iterationsCompleted : 0,
-      finalCostImprovement: initialCost > 0 ? (initialCost - globalBestCost) / initialCost : 0,
+      // Reported on the ergonomic cost, without the rule penalty: a ratio mixing
+      // the two described neither.
+      finalCostImprovement: initialErgonomicCost > 0 && Number.isFinite(initialErgonomicCost)
+        ? (initialErgonomicCost - globalBestErgonomicCost) / initialErgonomicCost
+        : 0,
+      initialErgonomicCost,
       costAtMilestones,
     };
 

@@ -93,12 +93,14 @@ class AnnealingOptimizerAdapter implements OptimizerMethod {
     });
 
     const wallClockMs = Date.now() - startTime;
-    // Back-compute initial cost from the improvement ratio; an improvement at
-    // or above 1 (final cost reached 0) would divide by zero or flip sign.
+    // Prefer the initial cost the solver recorded. Back-computing it from the
+    // improvement ratio is only a fallback; an improvement at or above 1 (final
+    // cost reached 0) would divide by zero or flip sign.
     const improvementRatio = executionPlan.metadata?.solverTelemetry?.finalCostImprovement || 0;
-    const initialCost = improvementRatio > 0 && improvementRatio < 1
-      ? executionPlan.averageMetrics.total / (1 - improvementRatio)
-      : executionPlan.averageMetrics.total;
+    const initialCost = executionPlan.metadata?.solverTelemetry?.initialErgonomicCost
+      ?? (improvementRatio > 0 && improvementRatio < 1
+        ? executionPlan.averageMetrics.total / (1 - improvementRatio)
+        : executionPlan.averageMetrics.total);
 
     const telemetry: OptimizerTelemetry = {
       wallClockMs,

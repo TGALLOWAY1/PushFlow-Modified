@@ -41,8 +41,9 @@ export interface NaturalHandPose {
 }
 
 /**
- * HandZone: Preferred region for a hand on the grid.
- * Soft constraint - violations are penalized, not forbidden.
+ * HandZone: The region of the grid a hand plays.
+ * Hand separation is a hard rule: the solver keeps each hand in its zone
+ * whenever any plan can, and flags every strike where it cannot.
  */
 export interface HandZone {
   hand: 'left' | 'right';

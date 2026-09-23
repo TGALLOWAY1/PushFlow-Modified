@@ -26,7 +26,11 @@ import { type PerformanceCostBreakdown } from '../../types/costBreakdown';
 import { type OptimizerMethodKey, type OptimizerMove, type OptimizationIteration } from '../../engine/optimization/optimizerInterface';
 import { type GreedyLayoutStrategy } from '../../engine/optimization/greedyCandidatePipeline';
 import { checkPlanFreshness } from '../../engine/evaluation/executionPlanValidation';
+import { hashLayout } from '../../engine/mapping/mappingResolver';
+import { padKey } from '../../types/padGrid';
+import { createDefaultPose0, getPose0PadsWithOffset } from '../../engine/prior/naturalHandPose';
 import { formatFingerConstraint, parseFingerConstraint } from '../../utils/fingerConstraints';
+import { type RehearsalAudioOptions, DEFAULT_REHEARSAL_AUDIO } from '../audio/rehearsalAudio';
 
 // ============================================================================
 // Sound Stream Model
@@ -68,6 +72,9 @@ export interface SoundStream {
 
 /** Persistence format version for migration support. */
 export const PROJECT_STATE_VERSION = 2;
+
+/** Tempo a new project starts at, before any MIDI is imported. */
+export const DEFAULT_PROJECT_TEMPO = 120;
 
 export interface ProjectState {
   /** Persistence format version. */
@@ -156,6 +163,23 @@ export interface ProjectState {
   // Transport
   currentTime: number;
   isPlaying: boolean;
+  /**
+   * Playback rate for rehearsal, 1 = written tempo.
+   *
+   * Practising a hard passage means slowing it down until it is clean and then
+   * working back up, so the transport needs to run at a fraction of tempo
+   * without the analysis or the layout changing.
+   */
+  playbackRate: number;
+  /** Loop the section between loopStart and loopEnd during playback. */
+  loopEnabled: boolean;
+  /** Loop region bounds in seconds; null means the whole performance. */
+  loopStart: number | null;
+  loopEnd: number | null;
+  /** Bars of metronome count-in before the performance starts. */
+  countInBars: number;
+  /** Rehearsal audio settings (click track and audible hits). */
+  rehearsalAudio: RehearsalAudioOptions;
 }
 
 // ============================================================================
@@ -229,12 +253,46 @@ export function getSelectedCandidate(state: ProjectState): CandidateSolution | n
   return getCandidateById(state, state.selectedCandidateId);
 }
 
+/**
+ * Re-points a Candidate Solution's analysis at a layout it still describes.
+ *
+ * Promotion clones the chosen layout under a new id, which left the candidate's
+ * Execution Plan bound to the old one. `getAnalysisForLayout` then rejected it and
+ * the cost panel, grid finger overlay and timeline pills went blank — permanently,
+ * because promotion also declared the analysis fresh so nothing re-ran it.
+ *
+ * The pad map is unchanged by promotion, so the plan is still valid; only its
+ * binding needs to follow the layout.
+ */
+function rebindAnalysisToLayout(
+  candidate: CandidateSolution,
+  layout: Layout,
+): CandidateSolution {
+  return {
+    ...candidate,
+    layout,
+    executionPlan: {
+      ...candidate.executionPlan,
+      layoutBinding: {
+        layoutId: layout.id,
+        layoutHash: hashLayout(layout),
+        layoutRole: layout.role ?? 'active',
+      },
+    },
+  };
+}
+
 export function getAnalysisForLayout(
   state: ProjectState,
   layout: Layout | null,
 ): CandidateSolution | null {
   if (!layout || !state.analysisResult) return null;
-  if (state.analysisResult.layout.id === layout.id) return state.analysisResult;
+  // Always check freshness. Short-circuiting on a matching layout id defeated the
+  // check in exactly the case that matters: a manual pad edit keeps the same
+  // working-layout id, so the Score, Hard/Unplay counts, cost bars, grid finger
+  // overlay and timeline pills kept showing the numbers from BEFORE the edit for
+  // the full debounce plus solve time — and indefinitely whenever a re-analysis
+  // did not follow. The hash comparison is cheap.
   return checkPlanFreshness(state.analysisResult.executionPlan, layout).isFresh
     ? state.analysisResult
     : null;
@@ -297,6 +355,7 @@ export type ProjectAction =
   | { type: 'SELECT_CANDIDATE'; payload: string | null }
   | { type: 'MARK_ANALYSIS_STALE' }
   | { type: 'APPLY_GENERATION_TO_LAYOUT'; payload: { candidateId: string } }
+  | { type: 'SUGGEST_STARTING_LAYOUT' }
 
   // Instrument config
   | { type: 'SET_INSTRUMENT_CONFIG'; payload: Partial<InstrumentConfig> }
@@ -321,6 +380,11 @@ export type ProjectAction =
   | { type: 'TICK_TIME'; payload: number }
   | { type: 'SET_IS_PLAYING'; payload: boolean }
   | { type: 'TOGGLE_PLAYING' }
+  | { type: 'SET_PLAYBACK_RATE'; payload: number }
+  | { type: 'SET_LOOP_ENABLED'; payload: boolean }
+  | { type: 'SET_LOOP_REGION'; payload: { start: number | null; end: number | null } }
+  | { type: 'SET_COUNT_IN_BARS'; payload: number }
+  | { type: 'SET_REHEARSAL_AUDIO'; payload: Partial<RehearsalAudioOptions> }
 
   // Performance Lanes (delegated to lanesReducer)
   | LaneAction;
@@ -339,6 +403,12 @@ const EPHEMERAL_ACTIONS = new Set<ProjectAction['type']>([
   'TICK_TIME',
   'SET_IS_PLAYING',
   'TOGGLE_PLAYING',
+  'SET_PLAYBACK_RATE',
+  'SET_LOOP_ENABLED',
+  'SET_LOOP_REGION',
+  'SET_COUNT_IN_BARS',
+  'SET_REHEARSAL_AUDIO',
+  'SUGGEST_STARTING_LAYOUT',
   'SET_MANUAL_COST_RESULT',
   'SET_MOVE_HISTORY',
   'SET_MOVE_HISTORY_INDEX',
@@ -459,6 +529,12 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         analysisStale: true,
         currentTime: 0,
         isPlaying: false,
+        playbackRate: 1,
+        loopEnabled: false,
+        loopStart: null,
+        loopEnd: null,
+        countInBars: 0,
+        rehearsalAudio: { ...DEFAULT_REHEARSAL_AUDIO },
       };
 
     case 'RESET':
@@ -846,10 +922,21 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return ensureWorkingLayout(state);
     }
 
-    case 'DISCARD_WORKING_LAYOUT':
+    case 'DISCARD_WORKING_LAYOUT': {
+      // Discard drops the exploratory pad moves, but NOT the placement locks made
+      // during the session. A lock is the one hard, user-facing placement
+      // guarantee the product offers — it is an explicit decision, not an
+      // exploratory edit — and letting Discard take it meant the next Generate
+      // freely relocated a sound the user had pinned, with nothing to tell them
+      // the guarantee had lapsed.
+      const preservedLocks = state.workingLayout
+        ? { ...state.activeLayout.placementLocks, ...state.workingLayout.placementLocks }
+        : state.activeLayout.placementLocks;
+
       return {
         ...state,
         workingLayout: null,
+        activeLayout: { ...state.activeLayout, placementLocks: preservedLocks },
         updatedAt: new Date().toISOString(),
         analysisStale: true,
         selectedEventIndex: null,
@@ -858,6 +945,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         selectedCandidateId: null,
         compareCandidateId: null,
       };
+    }
 
     case 'PROMOTE_WORKING_LAYOUT': {
       if (!state.workingLayout) return state;
@@ -932,7 +1020,9 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         workingLayout: null,
         savedVariants: autoSavedVariants,
         updatedAt: now,
-        analysisResult: candidate, // Preserve finger assignments for the promoted layout
+        // Re-bind the candidate's plan to the promoted layout so the finger
+        // assignments, costs and timeline pills keep rendering after promotion.
+        analysisResult: rebindAnalysisToLayout(candidate, promoted),
         analysisStale: false,
         candidates: remainingCandidates,
         selectedCandidateId: null,
@@ -1077,6 +1167,75 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'MARK_ANALYSIS_STALE':
       return { ...state, analysisStale: true };
 
+    case 'SUGGEST_STARTING_LAYOUT': {
+      // An explicit, user-initiated starting point.
+      //
+      // The product forbids placing sounds automatically, and rightly so — the
+      // layout is the user's decision. But it left a new user facing an empty 8x8
+      // grid with no indication of where anything should go, and nothing to
+      // analyse or optimise from until they had placed every sound by hand. This
+      // runs only when the user asks for it, produces a Working/Test Layout (so it
+      // is exploratory and discardable), and never disturbs a pad the user has
+      // already placed or locked.
+      const streams = getActiveStreams(state);
+      if (streams.length === 0) return state;
+
+      const base = getDisplayedLayout(state) ?? state.activeLayout;
+      const working = cloneLayout(base, generateId(), `${base.name} (suggested)`, 'working');
+
+      const takenPads = new Set(Object.keys(working.padToVoice));
+      const placedVoiceIds = new Set(
+        Object.values(working.padToVoice).map(v => v.id).filter(Boolean),
+      );
+
+      // Most-used sounds first, so the busiest sound gets the strongest finger.
+      const byUsage = [...streams].sort((a, b) => b.events.length - a.events.length);
+
+      // The shipped Natural Hand Pose, in its own order. These ten pads are a real
+      // relaxed two-hand shape, and taking them contiguously keeps the suggestion
+      // compact. Reordering them to alternate hands looks tidier but measurably
+      // hurts: on the reference performance it spread the right hand across the
+      // grid and turned a layout with no hard moments into one with thirteen.
+      //
+      // This is only a starting point — Generate is what optimises it — but it
+      // should be a starting point the user would not immediately want to undo.
+      const posePads = getPose0PadsWithOffset(createDefaultPose0(), 0, true)
+        .map(p => padKey(p.row, p.col));
+      const fallbackPads: string[] = [];
+      for (let row = 2; row < 8; row++) {
+        for (let col = 0; col < 8; col++) fallbackPads.push(padKey(row, col));
+      }
+      const candidatePads = [...posePads, ...fallbackPads];
+
+      let cursor = 0;
+      for (const stream of byUsage) {
+        if (placedVoiceIds.has(stream.id)) continue;
+        while (cursor < candidatePads.length && takenPads.has(candidatePads[cursor])) cursor++;
+        if (cursor >= candidatePads.length) break;
+        const pad = candidatePads[cursor];
+        takenPads.add(pad);
+        working.padToVoice[pad] = {
+          id: stream.id,
+          name: stream.name,
+          sourceType: 'midi_track' as const,
+          sourceFile: '',
+          originalMidiNote: stream.originalMidiNote,
+          color: stream.color,
+        };
+      }
+
+      working.fingerConstraints = buildLayoutFingerConstraints(
+        working.padToVoice, state.voiceConstraints,
+      );
+
+      return {
+        ...state,
+        workingLayout: working,
+        analysisStale: true,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
     case 'APPLY_GENERATION_TO_LAYOUT': {
       const candidate = state.candidates.find(c => c.id === action.payload.candidateId);
       if (!candidate) return state;
@@ -1091,30 +1250,27 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         'working',
       );
 
-      // Extract solver finger assignments and write them into voiceConstraints.
-      // Use the first assignment per voice (stable pad-level ownership).
-      const newConstraints = { ...state.voiceConstraints };
-      const ep = candidate.executionPlan;
-      if (ep?.fingerAssignments) {
-        const seen = new Set<string>();
-        for (const fa of ep.fingerAssignments) {
-          const vid = fa.voiceId;
-          if (!vid || seen.has(vid)) continue;
-          if (fa.assignedHand === 'Unplayable' || !fa.finger) continue;
-          seen.add(vid);
-          newConstraints[vid] = { hand: fa.assignedHand, finger: fa.finger };
-        }
-      }
-
-      // Derive the working layout's per-pad fingerConstraints from the updated
-      // voiceConstraints (single source of truth). Full rebuild — not a merge — so
-      // constraints for voices no longer preferred don't linger as stale entries.
-      working.fingerConstraints = buildLayoutFingerConstraints(working.padToVoice, newConstraints);
+      // The solver's fingering is NOT a user preference and must not be written
+      // into voiceConstraints. Doing so meant one click of Generate stamped a
+      // hand+finger onto every sound, persisted it, and rendered it in the Sounds
+      // panel as though the user had chosen it — after which the user could no
+      // longer tell their own preferences from the optimizer's guesses, and every
+      // later Generate was boxed in by the previous one's output.
+      //
+      // Solver fingerings already live where they belong, on the candidate's
+      // ExecutionPlan, and the Sounds panel renders them as dimmed suggestions
+      // when no user constraint is set.
+      working.fingerConstraints = buildLayoutFingerConstraints(
+        working.padToVoice, state.voiceConstraints,
+      );
 
       return {
         ...state,
         workingLayout: working,
-        voiceConstraints: newConstraints,
+        // The pad map changed, so any existing analysis describes a different
+        // layout. Marking it stale re-runs analysis instead of showing figures
+        // the freshness check itself would reject.
+        analysisStale: true,
         updatedAt: now,
       };
     }
@@ -1148,6 +1304,32 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
     case 'TOGGLE_PLAYING':
       return { ...state, isPlaying: !state.isPlaying };
+
+    case 'SET_PLAYBACK_RATE':
+      // Clamped so the transport can never stall or run away.
+      return { ...state, playbackRate: Math.min(2, Math.max(0.1, action.payload)) };
+
+    case 'SET_LOOP_ENABLED':
+      return { ...state, loopEnabled: action.payload };
+
+    case 'SET_LOOP_REGION': {
+      const { start, end } = action.payload;
+      if (start === null || end === null) {
+        return { ...state, loopStart: null, loopEnd: null };
+      }
+      // Normalise so dragging a region right-to-left still works.
+      return {
+        ...state,
+        loopStart: Math.min(start, end),
+        loopEnd: Math.max(start, end),
+      };
+    }
+
+    case 'SET_COUNT_IN_BARS':
+      return { ...state, countInBars: Math.min(4, Math.max(0, Math.round(action.payload))) };
+
+    case 'SET_REHEARSAL_AUDIO':
+      return { ...state, rehearsalAudio: { ...state.rehearsalAudio, ...action.payload } };
 
     // Optimizer configuration — persisted user preferences, so bump updatedAt
     // to schedule an autosave (otherwise the choice silently reverts on reload).
@@ -1192,7 +1374,7 @@ export function createEmptyProjectState(): ProjectState {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     soundStreams: [],
-    tempo: 120,
+    tempo: DEFAULT_PROJECT_TEMPO,
     instrumentConfig: {
       id: 'default',
       name: 'Push 3',
@@ -1238,5 +1420,11 @@ export function createEmptyProjectState(): ProjectState {
     moveHistoryIndex: null,
     currentTime: 0,
     isPlaying: false,
+    playbackRate: 1,
+    loopEnabled: false,
+    loopStart: null,
+    loopEnd: null,
+    countInBars: 0,
+    rehearsalAudio: { ...DEFAULT_REHEARSAL_AUDIO },
   };
 }

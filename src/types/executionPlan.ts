@@ -99,6 +99,62 @@ export type DifficultyLevel = 'Easy' | 'Medium' | 'Hard' | 'Unplayable';
  *
  * Formerly EngineDebugEvent in Version1.
  */
+/**
+ * A structural fingering rule the solver treats as HARD, relaxing it only when
+ * no plan that honours it can be found.
+ *
+ * - `hand-zone`: the hands stay on their own sides of the grid — the left hand
+ *   plays columns 0–4 and the right hand columns 3–7 (columns 3–4 are shared).
+ * - `finger-ownership`: every Sound is played by one finger for the whole
+ *   performance, so the pad→finger mapping is something a player can memorise.
+ */
+export type ConstraintRelaxationKind = 'hand-zone' | 'finger-ownership';
+
+/** How one Sound was affected when the structural rules had to be relaxed. */
+export interface SoundRelaxation {
+  /** Sound identity: the voice id, or the MIDI note when the event has none. */
+  soundId: string;
+  noteNumber: number;
+  /** Strikes of this Sound played by a hand outside its zone. */
+  handZoneStrikes: number;
+  /** Strikes of this Sound played by a finger other than the one that owns it. */
+  fingerOwnershipStrikes: number;
+  /** Every hand+finger that played this Sound, most-used first, e.g. ["R2", "R3"]. */
+  fingersUsed: string[];
+  /**
+   * The finger this Sound belongs to ("L2"-style) — the one the rule keeps it
+   * on, and the one to memorise. Strikes on any other finger are the breaks.
+   */
+  ownerFinger?: string;
+  /** True when that finger is the user's own choice for this Sound. */
+  ownerIsUserChoice?: boolean;
+}
+
+/**
+ * Whether an Execution Plan honours the two structural rules, and if not, where
+ * it had to give way.
+ *
+ * The rules are hard by default. They are relaxed only when the search finds no
+ * plan that keeps them — and then as few strikes as possible are relaxed. This
+ * summary is what lets the user see that it happened, rather than discovering a
+ * sound that moved hands or changed fingers by reading the timeline pill by pill.
+ */
+export interface ConstraintRelaxationSummary {
+  /**
+   * 'strict'  — every strike keeps both rules.
+   * 'relaxed' — no plan keeping both rules was found, so some strikes break one.
+   */
+  mode: 'strict' | 'relaxed';
+  /** Strikes played by a hand outside its zone. */
+  handZoneStrikes: number;
+  /** Strikes played by a finger other than the Sound's owning finger. */
+  fingerOwnershipStrikes: number;
+  /** Moments containing at least one relaxed strike. */
+  relaxedMomentCount: number;
+  /** Per-Sound breakdown, most-affected first. Empty in strict mode. */
+  sounds: SoundRelaxation[];
+}
+
 export interface FingerAssignment {
   noteNumber: number;
   /** Stable voice identity (from PerformanceEvent.voiceId). */
@@ -115,6 +171,19 @@ export interface FingerAssignment {
   eventIndex?: number;
   padId?: string;
   eventKey?: string;
+  /**
+   * True when the plan's fingering differs from the preference the user set for
+   * this Sound — i.e. the solver did not honour it.
+   *
+   * A UI-side annotation, so the divergence can be shown rather than hidden by
+   * rendering the preference in place of what was actually scored.
+   */
+  constraintDiverges?: boolean;
+  /**
+   * Structural rules this strike had to break because the solver found no plan
+   * that keeps them. Absent when the strike obeys both.
+   */
+  relaxedConstraints?: ConstraintRelaxationKind[];
 }
 
 /**
@@ -147,6 +216,12 @@ export interface AnnealingIterationSnapshot {
   handShapeDeviationSum: number;
   handBalanceSum: number;
   constraintPenaltySum: number;
+  /**
+   * Strikes in the candidate's plan that break a structural rule. Each adds a
+   * fixed penalty to the candidate cost, so a jump in cost with unchanged factor
+   * sums is explained here.
+   */
+  relaxedStrikes?: number;
   /** Which restart this snapshot belongs to (0 = initial run). */
   restartIndex?: number;
 }
@@ -177,8 +252,13 @@ export interface SolverTelemetry {
   improvementCount: number;
   /** improvementCount / iterationsCompleted. */
   improvementRate: number;
-  /** (initialCost - finalCost) / initialCost. */
+  /**
+   * (initial − final) / initial, on the plan's average ergonomic cost — without
+   * the structural-rule penalty the annealer adds while searching.
+   */
   finalCostImprovement: number;
+  /** The initial layout's average ergonomic cost (no rule penalty). */
+  initialErgonomicCost?: number;
   /** Cost at iteration milestones. */
   costAtMilestones: {
     pct25: number;
@@ -232,10 +312,25 @@ export interface ExecutionPlanResult {
    */
   momentAssignments?: MomentAssignment[];
 
+  /**
+   * Whether the plan keeps hand-zone separation and one finger per Sound —
+   * both hard rules that are relaxed only when no plan can keep them.
+   */
+  constraintRelaxation?: ConstraintRelaxationSummary;
+
   /** Count of moments classified as Unplayable. */
   unplayableMomentCount?: number;
   /** Count of moments classified as Hard. */
   hardMomentCount?: number;
+  /**
+   * Count of events classified as Medium — playable, but requiring attention.
+   *
+   * Reported so the difficulty summary can stop showing a green "no hard or
+   * unplayable events" all-clear for a layout the engine considers mediocre.
+   * On a spread-out layout two thirds of the notes can be Medium while the
+   * summary reads clean.
+   */
+  mediumCount?: number;
 
   /** Per-finger usage counts. */
   fingerUsageStats: FingerUsageStats;

@@ -100,8 +100,33 @@ describe('buildPerformanceMoments', () => {
     expect(moments[2].momentIndex).toBe(2);
   });
 
-  it('MOMENT_EPSILON is 0.001', () => {
-    expect(MOMENT_EPSILON).toBe(0.001);
+  it('groups a humanized chord as one moment', () => {
+    // MOMENT_EPSILON is a performance window, not a floating-point tolerance. At
+    // 1 ms any played-in or groove-quantized chord shattered into separate
+    // moments, and the engine then charged a hand for "moving" between pads it
+    // was striking together — the same chord scored 1.86 quantized and 3936 with
+    // its notes 2 ms apart, where it was also called partly unplayable.
+    const moments = buildPerformanceMoments([
+      { noteNumber: 36, startTime: 1.000, duration: 0.1, velocity: 100, eventKey: 'a' },
+      { noteNumber: 38, startTime: 1.004, duration: 0.1, velocity: 100, eventKey: 'b' },
+      { noteNumber: 42, startTime: 1.011, duration: 0.1, velocity: 100, eventKey: 'c' },
+    ]);
+    expect(moments).toHaveLength(1);
+    expect(moments[0].notes).toHaveLength(3);
+  });
+
+  it('still separates hits a player intends as distinct', () => {
+    // A 32nd note at 240 BPM is 31 ms, so the window must stay below that.
+    const moments = buildPerformanceMoments([
+      { noteNumber: 36, startTime: 1.0, duration: 0.05, velocity: 100, eventKey: 'a' },
+      { noteNumber: 38, startTime: 1.031, duration: 0.05, velocity: 100, eventKey: 'b' },
+    ]);
+    expect(moments).toHaveLength(2);
+  });
+
+  it('MOMENT_EPSILON is a musical window, not a float tolerance', () => {
+    expect(MOMENT_EPSILON).toBeGreaterThanOrEqual(0.02);
+    expect(MOMENT_EPSILON).toBeLessThan(0.031);
   });
 });
 

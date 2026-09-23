@@ -27,6 +27,8 @@ import {
 import { registerOptimizer } from './optimizerRegistry';
 import { evaluatePerformance } from '../evaluation/canonicalEvaluator';
 import { computePlanScore } from '../evaluation/planScore';
+import { summarizeConstraintRelaxation } from '../evaluation/constraintRelaxation';
+import { isZoneValid } from '../surface/handZone';
 import { buildPerformanceMoments } from '../structure/momentBuilder';
 import { type Layout } from '../../types/layout';
 import {
@@ -50,6 +52,7 @@ import {
   type DiagnosticsPayload,
   computeTopContributors,
 } from '../../types/diagnostics';
+import { parseFingerConstraint } from '../../utils/fingerConstraints';
 import {
   buildCooccurrenceMatrix,
   buildSoundFrequency,
@@ -182,6 +185,10 @@ class GreedyOptimizer implements OptimizerMethod {
     const iterationTrace: OptimizationIteration[] = [];
     let movesEvaluated = 0;
 
+    // The user's per-Sound finger preferences, resolved from the layout they set
+    // them on. Keyed by voice so they survive the optimizer relocating a sound.
+    const voicePreferences = resolveVoicePreferences(input.layout);
+
     // Analyze phrase structure once for rhythm-aware placement and hill climbing
     const phraseStructure = analyzePhraseStructure(
       input.performance.events, input.performance.tempo,
@@ -215,7 +222,10 @@ class GreedyOptimizer implements OptimizerMethod {
     await yieldControl();
 
     // ── Phase B: Initial Finger Assignment ─────────────────────
-    let assignment = buildFingerAssignmentFromLayout(layout);
+    // Moments are supplied so pads that sound together are guaranteed distinct
+    // fingers — one finger cannot strike two pads at the same instant — and the
+    // user's own per-Sound preferences are honoured rather than overwritten.
+    let assignment = buildFingerAssignmentFromLayout(layout, moments, voicePreferences);
 
     // Initial evaluation
     let currentCost = this.evaluateLayout(
@@ -245,8 +255,15 @@ class GreedyOptimizer implements OptimizerMethod {
     let currentPeerCost = computeRhythmPeerCost(layout, rhythmPeers);
 
     for (let iter = 0; iter < maxIterations; iter++) {
+      // Hand separation is a hard rule: a move may not add a strike outside its
+      // hand's zone unless it fixes a moment that is unplayable or needs an
+      // impossible grip. Cost alone must never buy a crossing, however much
+      // cheaper it would be.
+      const currentZoneStrikes = countZoneStrikes(currentCost);
+      const currentInfeasible = countInfeasibleMoments(currentCost);
+
       // Enumerate all candidate moves
-      const candidateMoves = this.enumerateMoves(layout, assignment, input);
+      const candidateMoves = this.enumerateMoves(layout, assignment, input, voicePreferences);
       if (candidateMoves.length === 0) {
         stopReason = 'infeasible_neighborhood';
         break;
@@ -255,6 +272,8 @@ class GreedyOptimizer implements OptimizerMethod {
       // Evaluate each move
       const evaluatedMoves: EvaluatedMove[] = [];
       const moveMap: CandidateMove[] = [];
+      // Moves the hand-separation rule ruled out, kept for the trace.
+      const blockedMoves: CandidateMoveRecord[] = [];
       let movesChecked = 0;
 
       for (const move of candidateMoves) {
@@ -263,12 +282,31 @@ class GreedyOptimizer implements OptimizerMethod {
         movesEvaluated++;
 
         // Apply move tentatively
-        const { newLayout, newAssignment } = this.applyMove(layout, assignment, move);
+        const { newLayout, newAssignment } = this.applyMove(layout, assignment, move, moments, voicePreferences);
 
         // Evaluate
         const newCostResult = this.evaluateLayout(
           moments, newLayout, newAssignment, input.evaluationConfig, input.costToggles,
         );
+        if (
+          countZoneStrikes(newCostResult) > currentZoneStrikes &&
+          countInfeasibleMoments(newCostResult) >= currentInfeasible
+        ) {
+          blockedMoves.push({
+            moveType: move.type as CandidateMoveRecord['moveType'],
+            description: move.description,
+            fromPadKey: move.padKey ?? null,
+            toPadKey: move.targetPadKey ?? null,
+            secondaryPadKey: move.secondaryPadKey,
+            targetId: move.voiceId,
+            voiceName: move.voiceName,
+            deltaTotal: newCostResult.total - currentCost.total,
+            costBreakdown: newCostResult,
+            accepted: false,
+            reason: 'Blocked: would put a sound outside its hand\'s zone without making anything playable',
+          });
+          continue;
+        }
 
         // Include rhythm peer alignment cost in move comparison
         const newPeerCost = (move.type === 'pad_move' || move.type === 'pad_swap')
@@ -302,7 +340,11 @@ class GreedyOptimizer implements OptimizerMethod {
       const selected = updatePolicy.selectMove(evaluatedMoves, updateCtx);
 
       if (!selected) {
-        stopReason = 'no_improving_move';
+        // If the only moves left were ones the hand-separation rule forbids,
+        // say so: the optimizer stopped at a rule, not at a local minimum.
+        stopReason = evaluatedMoves.length === 0 && blockedMoves.length > 0
+          ? 'infeasible_neighborhood'
+          : 'no_improving_move';
         break;
       }
 
@@ -355,7 +397,7 @@ class GreedyOptimizer implements OptimizerMethod {
         netDelta: costDelta,
         stateBefore,
         stateAfter: { layout: bestMove.newLayout!, assignment: bestMove.newAssignment! },
-        candidateMoves: candidateMovesRecords,
+        candidateMoves: [...candidateMovesRecords, ...blockedMoves],
         chosenMove: candidateMovesRecords.find(m => m.accepted) ?? null,
         summary: moveRecord.description,
       });
@@ -661,6 +703,7 @@ class GreedyOptimizer implements OptimizerMethod {
     layout: Layout,
     assignment: PadFingerAssignment,
     input: OptimizerInput,
+    voicePreferences?: Record<string, { hand: HandSide; finger: FingerType }>,
   ): CandidateMove[] {
     const moves: CandidateMove[] = [];
     const rows = input.instrumentConfig.rows;
@@ -710,9 +753,13 @@ class GreedyOptimizer implements OptimizerMethod {
         });
       }
 
-      // Move type 3: Finger reassignment
+      // Move type 3: Finger reassignment.
+      // Skipped where the user set a preference for this Sound: the initial
+      // assignment honours it, and generating reassignment moves for it meant
+      // hill-climbing quietly optimised the preference away again.
       const currentAssignment = assignment[padKey];
-      if (currentAssignment) {
+      const hasUserPreference = voice.id ? voicePreferences?.[voice.id] !== undefined : false;
+      if (currentAssignment && !hasUserPreference) {
         // Try the other valid fingers for this pad's hand zone
         const availableFingers = getValidFingersForPad(pad.col);
         for (const { hand, finger } of availableFingers) {
@@ -742,6 +789,8 @@ class GreedyOptimizer implements OptimizerMethod {
     layout: Layout,
     assignment: PadFingerAssignment,
     move: CandidateMove,
+    moments?: PerformanceMoment[],
+    voicePreferences?: Record<string, { hand: HandSide; finger: FingerType }>,
   ): { newLayout: Layout; newAssignment: PadFingerAssignment } {
     const newLayout = deepCopyLayout(layout);
     let newAssignment = { ...assignment };
@@ -753,10 +802,19 @@ class GreedyOptimizer implements OptimizerMethod {
         delete newLayout.padToVoice[move.padKey];
         newLayout.padToVoice[move.targetPadKey] = voice;
 
-        // Update finger assignment
+        // Update finger assignment. Rebuilt across the whole layout because moving
+        // a pad can change which pads share a moment, and a per-pad patch would
+        // silently reintroduce a same-finger collision.
         delete newAssignment[move.padKey];
-        const target = parsePadKey(move.targetPadKey);
-        newAssignment[move.targetPadKey] = assignFingerForPad(target.row, target.col);
+        newAssignment = moments
+          ? buildFingerAssignmentFromLayout(newLayout, moments, voicePreferences)
+          : (() => {
+              const target = parsePadKey(move.targetPadKey);
+              return {
+                ...newAssignment,
+                [move.targetPadKey]: assignFingerForPad(target.row, target.col),
+              };
+            })();
         break;
       }
 
@@ -766,7 +824,13 @@ class GreedyOptimizer implements OptimizerMethod {
         const voiceB = newLayout.padToVoice[move.targetPadKey];
         newLayout.padToVoice[move.padKey] = voiceB;
         newLayout.padToVoice[move.targetPadKey] = voiceA;
-        // Assignment stays the same (fingers tied to pad position, not voice)
+        // Rebuild rather than leaving the fingers with the pads. A user's finger
+        // preference belongs to the SOUND, so leaving assignments pinned to pad
+        // position meant a swapped sound silently inherited the other pad's finger
+        // and the preference was lost. Rebuilding also re-checks simultaneity.
+        if (moments) {
+          newAssignment = buildFingerAssignmentFromLayout(newLayout, moments, voicePreferences);
+        }
         break;
       }
 
@@ -818,6 +882,7 @@ class GreedyOptimizer implements OptimizerMethod {
     const momentAssignments: MomentAssignment[] = [];
     let unplayableCount = 0;
     let hardCount = 0;
+    let mediumCount = 0;
 
     // Build pad resolution indices from layout (handles voiceId and noteNumber lookups)
     const voiceIdIndex = buildVoiceIdToPadIndex(layout.padToVoice);
@@ -836,8 +901,23 @@ class GreedyOptimizer implements OptimizerMethod {
       const transitionDimensions = transitionByMoment.get(moment.momentIndex);
       const momentDimensions = combineMomentDimensions(eventDimensions, transitionDimensions);
       const momentCostBreakdown = canonicalDimensionsToV1Breakdown(momentDimensions);
+      // The evaluator names the physical violations for this moment. Cost alone
+      // cannot express them: a moment demanding one finger on two pads at once is
+      // impossible no matter how cheap it scores, and reporting such candidates as
+      // "0 unplayable, all Easy" is what made generated layouts untrustworthy.
+      const momentViolations = diagnostics.eventCosts[moment.momentIndex]?.violations;
       const momentCost = momentCostBreakdown.total;
-      const momentDifficulty = getDifficulty(momentCost);
+      let momentDifficulty = getDifficulty(momentCost);
+      if (momentViolations) {
+        if (momentViolations.collisions > 0 || momentViolations.unmapped > 0) {
+          momentDifficulty = 'Unplayable';
+        } else if (
+          (momentViolations.gripViolations > 0 || momentViolations.zoneReaches > 0) &&
+          momentDifficulty !== 'Hard'
+        ) {
+          momentDifficulty = 'Hard';
+        }
+      }
       const noteAssignments: NoteAssignmentInfo[] = [];
 
       for (const note of moment.notes) {
@@ -850,7 +930,9 @@ class GreedyOptimizer implements OptimizerMethod {
             voiceIdIndex,
             noteIndex,
             resolveConfig,
-            'allow-fallback',
+            // Strict: an unplaced sound must read as unmapped, not be given a
+            // pad derived from its MIDI pitch.
+            'strict',
           );
           if (resolution.source !== 'unmapped') {
             padKeyStr = `${resolution.pad.row},${resolution.pad.col}`;
@@ -907,17 +989,25 @@ class GreedyOptimizer implements OptimizerMethod {
           padId: padKeyStr,
           eventIndex: moment.momentIndex,
           eventKey: note.noteKey,
+          // One finger per Sound always holds here (the assignment is per pad);
+          // hand separation is the rule that can give way, and is flagged.
+          ...(isZoneValid(pad, owner.hand) ? {} : { relaxedConstraints: ['hand-zone' as const] }),
         });
       }
 
       if (momentDifficulty === 'Unplayable') {
         unplayableMomentCount++;
+        // Notes with no pad at all were already counted above; these are notes that
+        // do have a finger but belong to a moment that cannot be executed.
+        unplayableCount += noteAssignments.length;
       } else if (momentDifficulty === 'Hard') {
         hardMomentCount++;
       }
 
       if (momentDifficulty === 'Hard') {
         hardCount += noteAssignments.length;
+      } else if (momentDifficulty === 'Medium') {
+        mediumCount += noteAssignments.length;
       }
 
       momentAssignments.push({
@@ -934,8 +1024,9 @@ class GreedyOptimizer implements OptimizerMethod {
 
     // diagnostics.total is a sum over the whole performance; normalize to an
     // average per moment so the ergonomic term is comparable to the beam solver's.
+    const momentDivisor = Math.max(1, momentAssignments.length);
     const avgErgonomicCost = momentAssignments.length > 0
-      ? diagnostics.total / momentAssignments.length
+      ? diagnostics.total / momentDivisor
       : 0;
     const score = computePlanScore({
       hardCount: hardMomentCount,
@@ -948,7 +1039,9 @@ class GreedyOptimizer implements OptimizerMethod {
       score,
       unplayableCount,
       hardCount,
+      mediumCount,
       fingerAssignments,
+      constraintRelaxation: summarizeConstraintRelaxation(fingerAssignments, new Map(Object.entries(assignment))),
       padFingerOwnership: assignment,
       momentAssignments,
       unplayableMomentCount,
@@ -956,13 +1049,22 @@ class GreedyOptimizer implements OptimizerMethod {
       fingerUsageStats,
       fatigueMap: {},
       averageDrift: driftCount > 0 ? totalDrift / driftCount : 0,
+      // `averageMetrics` is a PER-MOMENT average everywhere else in the product
+      // (the beam solver divides by event count before writing it). Writing raw
+      // whole-performance sums here put greedy candidates and the beam-analysed
+      // Active Layout on different scales, which pinned every greedy candidate's
+      // transition-efficiency tradeoff at 0 in Compare.
       averageMetrics: {
-        fingerPreference: diagnostics.dimensions.poseNaturalness,
+        fingerPreference: diagnostics.dimensions.poseNaturalness / momentDivisor,
         handShapeDeviation: 0,
-        transitionCost: diagnostics.dimensions.transitionCost + diagnostics.dimensions.alternation,
-        handBalance: diagnostics.dimensions.handBalance,
-        constraintPenalty: diagnostics.dimensions.constraintPenalty,
-        total: diagnostics.total,
+        // Alternation is its own canonical factor and must not be folded into
+        // movement. Doing so told the user a passage was hard because of hand
+        // travel when the real cause was finger repetition.
+        transitionCost: diagnostics.dimensions.transitionCost / momentDivisor,
+        alternation: diagnostics.dimensions.alternation / momentDivisor,
+        handBalance: diagnostics.dimensions.handBalance / momentDivisor,
+        constraintPenalty: diagnostics.dimensions.constraintPenalty / momentDivisor,
+        total: avgErgonomicCost,
       },
       layoutBinding: {
         layoutId: layout.id,
@@ -1014,6 +1116,28 @@ interface CandidateMove {
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/**
+ * Resolves the layout's per-pad finger constraints into per-Sound preferences.
+ *
+ * The constraints are stored against pads, but the optimizer's whole job is to
+ * move sounds between pads — so a pad-keyed preference stops describing the
+ * sound it was set on as soon as that sound is relocated. Re-keying by voice id
+ * keeps the preference attached to the thing the user actually chose it for.
+ */
+function resolveVoicePreferences(
+  layout: Layout,
+): Record<string, { hand: HandSide; finger: FingerType }> {
+  const prefs: Record<string, { hand: HandSide; finger: FingerType }> = {};
+  const constraints = layout.fingerConstraints ?? {};
+  for (const [padKeyStr, raw] of Object.entries(constraints)) {
+    const voiceId = layout.padToVoice[padKeyStr]?.id;
+    if (!voiceId) continue;
+    const parsed = parseFingerConstraint(raw);
+    if (parsed) prefs[voiceId] = parsed;
+  }
+  return prefs;
+}
 
 function deepCopyLayout(layout: Layout): Layout {
   return {
@@ -1070,11 +1194,33 @@ function combineMomentDimensions(
   };
 }
 
+/** Strikes played by a hand outside its zone (hand separation relaxed). */
+function countZoneStrikes(breakdown: PerformanceCostBreakdown): number {
+  let count = 0;
+  for (const event of breakdown.eventCosts) count += event.violations.zoneReaches;
+  return count;
+}
+
+/**
+ * Moments that cannot be played as assigned: a finger on two pads, a note with
+ * no pad, or a chord no valid grip can form. Crossing a hand into the other
+ * zone is the lesser break, allowed only to reduce these.
+ */
+function countInfeasibleMoments(breakdown: PerformanceCostBreakdown): number {
+  let count = 0;
+  for (const event of breakdown.eventCosts) {
+    const v = event.violations;
+    if (v.collisions > 0 || v.unmapped > 0 || v.gripViolations > 0) count++;
+  }
+  return count;
+}
+
 function canonicalDimensionsToV1Breakdown(dimensions: CostDimensions) {
   return {
     fingerPreference: dimensions.poseNaturalness,
     handShapeDeviation: 0,
-    transitionCost: dimensions.transitionCost + dimensions.alternation,
+    alternation: dimensions.alternation,
+    transitionCost: dimensions.transitionCost,
     handBalance: dimensions.handBalance,
     constraintPenalty: dimensions.constraintPenalty,
     total: dimensions.total,
@@ -1125,7 +1271,7 @@ function buildEmptyOutput(input: OptimizerInput, startTime: number): OptimizerOu
       fatigueMap: {},
       averageDrift: 0,
       averageMetrics: {
-        fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0,
+        fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0,
         handBalance: 0, constraintPenalty: 0, total: 0,
       },
       layoutBinding: {
@@ -1161,6 +1307,7 @@ function buildEmptyOutput(input: OptimizerInput, startTime: number): OptimizerOu
     },
     diagnostics: {
       total: 0,
+      costPerMoment: 0,
       dimensions: { poseNaturalness: 0, transitionCost: 0, constraintPenalty: 0, alternation: 0, handBalance: 0, total: 0 },
       eventCosts: [],
       transitionCosts: [],

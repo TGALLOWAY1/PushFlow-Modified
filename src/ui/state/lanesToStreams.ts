@@ -23,12 +23,14 @@ export function buildSoundStreamsFromLanes(
 ): SoundStream[] {
   const soloActive = lanes.some(l => l.isSolo);
 
-  const activeLanes = lanes.filter(l => {
-    if (soloActive) return l.isSolo && !l.isMuted;
-    return !l.isMuted && !l.isHidden;
-  });
-
-  return activeLanes.map(lane => {
+  // Every lane becomes a stream, muted or not. Filtering muted lanes out here
+  // DELETED them from the Sounds panel and the timeline on the next lane action,
+  // leaving no row to un-mute from — so muting a sound to audition the rest was
+  // effectively irreversible, and the sound's placement and constraints went with
+  // it. Muting is a state a stream carries, not a reason to stop existing; every
+  // consumer already reads the `muted` flag, and CLAUDE.md requires the timeline
+  // show all sound streams.
+  return lanes.map(lane => {
     const events: SoundEvent[] = lane.events.map(e => ({
       startTime: e.startTime,
       duration: e.duration,
@@ -42,7 +44,9 @@ export function buildSoundStreamsFromLanes(
       color: lane.color,
       originalMidiNote: lane.events[0]?.rawPitch ?? 0,
       events,
-      muted: false,
+      muted: soloActive
+        ? !(lane.isSolo && !lane.isMuted)
+        : (lane.isMuted || lane.isHidden),
     };
   });
 }

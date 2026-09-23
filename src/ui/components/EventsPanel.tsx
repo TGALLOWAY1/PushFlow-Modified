@@ -18,11 +18,12 @@ import { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { getActiveStreams, getDisplayedExecutionPlan, type SoundStream } from '../state/projectState';
 import { type V1CostBreakdown } from '../../types/diagnostics';
+import { MOMENT_EPSILON } from '../../types/performanceEvent';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 /** Maximum time gap (seconds) to consider events simultaneous. */
-const MOMENT_EPSILON = 0.001;
+// Re-declaring this drifted from the canonical value; import the single source.
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -200,7 +201,7 @@ export function EventsPanel({
       );
       if (matching.length === 0) continue;
       const avg: V1CostBreakdown = {
-        fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0,
+        fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0,
         handBalance: 0, constraintPenalty: 0, total: 0,
       };
       for (const a of matching) {

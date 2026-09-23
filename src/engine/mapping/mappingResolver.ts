@@ -164,11 +164,36 @@ export function resolveNoteToPad(
 // ============================================================================
 
 /**
- * Produces a stable hash of a Layout for debug identity.
- * Sorts pad keys for deterministic output.
+ * Produces a stable hash of a Layout, used to decide whether an existing
+ * analysis still describes the layout on screen.
+ *
+ * The hash covers everything an Execution Plan depends on: which Sound sits on
+ * which pad (by stable Sound identity, not by imported MIDI pitch), the per-pad
+ * finger constraints, and the placement locks.
+ *
+ * Hashing `originalMidiNote` instead of the voice id — the previous behaviour —
+ * was unsound in two ways. Sounds created in the Pattern Composer have no MIDI
+ * note, so every pad hashed to `null` and swapping two of them left the hash
+ * unchanged; and changing a finger constraint, which certainly invalidates the
+ * plan, never changed the hash at all. Either case showed the user a stale cost
+ * and fingering as if it were current.
  */
 export function hashLayout(layout: Layout): string {
+  // placementLocks maps VOICE id -> pad key, so it must be inverted before it can
+  // be tested by pad. Indexing it by pad key returned undefined for every pad, and
+  // lock state silently never contributed to layout identity — an analysis
+  // computed before a lock was applied was reported as fresh afterwards.
+  const lockedPads = new Set(Object.values(layout.placementLocks ?? {}));
   const keys = Object.keys(layout.padToVoice).sort();
-  const entries = keys.map((k) => [k, layout.padToVoice[k]?.originalMidiNote ?? null]);
+  const entries = keys.map((k) => {
+    const voice = layout.padToVoice[k];
+    return [
+      k,
+      voice?.id ?? null,
+      voice?.originalMidiNote ?? null,
+      layout.fingerConstraints?.[k] ?? null,
+      lockedPads.has(k) ? 1 : 0,
+    ];
+  });
   return JSON.stringify(entries);
 }

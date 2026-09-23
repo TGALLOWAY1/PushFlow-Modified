@@ -61,11 +61,17 @@ PushFlow uses a three-tier layout lifecycle:
 - **Staleness indicator** — Warns when analysis is outdated relative to current layout
 - **Distinct Analyze/Generate phases** — Visual distinction between auto-analysis and manual generation
 
-### Performance Timeline
+### Performance Timeline & Rehearsal
 - Horizontal event timeline showing all sounds as swim lanes
 - Finger assignment annotations per event (L1-L5, R1-R5)
-- Difficulty-colored event pills (amber for Hard, red for Unplayable)
+- Difficulty-colored event pills (amber for Hard, grey for Medium, red for Unplayable)
 - Playback with real-time cursor and pad highlighting
+- **Audible rehearsal** — a metronome at the project tempo (accented downbeats)
+  and a distinct percussive voice per Sound, so you can hear what you are
+  practising rather than watching a silent cursor
+- **Rehearsal speed** (0.25x–1.5x) for working a hard passage up to tempo
+- **Loop region** — drag across the bar ruler to mark a passage and repeat it
+- Muted sounds are silent but still shown, so they can always be un-muted
 - All sound streams shown, including unplayable events
 
 ### Layout Candidates
@@ -80,9 +86,15 @@ PushFlow uses a three-tier layout lifecycle:
 - Pattern-based event generation for testing layouts against musical material
 
 ### Constraint System
-- **Placement Locks** — Pin a sound to a specific pad. Locks are preserved across cloning, generation, and promotion. Lock state is visually indicated on grid pads and in the sounds panel.
-- **Finger Constraints** — Per-pad hand/finger preferences. Soft by default (optimizer biases toward them but may override).
-- **Grip Feasibility** — Binary validation against biomechanical limits. Grips that violate hard constraints are rejected.
+- **Placement Locks** — Pin a sound to a specific pad. Locks are preserved across cloning, generation, promotion and **discard** — a lock is an explicit decision, not an exploratory edit. Lock state is visually indicated on grid pads and in the sounds panel.
+- **Finger Constraints** — Per-sound hand/finger preferences. They are carried by the Sound, so they follow it when the optimizer relocates it, and generation will not optimize them away.
+- **Grip Feasibility** — Validation against biomechanical limits. A moment that asks one finger to strike two pads at once, or a hand to move faster than physiologically possible, is genuinely infeasible; a wide reach or an unusual grip is expensive rather than rejected.
+
+### Getting Started
+After importing MIDI the grid is empty — PushFlow never places sounds for you.
+Drag them onto pads, or use **Suggest a starting layout** for an explicit,
+one-click starting point in a natural two-hand position, then refine it by hand
+or with Generate.
 
 ---
 
@@ -118,18 +130,33 @@ PushFlow evaluates layouts using a physics-informed cost model with five canonic
 ### Physical Limits
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| `MAX_HAND_SPAN` | 5.5 units | Maximum comfortable multi-finger spread |
-| `MAX_SPEED` | 12.0 units/sec | Maximum hand movement speed |
+| `FINGER_PAIR_MAX_SPAN_STRICT` | per-pair table | The enforced grip envelope, e.g. index–middle 2.0, pinky–ring 1.5 (linked tendons) |
+| `MAX_HAND_SPEED` | 80 units/sec | Hard physiological ceiling (~1.8 m/s on the ~2.2 cm pad pitch — a hand crossing the grid in ~100 ms) |
+| `COMFORTABLE_HAND_SPEED` | 24 units/sec | Above this, movement is still playable but costs steeply more |
 | `TARGET_LR_SPLIT`| 0.45 / 0.55 | Optimal left-hand share |
+
+Hand zones are **soft**: the whole pad area is only about 17 cm wide, so either
+hand can reach any column. Crossing the midline is priced, not forbidden — the
+model distinguishes *impossible* from *merely awkward*.
+
+Fingering consistency is also soft. A pad keeps one hand and finger for the whole
+performance, because that stable mapping is what a player memorises, but the
+solver may re-finger a pad where the music demands it rather than declaring the
+passage unplayable.
 
 ### Finger Selection Costs
 | Finger | Cost | Rationale |
 |--------|------|-----------|
 | Index | 0 | Strongest, most dexterous |
 | Middle | 0 | Strong, good reach |
-| Ring | 1 | Reduced independence |
-| Pinky | 3 | Weakest, limited reach |
-| Thumb | 5 | Limited lateral movement on pads |
+| Ring | 0.5 | Reduced independence |
+| Pinky | 1.0 | Weaker, but ordinary in four-finger patterns |
+| Thumb | 1.5 | Least dexterous on pads — biased against, not excluded |
+
+These are charged for every finger in every moment, so they are kept in the same
+order of magnitude as the other soft costs. Pricing the thumb and pinky far above
+the rest removed them from the solver's vocabulary entirely, which left only eight
+fingers and forced pads to share one — manufacturing simultaneity conflicts.
 
 ---
 

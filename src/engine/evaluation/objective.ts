@@ -117,22 +117,29 @@ export function v1CostBreakdownToDifficultyBreakdown(v1: V1CostBreakdown): {
  * Field mapping:
  *   transition       ← transitionCost
  *   gripNaturalness  ← fingerPreference + handShapeDeviation
- *   alternation      ← 0 (removed from V1)
+ *   alternation      ← alternation
  *   handBalance      ← handBalance
  *   constraintPenalty ← constraintPenalty
+ *
+ * `alternation` used to be hardcoded to 0 here and left out of the total, so the
+ * Alternation bar in the Ergonomics panel could never move off zero on the beam
+ * path — the always-on analysis. Same-finger repetition is one of the commonest
+ * reasons a real drum layout is unplayable, so reading it as costless was a
+ * direct misrepresentation.
  */
 export function v1CostBreakdownToCanonicalFactors(v1: V1CostBreakdown): DiagnosticFactors {
   const transition = v1.transitionCost;
   const gripNaturalness = v1.fingerPreference + v1.handShapeDeviation;
+  const alternation = v1.alternation;
   const handBalance = v1.handBalance;
   const constraintPenalty = v1.constraintPenalty;
   return {
     transition,
     gripNaturalness,
-    alternation: 0,
+    alternation,
     handBalance,
     constraintPenalty,
-    total: transition + gripNaturalness + handBalance + constraintPenalty,
+    total: transition + gripNaturalness + alternation + handBalance + constraintPenalty,
   };
 }
 

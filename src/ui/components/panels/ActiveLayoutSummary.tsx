@@ -15,6 +15,7 @@ import {
   getActiveStreams,
 } from '../../state/projectState';
 import { type FingerType, ALL_FINGERS } from '../../../types/fingerModel';
+import { type ConstraintRelaxationSummary } from '../../../types/executionPlan';
 import { CostBreakdownBars } from './CostBreakdownBars';
 import { EventCostChart } from './EventCostChart';
 import { LearnMoreModal } from './LearnMoreModal';
@@ -53,9 +54,7 @@ export function ActiveLayoutSummary() {
   const selectedEventMetrics = useMemo(() => {
     if (!selectedEventAssignments) return null;
     const metrics = {
-      fingerPreference: 0,
-      handShapeDeviation: 0,
-      transitionCost: 0,
+      fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0,
       handBalance: 0,
       constraintPenalty: 0,
       total: 0,
@@ -191,23 +190,59 @@ export function ActiveLayoutSummary() {
               />
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-1.5">
-              <QuickStat label="Mapped" value={`${mappedCount} pads`} />
-              <QuickStat label="Sounds" value={String(activeStreams.length)} />
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-1.5">
+                <QuickStat label="Mapped" value={`${mappedCount} pads`} />
+                <QuickStat label="Sounds" value={String(activeStreams.length)} />
+              </div>
+
+              {/* An empty grid is not an unplayable layout — it is an unfinished one.
+                  Say so, and offer a starting point the user explicitly asks for. */}
+              {mappedCount === 0 && activeStreams.length > 0 && (
+                <div className="rounded-pf-sm border border-[var(--border-default)] bg-[var(--bg-card)]/60 p-2.5 space-y-2">
+                  <p className="text-pf-xs text-[var(--text-secondary)] leading-relaxed">
+                    No sounds are on the grid yet, so there is nothing to analyse.
+                    Drag {activeStreams.length === 1 ? 'your sound' : `your ${activeStreams.length} sounds`} onto
+                    pads, or start from a comfortable two-hand shape and adjust.
+                  </p>
+                  <button
+                    className="w-full px-2 py-1.5 rounded-pf-sm bg-[var(--accent-primary)]/15 text-[var(--accent-primary)] border border-[var(--accent-primary)]/30 text-pf-xs font-semibold hover:bg-[var(--accent-primary)]/25 transition-colors"
+                    onClick={() => dispatch({ type: 'SUGGEST_STARTING_LAYOUT' })}
+                    title="Places your sounds in a natural hand position as a Working/Test Layout you can edit, discard, or promote"
+                  >
+                    Suggest a starting layout
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
           {/* Three-layer cost breakdown: feasibility + ergonomics + difficulty */}
           {currentPlan && (
+            <>
+            <StructuralRulesStatus
+              relaxation={currentPlan.constraintRelaxation}
+              streams={activeStreams}
+              hasFingerChoices={activeStreams.some(s => !!state.voiceConstraints[s.id]?.finger)}
+            />
+
+            <WhatIsLimitingThis
+              constraints={displayedCandidate?.difficultyAnalysis?.bindingConstraints}
+              infeasibleSounds={currentPlan.diagnostics?.infeasibleSounds}
+              streams={activeStreams}
+            />
+
             <CostBreakdownBars
               metrics={selectedEventMetrics ?? currentPlan.averageMetrics}
               diagnostics={selectedEventMetrics ? undefined : currentPlan.diagnostics}
               hardCount={selectedEventMetrics ? undefined : currentPlan.hardCount}
               unplayableCount={selectedEventMetrics ? undefined : currentPlan.unplayableCount}
+              mediumCount={selectedEventMetrics ? undefined : currentPlan.mediumCount}
               eventLabel={selectedEventMetrics && state.selectedEventIndex !== null
                 ? `Event ${state.selectedEventIndex + 1} (t=${assignment?.startTime.toFixed(3) ?? '?'}s)`
                 : undefined}
             />
+            </>
           )}
 
           {/* Event difficulty chart (collapsible) */}
@@ -375,6 +410,159 @@ function DetailChip({ label, value, color }: { label: string; value: string; col
     <div className="rounded-pf-sm border border-[var(--border-subtle)] bg-[var(--bg-card)]/60 px-2 py-1.5">
       <div className="text-pf-micro text-[var(--text-tertiary)] uppercase tracking-wider">{label}</div>
       <div className={`text-pf-xs font-medium ${color ?? 'text-[var(--text-primary)]'}`}>{value}</div>
+    </div>
+  );
+}
+
+/**
+ * Whether the plan keeps the two structural rules — each hand on its own side
+ * of the grid, and one finger per sound — and, if not, exactly where it gives way.
+ *
+ * The rules are hard: the engine breaks them only when no plan can keep them
+ * (or when the user's own finger choice asks for it). Saying so up front is what
+ * lets a user trust a clean plan, and find the few exceptions in a relaxed one
+ * without scanning the timeline pill by pill.
+ */
+function StructuralRulesStatus({
+  relaxation,
+  streams,
+  hasFingerChoices,
+}: {
+  relaxation?: ConstraintRelaxationSummary;
+  streams: Array<{ id: string; name: string }>;
+  /** Whether the user set a finger for any sound — then that may be the cause. */
+  hasFingerChoices: boolean;
+}) {
+  if (!relaxation) return null;
+
+  if (relaxation.mode === 'strict') {
+    return (
+      <div
+        className="text-pf-xs text-emerald-400/80 flex items-center gap-1.5"
+        title="Each hand stays in its own zone (left: the left five columns, right: the right five) and every sound is played by one finger for the whole performance."
+      >
+        <span>{'\u2713'}</span>
+        <span>Hands stay on their own side {'\u00b7'} one finger per sound</span>
+      </div>
+    );
+  }
+
+  const nameFor = (soundId: string) =>
+    streams.find(s => s.id === soundId)?.name ?? soundId;
+
+  return (
+    <div className="rounded-pf-sm border border-violet-400/30 bg-violet-500/5 p-2.5 space-y-1.5">
+      <div className="text-pf-xs font-semibold text-violet-300">
+        Fingering rules relaxed
+      </div>
+      <p className="text-pf-xs text-[var(--text-tertiary)] leading-relaxed">
+        No plan keeps both rules for this layout{hasFingerChoices ? ' with your finger choices' : ''}, so {relaxation.relaxedMomentCount === 1
+          ? 'one moment breaks'
+          : `${relaxation.relaxedMomentCount} moments break`} one. These strikes are outlined in the timeline.
+      </p>
+      <ul className="space-y-0.5">
+        {relaxation.handZoneStrikes > 0 && (
+          <li className="text-pf-xs text-[var(--text-secondary)]">
+            Hand separation: {relaxation.handZoneStrikes} strike{relaxation.handZoneStrikes === 1 ? '' : 's'} outside the hand{'\u2019'}s zone
+          </li>
+        )}
+        {relaxation.fingerOwnershipStrikes > 0 && (
+          <li className="text-pf-xs text-[var(--text-secondary)]">
+            One finger per sound: {relaxation.fingerOwnershipStrikes} strike{relaxation.fingerOwnershipStrikes === 1 ? '' : 's'} on another finger
+          </li>
+        )}
+      </ul>
+      <div className="pt-1 space-y-0.5">
+        {relaxation.sounds.slice(0, 5).map(sound => {
+          // Lead with the sound's own finger — the one to memorise — and list any
+          // stand-ins after it, so "R3 + R2" can no longer hide which is the rule.
+          const others = sound.fingersUsed.filter(f => f !== sound.ownerFinger);
+          return (
+            <div key={sound.soundId} className="flex justify-between gap-2 text-pf-xs">
+              <span className="text-[var(--text-secondary)] truncate">{nameFor(sound.soundId)}</span>
+              <span className="font-mono text-[var(--text-tertiary)] whitespace-nowrap">
+                {sound.ownerFinger
+                  ? <>
+                      <span className="text-[var(--text-secondary)]" title={sound.ownerIsUserChoice ? 'Your finger choice for this sound' : 'This sound\u2019s own finger'}>
+                        {sound.ownerFinger}{sound.ownerIsUserChoice ? '*' : ''}
+                      </span>
+                      {others.length > 0 ? ` \u2192 also ${others.join(', ')}` : ''}
+                    </>
+                  : sound.fingersUsed.join(' + ')}
+                {sound.handZoneStrikes > 0 ? ` \u00b7 ${sound.handZoneStrikes} cross-zone` : ''}
+                {sound.fingerOwnershipStrikes > 0 ? ` \u00b7 ${sound.fingerOwnershipStrikes} re-fingered` : ''}
+              </span>
+            </div>
+          );
+        })}
+        {relaxation.sounds.length > 5 && (
+          <div className="text-pf-xs text-[var(--text-quaternary)]">
+            +{relaxation.sounds.length - 5} more sound{relaxation.sounds.length - 5 === 1 ? '' : 's'}
+          </div>
+        )}
+        {relaxation.sounds.some(sound => sound.ownerIsUserChoice) && (
+          <div className="text-pf-micro text-[var(--text-quaternary)]">* your finger choice</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * "What is limiting this layout" — the engine's own plain-English reasons.
+ *
+ * The canon asks for event-level explanation, and the engine already produces
+ * exactly the sentences a user can act on ("45 Hard events (94% of total) — grip
+ * or stretch limit reached", "Average drift 3.7 — hands frequently far from home
+ * positions"). None of it reached the screen: the user saw factor bars and a
+ * score and had to infer the cause. Numbers say a layout is worse; these say why.
+ */
+function WhatIsLimitingThis({
+  constraints,
+  infeasibleSounds,
+  streams,
+}: {
+  constraints?: string[];
+  infeasibleSounds?: Array<{ soundId: string; violationCount: number; totalEvents: number }>;
+  streams: Array<{ id: string; name: string }>;
+}) {
+  const hasConstraints = constraints && constraints.length > 0;
+  const hasSounds = infeasibleSounds && infeasibleSounds.length > 0;
+  if (!hasConstraints && !hasSounds) return null;
+
+  const nameFor = (soundId: string) =>
+    streams.find(s => s.id === soundId)?.name ?? soundId;
+
+  return (
+    <div className="rounded-pf-sm border border-[var(--border-default)] bg-[var(--bg-card)]/50 p-2.5 space-y-1.5">
+      <div className="text-pf-xs font-semibold text-[var(--text-secondary)]">
+        What is limiting this layout
+      </div>
+      {hasConstraints && (
+        <ul className="space-y-1">
+          {constraints!.map((reason, i) => (
+            <li key={i} className="text-pf-xs text-[var(--text-tertiary)] leading-relaxed flex gap-1.5">
+              <span className="text-[var(--text-quaternary)]">•</span>
+              <span>{reason}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {hasSounds && (
+        <div className="pt-1 space-y-0.5">
+          <div className="text-pf-micro uppercase text-[var(--text-quaternary)]">
+            Sounds that cannot be played
+          </div>
+          {infeasibleSounds!.slice(0, 5).map(entry => (
+            <div key={entry.soundId} className="flex justify-between text-pf-xs">
+              <span className="text-[var(--text-secondary)] truncate">{nameFor(entry.soundId)}</span>
+              <span className="font-mono text-[var(--text-tertiary)]">
+                {entry.violationCount}/{entry.totalEvents}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

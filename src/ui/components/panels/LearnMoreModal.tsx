@@ -7,6 +7,7 @@
  */
 
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 
 interface LearnMoreModalProps {
   open: boolean;
@@ -29,7 +30,7 @@ const COST_DEFINITIONS = [
   {
     name: 'Hard Constraints',
     color: '#ef4444',
-    description: 'Penalty for biomechanically infeasible grips (relaxed/fallback tier). When the required hand shape exceeds physical limits, this cost increases. Hard constraints can be toggled off for experimental evaluation.',
+    description: 'Charged when a plan has to break a rule: one finger on two pads at once, a grip beyond the strict geometry limits, or \u2014 only where no plan can avoid it \u2014 a hand outside its zone or a sound played by a second finger. A plan that breaks a rule always ranks behind one that keeps it. Hard constraints can be toggled off for experimental evaluation.',
   },
   {
     name: 'Repetition',
@@ -47,12 +48,12 @@ const OPTIMIZER_METHODS = [
   {
     name: 'Greedy Hill Climb',
     key: 'greedy',
-    description: 'Builds an initial layout by placing sounds one at a time (most-used first), assigns fingers by hand zone, then iteratively makes the single best local move. Every step is explainable. Best for understanding and debugging.',
+    description: 'Builds an initial layout by placing sounds one at a time (most-used first), gives each sound one finger on the hand whose zone it sits in, then iteratively makes the single best local move. A move may never push a sound across to the other hand just to save cost. Every step is explainable. Best for understanding and debugging.',
   },
   {
     name: 'Beam Search',
     key: 'beam',
-    description: 'Fast finger assignment via beam search. Keeps the K best candidates at each event step. Does not modify the layout. Best for quick analysis of a fixed layout.',
+    description: 'Fast finger assignment via beam search. Keeps the K best candidates at each event step, looking ahead to avoid committing a sound to a finger that a later chord\u2019s grip cannot keep. Keeps hand separation and one finger per sound, relaxing them only when no plan can. Does not modify the layout. Best for quick analysis of a fixed layout.',
   },
   {
     name: 'Simulated Annealing',
@@ -76,7 +77,10 @@ export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
 
   if (!open) return null;
 
-  return (
+  // Rendered into <body>: opened from a side panel whose styling makes it the
+  // containing block for fixed-position children, the modal was otherwise
+  // squeezed into that ~300px panel and most of its text was cut off.
+  return createPortal(
     <>
       <div className="fixed inset-0 z-[60] bg-black/50" onClick={onClose} />
       <div className="fixed inset-6 z-[61] max-w-3xl mx-auto rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-app)] shadow-pf-xl flex flex-col overflow-hidden">
@@ -123,7 +127,8 @@ export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
           {tab === 'constraints' && <ConstraintsSection />}
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 
@@ -556,7 +561,7 @@ const HARD_CONSTRAINTS = [
       {
         name: 'Transition Speed',
         key: 'speed',
-        description: 'Hand movement between consecutive events cannot exceed 12.0 grid units/second. Faster transitions are physically impossible.',
+        description: 'Hand movement between consecutive events cannot exceed 80 grid units/second (about 1.8 m/s on the Push 3\u2019s ~2.2\u202Fcm pad pitch \u2014 a hand crossing the full grid in roughly 100\u202Fms). Above 24 units/second the movement is still playable but costs steeply more.',
       },
       {
         name: 'Outward Rotation',
@@ -566,23 +571,25 @@ const HARD_CONSTRAINTS = [
     ],
   },
   {
-    category: 'Hand Zones',
-    color: '#3b82f6',
+    // Hard rules that shape every plan. Unlike the biomechanical limits above
+    // they CAN give way — but only where no plan keeps them, never to save cost.
+    category: 'Structural Rules (hard, relaxed only when no plan keeps them)',
+    color: '#a78bfa',
     rules: [
       {
-        name: 'Left Hand Zone',
-        key: 'zone-left',
-        description: 'Left hand is restricted to columns 0\u20134 of the 8\u00d78 grid.',
+        name: 'Hand Separation',
+        key: 'zone',
+        description: 'Each hand stays on its own side of the grid: the left hand plays columns 0\u20134 and the right hand columns 3\u20137 (columns 3\u20134 are shared). A plan that keeps both structural rules always wins over one that breaks either, however much cheaper the rule-breaking plan would be.',
       },
       {
-        name: 'Right Hand Zone',
-        key: 'zone-right',
-        description: 'Right hand is restricted to columns 3\u20137 of the 8\u00d78 grid.',
+        name: 'One Finger Per Sound',
+        key: 'ownership',
+        description: 'Every sound is played by the same finger for the whole performance, so the pad\u2192finger mapping is something you can memorise. If you set a finger for a sound, that is its finger; otherwise the solver picks one, looking ahead to avoid a finger that a later chord\u2019s grip cannot keep.',
       },
       {
-        name: 'Shared Zone',
-        key: 'zone-shared',
-        description: 'Columns 3\u20134 are a shared zone accessible by either hand.',
+        name: 'When a Rule Gives Way',
+        key: 'relaxation',
+        description: 'A rule gives way only when no plan can keep both \u2014 for example two pads in the right hand\u2019s zone too far apart for one hand to reach at once \u2014 or when your own finger choice for a sound asks for it. The solver then breaks as few strikes as it can, choosing the cheaper break: re-fingering on the same hand before switching hands, a short reach over the boundary before a long one, and a single stand-in finger for a sound rather than several. Those strikes are outlined in the timeline, listed per sound under the layout summary, and mark the plan as degraded rather than fully feasible.',
       },
     ],
   },
@@ -608,9 +615,10 @@ function ConstraintsSection() {
   return (
     <div className="space-y-5">
       <p className="text-pf-sm text-[var(--text-tertiary)]">
-        PushFlow enforces hard biomechanical constraints during solver execution. Violations result in infeasibility
-        (the grip is rejected entirely), not soft penalties. These constraints model the physical limits of human hands
-        on an 8&times;8 Push grid.
+        PushFlow enforces hard constraints during solver execution. Biomechanical limits model what a human hand can
+        physically do on an 8&times;8 Push grid: a grip that breaks one is rejected entirely, never merely penalised.
+        The two structural rules &mdash; hand separation and one finger per sound &mdash; are just as firm, and give way
+        only where no plan at all can keep them.
       </p>
 
       {HARD_CONSTRAINTS.map(group => (
@@ -643,9 +651,10 @@ function ConstraintsSection() {
       <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
         <h4 className="text-pf-sm font-medium text-[var(--text-primary)] mb-1">Enforcement</h4>
         <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
-          When any constraint is violated, the candidate grip is rejected entirely (returns infeasibility).
-          The solver only considers grips that pass all hard constraints at the strict tier. Relaxed and fallback
-          tiers widen limits slightly when no strict solution exists, flagged by the feasibility verdict.
+          When a biomechanical constraint is violated, the candidate grip is rejected entirely. Hand separation and
+          one finger per sound are enforced just as strictly: the solver first searches only among plans that keep
+          them, and considers breaking one only when that search cannot finish the performance. Any break is
+          counted, shown per strike, and reflected in the feasibility verdict.
         </p>
       </div>
     </div>

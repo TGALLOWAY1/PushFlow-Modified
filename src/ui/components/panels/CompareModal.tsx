@@ -27,7 +27,7 @@ function buildActiveCandidate(state: ReturnType<typeof useProject>['state']): Ca
     score: 0, unplayableCount: 0, hardCount: 0,
     fingerAssignments: [], fingerUsageStats: {}, fatigueMap: {},
     averageDrift: 0, averageMetrics: {
-      fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0,
+      fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0,
       handBalance: 0, constraintPenalty: 0, total: 0,
     },
   };

@@ -32,11 +32,17 @@ interface CostLayer {
   accessor: (b: V1CostBreakdown) => number;
 }
 
+// Each layer must read the field whose name it carries. "Speed" was wired to
+// constraintPenalty and "Repetition" to handBalance, so toggling Speed never
+// changed the chart and a user diagnosing same-finger repetition was shown
+// hand-balance cost instead — on the product's main "which moments are hard and
+// why" surface.
 const COST_LAYERS: CostLayer[] = [
-  { key: 'stretch', label: 'Stretch', color: '#a855f7', accessor: b => b.fingerPreference + b.handShapeDeviation },
+  { key: 'stretch', label: 'Grip', color: '#a855f7', accessor: b => b.fingerPreference + b.handShapeDeviation },
   { key: 'movement', label: 'Movement', color: '#f97316', accessor: b => b.transitionCost },
-  { key: 'speed', label: 'Speed', color: '#22c55e', accessor: b => b.constraintPenalty },
-  { key: 'repetition', label: 'Repetition', color: '#3b82f6', accessor: b => b.handBalance },
+  { key: 'repetition', label: 'Alternation', color: '#3b82f6', accessor: b => b.alternation },
+  { key: 'balance', label: 'Hand balance', color: '#22c55e', accessor: b => b.handBalance },
+  { key: 'constraints', label: 'Constraints', color: '#ef4444', accessor: b => b.constraintPenalty },
 ];
 
 interface EventBar {
@@ -77,9 +83,7 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
       const assignments = timeMap.get(time)!;
       // Aggregate cost breakdown across all notes in this event
       const aggregated: V1CostBreakdown = {
-        fingerPreference: 0,
-        handShapeDeviation: 0,
-        transitionCost: 0,
+        fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0,
         handBalance: 0,
         constraintPenalty: 0,
         total: 0,
@@ -88,6 +92,7 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
         if (a.costBreakdown) {
           aggregated.fingerPreference += a.costBreakdown.fingerPreference;
           aggregated.handShapeDeviation += a.costBreakdown.handShapeDeviation;
+          aggregated.alternation += a.costBreakdown.alternation;
           aggregated.transitionCost += a.costBreakdown.transitionCost;
           aggregated.handBalance += a.costBreakdown.handBalance;
           aggregated.constraintPenalty += a.costBreakdown.constraintPenalty;
@@ -110,7 +115,11 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
         .filter(s => s.value > 0);
 
       return {
-        eventIndex: idx,
+        // The REAL event index, not the bar's position. Bars are grouped by
+        // timestamp, so passing the array position selected a different moment
+        // than the one clicked — on the reference plan, clicking the bar at
+        // t=15.5s showed the breakdown of a note 5.5 seconds earlier.
+        eventIndex: assignments[0].eventIndex ?? idx,
         startTime: time,
         segments,
         total: segments.reduce((sum, s) => sum + s.value, 0),
@@ -145,7 +154,7 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
           {eventBars.map((bar, idx) => {
             const barHeight = bar.total > 0 ? (bar.total / maxTotal) * height : 0;
             const isHovered = hoveredEvent === idx;
-            const isSelected = selectedEventIndex !== undefined && selectedEventIndex !== null && idx === selectedEventIndex;
+            const isSelected = selectedEventIndex !== undefined && selectedEventIndex !== null && bar.eventIndex === selectedEventIndex;
 
             return (
               <div
@@ -163,7 +172,7 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
                 }}
                 onMouseEnter={() => setHoveredEvent(idx)}
                 onMouseLeave={() => setHoveredEvent(null)}
-                onClick={() => onEventClick?.(isSelected ? null : idx)}
+                onClick={() => onEventClick?.(isSelected ? null : bar.eventIndex)}
               >
                 {bar.segments.map(seg => {
                   const segHeight = bar.total > 0 ? (seg.value / bar.total) * barHeight : 0;

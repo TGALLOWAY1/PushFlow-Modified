@@ -81,8 +81,10 @@ const AUTO_ANALYSIS_DEBOUNCE_MS = 1000;
 /**
  * Build separated solver constraints from layout finger constraints.
  *
- * Finger constraints (per-pad) are SOFT preferences — the solver should
- * prefer them but may deviate for a better overall solution.
+ * A finger constraint names the finger that owns a Sound. The beam solver keeps
+ * it under the one-finger-per-sound rule — never trading it for a cheaper
+ * fingering — and departs from it only at strikes where no plan can keep it,
+ * flagging each one.
  *
  * The legacy `manualAssignments` parameter is preserved for backward
  * compatibility but new code should use the SolverConstraints structure.
@@ -137,9 +139,9 @@ function buildSolverConstraints(
 function constraintsToManualAssignments(
   constraints: SolverConstraints,
 ): Record<string, { hand: 'left' | 'right'; finger: FingerType }> | undefined {
-  // For now, soft preferences are still passed as hard assignments to preserve
-  // existing solver behavior. The solver interface accepts both parameters —
-  // when full soft-preference support is added, this function can be removed.
+  // The beam solver reads each preference as the finger that owns that Sound:
+  // the one-finger-per-sound rule keeps it unless no plan can, and any strike
+  // that has to depart from it is flagged as a relaxation.
   const prefs = constraints.softPreferences;
   if (!prefs || Object.keys(prefs).length === 0) return undefined;
   return prefs;
@@ -162,6 +164,19 @@ export function useAutoAnalysis() {
     const activeStreams = getActiveStreams(state);
     const layout = getDisplayedLayout(state);
     if (activeStreams.length === 0 || !layout) {
+      return;
+    }
+
+    // An empty grid has nothing to analyse. Running the solver against one produced
+    // a verdict of "Infeasible — 48 unmapped, 48 unplayable, score 0%", which is the
+    // first thing a user saw after importing a MIDI file. It reads as a damning
+    // judgement on their layout when the truth is simply that no sounds have been
+    // placed yet, and the product forbids placing them automatically. Clear the
+    // analysis instead and let the UI ask for placements.
+    if (Object.keys(layout.padToVoice).length === 0) {
+      // SET_ANALYSIS_RESULT also clears analysisStale, so this settles rather than
+      // re-triggering on every render.
+      dispatch({ type: 'SET_ANALYSIS_RESULT', payload: null });
       return;
     }
 
@@ -295,9 +310,6 @@ export function useAutoAnalysis() {
           dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: candidates[0].id } });
         }
 
-        setGenerationProgress(null);
-        setAnalysisPhase('idle');
-        dispatch({ type: 'SET_PROCESSING', payload: false });
         return candidates.length;
       }
 
@@ -330,15 +342,19 @@ export function useAutoAnalysis() {
         dispatch({ type: 'SET_ANALYSIS_RESULT', payload: generationResult.candidates[0] });
         dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: generationResult.candidates[0].id } });
       }
-      setGenerationProgress(null);
-      setAnalysisPhase('idle');
       return generationResult.candidates.length;
     } catch (err) {
-      setGenerationProgress(null);
-      setAnalysisPhase('idle');
-      dispatch({ type: 'SET_PROCESSING', payload: false });
       dispatch({ type: 'SET_ERROR', payload: err instanceof Error ? err.message : 'Generation failed' });
       return 0;
+    } finally {
+      // CLAUDE.md requires isProcessing be reset on BOTH paths. The beam and
+      // annealing branch previously returned without clearing it, so after a
+      // successful Generate with either method the spinner ran forever and every
+      // control gated on isProcessing stayed disabled until a page reload — the
+      // user could not inspect, compare or promote the candidates just produced.
+      dispatch({ type: 'SET_PROCESSING', payload: false });
+      setGenerationProgress(null);
+      setAnalysisPhase('idle');
     }
   }, [state, dispatch]);
 

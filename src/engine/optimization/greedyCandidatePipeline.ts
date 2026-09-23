@@ -31,6 +31,7 @@ import { type SoundFeatureMap, extractSoundFeatures } from '../structure/soundFe
 import { type SeedContext, SEED_GENERATORS } from './seedGenerators';
 import { UPDATE_POLICIES } from './updatePolicies';
 import { type GreedyRunOptions, GreedyOptimizer } from './greedyOptimizer';
+import { countRelaxedStrikes } from '../evaluation/constraintRelaxation';
 import { analyzeDifficulty, computeTradeoffProfile } from '../evaluation/difficultyScoring';
 import { compositeScore } from './candidateRanker';
 import {
@@ -303,8 +304,13 @@ export async function generateGreedyCandidates(
     return { candidates: [], summary: null };
   }
 
-  // Phase 3: Diversity-aware finalist selection
-  const finalists = selectDiverseFinalists(allScored, count);
+  // Phase 3: Diversity-aware finalist selection, tier by tier. Candidates that
+  // are fully playable and keep both structural rules are offered first; the
+  // quality/diversity trade-off decides among them, and only slots they cannot
+  // fill go to candidates that break something. Otherwise a rule-keeping
+  // candidate could be dropped here in favour of more "diverse" rule-breaking
+  // ones, and the final ranking would never get to see it.
+  const finalists = selectFinalistsByTier(allScored, count);
 
   // Phase 4: Attach explanations
   for (const scored of finalists) {
@@ -343,9 +349,38 @@ export async function generateGreedyCandidates(
     return unplayableRatio <= 0.25;
   });
 
-  const finalCandidates = valid.length > 0
+  const selected = valid.length > 0
     ? valid
     : [...filtered].sort((a, b) => b.executionPlan.score - a.executionPlan.score).slice(0, 1);
+
+  // Order by quality before returning. Diversity selection decides WHICH
+  // candidates the user is offered; it must not decide the order they appear in.
+  // The cards are numbered #1..#N and the app applies the first one to the working
+  // layout automatically, so leaving them in generation order presented a
+  // not-best candidate as the recommendation and made the numbering a lie.
+  //
+  // Feasibility is lexicographically dominant: a candidate with unplayable
+  // moments can never outrank a fully playable one, however good its ergonomics,
+  // because "best" has to mean "you can actually play this".
+  const finalCandidates = [...selected].sort((a, b) => {
+    const unplayableA = a.executionPlan.unplayableMomentCount ?? a.executionPlan.unplayableCount;
+    const unplayableB = b.executionPlan.unplayableMomentCount ?? b.executionPlan.unplayableCount;
+    if (unplayableA !== unplayableB) return unplayableA - unplayableB;
+    // Then by the structural rules: a candidate whose plan keeps hand
+    // separation and one finger per sound outranks one that has to break them.
+    const relaxedA = countRelaxedStrikes(a.executionPlan);
+    const relaxedB = countRelaxedStrikes(b.executionPlan);
+    if (relaxedA !== relaxedB) return relaxedA - relaxedB;
+    // Order by the score PRINTED on the card. Ranking by the composite tradeoff
+    // score instead left the list visibly contradicting itself — #1 showing 94.0
+    // above a #2 showing 95.5 — so the numbering gave the user no reason to trust
+    // the order. Composite score is still what diversity selection uses to choose
+    // WHICH candidates to offer; it just must not decide how they are presented.
+    if (b.executionPlan.score !== a.executionPlan.score) {
+      return b.executionPlan.score - a.executionPlan.score;
+    }
+    return compositeScore(b.tradeoffProfile) - compositeScore(a.tradeoffProfile);
+  });
 
   const summary = input.activeLayout
     ? buildGenerationSummary(
@@ -371,6 +406,29 @@ export async function generateGreedyCandidates(
  * 2. For each remaining slot, pick candidate maximizing quality + λ * novelty
  * 3. Novelty = min diversity vs all already-selected finalists
  */
+/** Fewer unplayable moments first, then fewer relaxed strikes. */
+function feasibilityTier(scored: ScoredCandidate): [number, number] {
+  const plan = scored.candidate.executionPlan;
+  return [plan.unplayableMomentCount ?? plan.unplayableCount, countRelaxedStrikes(plan)];
+}
+
+function selectFinalistsByTier(candidates: ScoredCandidate[], count: number): ScoredCandidate[] {
+  const tiers = new Map<string, { key: [number, number]; members: ScoredCandidate[] }>();
+  for (const candidate of candidates) {
+    const key = feasibilityTier(candidate);
+    const id = key.join('|');
+    if (!tiers.has(id)) tiers.set(id, { key, members: [] });
+    tiers.get(id)!.members.push(candidate);
+  }
+  const ordered = [...tiers.values()].sort((a, b) => a.key[0] - b.key[0] || a.key[1] - b.key[1]);
+  const finalists: ScoredCandidate[] = [];
+  for (const tier of ordered) {
+    if (finalists.length >= count) break;
+    finalists.push(...selectDiverseFinalists(tier.members, count - finalists.length));
+  }
+  return finalists;
+}
+
 function selectDiverseFinalists(
   candidates: ScoredCandidate[],
   count: number,

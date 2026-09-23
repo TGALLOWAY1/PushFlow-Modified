@@ -19,6 +19,7 @@
 
 import { type Performance, type InstrumentConfig } from '../../types/performance';
 import { type Layout } from '../../types/layout';
+import { compositeScore } from './candidateRanker';
 import {
   type CandidateSolution,
   type CandidateMetadata,
@@ -38,6 +39,7 @@ import { seedLayoutFromPose0 } from '../mapping/seedFromPose';
 import { getMaxSafeOffset, poseHasAssignments, fingerIdToHandAndFingerType, getPose0PadsWithOffset } from '../prior/naturalHandPose';
 import { createAnnealingSolver } from './annealingSolver';
 import { createBeamSolver } from '../solvers/beamSolver';
+import { countRelaxedStrikes } from '../evaluation/constraintRelaxation';
 import { analyzeDifficulty, computeTradeoffProfile } from '../evaluation/difficultyScoring';
 import {
   buildBaselineDiffSummary,
@@ -446,7 +448,8 @@ export async function generateCandidates(
       const solverConfig: SolverConfig = {
         instrumentConfig: config.instrumentConfig,
         layout: hasLayout ? layout : null,
-        mappingResolverMode: 'allow-fallback',
+        // Strict: pitch must never stand in for a placement the user has not made.
+      mappingResolverMode: 'strict',
         initialPadOwnership,
       };
       const solver = createBeamSolver(solverConfig);
@@ -513,9 +516,32 @@ export async function generateCandidates(
   });
 
   // If all candidates were filtered, keep the best normalized plan score.
-  const finalCandidates = valid.length > 0
+  const selected = valid.length > 0
     ? valid
     : [...filtered].sort((a, b) => b.executionPlan.score - a.executionPlan.score).slice(0, 1);
+
+  // Rank before returning, feasibility first: the cards are numbered and the app
+  // auto-applies the first one, so generation order must not decide which
+  // candidate is presented as the recommendation.
+  const finalCandidates = [...selected].sort((a, b) => {
+    const unplayableA = a.executionPlan.unplayableMomentCount ?? a.executionPlan.unplayableCount;
+    const unplayableB = b.executionPlan.unplayableMomentCount ?? b.executionPlan.unplayableCount;
+    if (unplayableA !== unplayableB) return unplayableA - unplayableB;
+    // Then by the structural rules: a candidate whose plan keeps hand
+    // separation and one finger per sound outranks one that has to break them.
+    const relaxedA = countRelaxedStrikes(a.executionPlan);
+    const relaxedB = countRelaxedStrikes(b.executionPlan);
+    if (relaxedA !== relaxedB) return relaxedA - relaxedB;
+    // Order by the score PRINTED on the card. Ranking by the composite tradeoff
+    // score instead left the list visibly contradicting itself — #1 showing 94.0
+    // above a #2 showing 95.5 — so the numbering gave the user no reason to trust
+    // the order. Composite score is still what diversity selection uses to choose
+    // WHICH candidates to offer; it just must not decide how they are presented.
+    if (b.executionPlan.score !== a.executionPlan.score) {
+      return b.executionPlan.score - a.executionPlan.score;
+    }
+    return compositeScore(b.tradeoffProfile) - compositeScore(a.tradeoffProfile);
+  });
 
   // Build generation summary (includes low-diversity explanation)
   const summary = buildGenerationSummary(

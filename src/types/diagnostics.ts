@@ -45,8 +45,10 @@ export interface DiagnosticFactors {
 /**
  * FeasibilityLevel: Overall feasibility classification.
  *
- * - feasible: all events can be played with valid grips.
- * - degraded: playable but has hard events.
+ * - feasible: all events can be played with valid grips, keeping both
+ *   structural rules (hand separation, one finger per sound).
+ * - degraded: playable, but with hard events, fallback grips, or strikes that
+ *   break a structural rule.
  * - infeasible: one or more events cannot be mapped or played.
  */
 export type FeasibilityLevel = 'feasible' | 'degraded' | 'infeasible';
@@ -60,6 +62,7 @@ export interface FeasibilityReason {
     | 'unplayable_event'    // Event classified as Unplayable
     | 'unmapped_note'       // Note has no pad mapping in the layout
     | 'fallback_grip'       // Grip required constraint relaxation (Tier 3)
+    | 'constraint_relaxed'  // Hand-zone separation or one-finger-per-sound had to give way
     | 'extreme_stretch'     // Grip requires extreme finger spread
     | 'hard_event';         // Event classified as Hard
   /** Human-readable explanation. */
@@ -220,9 +223,15 @@ export interface V1CostBreakdown {
   handShapeDeviation: number;
   /** Fitts's Law transition cost. */
   transitionCost: number;
+  /** Same-finger rapid repetition penalty. */
+  alternation: number;
   /** Left/right hand distribution penalty. */
   handBalance: number;
-  /** Hard constraint penalty (always 0 for valid grips; non-zero = infeasible). */
+  /**
+   * Penalties for breaking a rule: physical impossibilities (collisions, invalid
+   * grips) and the structural rules where they had to give way (a hand outside
+   * its zone, a sound re-fingered).
+   */
   constraintPenalty: number;
   /** Weighted total. */
   total: number;
@@ -233,6 +242,7 @@ export function createZeroV1CostBreakdown(): V1CostBreakdown {
   return {
     fingerPreference: 0,
     handShapeDeviation: 0,
+    alternation: 0,
     transitionCost: 0,
     handBalance: 0,
     constraintPenalty: 0,
@@ -335,6 +345,11 @@ export function computeTopContributors(factors: DiagnosticFactors): string[] {
 
 /**
  * Derive a FeasibilityVerdict from execution plan summary stats.
+ *
+ * `relaxation` reports strikes that had to break one of the two structural
+ * rules (hand-zone separation, one finger per Sound). Those rules are hard by
+ * default, so a plan that breaks either is playable but not what was asked for:
+ * it is 'degraded', never silently 'feasible'.
  */
 export function deriveFeasibilityVerdict(
   unplayableCount: number,
@@ -342,8 +357,11 @@ export function deriveFeasibilityVerdict(
   unmappedCount: number,
   fallbackGripCount: number,
   totalEvents: number,
+  relaxation?: { handZoneStrikes: number; fingerOwnershipStrikes: number },
 ): FeasibilityVerdict {
   const reasons: FeasibilityReason[] = [];
+  const zoneStrikes = relaxation?.handZoneStrikes ?? 0;
+  const ownershipStrikes = relaxation?.fingerOwnershipStrikes ?? 0;
 
   if (unmappedCount > 0) {
     reasons.push({
@@ -369,6 +387,22 @@ export function deriveFeasibilityVerdict(
     });
   }
 
+  if (zoneStrikes > 0) {
+    reasons.push({
+      type: 'constraint_relaxed',
+      message: `Hand separation relaxed: ${zoneStrikes} strike${zoneStrikes > 1 ? 's are' : ' is'} played by a hand outside its zone`,
+      eventCount: zoneStrikes,
+    });
+  }
+
+  if (ownershipStrikes > 0) {
+    reasons.push({
+      type: 'constraint_relaxed',
+      message: `One finger per sound relaxed: ${ownershipStrikes} strike${ownershipStrikes > 1 ? 's use' : ' uses'} a different finger than the sound's own`,
+      eventCount: ownershipStrikes,
+    });
+  }
+
   if (hardCount > 0) {
     reasons.push({
       type: 'hard_event',
@@ -381,7 +415,7 @@ export function deriveFeasibilityVerdict(
   let level: FeasibilityLevel;
   if (unplayableCount > 0 || unmappedCount > 0) {
     level = 'infeasible';
-  } else if (fallbackGripCount > 0 || hardCount > 0) {
+  } else if (fallbackGripCount > 0 || hardCount > 0 || zoneStrikes > 0 || ownershipStrikes > 0) {
     level = 'degraded';
   } else {
     level = 'feasible';
@@ -399,6 +433,8 @@ export function deriveFeasibilityVerdict(
   } else {
     const issues: string[] = [];
     if (fallbackGripCount > 0) issues.push(`${fallbackGripCount} fallback grips`);
+    if (zoneStrikes > 0) issues.push(`hand separation relaxed on ${zoneStrikes} strike${zoneStrikes > 1 ? 's' : ''}`);
+    if (ownershipStrikes > 0) issues.push(`one finger per sound relaxed on ${ownershipStrikes} strike${ownershipStrikes > 1 ? 's' : ''}`);
     if (hardCount > 0) issues.push(`${hardCount} hard events`);
     summary = `Layout is playable but degraded: ${issues.join(', ')}`;
   }

@@ -21,9 +21,7 @@ export function PerformanceCostsPanel() {
     if (assignments.length === 0) return null;
 
     const metrics = {
-      fingerPreference: 0,
-      handShapeDeviation: 0,
-      transitionCost: 0,
+      fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0,
       handBalance: 0,
       constraintPenalty: 0,
       total: 0,
@@ -66,6 +64,63 @@ export function PerformanceCostsPanel() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+        {/* Manual "Calculate Cost" result.
+            This ran a full canonical evaluation and then rendered nothing at all,
+            so from the user's side the button did nothing and one of the two ways
+            to get a cost story for the current layout was unusable. */}
+        {state.manualCostResult && (
+          <div className="rounded-pf-sm border border-[var(--accent-primary)]/30 bg-[var(--accent-primary)]/5 p-2.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-pf-xs font-semibold text-[var(--accent-primary)]">
+                Calculated cost
+              </span>
+              <button
+                className="text-pf-micro text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+                onClick={() => dispatch({ type: 'SET_MANUAL_COST_RESULT', payload: null })}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 text-pf-xs">
+              <div>
+                <div className="text-[var(--text-tertiary)]">Per moment</div>
+                <div className="font-mono text-[var(--text-primary)]">
+                  {state.manualCostResult.costPerMoment.toFixed(3)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[var(--text-tertiary)]">Feasibility</div>
+                <div className="text-[var(--text-primary)] capitalize">
+                  {state.manualCostResult.feasibility.level}
+                </div>
+              </div>
+            </div>
+            <div className="space-y-0.5 text-pf-micro font-mono text-[var(--text-secondary)]">
+              {([
+                ['Transition', state.manualCostResult.dimensions.transitionCost],
+                ['Grip', state.manualCostResult.dimensions.poseNaturalness],
+                ['Alternation', state.manualCostResult.dimensions.alternation],
+                ['Hand balance', state.manualCostResult.dimensions.handBalance],
+                ['Constraints', state.manualCostResult.dimensions.constraintPenalty],
+              ] as const).map(([label, value]) => (
+                <div key={label} className="flex justify-between">
+                  <span>{label}</span>
+                  <span>{value.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+            {state.manualCostResult.costTogglesUsed && (
+              <div className="text-pf-micro text-[var(--text-tertiary)]">
+                Cost families active:{' '}
+                {Object.entries(state.manualCostResult.costTogglesUsed)
+                  .filter(([, on]) => on)
+                  .map(([name]) => name)
+                  .join(', ') || 'none'}
+              </div>
+            )}
+          </div>
+        )}
+
         {state.isProcessing && !currentPlan ? (
           <div className="text-pf-xs text-blue-400 py-4 text-center animate-pulse">
             Analyzing layout...
@@ -102,6 +157,7 @@ export function PerformanceCostsPanel() {
               diagnostics={selectedEventMetrics ? undefined : currentPlan.diagnostics}
               hardCount={selectedEventMetrics ? undefined : currentPlan.hardCount}
               unplayableCount={selectedEventMetrics ? undefined : currentPlan.unplayableCount}
+              mediumCount={selectedEventMetrics ? undefined : currentPlan.mediumCount}
               eventLabel={selectedEventMetrics && state.selectedEventIndex !== null
                 ? `Event ${state.selectedEventIndex + 1} (t=${assignment?.startTime.toFixed(3) ?? '?'}s)`
                 : undefined}

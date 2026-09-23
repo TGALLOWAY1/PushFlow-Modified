@@ -7,7 +7,7 @@
  *   A3: Thumb above other fingers → infeasible (strict)
  *   A4: Simultaneous chord impossible shape → infeasible
  *   A5: Reachability failure → infeasible
- *   A6: Transition too fast → Infinity cost
+ *   A6: Transition too fast → flagged over-speed, large finite cost
  *   A7: Hand crossover (three adjacent pads) → feasible with valid orderings
  *   A8: Zone violation → feasible but penalized
  *
@@ -22,11 +22,12 @@ import {
   isReachPossible,
   type GripDiagnosticOptions,
 } from '../../../src/engine/prior/feasibility';
-import { calculateTransitionCost } from '../../../src/engine/evaluation/costFunction';
+import { calculateTransitionCost, exceedsHandSpeedLimit } from '../../../src/engine/evaluation/costFunction';
 import { getPreferredHand } from '../../../src/engine/surface/handZone';
 import {
   FINGER_PAIR_MAX_SPAN_STRICT,
   MAX_REACH_GRID_UNITS,
+  SPEED_LIMIT_PENALTY,
   pairKey,
   type GripRejection,
 } from '../../../src/engine/prior/biomechanicalModel';
@@ -160,22 +161,40 @@ describe('Atomic Feasibility Constraints', () => {
       expect(hasRelaxedGrips).toBe(SCENARIO_A6.expected.relaxedFeasible); // false
     });
 
-    it('should return Infinity transition cost for fast movement', () => {
-      // Simulate: hand at (0,0) moving to (7,0) in 0.05 seconds
-      // Distance = 7.0, speed = 7.0 / 0.05 = 140 >> MAX_HAND_SPEED (12.0)
+    it('should flag over-speed movement while keeping the cost finite', () => {
+      // Hand at (0,0) moving to (0,7) in 0.05 seconds:
+      // distance 7.0 units, speed 140 units/s, well past MAX_HAND_SPEED (80).
       const prevPose = { centroid: { x: 0, y: 0 }, fingers: {} };
       const currPose = { centroid: { x: 0, y: 7 }, fingers: {} };
+
+      // Feasibility is reported by an explicit predicate...
+      expect(exceedsHandSpeedLimit(prevPose, currPose, 0.05)).toBe(true);
+
+      // ...while the cost stays finite and orderable. Infinity as an in-band cost
+      // broke every downstream comparison (Infinity < Infinity is false, so the
+      // hill-climb could accept no move; Infinity - Infinity is NaN, so layout
+      // comparison produced no verdict).
       const cost = calculateTransitionCost(prevPose, currPose, 0.05);
-      expect(cost).toBe(Infinity);
+      expect(Number.isFinite(cost)).toBe(true);
+      expect(cost).toBeGreaterThan(SPEED_LIMIT_PENALTY);
     });
 
-    it('should return finite transition cost for slow movement', () => {
+    it('should return a modest finite cost for comfortable movement', () => {
       const prevPose = { centroid: { x: 0, y: 0 }, fingers: {} };
       const currPose = { centroid: { x: 0, y: 7 }, fingers: {} };
-      // Speed = 7.0 / 2.0 = 3.5 < 12.0 → finite
+      // Speed = 7.0 / 2.0 = 3.5 units/s — comfortable.
       const cost = calculateTransitionCost(prevPose, currPose, 2.0);
-      expect(cost).toBeLessThan(Infinity);
+      expect(exceedsHandSpeedLimit(prevPose, currPose, 2.0)).toBe(false);
       expect(cost).toBeGreaterThan(0);
+      expect(cost).toBeLessThan(SPEED_LIMIT_PENALTY);
+    });
+
+    it('should not reject an ordinary 16th-note move between adjacent pads', () => {
+      // Two pads two columns apart at 110 BPM 16th notes (~136 ms). This is an
+      // unremarkable drum stroke and must not be reported as impossible.
+      const prevPose = { centroid: { x: 1, y: 2 }, fingers: {} };
+      const currPose = { centroid: { x: 3, y: 2 }, fingers: {} };
+      expect(exceedsHandSpeedLimit(prevPose, currPose, 0.136)).toBe(false);
     });
   });
 

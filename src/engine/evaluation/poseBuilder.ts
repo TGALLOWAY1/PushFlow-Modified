@@ -26,6 +26,19 @@ export interface MomentPoseResult {
   tier: ConstraintTier;
   /** Pads that could not be resolved from the assignment. */
   unmappedPads: string[];
+  /**
+   * Number of pads in this moment whose assigned finger is already in use by
+   * another pad of the same moment.
+   *
+   * One finger cannot strike two pads at the same instant, so this is a hard
+   * physical impossibility — not an ergonomic preference. It is reported
+   * separately from `zoneViolations` because the two deserve different verdicts.
+   */
+  collisions: number;
+  /** Number of pads played by a hand outside its zone (hand separation broken). */
+  zoneViolations: number;
+  /** Number of hands whose simultaneous grip fails the strict geometry rules. */
+  gripViolations: number;
 }
 
 /**
@@ -45,8 +58,8 @@ export function buildMomentPoses(
   const leftFingers: Partial<Record<FingerType, FingerCoordinate>> = {};
   const rightFingers: Partial<Record<FingerType, FingerCoordinate>> = {};
   const unmappedPads: string[] = [];
-  let assignmentCollision = false;
-  let zoneViolation = false;
+  let collisions = 0;
+  let zoneViolations = 0;
 
   for (const padKey of activePadKeys) {
     const owner = assignment[padKey];
@@ -64,12 +77,12 @@ export function buildMomentPoses(
     const fingerCoord: FingerCoordinate = { x: coord.col, y: coord.row };
 
     if (owner.hand === 'left') {
-      if (leftFingers[owner.finger]) assignmentCollision = true;
-      if (!isZoneValid(coord, 'left')) zoneViolation = true;
+      if (leftFingers[owner.finger]) collisions++;
+      if (!isZoneValid(coord, 'left')) zoneViolations++;
       leftFingers[owner.finger] = fingerCoord;
     } else {
-      if (rightFingers[owner.finger]) assignmentCollision = true;
-      if (!isZoneValid(coord, 'right')) zoneViolation = true;
+      if (rightFingers[owner.finger]) collisions++;
+      if (!isZoneValid(coord, 'right')) zoneViolations++;
       rightFingers[owner.finger] = fingerCoord;
     }
   }
@@ -82,11 +95,19 @@ export function buildMomentPoses(
     ? buildHandPose(rightFingers)
     : null;
 
-  const tier = assignmentCollision || zoneViolation
+  const gripViolations =
+    (Object.keys(leftFingers).length > 0 && !isStrictGripValid(leftFingers, 'left') ? 1 : 0) +
+    (Object.keys(rightFingers).length > 0 && !isStrictGripValid(rightFingers, 'right') ? 1 : 0);
+
+  // Only physical impossibility downgrades the grip tier. A hand outside its
+  // zone breaks the hand-separation rule, which is a different matter: it is
+  // counted (`zoneViolations`), priced by the evaluator, and reported as a rule
+  // relaxation in the feasibility verdict — not disguised as a fallback grip.
+  const tier = collisions > 0
     ? 'fallback'
     : classifyGripTier(leftFingers, rightFingers);
 
-  return { left, right, tier, unmappedPads };
+  return { left, right, tier, unmappedPads, collisions, zoneViolations, gripViolations };
 }
 
 /**
