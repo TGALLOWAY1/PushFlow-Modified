@@ -1,0 +1,186 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`TEST MIDI 1.mid end-to-end > annealing-quick > matches its fixed-seed snapshot 1`] = `
+[
+  {
+    "left": 40,
+    "pads": [
+      "2,3 TEST MIDI 1 4",
+      "3,3 TEST MIDI 1 1",
+      "3,4 TEST MIDI 1 7",
+      "4,0 TEST MIDI 1 6",
+      "4,1 TEST MIDI 1 3",
+      "4,2 TEST MIDI 1 2",
+      "4,5 TEST MIDI 1 5",
+    ],
+    "right": 8,
+    "score": 80.0641,
+    "seed": 42,
+    "strategy": "pose0-offset-0",
+    "unplayable": 0,
+  },
+  {
+    "left": 40,
+    "pads": [
+      "3,3 TEST MIDI 1 4",
+      "4,3 TEST MIDI 1 1",
+      "4,4 TEST MIDI 1 7",
+      "5,0 TEST MIDI 1 6",
+      "5,1 TEST MIDI 1 3",
+      "5,2 TEST MIDI 1 2",
+      "5,5 TEST MIDI 1 5",
+    ],
+    "right": 8,
+    "score": 77.6178,
+    "seed": 49,
+    "strategy": "pose0-offset-1",
+    "unplayable": 0,
+  },
+  {
+    "left": 40,
+    "pads": [
+      "4,3 TEST MIDI 1 4",
+      "5,3 TEST MIDI 1 1",
+      "5,4 TEST MIDI 1 7",
+      "6,0 TEST MIDI 1 6",
+      "6,1 TEST MIDI 1 3",
+      "6,2 TEST MIDI 1 2",
+      "6,5 TEST MIDI 1 5",
+    ],
+    "right": 8,
+    "score": 75.0024,
+    "seed": 56,
+    "strategy": "pose0-offset-2",
+    "unplayable": 0,
+  },
+]
+`;
+
+exports[`TEST MIDI 1.mid end-to-end > beam > matches its fixed-seed snapshot 1`] = `
+[
+  {
+    "left": 40,
+    "pads": [
+      "2,3 TEST MIDI 1 4",
+      "3,3 TEST MIDI 1 1",
+      "3,4 TEST MIDI 1 7",
+      "4,0 TEST MIDI 1 6",
+      "4,1 TEST MIDI 1 3",
+      "4,2 TEST MIDI 1 2",
+      "4,5 TEST MIDI 1 5",
+    ],
+    "right": 8,
+    "score": 80.0641,
+    "seed": 42,
+    "strategy": "pose0-offset-0",
+    "unplayable": 0,
+  },
+  {
+    "left": 40,
+    "pads": [
+      "3,3 TEST MIDI 1 4",
+      "4,3 TEST MIDI 1 1",
+      "4,4 TEST MIDI 1 7",
+      "5,0 TEST MIDI 1 6",
+      "5,1 TEST MIDI 1 3",
+      "5,2 TEST MIDI 1 2",
+      "5,5 TEST MIDI 1 5",
+    ],
+    "right": 8,
+    "score": 77.6178,
+    "seed": 49,
+    "strategy": "pose0-offset-1",
+    "unplayable": 0,
+  },
+  {
+    "left": 40,
+    "pads": [
+      "4,3 TEST MIDI 1 4",
+      "5,3 TEST MIDI 1 1",
+      "5,4 TEST MIDI 1 7",
+      "6,0 TEST MIDI 1 6",
+      "6,1 TEST MIDI 1 3",
+      "6,2 TEST MIDI 1 2",
+      "6,5 TEST MIDI 1 5",
+    ],
+    "right": 8,
+    "score": 75.0024,
+    "seed": 56,
+    "strategy": "pose0-offset-2",
+    "unplayable": 0,
+  },
+]
+`;
+
+exports[`TEST MIDI 1.mid end-to-end > greedy > matches its fixed-seed snapshot 1`] = `
+[
+  {
+    "left": 24,
+    "pads": [
+      "3,3 TEST MIDI 1 1",
+      "3,4 TEST MIDI 1 4",
+      "3,5 TEST MIDI 1 7",
+      "4,2 TEST MIDI 1 2",
+      "4,3 TEST MIDI 1 6",
+      "4,5 TEST MIDI 1 3",
+      "5,4 TEST MIDI 1 5",
+    ],
+    "right": 24,
+    "score": 95.1486,
+    "seed": 42,
+    "strategy": "Clustered Motif Layout (seed 1)",
+    "unplayable": 0,
+  },
+  {
+    "left": 26,
+    "pads": [
+      "3,1 TEST MIDI 1 2",
+      "3,2 TEST MIDI 1 1",
+      "3,3 TEST MIDI 1 5",
+      "3,4 TEST MIDI 1 3",
+      "3,5 TEST MIDI 1 7",
+      "3,6 TEST MIDI 1 4",
+      "4,2 TEST MIDI 1 6",
+    ],
+    "right": 22,
+    "score": 92.9536,
+    "seed": 42,
+    "strategy": "Coordination-Optimized (seed 1)",
+    "unplayable": 0,
+  },
+  {
+    "left": 24,
+    "pads": [
+      "1,3 TEST MIDI 1 1",
+      "2,2 TEST MIDI 1 5",
+      "2,4 TEST MIDI 1 2",
+      "2,7 TEST MIDI 1 6",
+      "4,1 TEST MIDI 1 4",
+      "4,3 TEST MIDI 1 3",
+      "6,3 TEST MIDI 1 7",
+    ],
+    "right": 24,
+    "score": 90.5702,
+    "seed": 42,
+    "strategy": "Exploratory Variant (seed 1)",
+    "unplayable": 0,
+  },
+  {
+    "left": 22,
+    "pads": [
+      "1,1 TEST MIDI 1 3",
+      "2,1 TEST MIDI 1 7",
+      "2,4 TEST MIDI 1 1",
+      "2,5 TEST MIDI 1 2",
+      "3,4 TEST MIDI 1 6",
+      "4,2 TEST MIDI 1 4",
+      "6,4 TEST MIDI 1 5",
+    ],
+    "right": 26,
+    "score": 85.8724,
+    "seed": 15880,
+    "strategy": "Exploratory Variant (seed 3)",
+    "unplayable": 0,
+  },
+]
+`;
