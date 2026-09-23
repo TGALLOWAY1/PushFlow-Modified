@@ -14,7 +14,7 @@
  */
 
 import { type Performance, type HandPose, type InstrumentConfig } from '../../types/performance';
-import { type PerformanceEvent } from '../../types/performanceEvent';
+import { type PerformanceEvent, type PerformanceMoment } from '../../types/performanceEvent';
 import { type EngineConfiguration } from '../../types/engineConfig';
 import { type FingerType } from '../../types/fingerModel';
 import { type Layout } from '../../types/layout';
@@ -146,6 +146,13 @@ const ZONE_REACH_PENALTY_PER_COL = 6.0;
 const SEED_DEVIATION_PENALTY = 25.0;
 
 /**
+ * Extra cost when an unavoidable re-fingering uses a different stand-in than the
+ * one the sound already fell back to — keeps a sound that cannot keep its own
+ * finger on ONE substitute, not a new finger at every strike.
+ */
+const SUBSTITUTE_CHANGE_PENALTY = 20.0;
+
+/**
  * Cost applied to a best-effort assignment produced when no grip at all could be
  * formed for a moment. Large enough to rank last, finite so the moment still
  * receives a real assignment and an honest difficulty.
@@ -173,8 +180,6 @@ interface NoteAssignment {
   costComponents?: V1CostBreakdown;
   /** This strike is played by a hand outside its zone (hand separation relaxed). */
   relaxedZone?: boolean;
-  /** This strike uses a finger other than its pad's owner (one finger per sound relaxed). */
-  relaxedOwnership?: boolean;
   /** This strike comes from a best-effort assignment: no grip could be formed. */
   bestEffort?: boolean;
 }
@@ -202,6 +207,12 @@ interface BeamNode {
   relaxations: number;
   /** Moments on this path that needed a best-effort assignment. */
   bestEffortMoments: number;
+  /**
+   * Choices on this path that break no rule yet but are certain to (a pad
+   * pinned to a finger the lookahead has ruled out), or that depart from the
+   * lookahead's proven fingering. Ranked after relaxations, before cost.
+   */
+  deferredBreaks: number;
   /**
    * The (hand, finger) pairs used at the previous moment, and when that was.
    * Needed to charge same-finger repetition — the canonical `alternation` factor,
@@ -234,6 +245,21 @@ interface PadOwner {
    * different finger (at SEED_DEVIATION_PENALTY) without relaxing any rule.
    */
   seeded?: boolean;
+  /**
+   * True while the owner comes from the lookahead's proven rule-keeping
+   * fingering and no strike has confirmed it yet. Rule-keeping expansion must
+   * use it; departing from it is a deferred break (it ranks behind every child
+   * that keeps to it) and re-pins the pad to the finger actually played, rather
+   * than counting as a relaxation against a finger that never played the pad.
+   */
+  held?: boolean;
+  /**
+   * For an established owner that has already had to give way once: the finger
+   * that stood in for it. Later unavoidable re-fingerings are steered to the
+   * same substitute, so a sound that cannot keep its own finger still ends up
+   * on one other finger rather than a different one at every strike.
+   */
+  substitute?: { hand: 'left' | 'right'; finger: FingerType };
 }
 
 /**
@@ -261,43 +287,56 @@ function zoneReachCost(pads: PadCoord[], hand: 'left' | 'right'): number {
 /**
  * Checks a proposed fingering against the pads' owners.
  *
- * Returns the pads whose ESTABLISHED owner (pinned by an earlier strike) is
- * contradicted — each of those is one relaxation of the one-finger-per-sound
- * rule — plus the tie-breaking cost of those relaxations and the (separate,
- * non-relaxing) cost of departing from a merely suggested owner.
+ * Returns:
+ * - `violatingPads`: pads whose ESTABLISHED owner (pinned by an earlier strike,
+ *   the user's own finger choice, or the lookahead's best finger for a pad that
+ *   cannot keep one) is contradicted — each is one relaxation of the
+ *   one-finger-per-sound rule;
+ * - `relaxationCost`: the tie-breaking cost of those relaxations;
+ * - `heldDeviations`: pads departing from a held (proven) owner — deferred
+ *   breaks, not relaxations;
+ * - `seedCost`: the ranking-only cost of departing from a suggested owner.
  */
 function assessOwnership(
   ownership: Map<string, PadOwner>,
   entries: Array<{ padKey: string; hand: 'left' | 'right'; finger: FingerType }>,
-): { violatingPads: Set<string>; relaxationCost: number; seedCost: number } {
+): { violatingPads: Set<string>; relaxationCost: number; seedCost: number; heldDeviations: number } {
   const violatingPads = new Set<string>();
-  const seededCharged = new Set<string>();
+  const provisionalCharged = new Set<string>();
   let relaxationCost = 0;
   let seedCost = 0;
+  let heldDeviations = 0;
   for (const entry of entries) {
     const owner = ownership.get(entry.padKey);
     if (!owner) continue;
     if (owner.hand === entry.hand && owner.finger === entry.finger) continue;
     const handSwitch = owner.hand !== entry.hand;
-    if (owner.seeded) {
-      if (seededCharged.has(entry.padKey)) continue;
-      seededCharged.add(entry.padKey);
-      seedCost += SEED_DEVIATION_PENALTY + (handSwitch ? OWNERSHIP_HAND_SWITCH_PENALTY : 0);
+    if (owner.seeded || owner.held) {
+      if (provisionalCharged.has(entry.padKey)) continue;
+      provisionalCharged.add(entry.padKey);
+      if (owner.held) heldDeviations++;
+      else seedCost += SEED_DEVIATION_PENALTY + (handSwitch ? OWNERSHIP_HAND_SWITCH_PENALTY : 0);
       continue;
     }
     if (violatingPads.has(entry.padKey)) continue;
     violatingPads.add(entry.padKey);
     relaxationCost += OWNERSHIP_DEVIATION_PENALTY + (handSwitch ? OWNERSHIP_HAND_SWITCH_PENALTY : 0);
+    const substitute = owner.substitute;
+    if (substitute && (substitute.hand !== entry.hand || substitute.finger !== entry.finger)) {
+      relaxationCost += SUBSTITUTE_CHANGE_PENALTY;
+    }
   }
-  return { violatingPads, relaxationCost, seedCost };
+  return { violatingPads, relaxationCost, seedCost, heldDeviations };
 }
 
 /**
  * Records the owner of every pad struck in this moment.
  *
- * A pad's first strike pins its owner (replacing a merely suggested one); an
- * established owner is never overwritten, so a relaxed strike stays the
- * exception it is rather than silently becoming the new rule.
+ * A pad's first strike pins its owner (replacing a suggested or held one with
+ * the finger actually played). An established owner is never overwritten, so a
+ * relaxed strike stays the exception it is rather than silently becoming the
+ * new rule — but the first finger to stand in for it is remembered as its
+ * substitute.
  */
 function pinOwnership(
   ownership: Map<string, PadOwner>,
@@ -306,8 +345,12 @@ function pinOwnership(
   const next = new Map(ownership);
   for (const entry of entries) {
     const owner = next.get(entry.padKey);
-    if (!owner || owner.seeded) {
+    if (!owner || owner.seeded || owner.held) {
       next.set(entry.padKey, { hand: entry.hand, finger: entry.finger });
+    } else if (
+      !owner.substitute && (owner.hand !== entry.hand || owner.finger !== entry.finger)
+    ) {
+      next.set(entry.padKey, { ...owner, substitute: { hand: entry.hand, finger: entry.finger } });
     }
   }
   return next;
@@ -328,12 +371,15 @@ function ownedByOtherHand(
 
 /**
  * Beam ordering: fewer best-effort moments, then fewer relaxed strikes, then
- * lower cost. Rule-keeping plans therefore always outrank rule-breaking ones,
- * however much cheaper the rule-breaking plan would be.
+ * fewer deferred breaks, then lower cost. Rule-keeping plans therefore always
+ * outrank rule-breaking ones, however much cheaper the rule-breaking plan would
+ * be — and a path that has committed a pad to a finger certain to fail later
+ * ranks behind one that has not, even before the failure arrives.
  */
 function compareBeamNodes(a: BeamNode, b: BeamNode): number {
   if (a.bestEffortMoments !== b.bestEffortMoments) return a.bestEffortMoments - b.bestEffortMoments;
   if (a.relaxations !== b.relaxations) return a.relaxations - b.relaxations;
+  if (a.deferredBreaks !== b.deferredBreaks) return a.deferredBreaks - b.deferredBreaks;
   return a.totalCost - b.totalCost;
 }
 
@@ -402,6 +448,8 @@ export class BeamSolver implements SolverStrategy {
    * pads for which a rule break is unavoidable are absent (unfiltered).
    */
   private viableOwners: Map<string, Set<string>> = new Map();
+  /** The user's finger choice per pad, for the current solve. */
+  private preferredOwners: Map<string, PadOwner> = new Map();
 
   constructor(config: SolverConfig) {
     this.instrumentConfig = config.instrumentConfig;
@@ -426,8 +474,9 @@ export class BeamSolver implements SolverStrategy {
     preferredOwners: Map<string, PadOwner>,
   ): BeamNode[] {
     const { restingPose } = config;
-    // Pose-derived suggestions first, then the user's own choices on top: a
-    // preferred finger is an established owner from the very first strike.
+    // Pose-derived suggestions first, then fixed owners on top: the user's own
+    // finger choices, the lookahead's best finger for pads that cannot keep one,
+    // and (on the fallback search) its proven fingering, held provisionally.
     const padOwnership = new Map(this.initialPadOwnership);
     for (const [key, owner] of preferredOwners) padOwnership.set(key, owner);
     return [{
@@ -442,6 +491,7 @@ export class BeamSolver implements SolverStrategy {
       padOwnership,
       relaxations: 0,
       bestEffortMoments: 0,
+      deferredBreaks: 0,
       prevFingers: [],
       prevTimestamp: 0,
     }];
@@ -513,7 +563,8 @@ export class BeamSolver implements SolverStrategy {
         }));
         const ownership = assessOwnership(node.padOwnership, strikes);
         const relaxations = zoneViolations + ownership.violatingPads.size;
-        const isStrict = relaxations === 0 && !this.pinsNonViableOwner(node.padOwnership, strikes);
+        const deferred = ownership.heldDeviations + this.countNonViablePins(node.padOwnership, strikes);
+        const isStrict = relaxations === 0 && deferred === 0;
 
         // Each mode emits only its own half, so a relaxed pass never duplicates
         // the strict one.
@@ -587,7 +638,6 @@ export class BeamSolver implements SolverStrategy {
             col: pos.col,
             costComponents: stepComponents,
             relaxedZone: !isZoneValid(pos, hand),
-            relaxedOwnership: ownership.violatingPads.has(strikes[i].padKey),
           });
         }
 
@@ -603,6 +653,7 @@ export class BeamSolver implements SolverStrategy {
           padOwnership: pinOwnership(node.padOwnership, strikes),
           relaxations: node.relaxations + relaxations,
           bestEffortMoments: node.bestEffortMoments,
+          deferredBreaks: node.deferredBreaks + deferred,
           prevFingers: currentFingers,
           prevTimestamp: group.timestamp,
         });
@@ -740,7 +791,8 @@ export class BeamSolver implements SolverStrategy {
         ];
         const ownership = assessOwnership(node.padOwnership, strikes);
         const relaxations = zoneViolations + ownership.violatingPads.size;
-        const isStrict = relaxations === 0 && !this.pinsNonViableOwner(node.padOwnership, strikes);
+        const deferred = ownership.heldDeviations + this.countNonViablePins(node.padOwnership, strikes);
+        const isStrict = relaxations === 0 && deferred === 0;
         if (mode === 'strict' ? !isStrict : isStrict) continue;
 
         const leftTransition = calculateTransitionCost(node.leftPose, leftResult.pose, timeDelta);
@@ -811,7 +863,6 @@ export class BeamSolver implements SolverStrategy {
             col: pos.col,
             costComponents: stepComponents,
             relaxedZone: !isZoneValid(pos, hand),
-            relaxedOwnership: ownership.violatingPads.has(`${pos.row},${pos.col}`),
           });
         };
         leftNoteIndices.forEach((i, j) => pushAssignment(i, 'left', resolvedLeftFingers[j], leftResult.pose));
@@ -829,6 +880,7 @@ export class BeamSolver implements SolverStrategy {
           padOwnership: pinOwnership(node.padOwnership, strikes),
           relaxations: node.relaxations + relaxations,
           bestEffortMoments: node.bestEffortMoments,
+          deferredBreaks: node.deferredBreaks + deferred,
           prevFingers: splitFingers,
           prevTimestamp: group.timestamp,
         });
@@ -876,83 +928,90 @@ export class BeamSolver implements SolverStrategy {
     const LEFT_ORDER: FingerType[] = ['pinky', 'ring', 'middle', 'index', 'thumb'];
     const RIGHT_ORDER: FingerType[] = ['thumb', 'index', 'middle', 'ring', 'pinky'];
 
-    const padToOwner = new Map<string, { hand: 'left' | 'right'; finger: FingerType }>();
-    const used = { left: new Set<FingerType>(), right: new Set<FingerType>() };
-    const claim = (pad: PadCoord, hand: 'left' | 'right', finger: FingerType) => {
-      padToOwner.set(`${pad.row},${pad.col}`, { hand, finger });
-      used[hand].add(finger);
-    };
-
-    // 1. Keep every pad on its owner (established or suggested) while that finger is free.
-    const unplaced: PadCoord[] = [];
-    for (const pad of sorted) {
-      const owner = node.padOwnership.get(`${pad.row},${pad.col}`);
-      if (owner && !used[owner.hand].has(owner.finger)) claim(pad, owner.hand, owner.finger);
-      else unplaced.push(pad);
-    }
-
-    // 2. Everything else goes to the hand whose zone it lies in (the left side of
-    //    the grid to the left hand), taking free fingers in anatomical order; a
-    //    hand with no finger left hands the pad to the other hand.
-    const leftSide = unplaced.filter(pad => pad.col <= 3);
-    const rightSide = unplaced.filter(pad => pad.col > 3);
-    const place = (pads: PadCoord[], preferred: 'left' | 'right') => {
-      const other = preferred === 'left' ? 'right' : 'left';
-      const order = (hand: 'left' | 'right') => (hand === 'left' ? LEFT_ORDER : RIGHT_ORDER)
-        .filter(f => !used[hand].has(f));
-      const freePreferred = order(preferred);
-      // Left pads take the fingers nearest the thumb side, right pads the thumb
-      // side onward, so spatial order matches finger order.
-      const chosen = preferred === 'left'
-        ? freePreferred.slice(Math.max(0, freePreferred.length - pads.length))
-        : freePreferred.slice(0, pads.length);
-      pads.forEach((pad, i) => {
-        const finger = chosen[i];
-        if (finger) { claim(pad, preferred, finger); return; }
-        const fallback = order(other)[0];
-        if (fallback) claim(pad, other, fallback);
-      });
-    };
-    place(leftSide, 'left');
-    place(rightSide, 'right');
-    if (padToOwner.size < uniquePads.length) return null;
-
-    const leftFingers: Partial<Record<FingerType, { x: number; y: number }>> = {};
-    const rightFingers: Partial<Record<FingerType, { x: number; y: number }>> = {};
-    for (const [key, owner] of padToOwner) {
-      const [row, col] = key.split(',').map(Number);
-      (owner.hand === 'left' ? leftFingers : rightFingers)[owner.finger] = { x: col, y: row };
-    }
-
-    const centroidOf = (fingers: Partial<Record<FingerType, { x: number; y: number }>>) => {
-      const coords = Object.values(fingers) as Array<{ x: number; y: number }>;
-      if (coords.length === 0) return null;
-      return {
-        x: coords.reduce((a, c) => a + c.x, 0) / coords.length,
-        y: coords.reduce((a, c) => a + c.y, 0) / coords.length,
-      };
-    };
-    const leftCentroid = centroidOf(leftFingers);
-    const rightCentroid = centroidOf(rightFingers);
-    const leftPose: HandPose = leftCentroid
-      ? { centroid: leftCentroid, fingers: leftFingers }
-      : node.leftPose;
-    const rightPose: HandPose = rightCentroid
-      ? { centroid: rightCentroid, fingers: rightFingers }
-      : node.rightPose;
-
-    // A best-effort assignment must not launder a HARD physical rejection into a
-    // merely-expensive one. If reaching this moment would need a hand to move
-    // faster than physiologically possible, there is no fallback to offer: the
-    // moment is genuinely unplayable, and saying otherwise would reintroduce the
-    // over-optimism this whole change set exists to remove.
     const timeDelta = group.timestamp - prevTimestamp;
-    if (
-      exceedsHandSpeedLimit(node.leftPose, leftPose, timeDelta) ||
-      exceedsHandSpeedLimit(node.rightPose, rightPose, timeDelta)
-    ) {
-      return null;
-    }
+
+    // Lays the pads out on fingers, optionally keeping each pad on its owner.
+    const layOut = (honourOwners: boolean) => {
+      const padToOwner = new Map<string, { hand: 'left' | 'right'; finger: FingerType }>();
+      const used = { left: new Set<FingerType>(), right: new Set<FingerType>() };
+      const claim = (pad: PadCoord, hand: 'left' | 'right', finger: FingerType) => {
+        padToOwner.set(`${pad.row},${pad.col}`, { hand, finger });
+        used[hand].add(finger);
+      };
+
+      // 1. Keep every pad on its owner (established or suggested) while that finger is free.
+      const unplaced: PadCoord[] = [];
+      for (const pad of sorted) {
+        const owner = honourOwners ? node.padOwnership.get(`${pad.row},${pad.col}`) : undefined;
+        if (owner && !used[owner.hand].has(owner.finger)) claim(pad, owner.hand, owner.finger);
+        else unplaced.push(pad);
+      }
+
+      // 2. Everything else goes to the hand whose zone it lies in (the left side of
+      //    the grid to the left hand), taking free fingers in anatomical order; a
+      //    hand with no finger left hands the pad to the other hand.
+      const place = (pads: PadCoord[], preferred: 'left' | 'right') => {
+        const other = preferred === 'left' ? 'right' : 'left';
+        const order = (hand: 'left' | 'right') => (hand === 'left' ? LEFT_ORDER : RIGHT_ORDER)
+          .filter(f => !used[hand].has(f));
+        const freePreferred = order(preferred);
+        // Left pads take the fingers nearest the thumb side, right pads the thumb
+        // side onward, so spatial order matches finger order.
+        const chosen = preferred === 'left'
+          ? freePreferred.slice(Math.max(0, freePreferred.length - pads.length))
+          : freePreferred.slice(0, pads.length);
+        pads.forEach((pad, i) => {
+          const finger = chosen[i];
+          if (finger) { claim(pad, preferred, finger); return; }
+          const fallback = order(other)[0];
+          if (fallback) claim(pad, other, fallback);
+        });
+      };
+      place(unplaced.filter(pad => pad.col <= 3), 'left');
+      place(unplaced.filter(pad => pad.col > 3), 'right');
+      if (padToOwner.size < uniquePads.length) return null;
+
+      const leftFingers: Partial<Record<FingerType, { x: number; y: number }>> = {};
+      const rightFingers: Partial<Record<FingerType, { x: number; y: number }>> = {};
+      for (const [key, owner] of padToOwner) {
+        const [row, col] = key.split(',').map(Number);
+        (owner.hand === 'left' ? leftFingers : rightFingers)[owner.finger] = { x: col, y: row };
+      }
+      const centroidOf = (fingers: Partial<Record<FingerType, { x: number; y: number }>>) => {
+        const coords = Object.values(fingers) as Array<{ x: number; y: number }>;
+        if (coords.length === 0) return null;
+        return {
+          x: coords.reduce((a, c) => a + c.x, 0) / coords.length,
+          y: coords.reduce((a, c) => a + c.y, 0) / coords.length,
+        };
+      };
+      const leftCentroid = centroidOf(leftFingers);
+      const rightCentroid = centroidOf(rightFingers);
+      const leftPose: HandPose = leftCentroid
+        ? { centroid: leftCentroid, fingers: leftFingers }
+        : node.leftPose;
+      const rightPose: HandPose = rightCentroid
+        ? { centroid: rightCentroid, fingers: rightFingers }
+        : node.rightPose;
+
+      // A best-effort assignment must not launder a HARD physical rejection into
+      // a merely-expensive one: a layout that would need a hand to move faster
+      // than physiologically possible is no layout at all.
+      if (
+        exceedsHandSpeedLimit(node.leftPose, leftPose, timeDelta) ||
+        exceedsHandSpeedLimit(node.rightPose, rightPose, timeDelta)
+      ) {
+        return null;
+      }
+      return { padToOwner, leftPose, rightPose };
+    };
+
+    // Keeping pads on their owners is preferred, but not at the price of the
+    // moment itself: if the hands cannot get there in time, try the plain
+    // layout. Only if neither is reachable is the moment genuinely unplayable.
+    const laidOut = layOut(true) ?? layOut(false);
+    if (!laidOut) return null;
+    const { padToOwner, leftPose, rightPose } = laidOut;
 
     const strikes = group.positions.map(pos => {
       const key = `${pos.row},${pos.col}`;
@@ -990,7 +1049,7 @@ export class BeamSolver implements SolverStrategy {
 
     const assignments: NoteAssignment[] = group.notes.map((note, i) => {
       const pos = group.positions[i];
-      const { hand, finger, padKey: key } = strikes[i];
+      const { hand, finger } = strikes[i];
       return {
         eventIndex: group.eventIndices[i],
         eventKey: group.eventKeys[i],
@@ -1005,7 +1064,6 @@ export class BeamSolver implements SolverStrategy {
         col: pos.col,
         costComponents: stepComponents,
         relaxedZone: !isZoneValid(pos, hand),
-        relaxedOwnership: ownership.violatingPads.has(key),
         bestEffort: true,
       };
     });
@@ -1023,25 +1081,51 @@ export class BeamSolver implements SolverStrategy {
       padOwnership: pinOwnership(node.padOwnership, strikes),
       relaxations: node.relaxations + zoneViolations + ownership.violatingPads.size,
       bestEffortMoments: node.bestEffortMoments + 1,
+      deferredBreaks: node.deferredBreaks + ownership.heldDeviations,
       prevFingers: strikes.map(({ hand, finger }) => ({ hand, finger })),
       prevTimestamp: group.timestamp,
     };
   }
 
   /**
-   * True when this moment would pin a pad to an owner that cannot keep the rules
+   * Number of pads this moment would pin to an owner that cannot keep the rules
    * at some later moment. Such a child is not strict even if it breaks nothing
-   * yet: the break is merely deferred.
+   * yet — the break is merely deferred — and it ranks behind every child that
+   * pins only viable owners.
    */
-  private pinsNonViableOwner(
+  private countNonViablePins(
     ownership: Map<string, PadOwner>,
     strikes: Array<{ padKey: string; hand: 'left' | 'right'; finger: FingerType }>,
-  ): boolean {
+  ): number {
+    const counted = new Set<string>();
     for (const strike of strikes) {
       const owner = ownership.get(strike.padKey);
-      if (owner && !owner.seeded) continue; // already pinned — nothing new
+      // Already pinned, or held to the proven fingering (departures from which
+      // are counted separately) — nothing new is being decided here.
+      if (owner && !owner.seeded) continue;
       const viable = this.viableOwners.get(strike.padKey);
-      if (viable && !viable.has(`${strike.hand}:${strike.finger}`)) return true;
+      if (viable && !viable.has(`${strike.hand}:${strike.finger}`)) counted.add(strike.padKey);
+    }
+    return counted.size;
+  }
+
+  /**
+   * Whether the rule-keeping children at the best parent's rank already fill the
+   * beam. Every rule-breaking or deferred-break child ranks strictly behind its
+   * parent, so when they do, no such child could earn a place.
+   */
+  private rulesKeepingFillsBeam(children: BeamNode[], parents: BeamNode[], beamWidth: number): boolean {
+    if (parents.length === 0) return true;
+    const best = parents.reduce((a, b) => (compareBeamNodes(a, b) <= 0 ? a : b));
+    let atBest = 0;
+    for (const child of children) {
+      if (
+        child.bestEffortMoments === best.bestEffortMoments &&
+        child.relaxations === best.relaxations &&
+        child.deferredBreaks === best.deferredBreaks
+      ) {
+        if (++atBest >= beamWidth) return true;
+      }
     }
     return false;
   }
@@ -1049,32 +1133,6 @@ export class BeamSolver implements SolverStrategy {
   private pruneBeam(beam: BeamNode[], beamWidth: number): BeamNode[] {
     beam.sort(compareBeamNodes);
     return beam.slice(0, beamWidth);
-  }
-
-  /**
-   * Whether relaxed children could still earn a place in the next beam.
-   *
-   * A relaxed child always carries at least one more relaxation than its parent,
-   * so it can never outrank a rule-keeping child of a best-ranked parent. When
-   * there are already enough of those to fill the beam, relaxed expansion is
-   * skipped: it could not change the result, and the common case — a layout
-   * playable within the rules — then costs no more than a strict search.
-   */
-  private needsRelaxedExpansion(
-    strictChildren: BeamNode[],
-    parents: BeamNode[],
-    beamWidth: number,
-  ): boolean {
-    if (parents.length === 0) return false;
-    const best = parents.reduce((a, b) => (compareBeamNodes(a, b) <= 0 ? a : b));
-    let bestRanked = 0;
-    for (const child of strictChildren) {
-      if (child.bestEffortMoments === best.bestEffortMoments && child.relaxations === best.relaxations) {
-        bestRanked++;
-        if (bestRanked >= beamWidth) return false;
-      }
-    }
-    return true;
   }
 
   private backtrack(node: BeamNode): NoteAssignment[] {
@@ -1196,15 +1254,45 @@ export class BeamSolver implements SolverStrategy {
     padFingerAssignment: PadFingerAssignment,
     sortedEvents: Array<{ event: PerformanceEvent; originalIndex: number }>,
     config: EngineConfiguration,
+    played: NoteAssignment[],
   ): PerformanceCostBreakdown | null {
     if (!this.layout || Object.keys(padFingerAssignment).length === 0) return null;
     try {
       const moments = buildPerformanceMoments(sortedEvents.map(e => e.event));
       if (moments.length === 0) return null;
+
+      // Where the plan re-fingers a pad (because a rule had to give way), score
+      // that moment with the finger it actually plays, not the pad's usual one.
+      const byEventKey = new Map<string, NoteAssignment>();
+      const bySound = new Map<string, NoteAssignment[]>();
+      for (const a of played) {
+        if (a.eventKey !== undefined) byEventKey.set(a.eventKey, a);
+        const soundKey = `${a.noteNumber}|${a.voiceId ?? ''}`;
+        if (!bySound.has(soundKey)) bySound.set(soundKey, []);
+        bySound.get(soundKey)!.push(a);
+      }
+      const findStrike = (moment: PerformanceMoment, note: PerformanceMoment['notes'][number]) =>
+        (note.noteKey !== undefined ? byEventKey.get(note.noteKey) : undefined)
+        ?? bySound.get(`${note.noteNumber}|${note.soundId ?? ''}`)
+          ?.find(a => Math.abs(a.startTime - moment.startTime) <= MOMENT_EPSILON + 1e-9);
+      const momentFingerOverrides = new Map<number, PadFingerAssignment>();
+      moments.forEach((moment, index) => {
+        for (const note of moment.notes) {
+          const a = findStrike(moment, note);
+          if (!a) continue;
+          const pad = `${a.row},${a.col}`;
+          const usual = padFingerAssignment[pad];
+          if (usual && usual.hand === a.hand && usual.finger === a.finger) continue;
+          if (!momentFingerOverrides.has(index)) momentFingerOverrides.set(index, {});
+          momentFingerOverrides.get(index)![pad] = { hand: a.hand, finger: a.finger };
+        }
+      });
+
       return evaluatePerformance({
         moments,
         layout: this.layout,
         padFingerAssignment,
+        momentFingerOverrides,
         config: {
           restingPose: config.restingPose,
           stiffness: config.stiffness,
@@ -1216,6 +1304,45 @@ export class BeamSolver implements SolverStrategy {
       // Scoring must never break solving.
       return null;
     }
+  }
+
+  /**
+   * The finger each struck pad's sound belongs to, and the finger that plays it
+   * most.
+   *
+   * A sound's own finger is the user's choice where they made one; otherwise it
+   * is the finger that plays it most often (the earliest on a tie). Strikes on
+   * any other finger are the one-finger-per-sound breaks. Counting against this
+   * — not against whichever finger struck first — makes the count a property of
+   * the fingering rather than of the order of the moments, and never charges a
+   * sound for departing from a finger it was not played with.
+   */
+  private resolveSoundOwners(assignments: NoteAssignment[]): {
+    owners: Map<string, { hand: 'left' | 'right'; finger: FingerType; chosen?: boolean }>;
+    mostPlayed: Map<string, { hand: 'left' | 'right'; finger: FingerType }>;
+  } {
+    const tallies = new Map<string, Map<string, { count: number; first: number }>>();
+    assignments.forEach((a, order) => {
+      const key = `${a.row},${a.col}`;
+      const code = `${a.hand}:${a.finger}`;
+      if (!tallies.has(key)) tallies.set(key, new Map());
+      const tally = tallies.get(key)!;
+      const entry = tally.get(code);
+      if (entry) entry.count++;
+      else tally.set(code, { count: 1, first: order });
+    });
+    const owners = new Map<string, { hand: 'left' | 'right'; finger: FingerType; chosen?: boolean }>();
+    const mostPlayed = new Map<string, { hand: 'left' | 'right'; finger: FingerType }>();
+    for (const [key, tally] of tallies) {
+      const [code] = [...tally].sort((a, b) => b[1].count - a[1].count || a[1].first - b[1].first)[0];
+      const [hand, finger] = code.split(':') as ['left' | 'right', FingerType];
+      mostPlayed.set(key, { hand, finger });
+      const preferred = this.preferredOwners.get(key);
+      owners.set(key, preferred
+        ? { hand: preferred.hand, finger: preferred.finger, chosen: true }
+        : { hand, finger });
+    }
+    return { owners, mostPlayed };
   }
 
   private buildResult(
@@ -1255,6 +1382,8 @@ export class BeamSolver implements SolverStrategy {
     for (const { event, originalIndex } of sortedEvents) {
       eventByOriginalIndex.set(originalIndex, event);
     }
+
+    const { owners: soundOwners, mostPlayed } = this.resolveSoundOwners(assignments);
 
     for (let i = 0; i < totalEvents; i++) {
       const assignment = assignmentMap.get(i);
@@ -1328,6 +1457,9 @@ export class BeamSolver implements SolverStrategy {
       totalCost += assignment.cost;
 
       const padId = padKey(assignment.row, assignment.col);
+      const owner = soundOwners.get(padId);
+      const offOwner = owner !== undefined
+        && (owner.hand !== assignment.hand || owner.finger !== assignment.finger);
 
       fingerAssignments.push({
         noteNumber: assignment.noteNumber,
@@ -1343,18 +1475,18 @@ export class BeamSolver implements SolverStrategy {
         eventIndex: assignment.eventIndex,
         eventKey: assignment.eventKey,
         padId,
-        ...(assignment.relaxedZone || assignment.relaxedOwnership
+        ...(assignment.relaxedZone || offOwner
           ? {
               relaxedConstraints: [
                 ...(assignment.relaxedZone ? ['hand-zone' as const] : []),
-                ...(assignment.relaxedOwnership ? ['finger-ownership' as const] : []),
+                ...(offOwner ? ['finger-ownership' as const] : []),
               ],
             }
           : {}),
       });
     }
 
-    const constraintRelaxation = summarizeConstraintRelaxation(fingerAssignments);
+    const constraintRelaxation = summarizeConstraintRelaxation(fingerAssignments, soundOwners);
 
     const eventCount = fingerAssignments.length - unplayableCount;
     const averageMetrics: V1CostBreakdown = eventCount > 0 ? {
@@ -1374,16 +1506,22 @@ export class BeamSolver implements SolverStrategy {
     }
 
     // === Build pad-to-finger ownership map (Invariant B) ===
+    // Each struck pad maps to the finger that actually plays it most — never to
+    // a finger no strike used (an unhonoured preference, or a provisional owner
+    // the plan had to leave). Pads the performance never strikes keep their
+    // suggested or chosen owner.
     const padFingerOwnership: PadFingerAssignment = {};
     if (winningPadOwnership) {
       for (const [key, value] of winningPadOwnership) {
         padFingerOwnership[key] = { hand: value.hand, finger: value.finger };
       }
     }
+    for (const [key, value] of mostPlayed) padFingerOwnership[key] = value;
 
     // Evaluate this result with the canonical evaluator so every user-facing
-    // figure comes from one model, whichever path produced it.
-    const canonical = this.canonicalBreakdown(padFingerOwnership, sortedEvents, config);
+    // figure comes from one model, whichever path produced it — scoring each
+    // strike with the finger it was actually played with.
+    const canonical = this.canonicalBreakdown(padFingerOwnership, sortedEvents, config, assignments);
     const canonicalDims = canonical?.dimensions ?? null;
 
     // Publish the canonical dimensions rather than this solver's internal V1 cost.
@@ -1551,6 +1689,23 @@ export class BeamSolver implements SolverStrategy {
     };
   }
 
+  /**
+   * Whether search A found a better plan than search B: fewer moments left
+   * unplayed first, then the beam ordering (best-effort moments, relaxed
+   * strikes, deferred breaks, cost).
+   */
+  private isBetterRun(
+    a: { exhaustedGroupIndices: Set<number> }, bestA: BeamNode | null,
+    b: { exhaustedGroupIndices: Set<number> }, bestB: BeamNode | null,
+  ): boolean {
+    if (!bestA) return false;
+    if (!bestB) return true;
+    if (a.exhaustedGroupIndices.size !== b.exhaustedGroupIndices.size) {
+      return a.exhaustedGroupIndices.size < b.exhaustedGroupIndices.size;
+    }
+    return compareBeamNodes(bestA, bestB) < 0;
+  }
+
   /** Best node of a beam by the solver's ordering: rules first, then cost. */
   private bestOf(beam: BeamNode[]): BeamNode | null {
     if (beam.length === 0) return null;
@@ -1560,17 +1715,28 @@ export class BeamSolver implements SolverStrategy {
   /**
    * Runs the beam over every moment from `initialBeam`.
    *
-   * At each moment the beam is first filled with children that keep both
-   * structural rules. Rule-breaking children are generated only if those cannot
-   * fill it, and rank behind them regardless of cost. A moment no grip can be
-   * formed for at all gets a best-effort assignment; one beyond any pair of
-   * hands is recorded as exhausted.
+   * Every parent is first expanded with children that keep both structural
+   * rules. Rule-breaking children rank behind rule-keeping ones regardless of
+   * cost, and are generated:
+   * - under 'dead-ends': only for a parent with no rule-keeping continuation at
+   *   all. Cheap, and exact for the rules — the common case;
+   * - under 'fill': also whenever the rule-keeping children cannot fill the
+   *   beam, keeping rule-breaking paths alive as insurance. Slower, but in fast
+   *   passages that diversity is what keeps some hand position within reach of
+   *   the next moment.
+   * - under 'reach': for every parent, and the beam is pruned by cost alone
+   *   (rule breaks are still priced, but not ranked first). Used only when the
+   *   rule-first searches left moments unplayed: a plan that breaks a rule but
+   *   plays every moment beats one that keeps the rules and drops a moment.
+   * A moment no grip can be formed for at all gets a best-effort assignment; one
+   * beyond any pair of hands is recorded as exhausted.
    */
   private runBeamSearch(
     groups: PerformanceGroup[],
     initialBeam: BeamNode[],
     beamWidth: number,
     natDist: { left: Map<string, number>; right: Map<string, number> },
+    policy: 'dead-ends' | 'fill' | 'reach' = 'dead-ends',
   ): { beam: BeamNode[]; exhaustedGroupIndices: Set<number> } {
     let beam = initialBeam;
     let prevTimestamp = 0;
@@ -1578,29 +1744,34 @@ export class BeamSolver implements SolverStrategy {
 
     for (let gi = 0; gi < groups.length; gi++) {
       const group = groups[gi];
-      const strictChildren: BeamNode[] = [];
+      const newBeam: BeamNode[] = [];
+      const deadEnds: BeamNode[] = [];
+      const relax = (node: BeamNode) => {
+        newBeam.push(...this.expandNodeForGroup(node, group, prevTimestamp, 'relaxed', natDist));
+        if (group.activePads.length >= 2) {
+          newBeam.push(...this.expandNodeForSplitChord(node, group, prevTimestamp, 'relaxed', natDist));
+        }
+      };
 
       for (const node of beam) {
         // One hand, then (for chords) every two-hand split — keeping hand-zone
         // separation and one finger per sound.
-        strictChildren.push(...this.expandNodeForGroup(node, group, prevTimestamp, 'strict', natDist));
+        const strict = this.expandNodeForGroup(node, group, prevTimestamp, 'strict', natDist);
         if (group.activePads.length >= 2) {
-          strictChildren.push(...this.expandNodeForSplitChord(node, group, prevTimestamp, 'strict', natDist));
+          strict.push(...this.expandNodeForSplitChord(node, group, prevTimestamp, 'strict', natDist));
         }
+        newBeam.push(...strict);
+        if (strict.length === 0) deadEnds.push(node);
       }
 
-      const newBeam: BeamNode[] = strictChildren;
-
-      // Only when the rule-keeping options cannot fill the beam are rule-breaking
-      // ones considered at all — and they still rank behind every rule-keeping
-      // path, so a plan within the rules wins whenever one survives.
-      if (this.needsRelaxedExpansion(strictChildren, beam, beamWidth)) {
-        for (const node of beam) {
-          newBeam.push(...this.expandNodeForGroup(node, group, prevTimestamp, 'relaxed', natDist));
-          if (group.activePads.length >= 2) {
-            newBeam.push(...this.expandNodeForSplitChord(node, group, prevTimestamp, 'relaxed', natDist));
-          }
-        }
+      if (policy === 'reach' || (policy === 'fill' && !this.rulesKeepingFillsBeam(newBeam, beam, beamWidth))) {
+        for (const node of beam) relax(node);
+      } else {
+        // Only a parent with no rule-keeping way forward considers breaking a
+        // rule. Offering rule-breaking alternatives everywhere cost a relaxed
+        // expansion at almost every moment and let children that had pinned a
+        // doomed finger crowd out the viable ones.
+        for (const node of deadEnds) relax(node);
       }
 
       // If no grip at all could be formed for this moment, fall back to a
@@ -1617,7 +1788,11 @@ export class BeamSolver implements SolverStrategy {
       }
 
       if (newBeam.length > 0) {
-        beam = this.pruneBeam(newBeam, beamWidth);
+        beam = policy === 'reach'
+          ? newBeam
+            .sort((a, b) => a.bestEffortMoments - b.bestEffortMoments || a.totalCost - b.totalCost)
+            .slice(0, beamWidth)
+          : this.pruneBeam(newBeam, beamWidth);
       }
       prevTimestamp = group.timestamp;
     }
@@ -1738,32 +1913,71 @@ export class BeamSolver implements SolverStrategy {
 
     const natDist = { left: leftNaturalDistances, right: rightNaturalDistances };
 
-    // Lookahead: which fingers each pad can keep for the whole performance, and
-    // (when one exists) a complete rule-keeping fingering to fall back on.
+    // Lookahead: which fingers each pad can keep for the whole performance.
     const lookahead = analyzeStructuralRules(groups, preferredOwners);
     this.viableOwners = lookahead.viableOwners;
+    this.preferredOwners = preferredOwners;
+
+    // A pad no single finger can play at all its moments is held from the start
+    // to the finger that keeps the rule at the most strikes. Letting its first
+    // strike decide made the count of unavoidable re-fingerings depend on which
+    // moment happened to come first (12 for one order, 1 for the reverse).
+    const established = new Map<string, PadOwner>(preferredOwners);
+    for (const [key, owner] of lookahead.hopelessOwners) {
+      if (!established.has(key)) established.set(key, { hand: owner.hand, finger: owner.finger });
+    }
 
     let search = this.runBeamSearch(
-      groups, this.createInitialBeam(effectiveConfig, preferredOwners), effectiveConfig.beamWidth, natDist,
+      groups, this.createInitialBeam(effectiveConfig, established), effectiveConfig.beamWidth, natDist,
     );
     let bestNode = this.bestOf(search.beam);
 
+    // A moment left unplayed, or played only by a best-effort grip, is a sign the
+    // beam ran out of hand positions from which it could be reached (typical of
+    // fast passages). Search again keeping rule-breaking paths alive as
+    // insurance, and keep whichever plan is better: playable first, then rules.
+    if (!bestNode || search.exhaustedGroupIndices.size > 0 || bestNode.bestEffortMoments > 0) {
+      const filled = this.runBeamSearch(
+        groups, this.createInitialBeam(effectiveConfig, established), effectiveConfig.beamWidth, natDist, 'fill',
+      );
+      const filledBest = this.bestOf(filled.beam);
+      if (this.isBetterRun(filled, filledBest, search, bestNode)) {
+        search = filled;
+        bestNode = filledBest;
+      }
+    }
+
+    // Still leaving moments unplayed: playing every moment comes before the
+    // structural rules, so search once more with rule breaks priced but not
+    // ranked first. The result is kept only if it plays more moments.
+    if (search.exhaustedGroupIndices.size > 0) {
+      const reach = this.runBeamSearch(
+        groups, this.createInitialBeam(effectiveConfig, established), effectiveConfig.beamWidth, natDist, 'reach',
+      );
+      const reachBest = this.bestOf(reach.beam);
+      if (this.isBetterRun(reach, reachBest, search, bestNode)) {
+        search = reach;
+        bestNode = reachBest;
+      }
+    }
+
     // The beam commits fingers from local cost, so it can still miss a
-    // rule-keeping plan that the lookahead has proved exists. Before accepting
-    // a relaxation, search again with every pad held to that fingering, and keep
-    // whichever plan ranks better. The rules give way only if this also fails
-    // (for example because the proven fingering would need a hand to move
-    // faster than it can).
-    if (bestNode && bestNode.relaxations > 0 && lookahead.witness) {
-      const held = new Map<string, PadOwner>(preferredOwners);
-      for (const [key, owner] of lookahead.witness) {
-        if (!held.has(key)) held.set(key, { hand: owner.hand, finger: owner.finger });
+    // rule-keeping fingering the lookahead can find. Before accepting a
+    // relaxation, search again with the pads the lookahead constrains held
+    // (provisionally) to such a fingering, and keep whichever plan ranks
+    // better. The rules give way only if this also fails (for example because
+    // that fingering would need a hand to move faster than it can).
+    const witness = bestNode && bestNode.relaxations > 0 ? lookahead.findWitness() : null;
+    if (bestNode && witness && witness.size > 0) {
+      const held = new Map<string, PadOwner>(established);
+      for (const [key, owner] of witness) {
+        if (!held.has(key)) held.set(key, { hand: owner.hand, finger: owner.finger, held: true });
       }
       const retry = this.runBeamSearch(
         groups, this.createInitialBeam(effectiveConfig, held), effectiveConfig.beamWidth, natDist,
       );
       const retryBest = this.bestOf(retry.beam);
-      if (retryBest && compareBeamNodes(retryBest, bestNode) < 0) {
+      if (this.isBetterRun(retry, retryBest, search, bestNode)) {
         search = retry;
         bestNode = retryBest;
       }

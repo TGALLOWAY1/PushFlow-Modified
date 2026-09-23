@@ -53,7 +53,7 @@ const OPTIMIZER_METHODS = [
   {
     name: 'Beam Search',
     key: 'beam',
-    description: 'Fast finger assignment via beam search. Keeps the K best candidates at each event step, looking ahead so it never commits a sound to a finger that will fail later. Keeps hand separation and one finger per sound, relaxing them only when no plan can. Does not modify the layout. Best for quick analysis of a fixed layout.',
+    description: 'Fast finger assignment via beam search. Keeps the K best candidates at each event step, looking ahead to avoid committing a sound to a finger that a later chord\u2019s grip cannot keep. Keeps hand separation and one finger per sound, relaxing them only when no plan can. Does not modify the layout. Best for quick analysis of a fixed layout.',
   },
   {
     name: 'Simulated Annealing',
@@ -579,17 +579,17 @@ const HARD_CONSTRAINTS = [
       {
         name: 'Hand Separation',
         key: 'zone',
-        description: 'Each hand stays on its own side of the grid: the left hand plays columns 0\u20134 and the right hand columns 3\u20137 (columns 3\u20134 are shared). A plan that keeps this always wins over one that breaks it, however much cheaper the rule-breaking plan would be.',
+        description: 'Each hand stays on its own side of the grid: the left hand plays columns 0\u20134 and the right hand columns 3\u20137 (columns 3\u20134 are shared). A plan that keeps both structural rules always wins over one that breaks either, however much cheaper the rule-breaking plan would be.',
       },
       {
         name: 'One Finger Per Sound',
         key: 'ownership',
-        description: 'Every sound is played by the same finger for the whole performance, so the pad\u2192finger mapping is something you can memorise. If you set a finger for a sound, that is its finger; otherwise the solver picks one, looking ahead so it never picks a finger that will fail at a later moment.',
+        description: 'Every sound is played by the same finger for the whole performance, so the pad\u2192finger mapping is something you can memorise. If you set a finger for a sound, that is its finger; otherwise the solver picks one, looking ahead to avoid a finger that a later chord\u2019s grip cannot keep.',
       },
       {
         name: 'When a Rule Gives Way',
         key: 'relaxation',
-        description: 'Only when no plan can keep both rules \u2014 for example two pads in the right hand\u2019s zone too far apart for one hand to reach at once \u2014 does the solver break one, on as few strikes as possible. Those strikes are outlined in the timeline, listed per sound under the layout summary, and mark the plan as degraded rather than fully feasible. Re-fingering on the same hand is preferred to switching hands, and a short reach over the boundary to a long one.',
+        description: 'A rule gives way only when no plan can keep both \u2014 for example two pads in the right hand\u2019s zone too far apart for one hand to reach at once \u2014 or when your own finger choice for a sound asks for it. The solver then breaks as few strikes as it can, choosing the cheaper break: re-fingering on the same hand before switching hands, a short reach over the boundary before a long one, and a single stand-in finger for a sound rather than several. Those strikes are outlined in the timeline, listed per sound under the layout summary, and mark the plan as degraded rather than fully feasible.',
       },
     ],
   },

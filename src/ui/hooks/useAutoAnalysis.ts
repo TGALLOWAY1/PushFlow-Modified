@@ -81,8 +81,10 @@ const AUTO_ANALYSIS_DEBOUNCE_MS = 1000;
 /**
  * Build separated solver constraints from layout finger constraints.
  *
- * Finger constraints (per-pad) are SOFT preferences — the solver should
- * prefer them but may deviate for a better overall solution.
+ * A finger constraint names the finger that owns a Sound. The beam solver keeps
+ * it under the one-finger-per-sound rule — never trading it for a cheaper
+ * fingering — and departs from it only at strikes where no plan can keep it,
+ * flagging each one.
  *
  * The legacy `manualAssignments` parameter is preserved for backward
  * compatibility but new code should use the SolverConstraints structure.

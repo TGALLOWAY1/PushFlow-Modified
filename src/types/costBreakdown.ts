@@ -133,13 +133,14 @@ export interface EventCostBreakdown {
    *
    * These are kept separate so the UI can distinguish a physical impossibility
    * (one finger asked to hit two pads at once, or a note with no pad at all)
-   * from an ergonomic strain (reaching across the midline). Reporting them as
-   * one undifferentiated number is what made earlier verdicts untrustworthy.
+   * from a break of the hand-separation rule (a hand outside its zone).
+   * Reporting them as one undifferentiated number is what made earlier
+   * verdicts untrustworthy.
    */
   violations: {
     /** Notes in this moment whose finger is already busy on another pad. */
     collisions: number;
-    /** Pads played by a hand reaching outside its comfortable zone. */
+    /** Pads played by a hand outside its zone — the hand-separation rule broken. */
     zoneReaches: number;
     /** Hands whose simultaneous grip fails the strict geometry rules. */
     gripViolations: number;

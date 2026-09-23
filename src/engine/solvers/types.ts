@@ -33,9 +33,10 @@ export interface FingerConstraint {
  * Hard constraints (from placement locks + explicit finger assignments):
  *   The solver MUST honor these — violations make the solution invalid.
  *
- * Soft preferences (from finger constraints, voice-level hand preferences):
- *   The solver SHOULD prefer these but may violate them for a better overall solution.
- *   Implemented as a cost bias, not a hard filter.
+ * Finger preferences (from finger constraints, voice-level hand preferences):
+ *   The beam solver treats each as the finger that owns that Sound. The
+ *   one-finger-per-sound rule keeps it; it gives way only at strikes where no
+ *   plan can keep it, and each such strike is flagged as a relaxation.
  */
 export interface SolverConstraints {
   /**
@@ -44,8 +45,8 @@ export interface SolverConstraints {
    */
   hardAssignments?: Record<string, FingerConstraint>;
   /**
-   * Soft finger preferences by eventKey.
-   * The solver adds a penalty when deviating from these, but may still choose differently.
+   * Finger preferences by eventKey — the finger that owns each event's Sound.
+   * Kept under the one-finger-per-sound rule; departures are counted relaxations.
    */
   softPreferences?: Record<string, FingerConstraint>;
 }

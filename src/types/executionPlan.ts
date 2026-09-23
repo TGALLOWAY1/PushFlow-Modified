@@ -119,8 +119,15 @@ export interface SoundRelaxation {
   handZoneStrikes: number;
   /** Strikes of this Sound played by a finger other than the one that owns it. */
   fingerOwnershipStrikes: number;
-  /** Every hand+finger that played this Sound, e.g. ["R2", "R3"]. */
+  /** Every hand+finger that played this Sound, most-used first, e.g. ["R2", "R3"]. */
   fingersUsed: string[];
+  /**
+   * The finger this Sound belongs to ("L2"-style) — the one the rule keeps it
+   * on, and the one to memorise. Strikes on any other finger are the breaks.
+   */
+  ownerFinger?: string;
+  /** True when that finger is the user's own choice for this Sound. */
+  ownerIsUserChoice?: boolean;
 }
 
 /**
@@ -209,6 +216,12 @@ export interface AnnealingIterationSnapshot {
   handShapeDeviationSum: number;
   handBalanceSum: number;
   constraintPenaltySum: number;
+  /**
+   * Strikes in the candidate's plan that break a structural rule. Each adds a
+   * fixed penalty to the candidate cost, so a jump in cost with unchanged factor
+   * sums is explained here.
+   */
+  relaxedStrikes?: number;
   /** Which restart this snapshot belongs to (0 = initial run). */
   restartIndex?: number;
 }
@@ -239,8 +252,13 @@ export interface SolverTelemetry {
   improvementCount: number;
   /** improvementCount / iterationsCompleted. */
   improvementRate: number;
-  /** (initialCost - finalCost) / initialCost. */
+  /**
+   * (initial − final) / initial, on the plan's average ergonomic cost — without
+   * the structural-rule penalty the annealer adds while searching.
+   */
   finalCostImprovement: number;
+  /** The initial layout's average ergonomic cost (no rule penalty). */
+  initialErgonomicCost?: number;
   /** Cost at iteration milestones. */
   costAtMilestones: {
     pct25: number;

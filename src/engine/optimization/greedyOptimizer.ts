@@ -256,10 +256,11 @@ class GreedyOptimizer implements OptimizerMethod {
 
     for (let iter = 0; iter < maxIterations; iter++) {
       // Hand separation is a hard rule: a move may not add a strike outside its
-      // hand's zone unless it makes an unplayable moment playable. Cost alone
-      // must never buy a crossing, however much cheaper it would be.
+      // hand's zone unless it fixes a moment that is unplayable or needs an
+      // impossible grip. Cost alone must never buy a crossing, however much
+      // cheaper it would be.
       const currentZoneStrikes = countZoneStrikes(currentCost);
-      const currentUnplayable = countUnplayableMoments(currentCost);
+      const currentInfeasible = countInfeasibleMoments(currentCost);
 
       // Enumerate all candidate moves
       const candidateMoves = this.enumerateMoves(layout, assignment, input, voicePreferences);
@@ -271,6 +272,8 @@ class GreedyOptimizer implements OptimizerMethod {
       // Evaluate each move
       const evaluatedMoves: EvaluatedMove[] = [];
       const moveMap: CandidateMove[] = [];
+      // Moves the hand-separation rule ruled out, kept for the trace.
+      const blockedMoves: CandidateMoveRecord[] = [];
       let movesChecked = 0;
 
       for (const move of candidateMoves) {
@@ -287,8 +290,21 @@ class GreedyOptimizer implements OptimizerMethod {
         );
         if (
           countZoneStrikes(newCostResult) > currentZoneStrikes &&
-          countUnplayableMoments(newCostResult) >= currentUnplayable
+          countInfeasibleMoments(newCostResult) >= currentInfeasible
         ) {
+          blockedMoves.push({
+            moveType: move.type as CandidateMoveRecord['moveType'],
+            description: move.description,
+            fromPadKey: move.padKey ?? null,
+            toPadKey: move.targetPadKey ?? null,
+            secondaryPadKey: move.secondaryPadKey,
+            targetId: move.voiceId,
+            voiceName: move.voiceName,
+            deltaTotal: newCostResult.total - currentCost.total,
+            costBreakdown: newCostResult,
+            accepted: false,
+            reason: 'Blocked: would put a sound outside its hand\'s zone without making anything playable',
+          });
           continue;
         }
 
@@ -324,7 +340,11 @@ class GreedyOptimizer implements OptimizerMethod {
       const selected = updatePolicy.selectMove(evaluatedMoves, updateCtx);
 
       if (!selected) {
-        stopReason = 'no_improving_move';
+        // If the only moves left were ones the hand-separation rule forbids,
+        // say so: the optimizer stopped at a rule, not at a local minimum.
+        stopReason = evaluatedMoves.length === 0 && blockedMoves.length > 0
+          ? 'infeasible_neighborhood'
+          : 'no_improving_move';
         break;
       }
 
@@ -377,7 +397,7 @@ class GreedyOptimizer implements OptimizerMethod {
         netDelta: costDelta,
         stateBefore,
         stateAfter: { layout: bestMove.newLayout!, assignment: bestMove.newAssignment! },
-        candidateMoves: candidateMovesRecords,
+        candidateMoves: [...candidateMovesRecords, ...blockedMoves],
         chosenMove: candidateMovesRecords.find(m => m.accepted) ?? null,
         summary: moveRecord.description,
       });
@@ -1021,7 +1041,7 @@ class GreedyOptimizer implements OptimizerMethod {
       hardCount,
       mediumCount,
       fingerAssignments,
-      constraintRelaxation: summarizeConstraintRelaxation(fingerAssignments),
+      constraintRelaxation: summarizeConstraintRelaxation(fingerAssignments, new Map(Object.entries(assignment))),
       padFingerOwnership: assignment,
       momentAssignments,
       unplayableMomentCount,
@@ -1181,11 +1201,16 @@ function countZoneStrikes(breakdown: PerformanceCostBreakdown): number {
   return count;
 }
 
-/** Moments that cannot be played at all: a finger on two pads, or a note with no pad. */
-function countUnplayableMoments(breakdown: PerformanceCostBreakdown): number {
+/**
+ * Moments that cannot be played as assigned: a finger on two pads, a note with
+ * no pad, or a chord no valid grip can form. Crossing a hand into the other
+ * zone is the lesser break, allowed only to reduce these.
+ */
+function countInfeasibleMoments(breakdown: PerformanceCostBreakdown): number {
   let count = 0;
   for (const event of breakdown.eventCosts) {
-    if (event.violations.collisions > 0 || event.violations.unmapped > 0) count++;
+    const v = event.violations;
+    if (v.collisions > 0 || v.unmapped > 0 || v.gripViolations > 0) count++;
   }
   return count;
 }

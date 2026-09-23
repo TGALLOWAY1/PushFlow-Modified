@@ -415,15 +415,6 @@ function DetailChip({ label, value, color }: { label: string; value: string; col
 }
 
 /**
- * "What is limiting this layout" — the engine's own plain-English reasons.
- *
- * The canon asks for event-level explanation, and the engine already produces
- * exactly the sentences a user can act on ("45 Hard events (94% of total) — grip
- * or stretch limit reached", "Average drift 3.7 — hands frequently far from home
- * positions"). None of it reached the screen: the user saw factor bars and a
- * score and had to infer the cause. Numbers say a layout is worse; these say why.
- */
-/**
  * Whether the plan keeps the two structural rules — each hand on its own side
  * of the grid, and one finger per sound — and, if not, exactly where it gives way.
  *
@@ -482,21 +473,50 @@ function StructuralRulesStatus({
         )}
       </ul>
       <div className="pt-1 space-y-0.5">
-        {relaxation.sounds.slice(0, 5).map(sound => (
-          <div key={sound.soundId} className="flex justify-between gap-2 text-pf-xs">
-            <span className="text-[var(--text-secondary)] truncate">{nameFor(sound.soundId)}</span>
-            <span className="font-mono text-[var(--text-tertiary)] whitespace-nowrap">
-              {sound.fingersUsed.join(' + ')}
-              {sound.handZoneStrikes > 0 ? ` \u00b7 ${sound.handZoneStrikes} cross-zone` : ''}
-              {sound.fingerOwnershipStrikes > 0 ? ` \u00b7 ${sound.fingerOwnershipStrikes} re-fingered` : ''}
-            </span>
+        {relaxation.sounds.slice(0, 5).map(sound => {
+          // Lead with the sound's own finger — the one to memorise — and list any
+          // stand-ins after it, so "R3 + R2" can no longer hide which is the rule.
+          const others = sound.fingersUsed.filter(f => f !== sound.ownerFinger);
+          return (
+            <div key={sound.soundId} className="flex justify-between gap-2 text-pf-xs">
+              <span className="text-[var(--text-secondary)] truncate">{nameFor(sound.soundId)}</span>
+              <span className="font-mono text-[var(--text-tertiary)] whitespace-nowrap">
+                {sound.ownerFinger
+                  ? <>
+                      <span className="text-[var(--text-secondary)]" title={sound.ownerIsUserChoice ? 'Your finger choice for this sound' : 'This sound\u2019s own finger'}>
+                        {sound.ownerFinger}{sound.ownerIsUserChoice ? '*' : ''}
+                      </span>
+                      {others.length > 0 ? ` \u2192 also ${others.join(', ')}` : ''}
+                    </>
+                  : sound.fingersUsed.join(' + ')}
+                {sound.handZoneStrikes > 0 ? ` \u00b7 ${sound.handZoneStrikes} cross-zone` : ''}
+                {sound.fingerOwnershipStrikes > 0 ? ` \u00b7 ${sound.fingerOwnershipStrikes} re-fingered` : ''}
+              </span>
+            </div>
+          );
+        })}
+        {relaxation.sounds.length > 5 && (
+          <div className="text-pf-xs text-[var(--text-quaternary)]">
+            +{relaxation.sounds.length - 5} more sound{relaxation.sounds.length - 5 === 1 ? '' : 's'}
           </div>
-        ))}
+        )}
+        {relaxation.sounds.some(sound => sound.ownerIsUserChoice) && (
+          <div className="text-pf-micro text-[var(--text-quaternary)]">* your finger choice</div>
+        )}
       </div>
     </div>
   );
 }
 
+/**
+ * "What is limiting this layout" — the engine's own plain-English reasons.
+ *
+ * The canon asks for event-level explanation, and the engine already produces
+ * exactly the sentences a user can act on ("45 Hard events (94% of total) — grip
+ * or stretch limit reached", "Average drift 3.7 — hands frequently far from home
+ * positions"). None of it reached the screen: the user saw factor bars and a
+ * score and had to infer the cause. Numbers say a layout is worse; these say why.
+ */
 function WhatIsLimitingThis({
   constraints,
   infeasibleSounds,

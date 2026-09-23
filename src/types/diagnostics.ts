@@ -45,8 +45,10 @@ export interface DiagnosticFactors {
 /**
  * FeasibilityLevel: Overall feasibility classification.
  *
- * - feasible: all events can be played with valid grips.
- * - degraded: playable but has hard events.
+ * - feasible: all events can be played with valid grips, keeping both
+ *   structural rules (hand separation, one finger per sound).
+ * - degraded: playable, but with hard events, fallback grips, or strikes that
+ *   break a structural rule.
  * - infeasible: one or more events cannot be mapped or played.
  */
 export type FeasibilityLevel = 'feasible' | 'degraded' | 'infeasible';
@@ -225,7 +227,11 @@ export interface V1CostBreakdown {
   alternation: number;
   /** Left/right hand distribution penalty. */
   handBalance: number;
-  /** Soft ergonomic and hard feasibility penalties (zone reach, re-fingering). */
+  /**
+   * Penalties for breaking a rule: physical impossibilities (collisions, invalid
+   * grips) and the structural rules where they had to give way (a hand outside
+   * its zone, a sound re-fingered).
+   */
   constraintPenalty: number;
   /** Weighted total. */
   total: number;
@@ -384,7 +390,7 @@ export function deriveFeasibilityVerdict(
   if (zoneStrikes > 0) {
     reasons.push({
       type: 'constraint_relaxed',
-      message: `Hand separation relaxed: ${zoneStrikes} strike${zoneStrikes > 1 ? 's need' : ' needs'} a hand outside its zone, because no plan keeps both hands on their own side`,
+      message: `Hand separation relaxed: ${zoneStrikes} strike${zoneStrikes > 1 ? 's are' : ' is'} played by a hand outside its zone`,
       eventCount: zoneStrikes,
     });
   }
@@ -392,7 +398,7 @@ export function deriveFeasibilityVerdict(
   if (ownershipStrikes > 0) {
     reasons.push({
       type: 'constraint_relaxed',
-      message: `One finger per sound relaxed: ${ownershipStrikes} strike${ownershipStrikes > 1 ? 's use' : ' uses'} a different finger than the sound's own, because no plan keeps every sound on one finger`,
+      message: `One finger per sound relaxed: ${ownershipStrikes} strike${ownershipStrikes > 1 ? 's use' : ' uses'} a different finger than the sound's own`,
       eventCount: ownershipStrikes,
     });
   }

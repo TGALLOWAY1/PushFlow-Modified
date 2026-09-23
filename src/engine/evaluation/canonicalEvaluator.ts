@@ -217,7 +217,14 @@ export interface EvaluateTransitionInput {
   fromMoment: PerformanceMoment;
   toMoment: PerformanceMoment;
   layout: Layout;
+  /** Fingering of the `from` moment (and of `to`, unless `toPadFingerAssignment` is given). */
   padFingerAssignment: PadFingerAssignment;
+  /**
+   * Fingering of the `to` moment, when it differs from the `from` moment's —
+   * a plan that re-fingers a pad at one moment is scored with the finger it
+   * actually plays there.
+   */
+  toPadFingerAssignment?: PadFingerAssignment;
   config: EvaluationConfig;
   includeDebug?: boolean;
   /** Cost toggles: disabled dimensions contribute 0 to total. All enabled if omitted. */
@@ -241,8 +248,9 @@ export function evaluateTransition(input: EvaluateTransitionInput): TransitionCo
   const fromPadKeys = resolveMomentPadKeys(fromMoment, voiceIdIndex, noteIndex, config.instrumentConfig);
   const toPadKeys = resolveMomentPadKeys(toMoment, voiceIdIndex, noteIndex, config.instrumentConfig);
 
+  const toAssignment = input.toPadFingerAssignment ?? padFingerAssignment;
   const fromPoses = buildMomentPoses(fromPadKeys, padFingerAssignment);
-  const toPoses = buildMomentPoses(toPadKeys, padFingerAssignment);
+  const toPoses = buildMomentPoses(toPadKeys, toAssignment);
 
   const timeDelta = toMoment.startTime - fromMoment.startTime;
   const timeDeltaMs = timeDelta * 1000;
@@ -270,8 +278,8 @@ export function evaluateTransition(input: EvaluateTransitionInput): TransitionCo
   const speedPressure = timeDelta > 0.001
     ? Math.tanh((gridDistance / (timeDelta + 0.001)) * 0.1)
     : 0;
-  const handSwitch = detectHandSwitch(fromPadKeys, toPadKeys, padFingerAssignment);
-  const fingerChange = detectFingerChange(fromPadKeys, toPadKeys, padFingerAssignment);
+  const handSwitch = detectHandSwitch(fromPadKeys, toPadKeys, padFingerAssignment, toAssignment);
+  const fingerChange = detectFingerChange(fromPadKeys, toPadKeys, padFingerAssignment, toAssignment);
 
   // Apply cost toggles
   const rawDims = { poseNaturalness: 0, transitionCost, constraintPenalty: 0, alternation: 0, handBalance: 0, total: 0 };
@@ -318,6 +326,13 @@ export interface EvaluatePerformanceInput {
   includeDebug?: boolean;
   /** Cost toggles: disabled dimensions contribute 0 to total. All enabled if omitted. */
   costToggles?: CostToggles;
+  /**
+   * Per-moment departures from `padFingerAssignment`, keyed by moment position
+   * in `moments`. A plan that has to re-finger a pad at a few moments (because a
+   * rule gave way there) is scored with the finger it actually plays at each
+   * moment, rather than with a static fingering it never uses at those moments.
+   */
+  momentFingerOverrides?: ReadonlyMap<number, PadFingerAssignment>;
 }
 
 /**
@@ -334,6 +349,12 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
   if (moments.length === 0) {
     return emptyPerformanceBreakdown(padFingerAssignment);
   }
+
+  const overrides = input.momentFingerOverrides;
+  const assignmentAt = (index: number): PadFingerAssignment => {
+    const override = overrides?.get(index);
+    return override ? { ...padFingerAssignment, ...override } : padFingerAssignment;
+  };
 
   const eventCosts: EventCostBreakdown[] = [];
   const transitionCosts: TransitionCostBreakdown[] = [];
@@ -354,7 +375,7 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
     const eventResult = evaluateEvent({
       moment,
       layout,
-      padFingerAssignment,
+      padFingerAssignment: assignmentAt(i),
       config,
       prevMomentContext: i > 0 ? { assignments: prevAssignments, timestamp: prevTimestamp } : undefined,
       // Hand balance is deliberately NOT charged per moment. It is a property of
@@ -389,7 +410,8 @@ export function evaluatePerformance(input: EvaluatePerformanceInput): Performanc
         fromMoment: moment,
         toMoment: moments[i + 1],
         layout,
-        padFingerAssignment,
+        padFingerAssignment: assignmentAt(i),
+        toPadFingerAssignment: assignmentAt(i + 1),
         config,
         includeDebug,
         costToggles,
@@ -751,7 +773,11 @@ function computePoseDetail(
  */
 export const COLLISION_PENALTY = 25;
 
-/** Cost charged per pad played by a hand reaching across the grid midline. */
+/**
+ * Cost charged per pad played by a hand outside its zone (left hand beyond
+ * column 4, right hand before column 3). The break itself is also counted and
+ * reported as a hand-separation relaxation; this prices it.
+ */
 export const ZONE_REACH_PENALTY = 3;
 
 /** Cost charged per hand whose simultaneous grip fails the strict geometry rules. */
@@ -835,9 +861,10 @@ function detectHandSwitch(
   fromPadKeys: string[],
   toPadKeys: string[],
   assignment: PadFingerAssignment,
+  toAssignment: PadFingerAssignment = assignment,
 ): boolean {
   const fromHands = new Set(fromPadKeys.map(pk => assignment[pk]?.hand).filter(Boolean));
-  const toHands = new Set(toPadKeys.map(pk => assignment[pk]?.hand).filter(Boolean));
+  const toHands = new Set(toPadKeys.map(pk => toAssignment[pk]?.hand).filter(Boolean));
   // Hand switch if the set of active hands changed
   if (fromHands.size !== toHands.size) return true;
   for (const h of fromHands) {
@@ -850,13 +877,14 @@ function detectFingerChange(
   fromPadKeys: string[],
   toPadKeys: string[],
   assignment: PadFingerAssignment,
+  toAssignment: PadFingerAssignment = assignment,
 ): boolean {
   const fromFingers = new Set(fromPadKeys.map(pk => {
     const o = assignment[pk];
     return o ? `${o.hand}:${o.finger}` : null;
   }).filter(Boolean));
   const toFingers = new Set(toPadKeys.map(pk => {
-    const o = assignment[pk];
+    const o = toAssignment[pk];
     return o ? `${o.hand}:${o.finger}` : null;
   }).filter(Boolean));
   if (fromFingers.size !== toFingers.size) return true;

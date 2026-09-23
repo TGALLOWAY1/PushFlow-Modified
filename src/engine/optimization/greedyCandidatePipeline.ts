@@ -304,8 +304,13 @@ export async function generateGreedyCandidates(
     return { candidates: [], summary: null };
   }
 
-  // Phase 3: Diversity-aware finalist selection
-  const finalists = selectDiverseFinalists(allScored, count);
+  // Phase 3: Diversity-aware finalist selection, tier by tier. Candidates that
+  // are fully playable and keep both structural rules are offered first; the
+  // quality/diversity trade-off decides among them, and only slots they cannot
+  // fill go to candidates that break something. Otherwise a rule-keeping
+  // candidate could be dropped here in favour of more "diverse" rule-breaking
+  // ones, and the final ranking would never get to see it.
+  const finalists = selectFinalistsByTier(allScored, count);
 
   // Phase 4: Attach explanations
   for (const scored of finalists) {
@@ -401,6 +406,29 @@ export async function generateGreedyCandidates(
  * 2. For each remaining slot, pick candidate maximizing quality + λ * novelty
  * 3. Novelty = min diversity vs all already-selected finalists
  */
+/** Fewer unplayable moments first, then fewer relaxed strikes. */
+function feasibilityTier(scored: ScoredCandidate): [number, number] {
+  const plan = scored.candidate.executionPlan;
+  return [plan.unplayableMomentCount ?? plan.unplayableCount, countRelaxedStrikes(plan)];
+}
+
+function selectFinalistsByTier(candidates: ScoredCandidate[], count: number): ScoredCandidate[] {
+  const tiers = new Map<string, { key: [number, number]; members: ScoredCandidate[] }>();
+  for (const candidate of candidates) {
+    const key = feasibilityTier(candidate);
+    const id = key.join('|');
+    if (!tiers.has(id)) tiers.set(id, { key, members: [] });
+    tiers.get(id)!.members.push(candidate);
+  }
+  const ordered = [...tiers.values()].sort((a, b) => a.key[0] - b.key[0] || a.key[1] - b.key[1]);
+  const finalists: ScoredCandidate[] = [];
+  for (const tier of ordered) {
+    if (finalists.length >= count) break;
+    finalists.push(...selectDiverseFinalists(tier.members, count - finalists.length));
+  }
+  return finalists;
+}
+
 function selectDiverseFinalists(
   candidates: ScoredCandidate[],
   count: number,

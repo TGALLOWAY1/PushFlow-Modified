@@ -190,6 +190,25 @@ export function CandidatePreviewCard({
           </div>
         )}
 
+        {/* Rule relaxations — they rank a candidate below rule-keeping ones even
+            when its Score is higher, so the reason has to be on the card. */}
+        {(() => {
+          const relaxation = candidate.executionPlan.constraintRelaxation;
+          if (!relaxation || relaxation.mode === 'strict') return null;
+          const parts = [
+            relaxation.handZoneStrikes > 0 ? `${relaxation.handZoneStrikes} cross-zone` : null,
+            relaxation.fingerOwnershipStrikes > 0 ? `${relaxation.fingerOwnershipStrikes} re-fingered` : null,
+          ].filter(Boolean);
+          return (
+            <div
+              className="text-pf-xs text-violet-300 bg-violet-500/10 rounded-pf-sm px-1.5 py-0.5 mb-2"
+              title="This candidate breaks hand separation or one finger per sound, so it ranks after candidates that keep both rules"
+            >
+              Rules relaxed: {parts.join(', ')}
+            </div>
+          );
+        })()}
+
         {/* Feasibility warning */}
         {candidate.executionPlan.unplayableCount > 0 && (
           <div className="text-pf-xs text-red-400 bg-red-500/10 rounded-pf-sm px-1.5 py-0.5 mb-2">

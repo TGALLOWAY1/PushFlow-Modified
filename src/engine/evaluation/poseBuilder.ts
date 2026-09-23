@@ -35,7 +35,7 @@ export interface MomentPoseResult {
    * separately from `zoneViolations` because the two deserve different verdicts.
    */
   collisions: number;
-  /** Number of pads played by a hand reaching outside its comfortable zone. */
+  /** Number of pads played by a hand outside its zone (hand separation broken). */
   zoneViolations: number;
   /** Number of hands whose simultaneous grip fails the strict geometry rules. */
   gripViolations: number;

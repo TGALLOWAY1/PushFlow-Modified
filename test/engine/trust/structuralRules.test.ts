@@ -30,11 +30,14 @@ import { createBeamSolver } from '../../../src/engine/solvers/beamSolver';
 import { analyzeStructuralRules } from '../../../src/engine/solvers/structuralLookahead';
 import { seedLayoutFromPose0 } from '../../../src/engine/mapping/seedFromPose';
 import { createDefaultPose0 } from '../../../src/engine/prior/naturalHandPose';
-import { generateValidGripsWithTier } from '../../../src/engine/prior/feasibility';
+import { generateValidGripsWithTier, isStrictGripValid } from '../../../src/engine/prior/feasibility';
 import { isZoneValid } from '../../../src/engine/surface/handZone';
 import { buildFingerAssignmentFromLayout } from '../../../src/engine/optimization/greedyEvaluation';
 import { summarizeConstraintRelaxation } from '../../../src/engine/evaluation/constraintRelaxation';
 import { createSeededRng } from '../../../src/utils/seededRng';
+import { evaluatePerformance } from '../../../src/engine/evaluation/canonicalEvaluator';
+import { buildPerformanceMoments } from '../../../src/engine/structure/momentBuilder';
+import { getNeutralHandCenters } from '../../../src/engine/prior/handPose';
 import { DEFAULT_TEST_INSTRUMENT_CONFIG, DEFAULT_ENGINE_CONFIG } from '../../helpers/testHelpers';
 
 type Hand = 'left' | 'right';
@@ -77,21 +80,32 @@ async function solve(
 
 /**
  * Counts rule breaks straight from the plan, without trusting the solver's flags.
- * A pad's owner is its pinned finger if the user set one, otherwise its first strike.
+ * A pad's owner is its pinned finger if the user set one, otherwise the finger
+ * that plays it most (the earliest on a tie) — so the count is a property of
+ * the fingering, not of the order of the moments.
  */
 function independentBreaks(plan: ExecutionPlanResult, pins: Record<string, string> = {}) {
-  let zone = 0;
-  let ownership = 0;
-  const owner = new Map<string, string>(Object.entries(pins));
   const played = plan.fingerAssignments
     .filter((fa): fa is FingerAssignment & { assignedHand: Hand } => fa.assignedHand !== 'Unplayable')
     .sort((a, b) => a.startTime - b.startTime);
-  for (const fa of played) {
-    if (!isZoneValid({ row: fa.row!, col: fa.col! }, fa.assignedHand)) zone++;
+  const tallies = new Map<string, Map<string, { count: number; first: number }>>();
+  played.forEach((fa, order) => {
     const pk = `${fa.row},${fa.col}`;
     const code = `${fa.assignedHand}:${fa.finger}`;
-    if (!owner.has(pk)) owner.set(pk, code);
-    else if (owner.get(pk) !== code) ownership++;
+    if (!tallies.has(pk)) tallies.set(pk, new Map());
+    const entry = tallies.get(pk)!.get(code);
+    if (entry) entry.count++;
+    else tallies.get(pk)!.set(code, { count: 1, first: order });
+  });
+  const owner = new Map<string, string>();
+  for (const [pk, tally] of tallies) {
+    owner.set(pk, pins[pk] ?? [...tally].sort((a, b) => b[1].count - a[1].count || a[1].first - b[1].first)[0][0]);
+  }
+  let zone = 0;
+  let ownership = 0;
+  for (const fa of played) {
+    if (!isZoneValid({ row: fa.row!, col: fa.col! }, fa.assignedHand)) zone++;
+    if (owner.get(`${fa.row},${fa.col}`) !== `${fa.assignedHand}:${fa.finger}`) ownership++;
   }
   return { zone, ownership };
 }
@@ -226,6 +240,15 @@ describe('the solver relaxes a rule exactly when no plan can keep it', () => {
         }
         // And relaxing a rule never costs playability.
         if (plan.unplayableCount > 0) disagreements.push({ t, kind: 'unplayable', count: plan.unplayableCount });
+        // The published fingering names only fingers that actually played each pad.
+        for (const fa of plan.fingerAssignments) {
+          if (fa.assignedHand === 'Unplayable') continue;
+          const owner = plan.padFingerOwnership?.[`${fa.row},${fa.col}`];
+          const playedByOwner = plan.fingerAssignments.some(other =>
+            other.row === fa.row && other.col === fa.col &&
+            other.assignedHand === owner?.hand && other.finger === owner?.finger);
+          if (!playedByOwner) { disagreements.push({ t, kind: 'owner never played', pad: `${fa.row},${fa.col}` }); break; }
+        }
       }
 
       expect(disagreements).toEqual([]);
@@ -336,12 +359,179 @@ describe('when a rule has to give way', () => {
   });
 });
 
+describe('a rule gives way only where it must', () => {
+  it('keeps a sound on one finger when only one finger can serve all its moments', async () => {
+    // The lookahead leaves pad (6,3) exactly one viable finger, the left thumb.
+    // Cheaper right-hand fingers pinned at its first strike used to crowd that
+    // path out of the beam, so the sound later had to be re-fingered on top of
+    // the one hand-separation break the final chord makes unavoidable.
+    const { layout, performance } = scenario(
+      Object.fromEntries(['6,3', '2,2', '1,7', '2,1', '0,5', '7,5'].map((pk, i) => [pk, voice(`v${i}`, 40 + i)])),
+      [['1,7'], ['6,3'], ['2,2', '1,7', '2,1'], ['2,1', '6,3', '2,2', '1,7'], ['2,1', '2,2', '6,3'], ['2,2', '6,3'], ['0,5', '7,5']],
+    );
+    const plan = await solve(layout, performance);
+
+    const fingers = new Set(plan.fingerAssignments
+      .filter(fa => fa.row === 6 && fa.col === 3)
+      .map(fa => `${fa.assignedHand}:${fa.finger}`));
+    expect([...fingers]).toEqual(['left:thumb']);
+    expect(plan.constraintRelaxation?.handZoneStrikes).toBe(1);
+    expect(plan.constraintRelaxation?.fingerOwnershipStrikes).toBe(0);
+  });
+
+  it('counts unavoidable re-fingerings the same whichever moment comes first', async () => {
+    // Pad (2,3) can only be the left thumb in chord X and only the right thumb in
+    // chord Y. Letting its first strike decide its finger reported 12 breaks when
+    // X came first and 1 when it came last — for the same fingering.
+    const X = ['2,3', '1,5', '4,5', '4,0', '0,5', '1,0'];
+    const Y = ['2,3', '4,7', '1,2', '0,0', '3,1'];
+    const pads = Object.fromEntries([...new Set([...X, ...Y])].map((pk, i) => [pk, voice(`v${i}`, 40 + i)]));
+    const first = scenario(pads, [X, ...Array(12).fill(Y)], 1);
+    const last = scenario(pads, [...Array(12).fill(Y), X], 1);
+
+    const a = await solve(first.layout, first.performance);
+    const b = await solve(last.layout, last.performance);
+
+    expect(a.constraintRelaxation?.fingerOwnershipStrikes).toBe(1);
+    expect(b.constraintRelaxation?.fingerOwnershipStrikes).toBe(1);
+    expect(a.padFingerOwnership?.['2,3']).toEqual(b.padFingerOwnership?.['2,3']);
+  });
+
+  it('does not let one unavoidable break cause breaks anywhere else', async () => {
+    // Appending an impossible chord, or a sound pinned to a finger it can never
+    // keep, used to switch the lookahead off for the whole performance, and the
+    // solver then broke rules on other sounds it had kept before.
+    const rng = createSeededRng(31);
+    const leaks: unknown[] = [];
+    let checked = 0;
+    for (let t = 0; t < 60; t++) {
+      const pads: string[] = [];
+      const padCount = 4 + Math.floor(rng() * 3);
+      while (pads.length < padCount) {
+        const pk = `${1 + Math.floor(rng() * 6)},${Math.floor(rng() * 7)}`;
+        if (!pads.includes(pk)) pads.push(pk);
+      }
+      const moments: string[][] = [];
+      for (let m = 0; m < 4 + Math.floor(rng() * 6); m++) {
+        moments.push([...pads].sort(() => rng() - 0.5).slice(0, 1 + Math.floor(rng() * 3)));
+      }
+      const voices = (list: string[]) => Object.fromEntries(list.map((pk, i) => [pk, voice(`v${i}`, 40 + i)]));
+      const base = scenario(voices(pads), moments, 1);
+      const alone = await solve(base.layout, base.performance);
+      if (alone.constraintRelaxation?.mode !== 'strict' || alone.unplayableCount > 0) continue;
+      checked++;
+
+      const chord = scenario(voices([...pads, '0,7', '7,7']), [...moments, ['0,7', '7,7']], 1);
+      const withChord = await solve(chord.layout, chord.performance);
+      const chordLeaks = withChord.fingerAssignments
+        .filter(fa => fa.relaxedConstraints && !(fa.col === 7 && (fa.row === 0 || fa.row === 7)));
+      if (chordLeaks.length > 0) leaks.push({ t, kind: 'impossible chord', count: chordLeaks.length });
+
+      const pinned = scenario(voices([...pads, '3,6']), [...moments, ['3,6']], 1);
+      const pinnedVoice = pinned.layout.padToVoice['3,6'].id;
+      const manual = Object.fromEntries(pinned.performance.events
+        .filter(e => e.voiceId === pinnedVoice)
+        .map(e => [e.eventKey!, { hand: 'left' as const, finger: 'index' as const }]));
+      const withPin = await solve(pinned.layout, pinned.performance, { manual });
+      const pinLeaks = withPin.fingerAssignments.filter(fa => fa.relaxedConstraints && !(fa.row === 3 && fa.col === 6));
+      if (pinLeaks.length > 0) leaks.push({ t, kind: 'unkeepable pin', count: pinLeaks.length });
+    }
+    expect(leaks).toEqual([]);
+    expect(checked).toBeGreaterThan(30);
+  }, 60_000);
+
+  it('keeps a sound that cannot have its own finger on one stand-in, and reports fingers that were played', async () => {
+    // Both sounds pinned to the right index, always struck together: one of them
+    // cannot have it. It used to wander between stand-ins (R1, then R3), and the
+    // published fingering claimed R2 for it — so Score, factor bars and
+    // Calculate Cost all scored a collision the plan never plays.
+    const { layout, performance } = scenario(
+      { '0,5': voice('kick', 36), '0,6': voice('snare', 38) },
+      Array(8).fill(['0,5', '0,6']),
+    );
+    const manual = Object.fromEntries(performance.events.map(e => [e.eventKey!, { hand: 'right' as const, finger: 'index' as const }]));
+    const plan = await solve(layout, performance, { manual });
+
+    const snare = new Set(plan.fingerAssignments.filter(fa => fa.col === 6).map(fa => `${fa.assignedHand}:${fa.finger}`));
+    expect(snare.size).toBe(1);
+    const snareSummary = plan.constraintRelaxation?.sounds.find(sd => sd.soundId === 'snare');
+    expect(snareSummary?.ownerFinger).toBe('R2');
+    expect(snareSummary?.ownerIsUserChoice).toBe(true);
+    expect(snare.has(`${plan.padFingerOwnership!['0,6'].hand}:${plan.padFingerOwnership!['0,6'].finger}`)).toBe(true);
+
+    const calculated = evaluatePerformance({
+      moments: buildPerformanceMoments(performance.events),
+      layout,
+      padFingerAssignment: plan.padFingerOwnership!,
+      config: {
+        restingPose: DEFAULT_ENGINE_CONFIG.restingPose,
+        stiffness: DEFAULT_ENGINE_CONFIG.stiffness,
+        instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG,
+        neutralHandCenters: getNeutralHandCenters(layout, DEFAULT_TEST_INSTRUMENT_CONFIG),
+      },
+    });
+    expect(calculated.feasibility.level).not.toBe('infeasible');
+  });
+
+  it('plays every moment of a fast passage before it keeps the rules', async () => {
+    // Keeping both rules through this passage leaves no hand within reach of the
+    // chord at 0.632 s, 36 ms after the one before. Playing it needs one sound
+    // on the other hand for a few strikes: playable comes first.
+    const passage: Array<[number, string[]]> = [
+      [0, ['1,1', '5,6', '4,5']], [0.038, ['1,1', '5,6', '4,5']], [0.144, ['1,3', '1,1']],
+      [0.203, ['7,2', '1,3', '1,1']], [0.319, ['7,2', '4,4', '1,3']], [0.406, ['4,5', '1,1']],
+      [0.443, ['4,5', '1,3']], [0.515, ['1,1']], [0.596, ['4,5', '1,3', '7,2']],
+      [0.632, ['1,1', '5,6']], [0.695, ['4,5', '1,1']],
+    ];
+    const padToVoice = Object.fromEntries([...new Set(passage.flatMap(([, ps]) => ps))].map((pk, i) => [pk, voice(`v${i}`, 40 + i)]));
+    const layout: Layout = { ...createEmptyLayout('L', 'L', 'active'), padToVoice };
+    const events: PerformanceEvent[] = passage.flatMap(([time, ps], mi) => ps.map((pk, k) => ({
+      noteNumber: padToVoice[pk].originalMidiNote!, voiceId: padToVoice[pk].id, startTime: time,
+      duration: 0.05, velocity: 100, eventKey: `e${mi}-${k}`,
+    })));
+
+    const plan = await solve(layout, { events, tempo: 120, name: 'fast' });
+
+    expect(plan.unplayableCount).toBe(0);
+    expect(plan.constraintRelaxation?.mode).toBe('relaxed');
+  });
+
+  it('never publishes a finger that did not play the pad, even when a rescue search had to leave it', async () => {
+    // 45 ms between moments: the fallback search holds the lookahead's
+    // fingering, and hand speed forces it off that fingering. The pads it left
+    // used to be published (and scored) with fingers that never touched them.
+    const { layout, performance } = scenario(
+      Object.fromEntries(['3,1', '0,4', '5,3', '7,3', '2,4', '7,7'].map((pk, i) => [pk, voice(`v${i}`, 40 + i)])),
+      [['3,1'], ['0,4', '5,3'], ['7,3', '0,4'], ['5,3', '2,4', '7,7'], ['7,7', '0,4'], ['7,7', '0,4', '7,3', '2,4']],
+      0.045,
+    );
+    const plan = await solve(layout, performance);
+
+    const played = new Map<string, Set<string>>();
+    for (const fa of plan.fingerAssignments) {
+      if (fa.assignedHand === 'Unplayable') continue;
+      const pk = `${fa.row},${fa.col}`;
+      if (!played.has(pk)) played.set(pk, new Set());
+      played.get(pk)!.add(`${fa.assignedHand}:${fa.finger}`);
+    }
+    for (const [pk, fingers] of played) {
+      const owner = plan.padFingerOwnership![pk];
+      expect(fingers.has(`${owner.hand}:${owner.finger}`)).toBe(true);
+    }
+    const counted = independentBreaks(plan);
+    expect(counted.zone).toBe(plan.constraintRelaxation?.handZoneStrikes);
+    expect(counted.ownership).toBe(plan.constraintRelaxation?.fingerOwnershipStrikes);
+  });
+});
+
 describe('the lookahead', () => {
   it('rules out a finger that is certain to fail at a later moment', () => {
-    const { viableOwners, witness } = analyzeStructuralRules([
+    const lookahead = analyzeStructuralRules([
       { activePads: [{ row: 3, col: 3 }, { row: 4, col: 5 }, { row: 3, col: 4 }] },
       { activePads: [{ row: 3, col: 3 }, { row: 4, col: 0 }] },
     ], new Map());
+    const { viableOwners } = lookahead;
+    const witness = lookahead.findWitness();
 
     expect(viableOwners.get('3,3')?.has('left:ring')).toBe(false);
     expect(witness).not.toBeNull();
@@ -353,33 +543,48 @@ describe('the lookahead', () => {
   });
 
   it('offers no fingering, and filters nothing, when no plan can keep the rules', () => {
-    const { viableOwners, witness } = analyzeStructuralRules(
+    const lookahead = analyzeStructuralRules(
       [{ activePads: [{ row: 0, col: 5 }, { row: 7, col: 5 }] }], new Map(),
     );
-    expect(witness).toBeNull();
-    expect(viableOwners.size).toBe(0);
+    expect(lookahead.findWitness()).toBeNull();
+    expect(lookahead.viableOwners.size).toBe(0);
+  });
+
+  it('gives a pad that cannot keep one finger the finger that serves most of its strikes', () => {
+    // (2,3) can only be the left thumb in chord X and only the right thumb in Y.
+    // Held to the majority finger from the start, the search counts its one
+    // unavoidable re-fingering as one — not twelve, as a first-strike pin did.
+    const X = [[2, 3], [1, 5], [4, 5], [4, 0], [0, 5], [1, 0]];
+    const Y = [[2, 3], [4, 7], [1, 2], [0, 0], [3, 1]];
+    const chord = (pads: number[][]) => ({ activePads: pads.map(([row, col]) => ({ row, col })) });
+    const lookahead = analyzeStructuralRules([chord(X), ...Array(12).fill(chord(Y))], new Map());
+
+    expect(lookahead.hopelessOwners.get('2,3')).toEqual({ hand: 'right', finger: 'thumb' });
+    expect(lookahead.viableOwners.has('2,3')).toBe(false);
   });
 
   it('honours the user\'s own finger choice in its fingering', () => {
     const pinned = new Map([['3,3', { hand: 'right' as const, finger: 'thumb' as const }]]);
-    const { witness } = analyzeStructuralRules([
+    const witness = analyzeStructuralRules([
       { activePads: [{ row: 3, col: 3 }, { row: 4, col: 5 }] },
-    ], pinned);
+    ], pinned).findWitness();
     expect(witness?.get('3,3')).toEqual({ hand: 'right', finger: 'thumb' });
   });
 });
 
 describe('greedy fingering keeps hand separation whenever it can', () => {
-  it('finds an in-zone assignment that first-fit misses', () => {
-    // Eight left-side pads whose co-occurrences first-fit colours badly: it ran
-    // pad (3,1) out of left fingers and sent it to the right hand, although an
-    // all-left assignment with no shared fingers exists.
-    const pads = ['3,1', '1,2', '0,2', '0,1', '7,1', '1,0', '4,1', '6,2'];
+  it('finds an in-zone, playable assignment that first-fit misses', () => {
+    // Eight left-side pads in chords of up to four. First-fit colours the
+    // co-occurrence graph badly: it ran pad (4,0) out of left fingers and sent
+    // it to the right hand, although an all-left assignment exists in which no
+    // two simultaneous pads share a finger and every chord is a valid grip.
+    const pads = ['3,2', '4,1', '5,1', '4,0', '2,1', '5,0', '5,2', '3,1'];
     const padToVoice: Record<string, Voice> = {};
     pads.forEach((pk, i) => { padToVoice[pk] = voice(`v${i}`, 40 + i); });
     const momentPads = [
-      ['0,1', '1,0'], ['7,1', '0,1', '4,1', '0,2'], ['3,1', '1,2', '4,1', '0,1'], ['1,0', '6,2'],
-      ['3,1', '1,2', '6,2'], ['6,2', '0,2', '1,2', '3,1'], ['6,2', '1,0', '4,1', '7,1'],
+      ['2,1', '3,1', '4,0', '5,2'], ['4,1', '2,1', '3,1', '5,2'], ['5,2', '3,2', '5,0'], ['5,1', '4,1'],
+      ['5,0', '3,2', '5,1', '3,1'], ['4,0', '3,2', '5,2', '3,1'], ['3,1', '4,0', '3,2', '5,2'],
+      ['5,1', '2,1', '5,0'], ['4,0', '2,1'], ['3,2', '4,0', '3,1', '4,1'], ['3,2', '4,1', '3,1'],
     ];
     const layout: Layout = { ...createEmptyLayout('L', 'L', 'active'), padToVoice };
     const moments = momentPads.map(ps => ({
@@ -392,7 +597,34 @@ describe('greedy fingering keeps hand separation whenever it can', () => {
     for (const ps of momentPads) {
       const fingers = ps.map(pk => assignment[pk].finger);
       expect(new Set(fingers).size).toBe(fingers.length);
+      const grip: Partial<Record<FingerType, { x: number; y: number }>> = {};
+      for (const pk of ps) {
+        const [row, col] = pk.split(',').map(Number);
+        grip[assignment[pk].finger] = { x: col, y: row };
+      }
+      expect(isStrictGripValid(grip, 'left')).toBe(true);
     }
+  });
+
+  it('crosses a hand over before asking for an impossible grip, as the beam solver does', async () => {
+    // Two right-zone pads seven rows apart, struck together: no right-hand grip
+    // spans them. Greedy used to keep both on the right hand anyway (a "fallback
+    // grip") while the beam sent one to the left hand — so the same layout read
+    // "rules hold" in one engine and "rules relaxed" in the other.
+    const { layout, performance } = scenario(
+      { '0,6': voice('high', 40), '7,6': voice('low', 41), '3,1': voice('kick', 36) },
+      [['0,6', '7,6'], ['3,1'], ['0,6', '7,6'], ['3,1']],
+    );
+    const moments = [['0,6', '7,6'], ['3,1'], ['0,6', '7,6'], ['3,1']].map(ps => ({
+      notes: ps.map(pk => ({ padId: '', soundId: layout.padToVoice[pk].id, noteNumber: layout.padToVoice[pk].originalMidiNote! })),
+    }));
+
+    const greedy = buildFingerAssignmentFromLayout(layout, moments);
+    const beam = await solve(layout, performance);
+
+    const greedyCrossings = ['0,6', '7,6'].filter(pk => greedy[pk].hand === 'left').length;
+    expect(greedyCrossings).toBe(1);
+    expect(beam.constraintRelaxation?.handZoneStrikes).toBe(2);
   });
 });
 

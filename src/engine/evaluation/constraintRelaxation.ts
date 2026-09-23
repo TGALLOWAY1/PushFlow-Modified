@@ -31,10 +31,12 @@ function fingerLabel(hand: 'left' | 'right', finger: FingerType): string {
  *
  * Moments are counted the way the solver groups them — strikes within
  * MOMENT_EPSILON of the moment's first strike belong to it — so the relaxed
- * moment count matches what the timeline shows as one moment.
+ * moment count matches the solver's own moment grouping.
  */
 export function summarizeConstraintRelaxation(
   fingerAssignments: FingerAssignment[],
+  /** Owning finger per pad ("row,col"), and whether the user chose it. */
+  owners?: ReadonlyMap<string, { hand: 'left' | 'right'; finger: FingerType; chosen?: boolean }>,
 ): ConstraintRelaxationSummary {
   let handZoneStrikes = 0;
   let fingerOwnershipStrikes = 0;
@@ -51,6 +53,7 @@ export function summarizeConstraintRelaxation(
     const soundId = fa.voiceId ?? String(fa.noteNumber);
     let entry = perSound.get(soundId);
     if (!entry) {
+      const owner = owners?.get(`${fa.row},${fa.col}`);
       entry = {
         soundId,
         noteNumber: fa.noteNumber,
@@ -58,6 +61,7 @@ export function summarizeConstraintRelaxation(
         fingerOwnershipStrikes: 0,
         fingersUsed: [],
         fingerCounts: new Map(),
+        ...(owner ? { ownerFinger: fingerLabel(owner.hand, owner.finger), ownerIsUserChoice: !!owner.chosen } : {}),
       };
       perSound.set(soundId, entry);
     }
