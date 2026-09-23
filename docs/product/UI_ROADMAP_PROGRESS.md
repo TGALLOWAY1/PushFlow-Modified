@@ -75,22 +75,22 @@ Sessions are listed in S0.1 … S8.3 order, as in [UI_IMPLEMENTATION_PROMPTS.md]
 
 #### S0.1 — Test runner, CI, hooks and fonts
 
-- **Status:** In progress (claude/pushflow-ui-roadmap-266eqz, PR #93)
+- **Status:** Done (PR #93)
 - **Prerequisites:** Prompt 0 merged.
 - **Mode:** solo, so the Flags deliverable is skipped.
 
 **Deliverables**
-- [x] Playwright runner · *PR / verified by:* PR #93. playwright.config.ts: webServer on 5199 --strictPort with VITE_E2E=1, projects chromium-1366 and chromium-1600 (deviceScaleFactor 1), firefox-1366 only with PW_FIREFOX, PW_CHROMIUM → executablePath. `PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test` runs 6 specs locally (the 2 screenshot specs wait for CI baselines). No 1920×1080 project yet: the C1 menu spec that needs it arrives in S0.2.
+- [x] Playwright runner · *PR / verified by:* PR #93. playwright.config.ts: webServer on 5199 --strictPort with VITE_E2E=1, projects chromium-1366 and chromium-1600 (deviceScaleFactor 1), firefox-1366 only with PW_FIREFOX, PW_CHROMIUM → executablePath. `PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test` runs the 6 spec × viewport cases; screenshot baselines come from CI (test/e2e/__screenshots__). No 1920×1080 project yet: the C1 menu spec that needs it arrives in S0.2.
 - [x] Test hooks · *PR / verified by:* PR #93. window.__pf (state copy, layoutHash, history depth, dispatch/undo/redo) in src/ui/testing/e2eHook.ts, installed by ProjectProvider only when VITE_E2E is set; test/e2e/hook.spec.ts. data-testids: pad-{row}-{col}, pad-menu, verdict-badge (+ data-level), compare-dialog, candidate-row (+ data-candidate-id), transport, transport-play, drawer-tab-timeline, drawer-tab-composer.
 - [x] Component tests · *PR / verified by:* PR #93. happy-dom + @testing-library/react; vitest includes test/**/*.test.tsx with a per-file `@vitest-environment` docblock; ResizeObserver and matchMedia shims in test/helpers/domShims.ts. test/ui/components/FeasibilityBadge.test.tsx; test/e2e/a11y-library.spec.ts (@axe-core/playwright).
-- [ ] CI · *PR / verified by:* —
+- [x] CI · *PR / verified by:* PR #93. ci.yml (typecheck, unit, build + check:no-test-hook, e2e in 2 shards with report/traces uploaded on failure) is green on #93 ([run 35909316340](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/35909316340)). nightly.yml runs the Firefox project; deploy.yml runs typecheck and test:run before building. update-snapshots.yml generated the first baselines (Chromium 1366/1600 and Firefox 1366) in [run 35909156475](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/35909156475), triggered by the `update-snapshots` label.
 - [x] Deterministic fonts and screenshots · *PR / verified by:* PR #93. Inter and Space Grotesk variable woff2 (latin + latin-ext, OFL licenses alongside) in public/fonts with @font-face in src/index.css; build rewrites them to /PushFlow-Modified/fonts/. test/e2e/fixtures.ts aborts fonts.googleapis.com and fonts.gstatic.com for every spec; toHaveScreenshot disables animations and hides the caret. Before/after: docs/screenshots/S0.1/.
 - [x] Fixtures · *PR / verified by:* PR #93. TEST MIDI 1 copied to test/fixtures/midi/ and public/demo/; the archive copy stays.
 - Flags: skipped, because the working mode is solo.
 
 **Exit criteria**
-- [ ] **P0-1** A deliberately failing commit on a scratch branch turns the ci.yml check red for each of typecheck, a unit test and an e2e spec. Link the three red runs in the slot. · *PR / verified by:* —
-- [ ] **P0-2** The e2e suite passes twice in a row in CI with identical screenshots while fonts.googleapis.com is blocked. · *PR / verified by:* —
+- [x] **P0-1** A deliberately failing commit on a scratch branch turns the ci.yml check red for each of typecheck, a unit test and an e2e spec. Link the three red runs in the slot. · *PR / verified by:* draft PRs #94–#96 (closed). Typecheck: [run 35909391019](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/35909391019), `typecheck` red on TS2322 in src/scratchTypeError.ts. Unit: [run 35909397575](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/35909397575), `unit` red on "expected 2 to be 3" in test/scratchRed.test.ts. E2E: [run 35909402879](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/35909402879), both `e2e` shards red on the scratch spec only (all other specs, including the screenshots, passed).
+- [x] **P0-2** The e2e suite passes twice in a row in CI with identical screenshots while fonts.googleapis.com is blocked. · *PR / verified by:* PR #93. Against the committed baselines, with Google Fonts aborted by test/e2e/fixtures.ts, both e2e shards passed in [run 35909316340](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/35909316340) (#93 at 04ae5d1) and again in [run 35909397575](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/35909397575) (the unit-failure scratch PR, whose e2e shards compare the same baselines).
 - [x] **P0-4** A happy-dom component test renders FeasibilityBadge (expected-fail on the "feasible" default until S1b.1), and the axe smoke spec runs on the Library. · *PR / verified by:* PR #93. FeasibilityBadge.test.tsx renders all three tiers; its `it.fails` case fails with "expected 'feasible' not to be 'feasible'" (checked by removing the marker). a11y-library.spec.ts passes at both viewports and attaches the violations list.
 - [x] **P0-7** A grep of dist/ finds no window.__pf. · *PR / verified by:* PR #93. `npm run check:no-test-hook` passes after `npm run build`, and finds the hook in a VITE_E2E=1 build (so the check can fail). Runs in ci.yml and deploy.yml.
 
@@ -1055,8 +1055,15 @@ Filled in by the [Phase audit prompt](UI_IMPLEMENTATION_PROMPTS.md#phase-audit-p
 
 ## 5. Deviations
 
-None yet. Record each one with the date, the session, what differs from the roadmap or the session prompt, why, and who approved it.
+Record each one with the date, the session, what differs from the roadmap or the session prompt, why, and who approved it.
+
+- **2026-09-23 · S0.1 · Baseline job trigger.** The prompt asks for a workflow_dispatch update-snapshots job. update-snapshots.yml has that trigger and a second one, the `update-snapshots` PR label, because GitHub can only dispatch workflows that are already on main, so the first baselines could not otherwise be made in CI from the PR that adds them. Approved by: none needed (an addition, not a change); flagged in PR #93.
+- **2026-09-23 · S0.1 · No 1920×1080 project yet.** The roadmap's 1920×1080 viewport is only for the C1 menu spec, so S0.2 adds it together with that spec rather than S0.1 adding an empty project. Approved by: none needed; flagged in PR #93.
 
 ## 6. Follow-ups
 
-None yet. Record each one with the date, the session that found it, what and where (file:line or repro), and the session or phase it belongs to.
+Record each one with the date, the session that found it, what and where (file:line or repro), and the session or phase it belongs to.
+
+- **2026-09-23 · S0.1 · Delete the scratch branches.** `scratch/s0.1-red-typecheck`, `scratch/s0.1-red-unit` and `scratch/s0.1-red-e2e` (PRs #94–#96, closed) are still on the remote: the implementing session's git access could not delete branches other than its own. Delete them from the closed PRs. Owner: the repository owner.
+- **2026-09-23 · S0.1 · e2e specs aren't type-checked.** tsconfig.json includes only src/, so test/ (vitest and Playwright specs) is never run through tsc; Playwright transpiles without checking. Add a tsconfig for test/ and run it in ci.yml. Belongs to: any P0/P1a session touching CI.
+- **2026-09-23 · S0.1 · Node 20 actions deprecation.** CI warns that actions/checkout@v4, setup-node@v4 and upload-artifact@v4 target Node 20 and are forced onto Node 24 (all workflows, including the existing deploy.yml). Bump the action versions when newer majors are available. Belongs to: any session touching CI.
