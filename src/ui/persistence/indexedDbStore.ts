@@ -9,8 +9,24 @@
 import { type PersistedProject, type ProjectIndexEntry } from './persistedProject';
 
 const DB_NAME = 'pushflow';
-const DB_VERSION = 1;
+/** 2 adds the backups store (S1a.2 migration runner). */
+const DB_VERSION = 2;
 const PROJECTS_STORE = 'projects';
+const BACKUPS_STORE = 'backups';
+
+/**
+ * A stored project exactly as it was before a migration ran, kept so a damaged
+ * migration can be undone by hand ("Download backup" in the Library).
+ */
+export interface ProjectBackup {
+  /** `${projectId}@v${fromVersion}`: one backup per project and starting version. */
+  key: string;
+  projectId: string;
+  fromVersion: number;
+  createdAt: string;
+  /** The untouched stored record. */
+  record: unknown;
+}
 
 // ============================================================================
 // Database Lifecycle
@@ -29,9 +45,21 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(PROJECTS_STORE)) {
         db.createObjectStore(PROJECTS_STORE, { keyPath: 'id' });
       }
+      if (!db.objectStoreNames.contains(BACKUPS_STORE)) {
+        db.createObjectStore(BACKUPS_STORE, { keyPath: 'key' });
+      }
     };
 
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      // Another tab opening a newer DB_VERSION (a new store for a migration)
+      // waits for this connection to close; close it rather than block that tab.
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
 
     request.onerror = () => {
       dbPromise = null;
@@ -158,4 +186,42 @@ export async function listAllProjects(): Promise<ProjectIndexEntry[]> {
  */
 export async function getFullProject(id: string): Promise<PersistedProject | null> {
   return getProject(id);
+}
+
+// ============================================================================
+// Pre-migration backups
+// ============================================================================
+
+export function backupKey(projectId: string, fromVersion: number): string {
+  return `${projectId}@v${fromVersion}`;
+}
+
+/**
+ * Writes a pre-migration backup. Resolves only once the transaction commits,
+ * so a migration never runs ahead of its backup.
+ */
+export async function putBackup(backup: ProjectBackup): Promise<void> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(BACKUPS_STORE, 'readwrite');
+    tx.objectStore(BACKUPS_STORE).put(backup);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+/** Every backup, newest first. */
+export async function listBackups(): Promise<ProjectBackup[]> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(BACKUPS_STORE, 'readonly');
+    const request = tx.objectStore(BACKUPS_STORE).getAll();
+    request.onsuccess = () => {
+      const backups = request.result as ProjectBackup[];
+      backups.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      resolve(backups);
+    };
+    request.onerror = () => reject(request.error);
+  });
 }

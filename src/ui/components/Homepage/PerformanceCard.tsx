@@ -15,6 +15,8 @@ interface PerformanceCardProps {
   onOpen: () => void;
   onDelete: () => void;
   onExport?: () => void;
+  /** Saves the project's pre-migration backup; shown only when one exists. */
+  onDownloadBackup?: () => void;
 }
 
 /** Format an ISO date string as a relative label. */
@@ -42,6 +44,7 @@ export function PerformanceCard({
   onOpen,
   onDelete,
   onExport,
+  onDownloadBackup,
 }: PerformanceCardProps) {
   const tempo = projectState?.tempo ?? project.tempo;
   const soundCount = projectState?.soundStreams.length ?? project.soundCount;
@@ -79,6 +82,16 @@ export function PerformanceCard({
               title="Export project file"
             >
               <span className="material-symbols-outlined text-base">download</span>
+            </button>
+          )}
+          {onDownloadBackup && (
+            <button
+              className="w-7 h-7 rounded-lg bg-[var(--bg-app)]/80 flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10 transition-colors"
+              onClick={e => { e.stopPropagation(); onDownloadBackup(); }}
+              title="Download backup (the project as it was before PushFlow last updated its stored format)"
+              aria-label="Download backup"
+            >
+              <span className="material-symbols-outlined text-base">history</span>
             </button>
           )}
           <button

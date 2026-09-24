@@ -116,6 +116,13 @@ export interface ProjectDocument {
   /** Durable named alternative layouts. Persist across sessions. */
   savedVariants: Layout[];
 
+  /**
+   * Working/Test Layouts kept automatically when Preview, Load Draft or a
+   * Promote replaced them (oldest first, deduped by layout hash, at most
+   * RECOVERED_DRAFTS_CAP). Never mixed into savedVariants.
+   */
+  recoveredDrafts: Layout[];
+
   // === Legacy compatibility (kept for migration, will be removed) ===
   /** @deprecated Use activeLayout. Kept only for migration from V1 format. */
   layouts?: Layout[];
@@ -1410,6 +1417,7 @@ export function createEmptyProjectState(): ProjectState {
     activeLayout: createEmptyLayout('default-active', 'Default', 'active'),
     workingLayout: null,
     savedVariants: [],
+    recoveredDrafts: [],
     analysisResult: null,
     candidates: [],
     selectedCandidateId: null,
