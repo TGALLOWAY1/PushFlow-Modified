@@ -98,6 +98,23 @@ describe('restoreDocument', () => {
     expect(restored.analysisStale).toBe(true);
     expect(restored.updatedAt >= s.updatedAt).toBe(true);
   });
+
+  it('clears a candidate selection when the layouts change, and the event selection when the Sounds change', async () => {
+    const before = await importTestMidi1();
+    const placed = projectReducer(before, { type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey: '3,3', stream: before.soundStreams[0] } });
+    const selected: ProjectState = { ...placed, selectedCandidateId: 'cand-a', selectedEventIndex: 4, selectedMomentIndex: 2 };
+
+    const layoutOnly = restoreDocument(selected, pickDocument(before));
+    expect({ c: layoutOnly.selectedCandidateId, e: layoutOnly.selectedEventIndex, m: layoutOnly.selectedMomentIndex })
+      .toEqual({ c: null, e: 4, m: 2 });
+
+    const empty = projectReducer(before, { type: 'RESET' });
+    const soundsToo = restoreDocument(selected, pickDocument(empty));
+    expect({ e: soundsToo.selectedEventIndex, m: soundsToo.selectedMomentIndex }).toEqual({ e: null, m: null });
+
+    const unchanged = restoreDocument(selected, pickDocument(selected));
+    expect({ c: unchanged.selectedCandidateId, e: unchanged.selectedEventIndex }).toEqual({ c: 'cand-a', e: 4 });
+  });
 });
 
 describe('persistence round trip', () => {

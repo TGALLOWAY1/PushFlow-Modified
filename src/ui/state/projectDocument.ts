@@ -66,6 +66,11 @@ export function documentChanged(a: ProjectDocument, b: ProjectDocument): boolean
  * re-resolves by layout hash (getAnalysisForLayout rejects a plan bound to
  * another layout). updatedAt moves forward so autosave writes the restored
  * document even when it matches an older save.
+ *
+ * Selections that would now describe something else are cleared, as the
+ * edit reducers do: a selected candidate when the layouts change (the grid
+ * shows the restored layout, so the panels must too), and the event selection
+ * when the Sounds change (its index may point at a different event).
  */
 export function restoreDocument(state: ProjectState, doc: ProjectDocument): ProjectState {
   const next = { ...state } as Record<string, unknown>;
@@ -73,9 +78,15 @@ export function restoreDocument(state: ProjectState, doc: ProjectDocument): Proj
     if (key in doc) next[key] = doc[key];
     else delete next[key];
   }
+  const restored = next as unknown as ProjectState;
+  const layoutsChanged = restored.activeLayout !== state.activeLayout
+    || restored.workingLayout !== state.workingLayout;
+  const soundsChanged = restored.soundStreams !== state.soundStreams;
   return {
-    ...(next as unknown as ProjectState),
+    ...restored,
     updatedAt: new Date().toISOString(),
     analysisStale: true,
+    ...(layoutsChanged ? { selectedCandidateId: null } : {}),
+    ...(soundsChanged ? { selectedEventIndex: null, selectedMomentIndex: null } : {}),
   };
 }

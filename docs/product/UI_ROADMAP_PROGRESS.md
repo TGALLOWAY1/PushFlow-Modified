@@ -146,29 +146,50 @@ Sessions are listed in S0.1 … S8.3 order, as in [UI_IMPLEMENTATION_PROMPTS.md]
 
 #### S1a.1 — Undo covers only your edits, plus the toast
 
-- **Status:** Not started
+- **Status:** Done (branch claude/pushflow-ui-roadmap-4qzwte)
 - **Prerequisites:** S0.2.
 - **Flips:** C4.
 - **Decisions:** Q4 (Suggest becomes one undo step).
 
 **Deliverables**
-- [ ] Undo on the document only (T02): the document/session slice split (first PR) · *PR / verified by:* —
-- [ ] Undo on the document only (T02): the transaction wrapper (second PR) · *PR / verified by:* —
-- [ ] Toast region primitive (T31 slice) · *PR / verified by:* —
+- [x] Undo on the document only (T02): the document/session slice split (first PR) · *PR / verified by:* commit 97bfab8. ProjectState = ProjectDocument & ProjectSession (projectState.ts), still flat, so MoveTracePanel and every consumer read state.moveHistory* unchanged. projectDocument.ts holds the field list (a Record over keyof ProjectDocument, so an unclassified field is a compile error), pickDocument, documentChanged (reference, then structural) and restoreDocument. useUndoRedo stacks document snapshots only; Undo/Redo keep the session, mark analysis stale (it re-resolves by layout hash) and bump updatedAt for autosave. No-op results record nothing. Stored format unchanged. Tests: test/ui/state/projectDocument.test.ts, test/ui/state/undoHistory.test.tsx.
+- [x] Undo on the document only (T02): the transaction wrapper (second PR) · *PR / verified by:* commit f291b7b. transact(label, fn) makes fn's dispatches one named step (nested calls join). Suggest is recorded; an import (all files, lanes + tempo), Ctrl/Cmd+G group/ungroup, Duplicate layout and apply-candidate are one step each; Discard and Promote were already single dispatches. Undo/Redo buttons name their target in title and aria-label ("Undo: Discard (Ctrl+Z)"), testids undo-button/redo-button. Opening a project starts with empty history. Tests in undoHistory.test.tsx ("one undo step per user intent").
+- [x] Toast region primitive (T31 slice) · *PR / verified by:* commit 7e58bf8. components/shared/Toast.tsx: ToastProvider (mounted in App) with an always-present role=status aria-live=polite region, one optional action, labelled dismiss, max 3, auto-dismiss paused on hover/focus, no-op useToast outside the provider. First use: "Undone: Place Sound · Redo" and "Redone: …". test/ui/components/Toast.test.tsx. Screenshots: docs/screenshots/S1a.1/ (before/after at 1366 and 1600, one Undo after placing 3 Sounds).
 
-**Field table** (document vs session; undo membership vs persistence): *added by S1a.1.*
+**Field table** (document vs session; undo membership vs persistence)
+
+| Field | Slice | Saved with the project | Notes |
+|---|---|---|---|
+| version, id, createdAt | document | yes | Never edited; restoring them is a no-op |
+| name | document | yes | RENAME_PROJECT |
+| soundStreams | document | yes | Rebuilt from lanes; a structurally equal rebuild records nothing |
+| tempo | document | yes (bpm) | |
+| instrumentConfig, sections, voiceProfiles | document | yes | |
+| activeLayout, workingLayout, savedVariants | document | yes | Locks and pad fingerConstraints live inside the layouts |
+| layouts?, activeLayoutId? | document | legacy reads only | V1 migration fields |
+| voiceConstraints | document | yes | Finger preferences (invariant 6) |
+| performanceLanes, laneGroups, sourceFiles | document | yes | Group collapse (TOGGLE_LANE_GROUP_COLLAPSE) folds into the current step |
+| updatedAt | session | yes | Autosave clock; Undo/Redo bump it |
+| engineConfig, optimizerMethod, greedyStrategy, costToggles | session | yes | Preferences: saved, never undone |
+| analysisResult, candidates, selectedCandidateId, compareCandidateId | session | no | |
+| analysisStale, isProcessing, error, manualCostResult | session | no | |
+| moveHistory, iterationTrace, moveHistoryStopReason, moveHistoryIndex | session | no | Read at state.moveHistory*, as before |
+| selectedEventIndex, selectedMomentIndex, selectedStreamId | session | no | |
+| currentTime, isPlaying, playbackRate, loopEnabled, loopStart, loopEnd, countInBars, rehearsalAudio | session | no | |
+
+Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions that are never a step of their own: TOGGLE_LANE_GROUP_COLLAPSE, SYNC_STREAMS_FROM_LANES, POPULATE_LANES_FROM_STREAMS (plus the per-frame transport ticks, to skip the document check).
 
 **Exit criteria**
-- [ ] **P1a-1a** Reducer test: place 3 Sounds, let analysis settle, then Undo 3 times: the grid is empty. · *PR / verified by:* —
-- [ ] **P1a-1b** Reducer test: one Undo after Suggest restores the pre-Suggest grid. · *PR / verified by:* —
-- [ ] **P1a-1d** Reducer test: Undo during playback keeps playing from the current time. · *PR / verified by:* —
-- [ ] **P1a-1e** Reducer test: a reopened project starts with an empty history. · *PR / verified by:* —
-- [ ] **P1a-1f** Reducer test: isProcessing is false after both success and error. · *PR / verified by:* —
+- [x] **P1a-1a** Reducer test: place 3 Sounds, let analysis settle, then Undo 3 times: the grid is empty. · *PR / verified by:* undoHistory.test.tsx "P1a-1a" (real ProjectProvider and useAutoAnalysis; fails on main with `expected [ '3,3' ] to deeply equal []`), and C4 e2e case 1.
+- [x] **P1a-1b** Reducer test: one Undo after Suggest restores the pre-Suggest grid. · *PR / verified by:* undoHistory.test.tsx "P1a-1b", and C4 e2e case 2.
+- [x] **P1a-1d** Reducer test: Undo during playback keeps playing from the current time. · *PR / verified by:* undoHistory.test.tsx "P1a-1d" (fails on main: `{ isPlaying: false, currentTime: 0 }`), and C4 e2e case 4.
+- [x] **P1a-1e** Reducer test: a reopened project starts with an empty history. · *PR / verified by:* undoHistory.test.tsx "P1a-1e" (a saved-and-loaded project, after lane syncs and analysis; fails on main with `canUndo: true`), and C4 e2e case 5 (save and reload).
+- [x] **P1a-1f** Reducer test: isProcessing is false after both success and error. · *PR / verified by:* undoHistory.test.tsx "P1a-1f" (generateFull with the greedy pipeline mocked to resolve and to reject; the failed run adds no undo step). Both already held on main; kept as regression guards.
 
 **Session checks**
-- [ ] C4 flipped: its spec passes with the test.fail marker removed. · *PR / verified by:* —
-- [ ] Interim Generate-undo test: one Undo after Generate reverts the auto-applied candidate as a single step and keeps the candidate list and trace. S1a.2 replaces it (P1a-1c). · *PR / verified by:* —
-- [ ] Round-trip test: a project saved by current main loads and re-saves with identical document fields. · *PR / verified by:* —
+- [x] C4 flipped: its spec passes with the test.fail marker removed. · *PR / verified by:* markers removed from test/e2e/c4-undo.spec.ts; all 5 cases pass at 1366 and 1600 (`PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test c4`).
+- [x] Interim Generate-undo test: one Undo after Generate reverts the auto-applied candidate as a single step and keeps the candidate list and trace. S1a.2 replaces it (P1a-1c). · *PR / verified by:* undoHistory.test.tsx "interim (until S1a.2)" (the step is named "Use candidate"; the next Undo target is the user's previous edit), and C4 e2e case 3.
+- [x] Round-trip test: a project saved by current main loads and re-saves with identical document fields. · *PR / verified by:* projectDocument.test.ts "persistence round trip", against test/fixtures/projects/saved-by-main.json, written by the serializer on main at 74385de (a draft, a lock, a finger preference, a variant and a lane group).
 
 #### S1a.2 — Migration runner; Generate only proposes; Recovered drafts
 
@@ -1100,6 +1121,10 @@ Record each one with the date, the session, what differs from the roadmap or the
 - **2026-09-23 · S0.2 · C3 greedy uses one strategy; C2's mid-run edit is a hook test.** Greedy with All Strategies (and Coordination alone) blocks the page for minutes in the browser, so the C3 greedy case runs Natural Pose. With an edit made mid-run, even a single-strategy greedy run did not finish within 10 minutes in the browser (see Follow-ups), so "an edit made during a run is kept" runs generateFull inside a real ProjectProvider under happy-dom (test/ui/hooks/generateMidRunEdit.test.tsx) and makes the edit at the run's first yield. The unit gate covers all greedy strategies.
 - **2026-09-23 · S0.2 · Two C6 criteria stay in unit/component tests.** "A layout with no analysis renders Unknown" is the FeasibilityBadge component test (S0.1); C7's "served from the cache without re-solving, storage unchanged" is a unit test S1b.3 adds with getAnalysisForLayout. The e2e specs cover the rest.
 
+- **2026-09-24 · S1a.1 · One PR, three commits.** The prompt asks for the slice split and the transaction wrapper as separate PRs. The session's branch is fixed (`claude/pushflow-ui-roadmap-4qzwte`), so they land as separate, ordered commits in one PR (split 97bfab8, wrapper f291b7b, toast 7e58bf8), each passing typecheck and unit tests on its own. Approved by: none needed; flagged in the PR.
+- **2026-09-24 · S1a.1 · The split is by type, not by nesting.** ProjectState is ProjectDocument & ProjectSession with flat fields, not `{ document, session }`, so no consumer changes and state.moveHistory* stays readable as the prompt requires. The field list in projectDocument.ts is the one classification; a compile-time check forces every new document field into it.
+- **2026-09-24 · S1a.1 · Toast's first use is Undo/Redo feedback.** The roadmap scopes only the primitive here. To ship it wired, Undo and Redo report through it ("Undone: Discard · Redo"), which is safe (Redo from the toast re-applies exactly that step). Later sessions add their own toasts.
+
 ## 6. Follow-ups
 
 Record each one with the date, the session that found it, what and where (file:line or repro), and the session or phase it belongs to.
@@ -1113,3 +1138,7 @@ Record each one with the date, the session that found it, what and where (file:l
 - **2026-09-23 · S0.2 · Deep annealing takes about 50 minutes.** Annealing Thorough on TEST MIDI 1 took 49.7 min in CI and 46.8 min locally for 3 candidates (the critique measured about 33.5 min in the browser). nightly.yml allows 180 minutes. Belongs to: S3.4 (time budget).
 - **2026-09-23 · S0.2 · The top grid row is clipped at 1366×768.** Row 7 is partly hidden by the grid wrapper, so C1 right-clicks the visible part of each pad. Belongs to: S2.1 (measured grid, T04).
 - **2026-09-23 · S0.2 · A pad edit during greedy Generate stalls the run.** In Chromium, greedy Generate with the Exploratory strategy finishes in about 17 s, but after a pad edit mid-run it had not finished after 10 minutes (the page stays responsive; a CPU profile shows the time inside greedyOptimizer.runSingleAttempt). Probably tied to the run racing the edited draft; re-check once S1a.2 stops Generate writing the draft. Belongs to: S1a.2, else S3.4.
+- **2026-09-24 · S1a.1 · Multi-file import reads stale state.** useLaneImport computes currentMaxOrder, the group colour and "first import" from the state captured when the import starts, so every file of a multi-file import gets the same orderIndex base and colour, and each may set the tempo (useLaneImport.ts, the transact('Import') loop). Pre-existing; now one undo step. Belongs to: S5.2 (import review).
+- **2026-09-24 · S1a.1 · Rename/recolour also rewrite session copies.** RENAME_SOUND and SET_SOUND_COLOR update the names embedded in candidates and analysisResult (session). Undo restores the document's names but not those copies, so a candidate card can show the undone name until the next Generate. Belongs to: S1b.3 (per-layout analysis cache) or S3.2.
+- **2026-09-24 · S1a.1 · C5 unexpectedly passed twice locally.** At 1366, C5's "onion skin changes grid pixels" (expected-fail until S1b.4) passed 2 of 54 local runs on this branch and 0 of 48 on main, and could not be reproduced in 30 instrumented runs (no state or history change between the two screenshots). A C6 case also timed out once under full-suite load and passed 6 reruns. If CI shows either again, investigate before merging. Belongs to: S1b.4 (C5/C6 flip there).
+- **2026-09-24 · S1a.1 · The Library screenshot fails locally.** library.spec.ts differs by about 1 % of pixels in a cloud container on main and on this branch; the baselines are CI-generated (CLAUDE.md), so it passes only in CI. No action unless CI fails it.

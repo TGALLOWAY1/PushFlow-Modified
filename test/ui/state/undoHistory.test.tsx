@@ -253,11 +253,14 @@ describe('one undo step per user intent', () => {
       candidates: undone.candidates.map(c => c.id),
       trace: undone.moveHistory,
       undoLabel: result.current.project.undoLabel,
+      // The grid shows the restored draft, so no candidate stays selected.
+      selectedCandidateId: undone.selectedCandidateId,
     }).toEqual({
       pads: draft,
       candidates: after.candidates.map(c => c.id),
       trace: after.moveHistory,
       undoLabel: 'Swap pads',
+      selectedCandidateId: null,
     });
   }, 120_000);
 });

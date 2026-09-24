@@ -5,9 +5,13 @@
  *
  * V3 workflow state model:
  * - activeLayout: the committed baseline (read-mostly, changed only by Promote)
- * - workingLayout: session-scoped exploratory draft (created on first edit, discardable)
+ * - workingLayout: exploratory draft (created on first edit, discardable)
  * - savedVariants: durable named alternatives (kept for comparison)
  * - candidates: generated proposals (ephemeral, not persisted)
+ *
+ * State is split into a document slice (what Undo covers) and a session slice
+ * (what it never touches); see ProjectDocument, ProjectSession and
+ * projectDocument.ts.
  *
  * Manual edits always target the working layout. If no working layout exists,
  * one is auto-created by cloning the active layout on first edit.
