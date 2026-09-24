@@ -1032,19 +1032,65 @@ Filled in by the [Phase audit prompt](UI_IMPLEMENTATION_PROMPTS.md#phase-audit-p
 
 ### P0 · Safety net
 
-- Date: —
-- Commit: —
+- Date: 2026-09-24 (audited together with P1a, after S1a.5)
+- Commit: 09da4cc (main after PR #102)
+- Gates on this commit: `npm run typecheck` clean; `npm run test:run` 76 files, 936 passed, 2 `runIf` skips (112 s); `npm run build` + `npm run check:no-test-hook` OK; `PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test` (chromium-1366, chromium-1600, and C1 at chromium-1920): 93 passed, 2 failed (4.7 min); the two failures are the Library screenshot comparisons, which differ from the CI-generated baselines in a cloud container on every branch (S1a.1 follow-up) and pass in CI. No expected-fail case passed unexpectedly (C5 included). CI on the same commit: [run 36062756349](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/36062756349) (2026-09-24, 3 min 12 s), every job green.
 
 | Criterion | Result | Evidence |
 |---|---|---|
+| P0-1 | pass | CI-only; cited, not re-run. The three red runs from S0.1 still stand: typecheck [35909391019](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/35909391019), unit [35909397575](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/35909397575), e2e [35909402879](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/35909402879) (2026-09-23). ci.yml's jobs are unchanged since (typecheck, unit, build + hook check, e2e ×2 shards all ran in 36062756349). |
+| P0-2 | pass | CI-only; cited. Two consecutive main runs green with the committed baselines and Google Fonts aborted by test/e2e/fixtures.ts: [36049874189](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/36049874189) (#101 merge, 2026-09-24, 3 min 2 s) and [36062756349](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/36062756349) (#102 merge, 2026-09-24, 3 min 12 s). Locally the two Library screenshot comparisons still differ from the CI baselines (known S1a.1 follow-up; not a regression). |
+| P0-3 | pass | `grep -rn "__reactFiber\|_reactInternals" test/` finds nothing. C1–C9 specs all exist; the cases P1a owned (C2 except Inspect, C3, C4) have had their markers removed and pass; the remaining `test.fail` cases (C1, C2 Inspect, C5–C9) still fail as documented in the full local run (Playwright's expected-fail counts them as passed). |
+| P0-4 | pass | test/ui/components/FeasibilityBadge.test.tsx runs in `test:run` with its `it.fails` "feasible" default case (S1b.1 flips it); test/e2e/a11y-library.spec.ts passes at 1366 and 1600 locally and in CI. |
+| P0-5 | pass | `testMidi1Integration.test.ts`: 29 tests (2 `runIf` skips), all green in `test:run` on 09da4cc: greedy, beam and annealing Quick strict 0 unplayable, the [7,0] lock case for all three (no longer `it.fails`, since S1a.3), the muted-Sound case (S1a.4), fixed-seed snapshots unchanged; reads test/fixtures/midi; no pitch-keyed Map (`grep -rn "Map<number, Voice>" src test/engine/optimization` finds nothing). |
+| P0-6 | pending | Nightly-only. The last run, [35979521680](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/35979521680) (schedule, 2026-09-24, #98's merge, 48 min 38 s), was green but predates S1a.2–S1a.5, so this audit re-triggered it on 09da4cc: [run 36072965133](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/36072965133) (workflow_dispatch, 2026-09-24). Record its duration here when it finishes. |
+| P0-7 | pass | `npm run build && npm run check:no-test-hook`: "OK: no window.__pf in dist/" on 09da4cc, and the build job's "No window.__pf in dist/" step in [36062756349](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/36062756349). |
 
 ### P1a · Stop losing work
 
-- Date: —
-- Commit: —
+- Date: 2026-09-24
+- Commit: 09da4cc (main after PR #102)
+- Gates: as for P0 above. PWC below means the Playwright spec passed at 1366 and 1600 in the full local run.
 
 | Criterion | Result | Evidence |
 |---|---|---|
+| P1a-1a | pass | undoHistory.test.tsx "P1a-1a" in `test:run`; C4 case 1 PWC. |
+| P1a-1b | pass | undoHistory.test.tsx "P1a-1b"; C4 case 2 PWC. |
+| P1a-1c | pass | undoHistory.test.tsx "P1a-1c" (Undo after Generate undoes the prior edit; candidates, moveHistory and iterationTrace unchanged); C4 case 3 PWC. |
+| P1a-1d | pass | undoHistory.test.tsx "P1a-1d"; C4 case 4 PWC. |
+| P1a-1e | pass | undoHistory.test.tsx "P1a-1e"; C4 case 5 (save and reload) PWC. |
+| P1a-1f | pass | undoHistory.test.tsx "P1a-1f" (success and rejection paths); generationSummary.test.tsx. |
+| P1a-2a | pass | C2 "Generate leaves the draft unchanged" PWC; the grep and hook tests in generateOnlyProposes.test.tsx. Screenshot `docs/screenshots/audit-P1a/{1366,1600}-02-generate-proposes-lock-held.png` (after Suggest, a lock and Beam Generate the draft is unchanged and the list offers Preview). |
+| P1a-2b | pass | test/ui/hooks/generateMidRunEdit.test.tsx (no marker) in `test:run`. |
+| P1a-2c | pass | The five C2 recoverability cases (Preview, card body, Load Draft, card Promote, variant Promote, each after a reload) PWC; recoveredDrafts.test.ts. |
+| P1a-3 | pass | recoveredDrafts.test.ts "P1a-3"; LayoutOptionsPanel.test.tsx "lists every saved variant". |
+| P1a-4 | pass | generateOnlyProposes.test.tsx "P1a-4" (real ProjectProvider on TEST MIDI 1, nothing placed). |
+| P1a-5a | pending | Everything but the deep run passes: C3 greedy, beam and annealing Quick cases PWC (lock at [7,0] held, `placementLocks` non-empty in every candidate); the TEST MIDI 1 gate's lock cases for all three methods in `test:run`; locksHonoured.test.ts. The nightly deep-annealing lock case lost its `it.fails` in S1a.3 and has not run since, so the whole criterion stays pending until [run 36072965133](https://github.com/TGALLOWAY1/PushFlow-Modified/actions/runs/36072965133) passes. |
+| P1a-5b | pass | C3 drag-onto and drag-off cases PWC; projectStateConstraintSync.test.ts. |
+| P1a-5c | pass | testMidi1Integration.test.ts: 0 unplayable in strict mode for greedy, beam and annealing Quick, with and without the lock and with a muted Sound; C3 asserts `unplayable: 0` per candidate PWC. |
+| P1a-5d | pass | Fixed-seed snapshots in testMidi1Integration.test.ts.snap unchanged since S0.2 (`git log --oneline -- test/engine/optimization/__snapshots__` shows only #97) and matching on 09da4cc; `AnnealingIterationSnapshot` and `OptimizerMove` fields unchanged (locksHonoured.test.ts). |
+| P1a-6 | pass | soundIdentity.test.ts "P1a-6"; composerLaneIdentity.test.ts (no pitch or name match since S1a.5). |
+| P1a-7 | pass | discardHygiene.test.tsx "P1a-7". |
+| P1a-8 | pass | discardHygiene.test.tsx "P1a-8". |
+| P1a-9 | pass | testMidi1Integration.test.ts "a muted, placed Sound" (all three methods); placedSoundsPinned.test.ts. |
+| P1a-10 | pass | useAutoSave.test.tsx "P1a-10"; SaveStatusControl.test.tsx (red chip, role alert, Retry, Export a copy). |
+| P1a-11a | pass | composer-data.spec.ts "P1a-11a" PWC; WorkspacePatternStudio.test.tsx (flush on switch, Stop, unmount). |
+| P1a-11b | pass | composer-data.spec.ts "P1a-11b" PWC. Screenshot `docs/screenshots/audit-P1a/{1366,1600}-03-composer-tab.png`. |
+| P1a-11c | pass | composer-data.spec.ts "P1a-11c" PWC. |
+| P1a-12a | pass | composer-data.spec.ts "P1a-12a" PWC; composerNotesOnlySync.test.ts. |
+| P1a-12b | pass | composer-data.spec.ts "P1a-12b" PWC; WorkspacePatternStudio.test.tsx. |
+| P1a-12c | pass | composer-data.spec.ts "P1a-12c" PWC; WorkspacePatternStudio.test.tsx. |
+| P1a-12d | pass | projectExport.test.ts "P1a-12d". |
+| P1a-13a | pass | projectStorageMigration.test.ts "P1a-13a" (backup written before the v3 record; second load writes nothing); migrations.test.ts. |
+| P1a-13b | pass | presetMigration.test.ts; WorkspacePatternStudio.test.tsx (Save Preset). |
+| P1a-14 | pass | LearnMoreModal.test.tsx (Constraints tab names Greedy, Beam and Annealing lock enforcement, the dropped-candidate rule, drags, Remove and preset placement refused, Placed Sounds Stay Placed). S1b.1's sync test will take it over. |
+
+**CLAUDE.md rules, checked on 09da4cc (P0 and P1a together)**
+
+- Product Invariants. (1) Desktop-only: no touch handlers; the only responsive classes are the Library grid's `sm:`/`lg:`/`xl:` columns and one `lg:block` in ContinuePracticingHero, both from before the roadmap (bb0360f), so not a P0/P1a regression. (2) Learn More sync: every P1a rule change landed with LearnMoreModal.tsx and LearnMoreModal.test.tsx (locks, identity, pins, Remove/preset refusals, unverified preset fingering). (3) The Composer is a bottom-drawer tab (`drawer-tab-composer`, PerformanceWorkspace.tsx) and is now kept mounted. (4) Timeline completeness: UnifiedTimeline still renders unassigned and Unplayable pills with their own style. (5) bottomLeftNote stays 36 on import (midiImport.ts, useLaneImport.ts). (6) Finger sync: voiceConstraints is the only store the Composer and Sounds panel write (P1a-12b); pad fingerConstraints are re-derived on every layout switch (P1a-7). (7) No automatic layout: Generate places nothing (P1a-2a, P1a-4); Suggest is one undo step (P1a-1b). (8) The Composer uses `projectState.tempo` and has no BPM control.
+- Core Functionality Preservation and Do-Not-Regress. Greedy, Beam and Annealing all run in the TEST MIDI 1 gate with 0 unplayable events; seeded snapshots unchanged; greedy restarts and seeded noise, annealing restarts and both trace shapes untouched; `stopReason` still reaches state (`SET_MOVE_HISTORY`); `isProcessing` resets on success and error (P1a-1f); MoveTracePanel still mounted in PerformanceWorkspace. The known gap that toolbar Generate never fills the trace predates P1a and stays with S3.4 (S0.2 follow-up).
+- UI Non-Regression. Ungrouped Sounds are labelled "Ungrouped" (VoicePalette, LaneSidebar); the timeline re-measures after a tab switch (S1a.5 spec) and still auto-fits; the other rules are untouched by P0/P1a diffs and covered by the existing e2e specs.
+- One-line fixes made by this audit: none needed.
 
 ### P1b · Stop false verdicts and broken overlays
 
@@ -1203,3 +1249,6 @@ Record each one with the date, the session that found it, what and where (file:l
 - **2026-09-24 · S1a.5 · The Composer's Play is still silent.** Keeping it mounted keeps its playhead running across a tab switch, but it still plays no audio and lights no pads (T60's full fix). Belongs to: S8.2 (Composer on the shared transport).
 - **2026-09-24 · S1a.5 · A pattern in localStorage whose Sounds are gone from the project stays unsynced.** If the project lacks the Composer's Sounds (deleted in the Sounds panel, or an older project), the Composer shows notes the timeline doesn't have until its next edit, which re-adds them. Belongs to: P8 (S8.1).
 - **2026-09-24 · S1a.5 · Composer lanes deleted in the Sounds panel come back on the next Composer edit.** Deleting a Composer Sound in the Sounds panel doesn't remove its Composer lane, so the next sync adds it again (pre-existing). Belongs to: S8.1 (lanes bound to Sounds).
+
+- **2026-09-24 · P0/P1a audit · Two P0 follow-ups are still open.** The scratch branches `scratch/s0.1-red-*` are still on the remote (`git ls-remote --heads origin 'scratch/*'`), and tsconfig.json still includes only `src/`, so test/ is never type-checked. Neither blocks P1b. Owners as recorded above (the repository owner; any session touching CI).
+- **2026-09-24 · P0/P1a audit · Material Symbols still load from Google Fonts.** index.html links `fonts.googleapis.com/css2?family=Material+Symbols+Outlined`, used by the Library (search field, PerformanceCard, Homepage). S0.1 self-hosted Inter and Space Grotesk only, so with remote fonts blocked (e2e, offline) the icons render as their ligature names ("search" overlaps the search placeholder; see `docs/screenshots/audit-P1a/1366-01-library.png`). Self-host the icon font or replace these icons with lucide-react. Belongs to: S2.3 (Library) or S7.2 (tokens and primitives).
