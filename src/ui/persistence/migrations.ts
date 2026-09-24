@@ -16,8 +16,8 @@
  * version 0; projectSerializer converts them to version 1 before this runner
  * sees them.
  *
- * Later phases add their migrations to MIGRATIONS (S1a.4 ghost locks, S1a.5
- * preset fingerings, and so on), bumping PERSISTED_SCHEMA_VERSION with each.
+ * Later phases add their migrations to MIGRATIONS (S1a.5 preset fingerings,
+ * and so on), bumping PERSISTED_SCHEMA_VERSION with each.
  */
 
 import { PERSISTED_SCHEMA_VERSION } from './persistedProject';
@@ -50,7 +50,44 @@ export const MIGRATIONS: readonly Migration[] = [
         : [],
     }),
   },
+  {
+    // S1a.4 (T12, F10-V02): a lock only ever means "this Sound is on this
+    // pad". Discards before S1a.4 merged draft locks into the Active Layout
+    // without checking, leaving locks that point at pads the Sound does not
+    // occupy: invisible in the UI (lock glyphs draw only on the Sound's pad),
+    // yet still pulling the Sound back on the next Generate. Every stored
+    // layout drops them; a lock whose Sound is on its pad is kept.
+    from: 2,
+    to: 3,
+    name: 'prune-ghost-locks',
+    up: record => {
+      const next: StoredRecord = { ...record };
+      for (const key of ['activeLayout', 'workingLayout'] as const) {
+        if (key in record) next[key] = pruneGhostLocks(record[key]);
+      }
+      for (const key of ['savedVariants', 'recoveredDrafts'] as const) {
+        if (Array.isArray(record[key])) next[key] = (record[key] as unknown[]).map(pruneGhostLocks);
+      }
+      return next;
+    },
+  },
 ];
+
+/** The layout with only the locks whose Sound sits on the locked pad. Non-layouts pass through. */
+function pruneGhostLocks(layout: unknown): unknown {
+  if (!layout || typeof layout !== 'object') return layout;
+  const l = layout as {
+    padToVoice?: Record<string, { id?: unknown } | null | undefined>;
+    placementLocks?: Record<string, unknown>;
+  };
+  if (!l.placementLocks || typeof l.placementLocks !== 'object') return layout;
+  const pads = l.padToVoice && typeof l.padToVoice === 'object' ? l.padToVoice : {};
+  const kept: Record<string, string> = {};
+  for (const [voiceId, padKey] of Object.entries(l.placementLocks)) {
+    if (typeof padKey === 'string' && pads[padKey]?.id === voiceId) kept[voiceId] = padKey;
+  }
+  return { ...l, placementLocks: kept };
+}
 
 /** A record's schema version; 0 for records from before versioning. */
 export function schemaVersionOf(record: StoredRecord): number {

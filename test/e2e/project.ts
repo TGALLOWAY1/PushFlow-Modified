@@ -123,11 +123,19 @@ async function storedShape(page: Page): Promise<SavedShape | null> {
 }
 
 /**
- * Saves explicitly (toolbar "Save project"), waits until IndexedDB holds the
- * current project, reloads, and waits for the project to come back.
- *
- * The toolbar says "Saved" as soon as Save is clicked, before the write lands
- * (T57, fixed in S1a.4), so the label alone is not a signal to reload on.
+ * Waits until the toolbar's save status says the stored project is current.
+ * Since S1a.4 (T57) "Saved" is shown only after the write has committed, so
+ * this is the signal to reload or navigate on; while a save is pending the
+ * app also warns on beforeunload.
+ */
+export async function waitForSaved(page: Page): Promise<void> {
+  await expect(page.getByTestId('save-status')).toHaveAttribute('data-save-status', 'saved', { timeout: 15_000 });
+}
+
+/**
+ * Saves explicitly (toolbar "Save project"), waits until the toolbar reports
+ * the save and IndexedDB holds the current project, reloads, and waits for the
+ * project to come back.
  */
 export async function saveAndReload(page: Page, pf: PfHandle): Promise<void> {
   const s = await pf.call('state');
@@ -139,6 +147,7 @@ export async function saveAndReload(page: Page, pf: PfHandle): Promise<void> {
     recovered: (s.recoveredDrafts ?? []).length,
   };
   await page.getByTitle('Save project').click();
+  await waitForSaved(page);
   await expect.poll(() => storedShape(page), { timeout: 15_000 }).toEqual(want);
   await page.reload();
   await pf.ready();

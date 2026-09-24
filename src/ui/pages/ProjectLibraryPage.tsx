@@ -24,6 +24,8 @@ import {
   type ProjectLibraryEntry,
 } from '../persistence/projectStorage';
 import { generateId } from '../../utils/idGenerator';
+import { saveSerializedLoopState } from '../persistence/loopStorage';
+import { useToast } from '../components/shared/Toast';
 
 import { ContinuePracticingHero } from '../components/Homepage/ContinuePracticingHero';
 import { PerformanceCard } from '../components/Homepage/PerformanceCard';
@@ -39,6 +41,7 @@ export function ProjectLibraryPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const toast = useToast();
 
   // Load project list from IndexedDB
   const refreshProjects = useCallback(async () => {
@@ -112,8 +115,12 @@ export function ProjectLibraryPage() {
 
   const handleExportProject = useCallback(async (id: string) => {
     const state = projectStates.get(id) ?? await loadProjectAsync(id);
-    if (state) exportProjectToFile(state);
-  }, [projectStates]);
+    if (!state) return;
+    // The file carries the Composer's pattern too (it lives in localStorage
+    // until P8 moves it into the project), and the toast says so (T57).
+    const { composerPatternIncluded } = exportProjectToFile(state);
+    toast.show({ message: composerPatternIncluded ? 'Exported \u00b7 Composer pattern included' : 'Exported' });
+  }, [projectStates, toast]);
 
   const backupHandler = (entry: ProjectLibraryEntry) => (
     backedUpIds.has(entry.id) ? () => { void downloadProjectBackup(entry.id, entry.name); } : undefined
@@ -133,6 +140,9 @@ export function ProjectLibraryPage() {
       state = { ...state, id: generateId('proj'), name: `${state.name} (imported)` };
     }
     await saveProjectAsync(state);
+    // The Composer's pattern travels with the file; put it back under the
+    // imported project's id (which may be new).
+    if (result.composerPattern) saveSerializedLoopState(state.id, result.composerPattern);
     await refreshProjects();
   }, [refreshProjects]);
 

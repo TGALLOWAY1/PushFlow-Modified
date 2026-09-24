@@ -2,6 +2,7 @@
  * useKeyboardShortcuts.
  *
  * Global keyboard shortcuts for the project editor:
+ * - Ctrl+S / Cmd+S: Save now
  * - Ctrl+Z / Cmd+Z: Undo
  * - Ctrl+Y / Cmd+Shift+Z: Redo
  * - Delete / Backspace: Remove selected pad assignment
@@ -12,18 +13,31 @@ import { useEffect } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { getDisplayedLayout, getDisplayedExecutionPlan } from '../state/projectState';
 
-export function useKeyboardShortcuts() {
+export interface KeyboardShortcutOptions {
+  /** Cmd/Ctrl+S: save now (T57). Without it the browser offers to save the page as HTML. */
+  onSave?: () => void;
+}
+
+export function useKeyboardShortcuts({ onSave }: KeyboardShortcutOptions = {}) {
   const { state, dispatch, undo, redo } = useProject();
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const isMod = e.metaKey || e.ctrlKey;
+
+      // Save: Ctrl+S / Cmd+S, from an input too (the browser's own dialog
+      // would otherwise open there as well).
+      if (isMod && !e.shiftKey && !e.altKey && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        onSave?.();
+        return;
+      }
+
       // Don't intercept when typing in inputs
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
         return;
       }
-
-      const isMod = e.metaKey || e.ctrlKey;
 
       // Undo: Ctrl+Z / Cmd+Z
       if (isMod && e.key === 'z' && !e.shiftKey) {
@@ -100,5 +114,5 @@ export function useKeyboardShortcuts() {
 
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [state, dispatch, undo, redo]);
+  }, [state, dispatch, undo, redo, onSave]);
 }

@@ -123,11 +123,12 @@ describe('persistence round trip', () => {
     const loaded = deserializeProject(validateAndMigrateRaw(saved));
     const resaved = serializeProject(loaded) as unknown as Record<string, unknown>;
 
-    // The fixture is schema 1; the only differences are the S1a.2 migration's.
+    // The fixture is schema 1; the only differences are the migrations' (S1a.2
+    // adds recoveredDrafts; S1a.4's ghost-lock pruning finds nothing to prune).
     expect(saved.schemaVersion).toBe(1);
     const { updatedAt: _a, ...savedFields } = saved;
     const { updatedAt: _b, ...resavedFields } = resaved;
-    expect(resavedFields).toEqual({ ...savedFields, schemaVersion: 2, recoveredDrafts: [] });
+    expect(resavedFields).toEqual({ ...savedFields, schemaVersion: 3, recoveredDrafts: [] });
 
     // And the document slice survives a second load unchanged.
     const reloaded = deserializeProject(validateAndMigrateRaw(JSON.parse(JSON.stringify(resaved))));

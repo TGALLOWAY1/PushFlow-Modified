@@ -6,14 +6,16 @@
  * editing controls, generation, compare trigger, and settings.
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useProject } from '../../state/ProjectContext';
 import { hasWorkingChanges } from '../../state/projectState';
+import { useToast } from '../shared/Toast';
 import { type GenerationMode } from '../../hooks/useAutoAnalysis';
 import { type SaveStatus } from '../../hooks/useAutoSave';
 import { type OptimizerMethodKey } from '../../../engine/optimization/optimizerInterface';
 import { type GreedyLayoutStrategy, GREEDY_STRATEGY_LABELS } from '../../../engine/optimization/greedyCandidatePipeline';
 import { SettingsGear } from '../panels/SettingsGear';
+import { SaveStatusControl } from './SaveStatusControl';
 import { useViewSettings } from '../../state/viewSettings';
 
 interface WorkspaceToolbarProps {
@@ -29,6 +31,8 @@ interface WorkspaceToolbarProps {
   hasAssignment?: boolean;
   saveStatus?: SaveStatus;
   onSave?: () => void;
+  /** Downloads a copy of the project (offered when saving fails). */
+  onExport?: () => void;
 }
 
 export function WorkspaceToolbar({
@@ -44,10 +48,33 @@ export function WorkspaceToolbar({
   hasAssignment,
   saveStatus = 'saved',
   onSave,
+  onExport,
 }: WorkspaceToolbarProps) {
   const { state, dispatch, transact, undo, redo, canUndo, canRedo, undoLabel, redoLabel } = useProject();
   const { settings: viewSettings, toggleGridLabel, toggleLayoutDisplay } = useViewSettings();
+  const toast = useToast();
   const hasChanges = hasWorkingChanges(state);
+
+  // Discard is confirmed by a toast with Undo. Finger preferences live in
+  // voiceConstraints and survive Discard (decision Q2), and the toast says so.
+  // The toast's Undo is only offered while Discard is still the step Undo would
+  // revert, so it can never undo a later edit instead.
+  const discardToastRef = useRef<number | null>(null);
+  const handleDiscard = () => {
+    const keepsPreferences = Object.values(state.voiceConstraints).some(c => c.hand || c.finger);
+    dispatch({ type: 'DISCARD_WORKING_LAYOUT' });
+    if (discardToastRef.current !== null) toast.dismiss(discardToastRef.current);
+    discardToastRef.current = toast.show({
+      message: keepsPreferences ? 'Draft discarded \u00b7 Finger preferences kept' : 'Draft discarded',
+      action: { label: 'Undo', onClick: undo },
+    });
+  };
+  useEffect(() => {
+    if (discardToastRef.current !== null && undoLabel !== 'Discard') {
+      toast.dismiss(discardToastRef.current);
+      discardToastRef.current = null;
+    }
+  }, [undoLabel, toast]);
 
   // Editable project name
   const [editingName, setEditingName] = useState(false);
@@ -60,10 +87,6 @@ export function WorkspaceToolbar({
 
   // Generation mode
   const [generationMode, setGenerationMode] = useState<GenerationMode>('fast');
-
-  // Save confirmation (flash "Saved" briefly after explicit save)
-  const [saveConfirm, setSaveConfirm] = useState(false);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const commitName = () => {
     const trimmed = nameDraft.trim();
@@ -79,15 +102,6 @@ export function WorkspaceToolbar({
       dispatch({ type: 'SET_TEMPO', payload: val });
     }
     setEditingBpm(false);
-  };
-
-  const handleSave = () => {
-    if (onSave) {
-      onSave();
-    }
-    setSaveConfirm(true);
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => setSaveConfirm(false), 1500);
   };
 
   return (
@@ -121,7 +135,7 @@ export function WorkspaceToolbar({
           />
         ) : (
           <span
-            className="text-pf-base font-semibold text-[var(--text-primary)] truncate editable-field hover:text-white transition-colors cursor-pointer"
+            className="block text-pf-base font-semibold text-[var(--text-primary)] truncate editable-field hover:text-white transition-colors cursor-pointer"
             onClick={() => {
               setNameDraft(state.name || 'Untitled');
               setEditingName(true);
@@ -156,7 +170,7 @@ export function WorkspaceToolbar({
         />
       ) : (
         <span
-          className="text-pf-sm text-[var(--text-tertiary)] cursor-pointer hover:text-[var(--text-secondary)] transition-colors tabular-nums editable-field"
+          className="text-pf-sm text-[var(--text-tertiary)] cursor-pointer hover:text-[var(--text-secondary)] transition-colors tabular-nums editable-field whitespace-nowrap"
           onClick={() => {
             setBpmDraft(String(state.tempo));
             setEditingBpm(true);
@@ -188,7 +202,7 @@ export function WorkspaceToolbar({
             </button>
             <button
               className="pf-btn pf-btn-subtle text-pf-sm hover:bg-red-900/30 hover:text-red-300 hover:border-red-500/30"
-              onClick={() => dispatch({ type: 'DISCARD_WORKING_LAYOUT' })}
+              onClick={handleDiscard}
               title="Discard working changes"
             >
               Discard
@@ -231,25 +245,12 @@ export function WorkspaceToolbar({
         </button>
       </div>
 
-      {/* Save + status */}
-      <div className="flex items-center gap-1.5">
-        <button
-          className={`pf-btn text-pf-sm ${
-            saveConfirm || saveStatus === 'saved'
-              ? 'bg-emerald-600/12 text-emerald-400 border border-emerald-500/20'
-              : saveStatus === 'saving'
-                ? 'bg-[var(--accent-muted)] text-[var(--accent-primary)] border border-[var(--accent-primary)]/20'
-                : 'pf-btn-subtle'
-          }`}
-          onClick={handleSave}
-          title="Save project"
-        >
-          {saveConfirm ? 'Saved' : saveStatus === 'saving' ? 'Saving...' : saveStatus === 'unsaved' ? 'Save' : 'Saved'}
-        </button>
-        {saveStatus === 'saved' && !saveConfirm && (
-          <span className="text-pf-micro text-[var(--text-tertiary)]">saved</span>
-        )}
-      </div>
+      {/* Save status: the truth about the stored project, never a flash on click (T57). */}
+      <SaveStatusControl
+        status={saveStatus}
+        onSave={() => onSave?.()}
+        onExport={() => onExport?.()}
+      />
 
       <div className="pf-divider-v" />
 

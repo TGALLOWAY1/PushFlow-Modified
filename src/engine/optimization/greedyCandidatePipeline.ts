@@ -41,7 +41,7 @@ import {
 } from '../analysis/diversityMeasurement';
 import { generateId } from '../../utils/idGenerator';
 import { buildVoiceMap } from '../mapping/voiceMap';
-import { applicableLocks, findLockViolations } from '../mapping/placementLocks';
+import { applicableLocks, findLockViolations, pinsToHonour, fixedPlacements, withoutPins } from '../mapping/placementLocks';
 import { createSeededRng } from '../../utils/seededRng';
 import { type CandidateGenerationResult } from './multiCandidateGenerator';
 import { detectStructuralGroups } from '../structure/structuralGroupDetection';
@@ -96,6 +96,13 @@ export interface GreedyCandidateInput {
   strategy?: GreedyLayoutStrategy;
   /** Canonical voice metadata from soundStreams — used to preserve user-assigned names/colors. */
   voiceHints?: ReadonlyArray<{ id: string; name: string; color: string; originalMidiNote: number | null }>;
+  /**
+   * Placed Sounds every candidate must keep on their pads without a lock
+   * (T15): those with no events in the performance, which in the app are the
+   * muted Sounds (see pinnedPlacements). Honoured like locks while seeding and
+   * hill-climbing, then removed from each candidate's placementLocks again.
+   */
+  pinnedPlacements?: Record<string, string>;
 }
 
 /**
@@ -197,6 +204,14 @@ export async function generateGreedyCandidates(
   const knownVoiceIds = new Set<string>(voices.keys());
   for (const voice of Object.values(input.baseLayout?.padToVoice ?? {})) knownVoiceIds.add(voice.id);
   const locks = applicableLocks(input.baseLayout?.placementLocks, knownVoiceIds);
+  // Placed Sounds with no events (muted) stay where they are: the base layout
+  // the seeds and the optimizer see carries them as locks, and they leave each
+  // candidate's locks again below.
+  const pins = pinsToHonour(input.pinnedPlacements, locks, knownVoiceIds);
+  const fixed = fixedPlacements(locks, pins);
+  const baseLayout = Object.keys(pins).length > 0 && input.baseLayout
+    ? { ...input.baseLayout, placementLocks: fixed }
+    : input.baseLayout;
   let droppedForLocks = 0;
 
   // Phase 1b: Detect structural groups (shared across all candidates)
@@ -229,9 +244,9 @@ export async function generateGreedyCandidates(
         features,
         voices,
         instrumentConfig: input.instrumentConfig,
-        placementLocks: input.baseLayout?.placementLocks ?? {},
+        placementLocks: baseLayout?.placementLocks ?? {},
         rng,
-        baseLayout: input.baseLayout,
+        baseLayout,
         performance: input.performance,
         structuralGroups,
       };
@@ -244,7 +259,7 @@ export async function generateGreedyCandidates(
       // Build optimizer input
       const optimizerInput: OptimizerInput = {
         performance: input.performance,
-        layout: input.baseLayout ?? seedLayout,
+        layout: baseLayout ?? seedLayout,
         costToggles,
         constraints: input.constraints ?? { hardAssignments: {}, softPreferences: {} },
         config: {
@@ -267,16 +282,20 @@ export async function generateGreedyCandidates(
       try {
         const result = await optimizer.optimize(optimizerInput, runOptions);
 
-        if (findLockViolations(locks, result.layout).length > 0) {
+        if (findLockViolations(fixed, result.layout).length > 0) {
           droppedForLocks++;
           continue;
         }
 
+        // A pin is not a lock the user set: it leaves the candidate's locks,
+        // and the plan follows the cleaned layout.
+        const { layout: candidateLayout, executionPlan } = withoutPins(result.layout, result.executionPlan, pins);
+
         // Build CandidateSolution
-        const difficultyAnalysis = analyzeDifficulty(result.executionPlan, sections);
-        const coherenceScore = scoreStructuralCoherence(result.layout, structuralGroups);
+        const difficultyAnalysis = analyzeDifficulty(executionPlan, sections);
+        const coherenceScore = scoreStructuralCoherence(candidateLayout, structuralGroups);
         const tradeoffProfile = computeTradeoffProfile(
-          result.executionPlan, difficultyAnalysis, coherenceScore.overall,
+          executionPlan, difficultyAnalysis, coherenceScore.overall,
         );
 
         const metadata: CandidateMetadata = {
@@ -290,8 +309,8 @@ export async function generateGreedyCandidates(
 
         const candidate: CandidateSolution = {
           id: generateId('candidate'),
-          layout: result.layout,
-          executionPlan: result.executionPlan,
+          layout: candidateLayout,
+          executionPlan,
           difficultyAnalysis,
           tradeoffProfile,
           metadata,
@@ -318,7 +337,7 @@ export async function generateGreedyCandidates(
     return {
       candidates: [],
       summary: input.activeLayout
-        ? buildGenerationSummary(droppedForLocks, 0, [], input.activeLayout, droppedForLocks)
+        ? buildGenerationSummary(droppedForLocks, 0, [], input.activeLayout, droppedForLocks, Object.keys(pins).length)
         : null,
     };
   }
@@ -408,6 +427,7 @@ export async function generateGreedyCandidates(
         finalCandidates,
         input.activeLayout,
         droppedForLocks,
+        Object.keys(pins).length,
       )
     : null;
 

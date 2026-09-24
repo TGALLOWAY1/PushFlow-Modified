@@ -21,6 +21,17 @@ import { validateAndMigrateRaw } from '../../../src/ui/persistence/projectSerial
 
 const FIXTURE = path.resolve(__dirname, '../../fixtures/projects/saved-by-main.json');
 const savedByMain = (): StoredRecord => JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
+const GHOST_FIXTURE = path.resolve(__dirname, '../../fixtures/projects/ghost-locks.json');
+const withGhostLocks = (): StoredRecord => JSON.parse(fs.readFileSync(GHOST_FIXTURE, 'utf8'));
+
+type StoredLayout = { padToVoice: Record<string, { id: string }>; placementLocks: Record<string, string> };
+const layoutsOf = (record: StoredRecord): StoredLayout[] => [
+  record.activeLayout as StoredLayout,
+  record.workingLayout as StoredLayout,
+  ...(record.savedVariants as StoredLayout[]),
+  ...(record.recoveredDrafts as StoredLayout[]),
+];
+const onlyStep = (name: string) => MIGRATIONS.filter(m => m.name === name);
 
 /** Three fake steps that log when they run. */
 function loggingMigrations(log: string[]): Migration[] {
@@ -85,7 +96,7 @@ describe('recovered-drafts-store (schema 1 → 2)', () => {
     const saved = savedByMain();
     expect(saved.schemaVersion).toBe(1);
     expect('recoveredDrafts' in saved).toBe(false);
-    const { record, applied } = runMigrations(saved);
+    const { record, applied } = runMigrations(saved, onlyStep('recovered-drafts-store'));
     expect(applied).toEqual(['recovered-drafts-store']);
     expect(record.schemaVersion).toBe(2);
     expect(record.recoveredDrafts).toEqual([]);
@@ -96,8 +107,14 @@ describe('recovered-drafts-store (schema 1 → 2)', () => {
   });
 
   it('marks any recovered drafts with provenance "recovered"', () => {
-    const { record } = runMigrations({ id: 'p', schemaVersion: 1, recoveredDrafts: [{ id: 'd1', padToVoice: {} }] });
+    const { record } = runMigrations({ id: 'p', schemaVersion: 1, recoveredDrafts: [{ id: 'd1', padToVoice: {} }] }, onlyStep('recovered-drafts-store'));
     expect(record.recoveredDrafts).toEqual([{ id: 'd1', padToVoice: {}, provenance: 'recovered' }]);
+  });
+
+  it('a schema-1 project runs every later step too and lands on the current schema', () => {
+    const { record, applied } = runMigrations(savedByMain());
+    expect(applied).toEqual(['recovered-drafts-store', 'prune-ghost-locks']);
+    expect(record.schemaVersion).toBe(PERSISTED_SCHEMA_VERSION);
   });
 
   it('a legacy (unversioned) record is converted and migrated to the current schema', () => {
@@ -106,6 +123,57 @@ describe('recovered-drafts-store (schema 1 → 2)', () => {
     const persisted = validateAndMigrateRaw(legacy);
     expect(persisted.schemaVersion).toBe(PERSISTED_SCHEMA_VERSION);
     expect(persisted.recoveredDrafts).toEqual([]);
+  });
+});
+
+// S1a.4 (T12, F10-V02; roadmap P1a-13a): locks whose Sound is not on the
+// locked pad are removed from every stored layout.
+describe('prune-ghost-locks (schema 2 → 3)', () => {
+  it('the fixture has ghost locks in Active, the draft, a variant and a recovered draft', () => {
+    const saved = withGhostLocks();
+    expect(saved.schemaVersion).toBe(2);
+    const ghosts = layoutsOf(saved).map(l =>
+      Object.entries(l.placementLocks).filter(([id, pad]) => l.padToVoice[pad]?.id !== id).length);
+    expect(ghosts).toEqual([2, 1, 0, 1, 1]);
+  });
+
+  it('removes every ghost lock, keeps every lock whose Sound is on its pad, and changes nothing else', () => {
+    const saved = withGhostLocks();
+    const { record, applied } = runMigrations(saved);
+    expect(applied).toEqual(['prune-ghost-locks']);
+    expect(record.schemaVersion).toBe(3);
+
+    const active = record.activeLayout as StoredLayout;
+    expect(active.placementLocks).toEqual({ 'lane_1790212333742_q33d4p': '3,3' });
+    const working = record.workingLayout as StoredLayout;
+    expect(working.placementLocks).toEqual({ 'lane_1790212333742_50fyvz': '2,4' });
+    const variant = (record.savedVariants as StoredLayout[]).find(v => (v as { id: string }).id === 'variant-ghost')!;
+    expect(variant.placementLocks).toEqual({ 'lane_1790212333742_jm0lqi': '4,1' });
+    expect((record.recoveredDrafts as StoredLayout[])[0].placementLocks).toEqual({});
+    for (const layout of layoutsOf(record)) {
+      for (const [voiceId, pad] of Object.entries(layout.placementLocks)) {
+        expect(layout.padToVoice[pad]?.id).toBe(voiceId);
+      }
+    }
+
+    // Only placementLocks changed.
+    const stripLocks = (r: StoredRecord) => JSON.parse(JSON.stringify(r, (key, value) =>
+      key === 'placementLocks' || key === 'schemaVersion' ? undefined : value));
+    expect(stripLocks(record)).toEqual(stripLocks(saved));
+  });
+
+  it('running it again changes nothing', () => {
+    const once = runMigrations(withGhostLocks()).record;
+    const twice = runMigrations(structuredClone(once));
+    expect(twice.applied).toEqual([]);
+    expect(twice.record).toEqual(once);
+    const step = onlyStep('prune-ghost-locks')[0];
+    expect(step.up(structuredClone(once))).toEqual(once);
+  });
+
+  it('leaves a layout with no locks map, or no layout at all, as it is', () => {
+    const { record } = runMigrations({ id: 'p', schemaVersion: 2, activeLayout: { id: 'a', padToVoice: {} }, savedVariants: 'not-a-list' });
+    expect(record).toEqual({ id: 'p', schemaVersion: 3, activeLayout: { id: 'a', padToVoice: {} }, savedVariants: 'not-a-list' });
   });
 });
 
@@ -124,9 +192,9 @@ describe('migrateWithBackup', () => {
       },
       record => runMigrations(record, [...MIGRATIONS.map(m => ({ ...m, up: (r: StoredRecord) => { log.push(m.name); return m.up(r); } }))]),
     );
-    expect(log).toEqual(['backup v1', 'recovered-drafts-store']);
+    expect(log).toEqual(['backup v1', 'recovered-drafts-store', 'prune-ghost-locks']);
     expect(backedUp).toEqual(untouched);
-    expect(result.record.schemaVersion).toBe(2);
+    expect(result.record.schemaVersion).toBe(3);
   });
 
   it('writes no backup when nothing needs migrating', async () => {

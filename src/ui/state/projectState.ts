@@ -267,9 +267,13 @@ export function getDisplayedLayoutRole(state: ProjectState): LayoutRole | null {
   return null;
 }
 
-/** Whether the project has unsaved working changes. */
+/**
+ * Whether the Working/Test Layout differs from the Active Layout (T14): by
+ * pads, locks or finger constraints, everything hashLayout covers. A draft
+ * that matches Active is not a change, so Promote and Discard stay hidden.
+ */
 export function hasWorkingChanges(state: ProjectState): boolean {
-  return state.workingLayout !== null;
+  return state.workingLayout !== null && hashLayout(state.workingLayout) !== hashLayout(state.activeLayout);
 }
 
 /** Get only unmuted sound streams. */
@@ -566,6 +570,25 @@ function prunePlacementLocks(
   return nextLocks;
 }
 
+/**
+ * A layout as it must be after a layout switch (Discard, Promote, Preview,
+ * Load, Restore): its pad fingerConstraints re-derived from voiceConstraints,
+ * the one source of truth for finger preferences (invariant 6), and no lock
+ * whose Sound is not on its locked pad (T12). A lock only ever means "this
+ * Sound is on this pad"; one pointing elsewhere is invisible in the UI and
+ * would silently drag the Sound back on the next Generate.
+ */
+function withDerivedLayoutState(
+  layout: Layout,
+  voiceConstraints: ProjectState['voiceConstraints'],
+): Layout {
+  return {
+    ...layout,
+    fingerConstraints: buildLayoutFingerConstraints(layout.padToVoice, voiceConstraints),
+    placementLocks: prunePlacementLocks(layout.padToVoice, layout.placementLocks ?? {}),
+  };
+}
+
 /** Recovered drafts kept per project; the oldest is pruned beyond this. */
 export const RECOVERED_DRAFTS_CAP = 5;
 
@@ -838,9 +861,13 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
     case 'ASSIGN_VOICE_TO_PAD': {
       const { padKey, stream } = action.payload;
+      const shown = state.workingLayout ?? state.activeLayout;
+      // Dropping a Sound on the pad it already occupies changes nothing (T14):
+      // no draft, no stale analysis, no undo step.
+      if (shown.padToVoice[padKey]?.id === stream.id) return state;
       // A locked Sound is not dragged out, and a locked pad takes no drop
       // (canon section 11). Nothing changes, so no draft and no undo step.
-      if (placementBlockedByLock(state.workingLayout ?? state.activeLayout, stream.id, padKey)) {
+      if (placementBlockedByLock(shown, stream.id, padKey)) {
         return state;
       }
       return updateWorkingLayout(state, layout => {
@@ -894,6 +921,10 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       });
 
     case 'REMOVE_VOICE_FROM_PAD':
+      // A locked Sound stays on its pad until it is unlocked (canon section
+      // 11); Remove is refused like a drag out. Nothing changes, so no draft
+      // and no undo step.
+      if (isPadLocked(state.workingLayout ?? state.activeLayout, action.payload.padKey)) return state;
       return updateWorkingLayout(state, layout => {
         const removedVoice = layout.padToVoice[action.payload.padKey];
         const { [action.payload.padKey]: _, ...rest } = layout.padToVoice;
@@ -912,6 +943,8 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
     case 'SWAP_PADS': {
       const { padKeyA, padKeyB } = action.payload;
+      // A pad swapped with itself changes nothing (T14): no draft, no undo step.
+      if (padKeyA === padKeyB) return state;
       // A swap moves both Sounds, so a lock on either pad refuses it (canon
       // section 11). Nothing changes, so no draft and no undo step.
       const shown = state.workingLayout ?? state.activeLayout;
@@ -992,10 +1025,15 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         // Lock: voice is locked to this pad
         newLocks[voiceId] = padKey;
       }
+      // Locks are part of what an Execution Plan depends on (hashLayout covers
+      // them), so the plan on screen no longer describes this layout: mark it
+      // stale so auto-analysis runs again instead of the plan going blank for
+      // good (T14).
       if (state.workingLayout) {
         return {
           ...state,
           updatedAt: new Date().toISOString(),
+          analysisStale: true,
           workingLayout: { ...state.workingLayout, placementLocks: newLocks },
         };
       }
@@ -1003,6 +1041,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return {
         ...state,
         updatedAt: new Date().toISOString(),
+        analysisStale: true,
         activeLayout: { ...state.activeLayout, placementLocks: newLocks },
       };
     }
@@ -1021,6 +1060,14 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       // exploratory edit — and letting Discard take it meant the next Generate
       // freely relocated a sound the user had pinned, with nothing to tell them
       // the guarantee had lapsed.
+      //
+      // Only a lock whose Sound sits on the locked pad in Active can be kept,
+      // though (T12): a lock made at a draft-only position would point at a pad
+      // the Sound does not occupy in Active, be invisible (lock glyphs draw only
+      // on the Sound's pad) and still pull the Sound back on the next Generate,
+      // so Discard would have edited the Active Layout after all. Finger
+      // preferences live in voiceConstraints and survive Discard (decision Q2);
+      // Active's pad constraints are re-derived from them.
       const preservedLocks = state.workingLayout
         ? { ...state.activeLayout.placementLocks, ...state.workingLayout.placementLocks }
         : state.activeLayout.placementLocks;
@@ -1028,7 +1075,10 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return {
         ...state,
         workingLayout: null,
-        activeLayout: { ...state.activeLayout, placementLocks: preservedLocks },
+        activeLayout: withDerivedLayoutState(
+          { ...state.activeLayout, placementLocks: preservedLocks },
+          state.voiceConstraints,
+        ),
         updatedAt: new Date().toISOString(),
         analysisStale: true,
         selectedEventIndex: null,
@@ -1056,12 +1106,12 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       }
 
       // Promote: working becomes active
-      const promoted: Layout = {
+      const promoted: Layout = withDerivedLayoutState({
         ...state.workingLayout,
         role: 'active',
         baselineId: undefined,
         savedAt: now,
-      };
+      }, state.voiceConstraints);
 
       return {
         ...state,
@@ -1094,14 +1144,15 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       }
 
       // Promote: candidate's layout becomes active, reconciling voice metadata
-      const promoted: Layout = reconcileLayoutVoices({
+      // and re-deriving its pad constraints from the user's preferences.
+      const promoted: Layout = withDerivedLayoutState(reconcileLayoutVoices({
         ...candidate.layout,
         id: generateId(),
         role: 'active',
         baselineId: undefined,
         placementLocks: { ...candidate.layout.placementLocks },
         savedAt: now,
-      }, state.soundStreams);
+      }, state.soundStreams), state.voiceConstraints);
 
       // Keep non-promoted candidates so the user can still compare or promote others
       const remainingCandidates = state.candidates.filter(c => c.id !== action.payload.candidateId);
@@ -1166,7 +1217,10 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         ...state,
         updatedAt: now,
         recoveredDrafts: keepReplacedDraft(state, reconciledVariant, now),
-        workingLayout: cloneLayout(reconciledVariant, generateId(), reconciledVariant.name, 'working'),
+        workingLayout: withDerivedLayoutState(
+          cloneLayout(reconciledVariant, generateId(), reconciledVariant.name, 'working'),
+          state.voiceConstraints,
+        ),
         selectedCandidateId: null,
         compareCandidateId: null,
         selectedEventIndex: null,
@@ -1192,12 +1246,12 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         autoSavedVariants.push(replaced);
       }
 
-      const promoted: Layout = reconcileLayoutVoices({
+      const promoted: Layout = withDerivedLayoutState(reconcileLayoutVoices({
         ...variant,
         role: 'active',
         baselineId: undefined,
         savedAt: now,
-      }, state.soundStreams);
+      }, state.soundStreams), state.voiceConstraints);
 
       return {
         ...state,
@@ -1244,14 +1298,14 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       const recovered = (state.recoveredDrafts ?? []).find(l => l.id === action.payload.layoutId);
       if (!recovered) return state;
       const now = new Date().toISOString();
-      const restored: Layout = {
+      const restored: Layout = withDerivedLayoutState({
         ...reconcileLayoutVoices(recovered, state.soundStreams),
         role: 'working',
         baselineId: state.activeLayout.id,
         provenance: undefined,
         savedAt: undefined,
         scoreCache: null,
-      };
+      }, state.voiceConstraints);
       // The draft being replaced may itself need keeping (restoring over a
       // hand-made draft); the restored entry leaves the list either way.
       const withoutRestored = { ...state, recoveredDrafts: (state.recoveredDrafts ?? []).filter(l => l !== recovered) };
@@ -1396,14 +1450,10 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       // Solver fingerings already live where they belong, on the candidate's
       // ExecutionPlan, and the Sounds panel renders them as dimmed suggestions
       // when no user constraint is set.
-      working.fingerConstraints = buildLayoutFingerConstraints(
-        working.padToVoice, state.voiceConstraints,
-      );
-
       return {
         ...state,
         recoveredDrafts: keepReplacedDraft(state, reconciledCandidateLayout, now),
-        workingLayout: working,
+        workingLayout: withDerivedLayoutState(working, state.voiceConstraints),
         // The pad map changed, so any existing analysis describes a different
         // layout. Marking it stale re-runs analysis instead of showing figures
         // the freshness check itself would reject.

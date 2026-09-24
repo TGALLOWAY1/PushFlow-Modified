@@ -30,6 +30,7 @@ import { analyzeDifficulty, computeTradeoffProfile, classifyOptimizationDifficul
 import { evaluatePerformance } from '../../engine/evaluation/canonicalEvaluator';
 import { generateCandidates } from '../../engine/optimization/multiCandidateGenerator';
 import { generateGreedyCandidates } from '../../engine/optimization/greedyCandidatePipeline';
+import { pinnedPlacements } from '../../engine/mapping/placementLocks';
 // Import adapters to ensure they self-register
 import '../../engine/optimization/beamOptimizerAdapter';
 import '../../engine/optimization/annealingOptimizerAdapter';
@@ -266,6 +267,11 @@ export function useAutoAnalysis() {
       // If the layout has no pad assignments, the solver will handle initial placement.
       const effectiveLayout = layout;
 
+      // Generate never removes a placed Sound (invariant 7, T15): a placed Sound
+      // whose events are not in this performance (a muted Sound) keeps its pad
+      // in every candidate, pinned for the run rather than locked.
+      const pinned = pinnedPlacements(effectiveLayout, performance);
+
       const method = state.optimizerMethod;
 
       // ── Route: Greedy diverse candidate pipeline ───────────
@@ -295,6 +301,7 @@ export function useAutoAnalysis() {
           count: 4,
           strategy: state.greedyStrategy,
           voiceHints: state.soundStreams,
+          pinnedPlacements: pinned,
         });
 
         const candidates = generationResult.candidates;
@@ -331,6 +338,7 @@ export function useAutoAnalysis() {
         activeLayout: effectiveLayout,
         // Sounds with no pad yet, by identity, so a seeded candidate can place them.
         voiceHints: state.soundStreams,
+        pinnedPlacements: pinned,
       });
 
       setGenerationProgress('Ranking results...');

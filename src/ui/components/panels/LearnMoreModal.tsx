@@ -542,12 +542,18 @@ export const HARD_CONSTRAINTS = [
       {
         name: 'Placement Locks',
         key: 'placementLock',
-        description: `A lock pins a Sound to one pad, and it is the one hard placement rule you set. ${LOCK_ENFORCING_METHODS.slice(0, -1).join(', ')} and ${LOCK_ENFORCING_METHODS[LOCK_ENFORCING_METHODS.length - 1]} all place locked Sounds first, on their locked pads, and never move them; a candidate that would break a lock is dropped, and the candidate list says so. Manual edits enforce locks too: a locked Sound cannot be dragged off its pad, and nothing can be dropped onto a locked pad (Locked \u00b7 Unlock to move).`,
+        description: `A lock pins a Sound to one pad, and it is the one hard placement rule you set. ${LOCK_ENFORCING_METHODS.slice(0, -1).join(', ')} and ${LOCK_ENFORCING_METHODS[LOCK_ENFORCING_METHODS.length - 1]} all place locked Sounds first, on their locked pads, and never move them; a candidate that would break a lock is dropped, and the candidate list says so. Manual edits enforce locks too: a locked Sound cannot be dragged off its pad, and nothing can be dropped onto a locked pad (Locked \u00b7 Unlock to move); Remove from pad is refused too until the Sound is unlocked.`,
       },
       {
         name: 'Sound Identity',
         key: 'identity',
         description: 'Every event is matched to a pad by its Sound, never by MIDI pitch. A Sound with no pad is unmapped even when another Sound shares its pitch, so an unplaced Sound never borrows another Sound\u2019s pad or fingering, and its events count as unplayable until you place it. Imported pitch is kept only as provenance.',
+      },
+      {
+        // Generate proposes; it never takes a placed Sound off the grid (T15).
+        name: 'Placed Sounds Stay Placed',
+        key: 'pinned',
+        description: `Generate never removes a Sound that is already on the grid. A placed Sound whose events are not in the performance being optimized (a muted Sound) keeps its pad in every candidate from ${LOCK_ENFORCING_METHODS.slice(0, -1).join(', ')} and ${LOCK_ENFORCING_METHODS[LOCK_ENFORCING_METHODS.length - 1]}: it is pinned for that run, not locked, so no lock is added and you can still move it by hand. The candidate list says how many muted Sounds kept their pads.`,
       },
     ],
   },

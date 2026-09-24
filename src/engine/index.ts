@@ -63,7 +63,7 @@ export {
 export { buildNoteToPadIndex, buildVoiceIdToPadIndex, resolveNoteToPad, resolveEventToPad, hashLayout } from './mapping/mappingResolver';
 export { computeMappingCoverage, getPerformanceSoundKeys } from './mapping/mappingCoverage';
 export { buildVoiceMap, soundKeyOf, type VoiceHint } from './mapping/voiceMap';
-export { applicableLocks, findLockViolations, holdsLocks, describeDroppedForLocks, type LockViolation } from './mapping/placementLocks';
+export { applicableLocks, findLockViolations, holdsLocks, describeDroppedForLocks, pinnedPlacements, pinsToHonour, fixedPlacements, withoutPins, describePinnedPlacements, type LockViolation } from './mapping/placementLocks';
 export { seedLayoutFromPose0, orderSoundsByUsage, type SeedFromPoseOptions } from './mapping/seedFromPose';
 
 // Evaluation (primary scoring model)

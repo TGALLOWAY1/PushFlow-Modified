@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const FIXTURE = path.resolve(__dirname, '../../fixtures/projects/saved-by-main.json');
+const GHOST_FIXTURE = path.resolve(__dirname, '../../fixtures/projects/ghost-locks.json');
 
 const log: string[] = [];
 const projects = new Map<string, unknown>();
@@ -56,17 +57,49 @@ describe('loadProjectAsync migrates behind a backup', () => {
 
     const state = await loadProjectAsync(saved.id);
     expect(state?.recoveredDrafts).toEqual([]);
-    expect(log).toEqual(['putBackup v1', 'putProject v2']);
+    expect(log).toEqual(['putBackup v1', 'putProject v3']);
 
     const backup = await getLatestBackup(saved.id);
     expect(backup?.key).toBe(`${saved.id}@v1`);
     expect(backup?.record).toEqual(saved);
     expect(await listBackedUpProjectIds()).toEqual(new Set([saved.id]));
 
-    // The stored record is now schema 2: a second load neither backs up nor rewrites.
+    // The stored record is now at the current schema: a second load neither backs up nor rewrites.
     log.length = 0;
     await loadProjectAsync(saved.id);
     expect(log).toEqual([]);
+  });
+
+  // S1a.4 (roadmap P1a-13a): a project with ghost locks is migrated only after
+  // its backup exists; the ghost locks are gone, and a second run changes nothing.
+  it('P1a-13a: backs up a project with ghost locks before pruning them, then never again', async () => {
+    const saved = JSON.parse(fs.readFileSync(GHOST_FIXTURE, 'utf8'));
+    expect(saved.schemaVersion).toBe(2);
+    projects.set(saved.id, saved);
+
+    const state = await loadProjectAsync(saved.id);
+    expect(log).toEqual(['putBackup v2', 'putProject v3']);
+    const backup = await getLatestBackup(saved.id);
+    expect(backup?.key).toBe(`${saved.id}@v2`);
+    // The backup is the untouched record, ghost locks and all.
+    expect(backup?.record).toEqual(saved);
+    expect((backup?.record as typeof saved).activeLayout.placementLocks).toEqual(saved.activeLayout.placementLocks);
+
+    // What loaded holds no lock whose Sound is not on that pad.
+    const layouts = [state!.activeLayout, state!.workingLayout!, ...state!.savedVariants, ...state!.recoveredDrafts];
+    expect(layouts.length).toBe(5);
+    for (const layout of layouts) {
+      for (const [voiceId, pad] of Object.entries(layout.placementLocks)) {
+        expect(layout.padToVoice[pad]?.id).toBe(voiceId);
+      }
+    }
+    expect(state!.activeLayout.placementLocks).toEqual({ 'lane_1790212333742_q33d4p': '3,3' });
+    expect((projects.get(saved.id) as { schemaVersion: number }).schemaVersion).toBe(3);
+
+    log.length = 0;
+    const again = await loadProjectAsync(saved.id);
+    expect(log).toEqual([]);
+    expect(again!.activeLayout.placementLocks).toEqual(state!.activeLayout.placementLocks);
   });
 
   it('when the backup fails, the stored record is left as it was', async () => {

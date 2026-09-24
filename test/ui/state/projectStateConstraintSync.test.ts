@@ -107,15 +107,22 @@ describe('projectReducer constraint sync', () => {
     expect((next.workingLayout ?? next.activeLayout).placementLocks).toEqual({ 'stream-snare': '0,1', 'stream-hihat': '0,2' });
   });
 
-  it('clears stale pad constraints and locks when removing a voice from a pad', () => {
+  // S1a.4 (S1a.3 follow-up, canon section 11): a locked Sound is not removed
+  // from its pad either; Remove is refused like a drag out, with no draft and
+  // no undo step. Unlocking first makes it an ordinary edit.
+  it('refuses to remove a locked Sound from its pad, and removes it once unlocked', () => {
     const { state, snare } = makeState();
 
-    const next = projectReducer(state, {
+    expect(projectReducer(state, { type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey: '0,1' } })).toBe(state);
+
+    const unlocked = projectReducer(state, { type: 'TOGGLE_PLACEMENT_LOCK', payload: { voiceId: snare.id, padKey: '0,1' } });
+    const next = projectReducer(unlocked, {
       type: 'REMOVE_VOICE_FROM_PAD',
       payload: { padKey: '0,1' },
     });
 
     expect(next.workingLayout?.padToVoice['0,1']).toBeUndefined();
+    // The pad's projection goes with the Sound; the Sound-level preference stays.
     expect(next.workingLayout?.fingerConstraints).toEqual({
       '0,2': 'R3',
     });

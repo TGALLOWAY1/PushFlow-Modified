@@ -199,6 +199,11 @@ export interface CandidateGenerationSummary {
    * (canon section 11). Counted in candidatesGenerated; the list header says why.
    */
   droppedForLockViolations?: number;
+  /**
+   * Placed Sounds with no events in the performance (muted Sounds) that every
+   * candidate kept on their pads: pinned for the run, not locked (T15).
+   */
+  pinnedPlacements?: number;
 }
 
 /**
