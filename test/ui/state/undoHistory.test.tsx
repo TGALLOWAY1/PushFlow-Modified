@@ -265,6 +265,30 @@ describe('one undo step per user intent', () => {
   }, 120_000);
 });
 
+describe('Undo never loses a generated candidate', () => {
+  it('undoing a candidate Promote puts the candidate back in the list', async () => {
+    const initial = await suggestedTestMidi1();
+    const { result } = renderProject(initial);
+    const layout = initial.workingLayout!;
+    const candidate = {
+      id: 'cand-a',
+      layout: { ...layout, id: 'cand-a-layout', padToVoice: { '7,7': Object.values(layout.padToVoice)[0] } },
+      executionPlan: { layoutBinding: { layoutId: 'cand-a-layout', layoutHash: '', layoutRole: 'working' } },
+      metadata: { strategy: 'test', seed: 0 },
+    } as unknown as ProjectState['candidates'][number];
+    act(() => result.current.project.dispatch({ type: 'SET_CANDIDATES', payload: [candidate] }));
+    act(() => result.current.project.dispatch({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: 'cand-a' } }));
+    expect(result.current.project.state.candidates).toHaveLength(0);
+    expect(Object.keys(result.current.project.state.activeLayout.padToVoice)).toEqual(['7,7']);
+
+    act(() => result.current.project.undo());
+    const s = result.current.project.state;
+    expect({ candidates: s.candidates.map(c => c.id), activePads: Object.keys(s.activeLayout.padToVoice) })
+      .toEqual({ candidates: ['cand-a'], activePads: [] });
+    expect(pads(result)).toEqual(Object.keys(layout.padToVoice).sort());
+  });
+});
+
 describe('P1a-1f: isProcessing resets after Generate', () => {
   it('is false after a successful run', async () => {
     const initial = await importTestMidi1();

@@ -45,8 +45,17 @@ export interface UndoRedoOptions<S, D, A> {
   pick: (state: S) => D;
   /** Whether two slices differ; equal slices record no history entry. */
   changed: (a: D, b: D) => boolean;
-  /** Puts a slice back under the current state's session (Undo, Redo). */
-  restore: (state: S, doc: D) => S;
+  /**
+   * Puts a slice back under the current state's session (Undo, Redo). On Undo,
+   * `returned` is what `returnOnUndo` captured when the step was recorded.
+   */
+  restore: (state: S, doc: D, returned?: unknown) => S;
+  /**
+   * Session data a step removed that its Undo should give back (e.g. the
+   * candidate a Promote took out of the list). Nothing else of the session is
+   * ever restored.
+   */
+  returnOnUndo?: (before: S, after: S) => unknown;
   /**
    * Actions that never record an entry of their own. Any document change they
    * make folds into the current step (e.g. a derived sync after an edit).
@@ -59,6 +68,8 @@ export interface UndoRedoOptions<S, D, A> {
 interface Step<D> {
   doc: D;
   label: string;
+  /** From returnOnUndo; only on past steps. */
+  returned?: unknown;
 }
 
 interface History<D> {
@@ -66,8 +77,8 @@ interface History<D> {
   future: Step<D>[];
 }
 
-interface Transaction<D> {
-  before: D;
+interface Transaction<S> {
+  before: S;
   label: string;
 }
 
@@ -90,7 +101,7 @@ export function useUndoRedo<S, D, A extends { type: string }>(
   const historyRef = useRef(history);
   const optionsRef = useRef(options);
   optionsRef.current = options;
-  const transactionRef = useRef<Transaction<D> | null>(null);
+  const transactionRef = useRef<Transaction<S> | null>(null);
 
   const commit = useCallback((state: S, nextHistory: History<D>) => {
     presentRef.current = state;
@@ -101,11 +112,13 @@ export function useUndoRedo<S, D, A extends { type: string }>(
     }
   }, []);
 
-  /** Records `before` as a new step if the present document differs from it. */
-  const record = useCallback((before: D, label: string) => {
-    const { pick, changed } = optionsRef.current;
-    if (!changed(before, pick(presentRef.current))) return;
-    const past = [...historyRef.current.past, { doc: before, label }];
+  /** Records `before`'s document as a new step if the present document differs from it. */
+  const record = useCallback((before: S, label: string) => {
+    const { pick, changed, returnOnUndo } = optionsRef.current;
+    const doc = pick(before);
+    if (!changed(doc, pick(presentRef.current))) return;
+    const returned = returnOnUndo?.(before, presentRef.current);
+    const past = [...historyRef.current.past, { doc, label, ...(returned !== undefined ? { returned } : {}) }];
     const next = {
       past: past.length > MAX_HISTORY_SIZE ? past.slice(-MAX_HISTORY_SIZE) : past,
       future: [],
@@ -115,7 +128,7 @@ export function useUndoRedo<S, D, A extends { type: string }>(
   }, []);
 
   const dispatch = useCallback((action: A) => {
-    const { pick, isEphemeral, labelFor } = optionsRef.current;
+    const { isEphemeral, labelFor } = optionsRef.current;
     const prev = presentRef.current;
     const next = reducer(prev, action);
     if (next === prev) return;
@@ -124,9 +137,8 @@ export function useUndoRedo<S, D, A extends { type: string }>(
       commit(next, historyRef.current);
       return;
     }
-    const before = pick(prev);
     commit(next, historyRef.current);
-    record(before, labelFor?.(action) ?? action.type);
+    record(prev, labelFor?.(action) ?? action.type);
   }, [reducer, commit, record]);
 
   const transact = useCallback((label: string, fn: () => void) => {
@@ -135,7 +147,7 @@ export function useUndoRedo<S, D, A extends { type: string }>(
       fn();
       return;
     }
-    const tx = { before: optionsRef.current.pick(presentRef.current), label };
+    const tx = { before: presentRef.current, label };
     transactionRef.current = tx;
     try {
       fn();
@@ -151,7 +163,7 @@ export function useUndoRedo<S, D, A extends { type: string }>(
     if (h.past.length === 0) return null;
     const current = presentRef.current;
     const previous = h.past[h.past.length - 1];
-    commit(restore(current, previous.doc), {
+    commit(restore(current, previous.doc, previous.returned), {
       past: h.past.slice(0, -1),
       future: [{ doc: pick(current), label: previous.label }, ...h.future],
     });

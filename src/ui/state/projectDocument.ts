@@ -9,6 +9,7 @@
  */
 
 import { type ProjectDocument, type ProjectState } from './projectState';
+import { type CandidateSolution } from '../../types/candidateSolution';
 import { deepEqual } from '../../utils/deepEqual';
 
 /**
@@ -67,12 +68,19 @@ export function documentChanged(a: ProjectDocument, b: ProjectDocument): boolean
  * another layout). updatedAt moves forward so autosave writes the restored
  * document even when it matches an older save.
  *
+ * Candidates the step removed (`returned`, from candidatesRemovedBy) go back
+ * into the list.
+ *
  * Selections that would now describe something else are cleared, as the
  * edit reducers do: a selected candidate when the layouts change (the grid
  * shows the restored layout, so the panels must too), and the event selection
  * when the Sounds change (its index may point at a different event).
  */
-export function restoreDocument(state: ProjectState, doc: ProjectDocument): ProjectState {
+export function restoreDocument(
+  state: ProjectState,
+  doc: ProjectDocument,
+  returned?: unknown,
+): ProjectState {
   const next = { ...state } as Record<string, unknown>;
   for (const key of DOCUMENT_FIELDS) {
     if (key in doc) next[key] = doc[key];
@@ -82,11 +90,25 @@ export function restoreDocument(state: ProjectState, doc: ProjectDocument): Proj
   const layoutsChanged = restored.activeLayout !== state.activeLayout
     || restored.workingLayout !== state.workingLayout;
   const soundsChanged = restored.soundStreams !== state.soundStreams;
+  const returnedCandidates = (returned as CandidateSolution[] | undefined)
+    ?.filter(c => !restored.candidates.some(existing => existing.id === c.id)) ?? [];
   return {
     ...restored,
+    ...(returnedCandidates.length > 0 ? { candidates: [...restored.candidates, ...returnedCandidates] } : {}),
     updatedAt: new Date().toISOString(),
     analysisStale: true,
     ...(layoutsChanged ? { selectedCandidateId: null } : {}),
     ...(soundsChanged ? { selectedEventIndex: null, selectedMomentIndex: null } : {}),
   };
+}
+
+/**
+ * Candidates a step took out of the list (Promote removes the promoted one).
+ * Undo gives them back, so undoing a Promote never loses a generated result;
+ * nothing else of the session is restored.
+ */
+export function candidatesRemovedBy(before: ProjectState, after: ProjectState): CandidateSolution[] | undefined {
+  if (before.candidates === after.candidates) return undefined;
+  const removed = before.candidates.filter(c => !after.candidates.some(a => a.id === c.id));
+  return removed.length > 0 ? removed : undefined;
 }

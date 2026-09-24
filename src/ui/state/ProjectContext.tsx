@@ -12,7 +12,7 @@ import {
   isEphemeralAction,
   createEmptyProjectState,
 } from './projectState';
-import { pickDocument, documentChanged, restoreDocument } from './projectDocument';
+import { pickDocument, documentChanged, restoreDocument, candidatesRemovedBy } from './projectDocument';
 import { historyLabelFor } from './historyLabels';
 import { useUndoRedo, type UndoRedoOptions } from './useUndoRedo';
 import { installE2EHook } from '../testing/e2eHook';
@@ -40,6 +40,7 @@ const HISTORY_OPTIONS: UndoRedoOptions<ProjectState, ReturnType<typeof pickDocum
   pick: pickDocument,
   changed: documentChanged,
   restore: restoreDocument,
+  returnOnUndo: candidatesRemovedBy,
   isEphemeral: isEphemeralAction,
   labelFor: historyLabelFor,
 };
