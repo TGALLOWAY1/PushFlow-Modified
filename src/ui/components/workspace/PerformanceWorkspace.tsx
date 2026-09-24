@@ -20,6 +20,8 @@ import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
 import { useIdentityMatchingNotice } from '../../hooks/useIdentityMatchingNotice';
 import { useAutoSave } from '../../hooks/useAutoSave';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
+import { exportProjectToFile } from '../../persistence/projectStorage';
+import { useToast } from '../shared/Toast';
 import { useViewSettings, ViewSettingsProvider } from '../../state/viewSettings';
 import { getDisplayedCandidate, getSelectedCandidate } from '../../state/projectState';
 
@@ -80,7 +82,15 @@ function PerformanceWorkspaceInner() {
   const { generateFull, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason } = useAutoAnalysis();
   useIdentityMatchingNotice(state);
   const { saveStatus, saveNow } = useAutoSave(state);
-  useKeyboardShortcuts();
+  useKeyboardShortcuts({ onSave: saveNow });
+  const toast = useToast();
+  // "Export a copy": the way out when saving keeps failing. Until P8 moves the
+  // Composer's pattern into the project it lives in localStorage, and the file
+  // carries it too, so the toast says so (T57).
+  const handleExport = useCallback(() => {
+    const { composerPatternIncluded } = exportProjectToFile(state);
+    toast.show({ message: composerPatternIncluded ? 'Exported \u00b7 Composer pattern included' : 'Exported' });
+  }, [state, toast]);
   const { settings: viewSettings } = useViewSettings();
 
   // Handle ?view=presets query param
@@ -535,6 +545,7 @@ function PerformanceWorkspaceInner() {
         hasAssignment={!!assignments?.length}
         saveStatus={saveStatus}
         onSave={saveNow}
+        onExport={handleExport}
       />
 
       {/* ─── Error Banner ─────────────────────────────────────── */}

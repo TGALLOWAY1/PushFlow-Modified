@@ -15,6 +15,7 @@ import { type SaveStatus } from '../../hooks/useAutoSave';
 import { type OptimizerMethodKey } from '../../../engine/optimization/optimizerInterface';
 import { type GreedyLayoutStrategy, GREEDY_STRATEGY_LABELS } from '../../../engine/optimization/greedyCandidatePipeline';
 import { SettingsGear } from '../panels/SettingsGear';
+import { SaveStatusControl } from './SaveStatusControl';
 import { useViewSettings } from '../../state/viewSettings';
 
 interface WorkspaceToolbarProps {
@@ -30,6 +31,8 @@ interface WorkspaceToolbarProps {
   hasAssignment?: boolean;
   saveStatus?: SaveStatus;
   onSave?: () => void;
+  /** Downloads a copy of the project (offered when saving fails). */
+  onExport?: () => void;
 }
 
 export function WorkspaceToolbar({
@@ -45,6 +48,7 @@ export function WorkspaceToolbar({
   hasAssignment,
   saveStatus = 'saved',
   onSave,
+  onExport,
 }: WorkspaceToolbarProps) {
   const { state, dispatch, transact, undo, redo, canUndo, canRedo, undoLabel, redoLabel } = useProject();
   const { settings: viewSettings, toggleGridLabel, toggleLayoutDisplay } = useViewSettings();
@@ -84,10 +88,6 @@ export function WorkspaceToolbar({
   // Generation mode
   const [generationMode, setGenerationMode] = useState<GenerationMode>('fast');
 
-  // Save confirmation (flash "Saved" briefly after explicit save)
-  const [saveConfirm, setSaveConfirm] = useState(false);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const commitName = () => {
     const trimmed = nameDraft.trim();
     if (trimmed && trimmed !== state.name) {
@@ -102,15 +102,6 @@ export function WorkspaceToolbar({
       dispatch({ type: 'SET_TEMPO', payload: val });
     }
     setEditingBpm(false);
-  };
-
-  const handleSave = () => {
-    if (onSave) {
-      onSave();
-    }
-    setSaveConfirm(true);
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => setSaveConfirm(false), 1500);
   };
 
   return (
@@ -254,25 +245,12 @@ export function WorkspaceToolbar({
         </button>
       </div>
 
-      {/* Save + status */}
-      <div className="flex items-center gap-1.5">
-        <button
-          className={`pf-btn text-pf-sm ${
-            saveConfirm || saveStatus === 'saved'
-              ? 'bg-emerald-600/12 text-emerald-400 border border-emerald-500/20'
-              : saveStatus === 'saving'
-                ? 'bg-[var(--accent-muted)] text-[var(--accent-primary)] border border-[var(--accent-primary)]/20'
-                : 'pf-btn-subtle'
-          }`}
-          onClick={handleSave}
-          title="Save project"
-        >
-          {saveConfirm ? 'Saved' : saveStatus === 'saving' ? 'Saving...' : saveStatus === 'unsaved' ? 'Save' : 'Saved'}
-        </button>
-        {saveStatus === 'saved' && !saveConfirm && (
-          <span className="text-pf-micro text-[var(--text-tertiary)]">saved</span>
-        )}
-      </div>
+      {/* Save status: the truth about the stored project, never a flash on click (T57). */}
+      <SaveStatusControl
+        status={saveStatus}
+        onSave={() => onSave?.()}
+        onExport={() => onExport?.()}
+      />
 
       <div className="pf-divider-v" />
 

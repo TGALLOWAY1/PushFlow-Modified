@@ -27,6 +27,7 @@ import {
   type ProjectBackup,
 } from './indexedDbStore';
 import { migrateWithBackup, needsMigration, type StoredRecord } from './migrations';
+import { loadSerializedLoopState, type SerializedLoopState } from './loopStorage';
 
 // ============================================================================
 // Legacy localStorage keys (for migration)
@@ -269,22 +270,56 @@ function downloadJson(value: unknown, fileName: string): void {
 // JSON File Export/Import
 // ============================================================================
 
-export function exportProjectToFile(state: ProjectState): void {
+/**
+ * An exported project file: the stored record plus the Composer's pattern,
+ * which lives in localStorage until P8 moves it into the project (T57). The
+ * pattern is not part of the stored record: importing writes it back to
+ * localStorage under the imported project's id.
+ */
+export interface ProjectExportFile extends PersistedProject {
+  composerPattern?: SerializedLoopState;
+}
+
+/** The export file for a project: its record and, when there is one, its Composer pattern. */
+export function buildProjectExport(
+  state: ProjectState,
+  composerPattern: SerializedLoopState | null = loadSerializedLoopState(state.id),
+): ProjectExportFile {
   const persisted = serializeProject(state);
-  downloadJson(persisted, `${state.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.pushflow.json`);
+  return composerPattern ? { ...persisted, composerPattern } : persisted;
+}
+
+/** Whether an export includes the Composer pattern (so the toast can say so). */
+export function exportProjectToFile(state: ProjectState): { composerPatternIncluded: boolean } {
+  const exported = buildProjectExport(state);
+  downloadJson(exported, `${state.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.pushflow.json`);
+  return { composerPatternIncluded: !!exported.composerPattern };
 }
 
 export type ImportResult =
-  | { ok: true; state: ProjectState }
+  | { ok: true; state: ProjectState; composerPattern: SerializedLoopState | null }
   | { ok: false; error: string };
 
-export async function importProjectFromFile(file: File): Promise<ImportResult> {
+/** Parses exported JSON text: the project, and its Composer pattern when the file carries one. */
+export function parseProjectExport(text: string): ImportResult {
   try {
-    const text = await file.text();
     const parsed = JSON.parse(text);
     const persisted = validateAndMigrateRaw(parsed);
     const state = deserializeProject(persisted);
-    return { ok: true, state };
+    const raw = (parsed as { composerPattern?: unknown }).composerPattern;
+    const composerPattern = raw && typeof raw === 'object' && Array.isArray((raw as SerializedLoopState).events)
+      ? raw as SerializedLoopState
+      : null;
+    return { ok: true, state, composerPattern };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Invalid project file';
+    return { ok: false, error: message };
+  }
+}
+
+export async function importProjectFromFile(file: File): Promise<ImportResult> {
+  try {
+    return parseProjectExport(await file.text());
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Invalid project file';
     return { ok: false, error: message };
