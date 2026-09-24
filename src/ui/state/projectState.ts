@@ -19,7 +19,7 @@
 
 import { type Performance, type InstrumentConfig } from '../../types/performance';
 import { type EngineConfiguration } from '../../types/engineConfig';
-import { type CandidateSolution } from '../../types/candidateSolution';
+import { type CandidateSolution, type CandidateGenerationSummary } from '../../types/candidateSolution';
 import { type Layout, type LayoutRole, cloneLayout, createEmptyLayout, reconcileLayoutVoices } from '../../types/layout';
 import { type ExecutionPlanResult } from '../../types/executionPlan';
 import { type Section, type VoiceProfile } from '../../types/performanceStructure';
@@ -153,6 +153,8 @@ export interface ProjectSession {
   analysisResult: CandidateSolution | null;
   candidates: CandidateSolution[];
   selectedCandidateId: string | null;
+  /** What the last Generate reported about its list (dropped candidates, diversity). */
+  generationSummary: CandidateGenerationSummary | null;
 
   // Config
   engineConfig: EngineConfiguration;
@@ -388,6 +390,7 @@ export type ProjectAction =
   // Analysis
   | { type: 'SET_ANALYSIS_RESULT'; payload: CandidateSolution | null }
   | { type: 'SET_CANDIDATES'; payload: CandidateSolution[] }
+  | { type: 'SET_GENERATION_SUMMARY'; payload: CandidateGenerationSummary | null }
   | { type: 'SELECT_CANDIDATE'; payload: string | null }
   | { type: 'MARK_ANALYSIS_STALE' }
   | { type: 'APPLY_GENERATION_TO_LAYOUT'; payload: { candidateId: string } }
@@ -521,6 +524,33 @@ function fingerConstraintsEqual(
   const bKeys = Object.keys(b);
   if (aKeys.length !== bKeys.length) return false;
   return aKeys.every(k => a[k] === b[k]);
+}
+
+/**
+ * Why placing `voiceId` on `padKey` is refused by a placement lock, or null.
+ *
+ * Locks are hard for manual gestures too (canon section 11): a locked Sound
+ * stays on its pad ('sound-locked': it may not be dragged out), and a locked
+ * pad keeps its Sound ('pad-locked': nothing may be dropped onto it).
+ */
+export function placementBlockedByLock(
+  layout: Pick<Layout, 'padToVoice' | 'placementLocks'>,
+  voiceId: string,
+  padKey: string,
+): 'sound-locked' | 'pad-locked' | null {
+  const lockedTo = layout.placementLocks?.[voiceId];
+  if (lockedTo && lockedTo !== padKey) return 'sound-locked';
+  const occupant = layout.padToVoice[padKey];
+  if (occupant && occupant.id !== voiceId && layout.placementLocks?.[occupant.id] === padKey) {
+    return 'pad-locked';
+  }
+  return null;
+}
+
+/** Whether a pad's Sound is locked to that pad. */
+export function isPadLocked(layout: Pick<Layout, 'padToVoice' | 'placementLocks'>, padKey: string): boolean {
+  const occupant = layout.padToVoice[padKey];
+  return !!occupant && layout.placementLocks?.[occupant.id] === padKey;
 }
 
 function prunePlacementLocks(
@@ -806,13 +836,16 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
     // -- Layout editing (all target working layout) --
 
-    case 'ASSIGN_VOICE_TO_PAD':
+    case 'ASSIGN_VOICE_TO_PAD': {
+      const { padKey, stream } = action.payload;
+      // A locked Sound is not dragged out, and a locked pad takes no drop
+      // (canon section 11). Nothing changes, so no draft and no undo step.
+      if (placementBlockedByLock(state.workingLayout ?? state.activeLayout, stream.id, padKey)) {
+        return state;
+      }
       return updateWorkingLayout(state, layout => {
-        const { padKey, stream } = action.payload;
-
         // Strip out existing assignments of this stream (acts as Move instead of Copy)
         const newPadToVoice = { ...layout.padToVoice };
-        const replacedVoice = newPadToVoice[padKey];
         for (const [key, v] of Object.entries(newPadToVoice)) {
           if (v.id === stream.id) {
             delete newPadToVoice[key];
@@ -828,21 +861,16 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
           color: stream.color,
         };
         newPadToVoice[padKey] = voice;
-        const nextLocks = { ...layout.placementLocks };
-        if (nextLocks[stream.id]) {
-          nextLocks[stream.id] = padKey;
-        }
-        if (replacedVoice && replacedVoice.id !== stream.id) {
-          delete nextLocks[replacedVoice.id];
-        }
+        // Locks never move with a Sound: a locked Sound could not get here.
         return {
           ...layout,
           padToVoice: newPadToVoice,
           fingerConstraints: buildLayoutFingerConstraints(newPadToVoice, state.voiceConstraints),
-          placementLocks: prunePlacementLocks(newPadToVoice, nextLocks),
+          placementLocks: prunePlacementLocks(newPadToVoice, layout.placementLocks),
           layoutMode: 'manual',
         };
       });
+    }
 
     case 'BULK_ASSIGN_PADS':
       return updateWorkingLayout(state, layout => ({
@@ -882,9 +910,13 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         };
       });
 
-    case 'SWAP_PADS':
+    case 'SWAP_PADS': {
+      const { padKeyA, padKeyB } = action.payload;
+      // A swap moves both Sounds, so a lock on either pad refuses it (canon
+      // section 11). Nothing changes, so no draft and no undo step.
+      const shown = state.workingLayout ?? state.activeLayout;
+      if (isPadLocked(shown, padKeyA) || isPadLocked(shown, padKeyB)) return state;
       return updateWorkingLayout(state, layout => {
-        const { padKeyA, padKeyB } = action.payload;
         const voiceA = layout.padToVoice[padKeyA];
         const voiceB = layout.padToVoice[padKeyB];
         const newPadToVoice = { ...layout.padToVoice };
@@ -892,21 +924,16 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         else delete newPadToVoice[padKeyB];
         if (voiceB) newPadToVoice[padKeyA] = voiceB;
         else delete newPadToVoice[padKeyA];
-        const nextLocks = { ...layout.placementLocks };
-        if (voiceA && nextLocks[voiceA.id] === padKeyA) {
-          nextLocks[voiceA.id] = padKeyB;
-        }
-        if (voiceB && nextLocks[voiceB.id] === padKeyB) {
-          nextLocks[voiceB.id] = padKeyA;
-        }
+        // Locks never move with a Sound: neither pad here is locked.
         return {
           ...layout,
           padToVoice: newPadToVoice,
           fingerConstraints: buildLayoutFingerConstraints(newPadToVoice, state.voiceConstraints),
-          placementLocks: prunePlacementLocks(newPadToVoice, nextLocks),
+          placementLocks: prunePlacementLocks(newPadToVoice, layout.placementLocks),
           layoutMode: 'manual',
         };
       });
+    }
 
     case 'SET_FINGER_CONSTRAINT': {
       const { padKey: constraintPadKey, constraint } = action.payload;
@@ -1261,10 +1288,14 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return {
         ...state,
         candidates: action.payload,
+        generationSummary: null,
         selectedCandidateId: null,
         compareCandidateId: null,
         isProcessing: false,
       };
+
+    case 'SET_GENERATION_SUMMARY':
+      return { ...state, generationSummary: action.payload };
 
     case 'SELECT_CANDIDATE':
       return { ...state, selectedCandidateId: action.payload };
@@ -1498,6 +1529,7 @@ export function createEmptyProjectState(): ProjectState {
     analysisResult: null,
     candidates: [],
     selectedCandidateId: null,
+    generationSummary: null,
     engineConfig: {
       beamWidth: 30,
       stiffness: 0.3,

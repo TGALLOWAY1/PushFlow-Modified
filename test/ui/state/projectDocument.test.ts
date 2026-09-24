@@ -31,7 +31,7 @@ import { importTestMidi1 } from '../../helpers/testMidi1';
 /** Session fields, as listed in the tracker's S1a.1 field table. */
 const SESSION_FIELDS = [
   'updatedAt',
-  'analysisResult', 'candidates', 'selectedCandidateId',
+  'analysisResult', 'candidates', 'selectedCandidateId', 'generationSummary',
   'engineConfig', 'optimizerMethod', 'greedyStrategy', 'costToggles',
   'selectedEventIndex', 'selectedMomentIndex', 'selectedStreamId', 'compareCandidateId',
   'isProcessing', 'error', 'analysisStale', 'manualCostResult',

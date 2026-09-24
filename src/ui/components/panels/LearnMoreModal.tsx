@@ -529,7 +529,28 @@ function OptimizersSection() {
  * Constraints Section — active voice constraints, placement locks, finger constraints
  * ═══════════════════════════════════════════════════════════════════════ */
 
-const HARD_CONSTRAINTS = [
+/** The optimization methods, each of which pre-places locked Sounds and never moves them. */
+export const LOCK_ENFORCING_METHODS = ['Greedy', 'Beam', 'Annealing'] as const;
+
+export const HARD_CONSTRAINTS = [
+  {
+    // The user's own placement rule (canon section 11): enforced by every
+    // method and every manual gesture, never traded for a better score.
+    category: 'Placement (yours, hard)',
+    color: '#f59e0b',
+    rules: [
+      {
+        name: 'Placement Locks',
+        key: 'placementLock',
+        description: `A lock pins a Sound to one pad, and it is the one hard placement rule you set. ${LOCK_ENFORCING_METHODS.slice(0, -1).join(', ')} and ${LOCK_ENFORCING_METHODS[LOCK_ENFORCING_METHODS.length - 1]} all place locked Sounds first, on their locked pads, and never move them; a candidate that would break a lock is dropped, and the candidate list says so. Manual edits enforce locks too: a locked Sound cannot be dragged off its pad, and nothing can be dropped onto a locked pad (Locked \u00b7 Unlock to move).`,
+      },
+      {
+        name: 'Sound Identity',
+        key: 'identity',
+        description: 'Every event is matched to a pad by its Sound, never by MIDI pitch. A Sound with no pad is unmapped even when another Sound shares its pitch, so an unplaced Sound never borrows another Sound\u2019s pad or fingering, and its events count as unplayable until you place it. Imported pitch is kept only as provenance.',
+      },
+    ],
+  },
   {
     category: 'Biomechanical',
     color: '#ef4444',
@@ -652,10 +673,11 @@ function ConstraintsSection() {
       <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
         <h4 className="text-pf-sm font-medium text-[var(--text-primary)] mb-1">Enforcement</h4>
         <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
-          When a biomechanical constraint is violated, the candidate grip is rejected entirely. Hand separation and
-          one finger per sound are enforced just as strictly: the solver first searches only among plans that keep
-          them, and considers breaking one only when that search cannot finish the performance. Any break is
-          counted, shown per strike, and reflected in the feasibility verdict.
+          Placement locks come first: Greedy, Beam and Annealing each start from the locked pads and never move a
+          locked Sound, and manual edits respect locks too. When a biomechanical constraint is violated, the candidate
+          grip is rejected entirely. Hand separation and one finger per sound are enforced just as strictly: the solver
+          first searches only among plans that keep them, and considers breaking one only when that search cannot
+          finish the performance. Any break is counted, shown per strike, and reflected in the feasibility verdict.
         </p>
       </div>
     </div>

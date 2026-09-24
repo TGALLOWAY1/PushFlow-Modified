@@ -328,17 +328,12 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
     if (assignments && assignments.length > 0) {
       // Group assignments onto streams by STABLE VOICE IDENTITY (voiceId), never by
       // MIDI pitch (Product Invariant #5). Pitch keying loses events when two streams
-      // share a pitch (last-wins collision) or when a plan is stale. Fall back to
-      // pitch only for legacy assignments that predate voiceId.
+      // share a pitch (last-wins collision) or when a plan is stale. An assignment
+      // that names no known Sound belongs to no lane; its Sound still shows below
+      // as unassigned.
       const streamIds = new Set(visibleStreams.map(s => s.id));
-      const noteToStream = new Map<number, string>();
-      for (const s of visibleStreams) {
-        if (!noteToStream.has(s.originalMidiNote)) noteToStream.set(s.originalMidiNote, s.id);
-      }
       for (const a of assignments) {
-        const streamId = (a.voiceId && streamIds.has(a.voiceId))
-          ? a.voiceId
-          : noteToStream.get(a.noteNumber);
+        const streamId = (a.voiceId && streamIds.has(a.voiceId)) ? a.voiceId : undefined;
         if (streamId) {
           // Show the Execution Plan, not the preference. Overwriting the plan
           // with the user's preference meant that as soon as any preference was
