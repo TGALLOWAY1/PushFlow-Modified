@@ -29,8 +29,9 @@ import { type CandidateSolution } from '../../types/candidateSolution';
  *
  * 1: the IndexedDB format.
  * 2: recoveredDrafts (S1a.2).
+ * 3: ghost locks pruned from every stored layout (S1a.4).
  */
-export const PERSISTED_SCHEMA_VERSION = 2;
+export const PERSISTED_SCHEMA_VERSION = 3;
 
 // ============================================================================
 // Persisted Project Document
