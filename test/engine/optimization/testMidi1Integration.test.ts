@@ -20,7 +20,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { createBeamSolver } from '../../../src/engine/solvers/beamSolver';
 import { createDefaultPose0, getPose0PadsWithOffset, fingerIdToHandAndFingerType } from '../../../src/engine/prior/naturalHandPose';
-import { getActivePerformance, getDisplayedLayout, type ProjectState } from '../../../src/ui/state/projectState';
+import { getActivePerformance, getDisplayedLayout, projectReducer, type ProjectState } from '../../../src/ui/state/projectState';
 import { type SolverConfig } from '../../../src/types/engineConfig';
 import { type FingerType } from '../../../src/types/fingerModel';
 import { type CandidateSolution } from '../../../src/types/candidateSolution';
@@ -198,6 +198,50 @@ describe('TEST MIDI 1.mid end-to-end', () => {
       // carries the lock; a candidate that moved it would have been dropped.
       it('holds in every candidate', () => {
         expectLockHeld(candidates, lockedId);
+      });
+    });
+  });
+
+  // S1a.4 (T15 slice, P1a-9): Generate never removes a placed Sound. A muted
+  // Sound has no events in the performance the optimizers see, so every
+  // method pins it to its pad for the run, without adding a lock.
+  describe('a muted, placed Sound', () => {
+    let muted: ProjectState;
+    let mutedId: string;
+    let mutedPad: string;
+
+    beforeAll(() => {
+      const quietest = [...suggested.soundStreams].sort((a, b) => a.events.length - b.events.length)[0];
+      mutedId = quietest.id;
+      mutedPad = Object.entries(getDisplayedLayout(suggested)!.padToVoice).find(([, v]) => v.id === mutedId)![0];
+      muted = projectReducer(suggested, { type: 'TOGGLE_MUTE', payload: mutedId });
+    });
+
+    it('is muted through the reducer: still on its pad, its events out of the performance', () => {
+      expect(getActivePerformance(muted).events.some(e => e.voiceId === mutedId)).toBe(false);
+      expect(getActivePerformance(muted).events.length).toBeLessThan(getActivePerformance(suggested).events.length);
+      expect(getDisplayedLayout(muted)!.padToVoice[mutedPad]?.id).toBe(mutedId);
+    });
+
+    describe.each<Method>(['greedy', 'beam', 'annealing-quick'])('%s', method => {
+      let candidates: CandidateSolution[];
+
+      beforeAll(async () => {
+        candidates = await generate(method, muted);
+      }, SLOW);
+
+      it('keeps the muted Sound on its pad in every candidate, without a lock', () => {
+        expect(candidates.length).toBeGreaterThan(0);
+        for (const candidate of candidates) {
+          expect({ strategy: candidate.metadata.strategy, soundOnPad: candidate.layout.padToVoice[mutedPad]?.id })
+            .toEqual({ strategy: candidate.metadata.strategy, soundOnPad: mutedId });
+          expect(Object.values(candidate.layout.padToVoice).filter(v => v.id === mutedId)).toHaveLength(1);
+          expect(candidate.layout.placementLocks).toEqual({});
+        }
+      });
+
+      it('still has 0 unplayable events in strict mode', () => {
+        expectStrictZeroUnplayable(candidates);
       });
     });
   });

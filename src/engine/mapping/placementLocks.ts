@@ -8,6 +8,10 @@
  */
 
 import { type Layout } from '../../types/layout';
+import { type Performance } from '../../types/performance';
+import { type ExecutionPlanResult } from '../../types/executionPlan';
+import { hashLayout } from './mappingResolver';
+import { soundKeyOf } from './voiceMap';
 
 export interface LockViolation {
   voiceId: string;
@@ -59,4 +63,100 @@ export function describeDroppedForLocks(count: number): string {
   return count === 1
     ? '1 candidate was dropped because it moved a locked Sound.'
     : `${count} candidates were dropped because they moved a locked Sound.`;
+}
+
+// ============================================================================
+// Pins: placed Sounds that must stay placed without a lock (T15)
+// ============================================================================
+
+/**
+ * Placements every candidate must keep although the user set no lock on them
+ * (T15, invariant 7): Sounds already on the grid whose events are not in the
+ * performance being optimized, which in the app means the muted Sounds.
+ * Generate never removes a placed Sound, so these ride through seeding,
+ * compaction, mutation and hill-climbing exactly like locks (`fixedPlacements`)
+ * and are taken back out of the candidate's locks by `withoutPins`.
+ *
+ * A layout Voice is present when an event carries its id. An event with no
+ * Sound (no voiceId) is keyed by its pitch, so for such an event a Voice is
+ * matched by pitch, the same convention as buildVoiceMap.
+ */
+export function pinnedPlacements(
+  layout: Pick<Layout, 'padToVoice'> | null | undefined,
+  performance: Pick<Performance, 'events'>,
+): Record<string, string> {
+  const pins: Record<string, string> = {};
+  if (!layout) return pins;
+  const soundKeys = new Set<string>();
+  const pitchKeys = new Set<string>();
+  for (const event of performance.events) {
+    soundKeys.add(soundKeyOf(event));
+    if (event.voiceId == null) pitchKeys.add(String(event.noteNumber));
+  }
+  for (const [padKey, voice] of Object.entries(layout.padToVoice)) {
+    const present = soundKeys.has(voice.id)
+      || (voice.originalMidiNote != null && pitchKeys.has(String(voice.originalMidiNote)));
+    if (!present && !(voice.id in pins)) pins[voice.id] = padKey;
+  }
+  return pins;
+}
+
+/**
+ * The pins a generator honours: those whose Sound it knows, minus any Sound
+ * the user locked, because the lock already fixes it and always wins.
+ */
+export function pinsToHonour(
+  pins: Record<string, string> | undefined,
+  locks: Record<string, string>,
+  knownVoiceIds: ReadonlySet<string>,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [voiceId, padKey] of Object.entries(applicableLocks(pins, knownVoiceIds))) {
+    if (!(voiceId in locks)) result[voiceId] = padKey;
+  }
+  return result;
+}
+
+/** Locks plus pins: everything a candidate must keep where it is. Locks win. */
+export function fixedPlacements(
+  locks: Record<string, string>,
+  pins: Record<string, string>,
+): Record<string, string> {
+  return { ...pins, ...locks };
+}
+
+/**
+ * A finished candidate without its pins. While optimizing, pins travel in
+ * `placementLocks` so every method keeps them; a pin is not a lock the user
+ * set, so it leaves the candidate's locks here, and the plan is re-bound to
+ * the cleaned layout (whose hash no longer counts those pads as locked).
+ * Returns the inputs themselves when the layout carries no pin.
+ */
+export function withoutPins<P extends Pick<ExecutionPlanResult, 'layoutBinding' | 'metadata'>>(
+  layout: Layout,
+  executionPlan: P,
+  pins: Record<string, string>,
+): { layout: Layout; executionPlan: P } {
+  const carried = Object.keys(pins).filter(voiceId => voiceId in (layout.placementLocks ?? {}));
+  if (carried.length === 0) return { layout, executionPlan };
+  const placementLocks = { ...layout.placementLocks };
+  for (const voiceId of carried) delete placementLocks[voiceId];
+  const cleaned: Layout = { ...layout, placementLocks };
+  const layoutHash = hashLayout(cleaned);
+  let plan: P = executionPlan;
+  if (plan.layoutBinding) {
+    plan = { ...plan, layoutBinding: { ...plan.layoutBinding, layoutHash } };
+  }
+  if (plan.metadata?.layoutHashUsed) {
+    plan = { ...plan, metadata: { ...plan.metadata, layoutHashUsed: layoutHash } };
+  }
+  return { layout: cleaned, executionPlan: plan };
+}
+
+/** Wording for the candidate list when placed Sounds without events kept their pads. */
+export function describePinnedPlacements(count: number): string {
+  if (count <= 0) return '';
+  return count === 1
+    ? '1 muted Sound kept its pad in every candidate.'
+    : `${count} muted Sounds kept their pads in every candidate.`;
 }

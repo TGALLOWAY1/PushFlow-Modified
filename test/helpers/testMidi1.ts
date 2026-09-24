@@ -21,6 +21,7 @@ import {
 } from '../../src/ui/state/projectState';
 import { generateCandidates } from '../../src/engine/optimization/multiCandidateGenerator';
 import { generateGreedyCandidates } from '../../src/engine/optimization/greedyCandidatePipeline';
+import { pinnedPlacements } from '../../src/engine/mapping/placementLocks';
 import { createDefaultPose0 } from '../../src/engine/prior/naturalHandPose';
 import { getNeutralHandCenters } from '../../src/engine/prior/handPose';
 import { type OptimizationMode } from '../../src/types/engineConfig';
@@ -86,6 +87,7 @@ export async function generateGreedyAsApp(state: ProjectState): Promise<Candidat
     count: 4,
     strategy: state.greedyStrategy,
     voiceHints: state.soundStreams,
+    pinnedPlacements: pinnedPlacements(layout, performance),
   });
   return result.candidates;
 }
@@ -110,6 +112,7 @@ export async function generateBeamAnnealingAsApp(
     baseLayout: layout,
     activeLayout: layout,
     voiceHints: state.soundStreams,
+    pinnedPlacements: pinnedPlacements(layout, performance),
   });
   return result.candidates;
 }

@@ -10,7 +10,7 @@ import { useProject } from '../../state/ProjectContext';
 import { useDraftReplacement } from '../../hooks/useDraftReplacement';
 import { type Layout } from '../../../types/layout';
 import { type SoundStream, RECOVERED_DRAFTS_CAP } from '../../state/projectState';
-import { describeDroppedForLocks } from '@/engine';
+import { describeDroppedForLocks, describePinnedPlacements } from '@/engine';
 import { CandidatePreviewCard } from './CandidatePreviewCard';
 import { MiniGridPreview } from './MiniGridPreview';
 
@@ -36,6 +36,7 @@ export function LayoutOptionsPanel({
 
   const hasCandidates = state.candidates.length > 0;
   const droppedForLocks = state.generationSummary?.droppedForLockViolations ?? 0;
+  const pinnedPlacements = state.generationSummary?.pinnedPlacements ?? 0;
   const compareCount = selectedForCompare.size;
 
   return (
@@ -195,6 +196,11 @@ export function LayoutOptionsPanel({
         {droppedForLocks > 0 && (
           <p data-testid="candidates-dropped-for-locks" role="note" className="text-pf-xs text-amber-300/90 px-0.5">
             {describeDroppedForLocks(droppedForLocks)}
+          </p>
+        )}
+        {pinnedPlacements > 0 && (
+          <p data-testid="candidates-pinned" role="note" className="text-pf-xs text-[var(--text-tertiary)] px-0.5">
+            {describePinnedPlacements(pinnedPlacements)}
           </p>
         )}
 

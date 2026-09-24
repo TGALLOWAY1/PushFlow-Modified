@@ -37,7 +37,7 @@ import { type Section } from '../../types/performanceStructure';
 import { type FingerType } from '../../types/fingerModel';
 import { seedLayoutFromPose0 } from '../mapping/seedFromPose';
 import { buildVoiceMap, type VoiceHint } from '../mapping/voiceMap';
-import { applicableLocks, findLockViolations } from '../mapping/placementLocks';
+import { applicableLocks, findLockViolations, pinsToHonour, fixedPlacements, withoutPins } from '../mapping/placementLocks';
 import { getMaxSafeOffset, poseHasAssignments, fingerIdToHandAndFingerType, getPose0PadsWithOffset } from '../prior/naturalHandPose';
 import { createAnnealingSolver } from './annealingSolver';
 import { createBeamSolver } from '../solvers/beamSolver';
@@ -149,6 +149,13 @@ export interface CandidateGenerationConfig {
    * a seeded layout can place them by identity. Matched by id, never by pitch.
    */
   voiceHints?: ReadonlyArray<VoiceHint>;
+  /**
+   * Placed Sounds every candidate must keep on their pads without a lock
+   * (T15): those with no events in the performance, which in the app are the
+   * muted Sounds (see pinnedPlacements). Honoured like locks while optimizing,
+   * then removed from each candidate's placementLocks again.
+   */
+  pinnedPlacements?: Record<string, string>;
 }
 
 // ============================================================================
@@ -385,6 +392,13 @@ export async function generateCandidates(
   const knownVoiceIds = new Set<string>(voices.keys());
   for (const voice of Object.values(config.baseLayout?.padToVoice ?? {})) knownVoiceIds.add(voice.id);
   const locks = applicableLocks(config.baseLayout?.placementLocks, knownVoiceIds);
+  // Placed Sounds with no events (muted) stay where they are: they ride along
+  // as locks while optimizing and leave each candidate's locks again below.
+  const pins = pinsToHonour(config.pinnedPlacements, locks, knownVoiceIds);
+  const fixed = fixedPlacements(locks, pins);
+  const baseLayout = Object.keys(pins).length > 0 && config.baseLayout
+    ? { ...config.baseLayout, placementLocks: fixed }
+    : config.baseLayout;
   let droppedForLocks = 0;
 
   for (const strategy of strategies) {
@@ -401,11 +415,11 @@ export async function generateCandidates(
       layout = pose0 && poseHasAssignments(pose0)
         ? seedLayoutFromPose0(performance, pose0, ls.offsetRow, {
             voices,
-            placementLocks: locks,
-            baseLayout: config.baseLayout,
+            placementLocks: fixed,
+            baseLayout,
             soundOrder: config.voiceHints?.map(hint => hint.id),
           })
-        : config.baseLayout ?? {
+        : baseLayout ?? {
             id: generateId('layout'),
             name: `Generated Layout (${strategy.name})`,
             padToVoice: {},
@@ -414,18 +428,18 @@ export async function generateCandidates(
             scoreCache: null,
             role: 'working' as const,
           };
-    } else if (ls.type === 'compact' && config.baseLayout) {
+    } else if (ls.type === 'compact' && baseLayout) {
       // Compact: cluster voices in a hand zone
       const compact = generateCompactLayout(
-        config.baseLayout,
+        baseLayout,
         ls.zone,
         config.instrumentConfig.rows,
         config.instrumentConfig.cols,
       );
-      layout = compact ?? config.baseLayout; // Fall back if compact layout can't be generated
+      layout = compact ?? baseLayout; // Fall back if compact layout can't be generated
     } else {
       // Baseline or no base layout
-      layout = config.baseLayout ?? {
+      layout = baseLayout ?? {
         id: generateId('layout'),
         name: `Generated Layout (${strategy.name})`,
         padToVoice: {},
@@ -498,10 +512,14 @@ export async function generateCandidates(
     // the list header says so. A surviving candidate keeps the layout its plan
     // was computed on (the seed and the compact layouts already carry the
     // locks they honour), so the plan's layout binding still matches it.
-    if (findLockViolations(locks, finalLayout).length > 0) {
+    if (findLockViolations(fixed, finalLayout).length > 0) {
       droppedForLocks++;
       continue;
     }
+
+    // A pin is not a lock the user set: it leaves the candidate's locks, and
+    // the plan follows the cleaned layout.
+    ({ layout: finalLayout, executionPlan } = withoutPins(finalLayout, executionPlan, pins));
 
     const sections = config.sections ?? [];
     const difficultyAnalysis = analyzeDifficulty(executionPlan, sections);
@@ -597,6 +615,7 @@ export async function generateCandidates(
     finalCandidates,
     activeLayout,
     droppedForLocks,
+    Object.keys(pins).length,
   );
 
   return { candidates: finalCandidates, summary };

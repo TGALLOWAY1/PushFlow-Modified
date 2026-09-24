@@ -362,6 +362,7 @@ export function buildGenerationSummary(
   finalCandidates: CandidateSolution[],
   baseline: Layout,
   droppedForLockViolations: number = 0,
+  pinnedPlacements: number = 0,
 ): CandidateGenerationSummary {
   const lowDiversityExplanation = explainLowDiversity(finalCandidates, baseline);
 
@@ -372,5 +373,6 @@ export function buildGenerationSummary(
     isLowDiversity: lowDiversityExplanation !== undefined,
     lowDiversityExplanation,
     droppedForLockViolations,
+    pinnedPlacements,
   };
 }
