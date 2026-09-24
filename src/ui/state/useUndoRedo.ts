@@ -23,8 +23,10 @@ export interface UndoRedoControls<S> {
   dispatch: (action: { type: string; [key: string]: unknown }) => void;
   /** Runs fn's dispatches as one undo step named label (nothing if they change nothing). */
   transact: (label: string, fn: () => void) => void;
-  undo: () => void;
-  redo: () => void;
+  /** Reverts the last step and returns its name (null if there was none). */
+  undo: () => string | null;
+  /** Re-applies the last undone step and returns its name (null if there was none). */
+  redo: () => string | null;
   canUndo: boolean;
   canRedo: boolean;
   /** Number of undo steps available. */
@@ -146,25 +148,27 @@ export function useUndoRedo<S, D, A extends { type: string }>(
   const undo = useCallback(() => {
     const { pick, restore } = optionsRef.current;
     const h = historyRef.current;
-    if (h.past.length === 0) return;
+    if (h.past.length === 0) return null;
     const current = presentRef.current;
     const previous = h.past[h.past.length - 1];
     commit(restore(current, previous.doc), {
       past: h.past.slice(0, -1),
       future: [{ doc: pick(current), label: previous.label }, ...h.future],
     });
+    return previous.label;
   }, [commit]);
 
   const redo = useCallback(() => {
     const { pick, restore } = optionsRef.current;
     const h = historyRef.current;
-    if (h.future.length === 0) return;
+    if (h.future.length === 0) return null;
     const current = presentRef.current;
     const [next, ...future] = h.future;
     commit(restore(current, next.doc), {
       past: [...h.past, { doc: pick(current), label: next.label }],
       future,
     });
+    return next.label;
   }, [commit]);
 
   const clearHistory = useCallback(() => {
