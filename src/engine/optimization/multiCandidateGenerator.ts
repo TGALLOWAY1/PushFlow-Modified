@@ -495,12 +495,13 @@ export async function generateCandidates(
     }
 
     // Post-validation: a candidate that moved a locked Sound is dropped, and
-    // the list header says so. Every candidate carries the locks it honours.
+    // the list header says so. A surviving candidate keeps the layout its plan
+    // was computed on (the seed and the compact layouts already carry the
+    // locks they honour), so the plan's layout binding still matches it.
     if (findLockViolations(locks, finalLayout).length > 0) {
       droppedForLocks++;
       continue;
     }
-    finalLayout = { ...finalLayout, placementLocks: { ...locks } };
 
     const sections = config.sections ?? [];
     const difficultyAnalysis = analyzeDifficulty(executionPlan, sections);
