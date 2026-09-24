@@ -1,8 +1,17 @@
 /**
  * Undo/Redo hook.
  *
- * Wraps a React reducer with past/present/future state stacks.
- * Ported from Version1/src/hooks/useProjectHistory.ts.
+ * Wraps a reducer with past/future stacks of *document* snapshots. The state
+ * also carries session data (analysis, transport, selection) that never enters
+ * history: Undo and Redo swap the document back in under the current session.
+ * A dispatch whose result leaves the document unchanged records nothing.
+ *
+ * transact(label, fn) makes every dispatch inside fn one named step, so a
+ * compound gesture (an import, a grouping, a duplicate) is undone in one press.
+ *
+ * The present state lives in a ref updated synchronously on every dispatch, so
+ * several dispatches in one handler compose, and the stacks always pair with
+ * the state they were taken from.
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
@@ -11,113 +20,197 @@ const MAX_HISTORY_SIZE = 50;
 
 export interface UndoRedoControls<S> {
   state: S;
-  dispatch: (action: { type: string; [key: string]: unknown }, skipHistory?: boolean) => void;
-  undo: () => void;
-  redo: () => void;
+  dispatch: (action: { type: string; [key: string]: unknown }) => void;
+  /** Runs fn's dispatches as one undo step named label (nothing if they change nothing). */
+  transact: (label: string, fn: () => void) => void;
+  /** Reverts the last step and returns its name (null if there was none). */
+  undo: () => string | null;
+  /** Re-applies the last undone step and returns its name (null if there was none). */
+  redo: () => string | null;
   canUndo: boolean;
   canRedo: boolean;
   /** Number of undo steps available. */
   undoDepth: number;
   /** Number of redo steps available. */
   redoDepth: number;
+  /** Name of the step Undo would revert, or null. */
+  undoLabel: string | null;
+  /** Name of the step Redo would re-apply, or null. */
+  redoLabel: string | null;
   clearHistory: () => void;
 }
 
+export interface UndoRedoOptions<S, D, A> {
+  /** The undoable slice of a state. */
+  pick: (state: S) => D;
+  /** Whether two slices differ; equal slices record no history entry. */
+  changed: (a: D, b: D) => boolean;
+  /**
+   * Puts a slice back under the current state's session (Undo, Redo). On Undo,
+   * `returned` is what `returnOnUndo` captured when the step was recorded.
+   */
+  restore: (state: S, doc: D, returned?: unknown) => S;
+  /**
+   * Session data a step removed that its Undo should give back (e.g. the
+   * candidate a Promote took out of the list). Nothing else of the session is
+   * ever restored.
+   */
+  returnOnUndo?: (before: S, after: S) => unknown;
+  /**
+   * Actions that never record an entry of their own. Any document change they
+   * make folds into the current step (e.g. a derived sync after an edit).
+   */
+  isEphemeral?: (action: A) => boolean;
+  /** Name of the step a single recorded dispatch makes. */
+  labelFor?: (action: A) => string;
+}
+
+interface Step<D> {
+  doc: D;
+  label: string;
+  /** From returnOnUndo; only on past steps. */
+  returned?: unknown;
+}
+
+interface History<D> {
+  past: Step<D>[];
+  future: Step<D>[];
+}
+
+interface Transaction<S> {
+  before: S;
+  label: string;
+}
+
 /**
- * Wraps a reducer with undo/redo history.
+ * Wraps a reducer with document-only undo/redo history.
  *
  * @param reducer The reducer function
- * @param initialState Initial state
- * @param isEphemeral Predicate: actions returning true skip the history stack
+ * @param initialState Initial state; a new value resets the history
+ * @param options How to pick, compare and restore the undoable slice
  */
-export function useUndoRedo<S, A extends { type: string }>(
+export function useUndoRedo<S, D, A extends { type: string }>(
   reducer: (state: S, action: A) => S,
   initialState: S,
-  isEphemeral?: (action: A) => boolean,
+  options: UndoRedoOptions<S, D, A>,
 ): UndoRedoControls<S> {
-  const [past, setPast] = useState<S[]>([]);
   const [present, setPresent] = useState<S>(initialState);
-  const [future, setFuture] = useState<S[]>([]);
+  const [history, setHistory] = useState<History<D>>({ past: [], future: [] });
 
-  const isUndoingRef = useRef(false);
-  const isRedoingRef = useRef(false);
   const presentRef = useRef(present);
-  presentRef.current = present;
+  const historyRef = useRef(history);
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+  const transactionRef = useRef<Transaction<S> | null>(null);
 
-  const dispatch = useCallback((action: A, skipHistory = false) => {
-    const shouldSkip = skipHistory || isUndoingRef.current || isRedoingRef.current || (isEphemeral?.(action) ?? false);
+  const commit = useCallback((state: S, nextHistory: History<D>) => {
+    presentRef.current = state;
+    setPresent(state);
+    if (nextHistory !== historyRef.current) {
+      historyRef.current = nextHistory;
+      setHistory(nextHistory);
+    }
+  }, []);
 
-    if (shouldSkip) {
-      setPresent(prev => reducer(prev, action));
+  /** Records `before`'s document as a new step if the present document differs from it. */
+  const record = useCallback((before: S, label: string) => {
+    const { pick, changed, returnOnUndo } = optionsRef.current;
+    const doc = pick(before);
+    if (!changed(doc, pick(presentRef.current))) return;
+    const returned = returnOnUndo?.(before, presentRef.current);
+    const past = [...historyRef.current.past, { doc, label, ...(returned !== undefined ? { returned } : {}) }];
+    const next = {
+      past: past.length > MAX_HISTORY_SIZE ? past.slice(-MAX_HISTORY_SIZE) : past,
+      future: [],
+    };
+    historyRef.current = next;
+    setHistory(next);
+  }, []);
+
+  const dispatch = useCallback((action: A) => {
+    const { isEphemeral, labelFor } = optionsRef.current;
+    const prev = presentRef.current;
+    const next = reducer(prev, action);
+    if (next === prev) return;
+
+    if (transactionRef.current || isEphemeral?.(action)) {
+      commit(next, historyRef.current);
       return;
     }
+    commit(next, historyRef.current);
+    record(prev, labelFor?.(action) ?? action.type);
+  }, [reducer, commit, record]);
 
-    const currentPresent = presentRef.current;
-    setPast(prevPast => {
-      const newPast = [...prevPast, currentPresent];
-      return newPast.length > MAX_HISTORY_SIZE ? newPast.slice(-MAX_HISTORY_SIZE) : newPast;
-    });
-    setFuture([]);
-    setPresent(prev => reducer(prev, action));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reducer, isEphemeral]);
+  const transact = useCallback((label: string, fn: () => void) => {
+    // A nested transaction joins the outer one.
+    if (transactionRef.current) {
+      fn();
+      return;
+    }
+    const tx = { before: presentRef.current, label };
+    transactionRef.current = tx;
+    try {
+      fn();
+    } finally {
+      transactionRef.current = null;
+      record(tx.before, tx.label);
+    }
+  }, [record]);
 
   const undo = useCallback(() => {
-    setPast(prevPast => {
-      if (prevPast.length === 0) return prevPast;
-
-      isUndoingRef.current = true;
-      const previous = prevPast[prevPast.length - 1];
-      const newPast = prevPast.slice(0, -1);
-
-      const currentPresent = presentRef.current;
-      setFuture(prevFuture => [currentPresent, ...prevFuture]);
-      setPresent(previous);
-
-      setTimeout(() => { isUndoingRef.current = false; }, 0);
-      return newPast;
+    const { pick, restore } = optionsRef.current;
+    const h = historyRef.current;
+    if (h.past.length === 0) return null;
+    const current = presentRef.current;
+    const previous = h.past[h.past.length - 1];
+    commit(restore(current, previous.doc, previous.returned), {
+      past: h.past.slice(0, -1),
+      future: [{ doc: pick(current), label: previous.label }, ...h.future],
     });
-  }, []);
+    return previous.label;
+  }, [commit]);
 
   const redo = useCallback(() => {
-    setFuture(prevFuture => {
-      if (prevFuture.length === 0) return prevFuture;
-
-      isRedoingRef.current = true;
-      const next = prevFuture[0];
-      const newFuture = prevFuture.slice(1);
-
-      const currentPresent = presentRef.current;
-      setPast(prevPast => [...prevPast, currentPresent]);
-      setPresent(next);
-
-      setTimeout(() => { isRedoingRef.current = false; }, 0);
-      return newFuture;
+    const { pick, restore } = optionsRef.current;
+    const h = historyRef.current;
+    if (h.future.length === 0) return null;
+    const current = presentRef.current;
+    const [next, ...future] = h.future;
+    commit(restore(current, next.doc), {
+      past: [...h.past, { doc: pick(current), label: next.label }],
+      future,
     });
-  }, []);
+    return next.label;
+  }, [commit]);
 
   const clearHistory = useCallback(() => {
-    setPast([]);
-    setFuture([]);
+    const empty = { past: [], future: [] };
+    historyRef.current = empty;
+    setHistory(empty);
   }, []);
 
   // Reset when initialState changes externally (e.g., loading a different project)
+  const initialRef = useRef(initialState);
   useEffect(() => {
-    if (!isUndoingRef.current && !isRedoingRef.current) {
-      setPresent(initialState);
-      clearHistory();
-    }
+    if (initialRef.current === initialState) return;
+    initialRef.current = initialState;
+    presentRef.current = initialState;
+    setPresent(initialState);
+    clearHistory();
   }, [initialState, clearHistory]);
 
   return {
     state: present,
     dispatch: dispatch as UndoRedoControls<S>['dispatch'],
+    transact,
     undo,
     redo,
-    canUndo: past.length > 0,
-    canRedo: future.length > 0,
-    undoDepth: past.length,
-    redoDepth: future.length,
+    canUndo: history.past.length > 0,
+    canRedo: history.future.length > 0,
+    undoDepth: history.past.length,
+    redoDepth: history.future.length,
+    undoLabel: history.past[history.past.length - 1]?.label ?? null,
+    redoLabel: history.future[0]?.label ?? null,
     clearHistory,
   };
 }

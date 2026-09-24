@@ -28,7 +28,7 @@ const COLOR_PALETTE = [
 ];
 
 export function VoicePalette() {
-  const { state, dispatch } = useProject();
+  const { state, dispatch, transact } = useProject();
   const layout = getDisplayedLayout(state);
   const displayedCandidate = getDisplayedCandidate(state);
   const [selectedStreamIds, setSelectedStreamIds] = useState<Set<string>>(new Set());
@@ -52,9 +52,11 @@ export function VoicePalette() {
 
         if (allInSameGroup) {
           // Ungroup: remove streams from their group
-          for (const streamId of selectedStreamIds) {
-            dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: streamId, groupId: null } });
-          }
+          transact('Ungroup', () => {
+            for (const streamId of selectedStreamIds) {
+              dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: streamId, groupId: null } });
+            }
+          });
         } else {
           // Group: create a new group and assign all selected streams
           const group: LaneGroup = {
@@ -64,17 +66,19 @@ export function VoicePalette() {
             orderIndex: state.laneGroups.length,
             isCollapsed: false,
           };
-          dispatch({ type: 'CREATE_LANE_GROUP', payload: group });
-          for (const streamId of selectedStreamIds) {
-            dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: streamId, groupId: group.groupId } });
-          }
+          transact('Group', () => {
+            dispatch({ type: 'CREATE_LANE_GROUP', payload: group });
+            for (const streamId of selectedStreamIds) {
+              dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: streamId, groupId: group.groupId } });
+            }
+          });
         }
         setSelectedStreamIds(new Set());
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedStreamIds, state.laneGroups.length, state.performanceLanes, dispatch]);
+  }, [selectedStreamIds, state.laneGroups.length, state.performanceLanes, dispatch, transact]);
 
   // Drag-to-reorder state
   const [reorderTarget, setReorderTarget] = useState<string | null>(null);

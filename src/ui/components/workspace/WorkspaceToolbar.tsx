@@ -45,7 +45,7 @@ export function WorkspaceToolbar({
   saveStatus = 'saved',
   onSave,
 }: WorkspaceToolbarProps) {
-  const { state, dispatch, undo, redo, canUndo, canRedo } = useProject();
+  const { state, dispatch, transact, undo, redo, canUndo, canRedo, undoLabel, redoLabel } = useProject();
   const { settings: viewSettings, toggleGridLabel, toggleLayoutDisplay } = useViewSettings();
   const hasChanges = hasWorkingChanges(state);
 
@@ -211,17 +211,21 @@ export function WorkspaceToolbar({
       <div className="flex gap-1">
         <button
           className="pf-btn pf-btn-subtle text-pf-sm"
+          data-testid="undo-button"
           onClick={undo}
           disabled={!canUndo}
-          title="Undo (Ctrl+Z)"
+          aria-label={undoLabel ? `Undo: ${undoLabel}` : 'Undo'}
+          title={undoLabel ? `Undo: ${undoLabel} (Ctrl+Z)` : 'Nothing to undo'}
         >
           Undo
         </button>
         <button
           className="pf-btn pf-btn-subtle text-pf-sm"
+          data-testid="redo-button"
           onClick={redo}
           disabled={!canRedo}
-          title="Redo (Ctrl+Y)"
+          aria-label={redoLabel ? `Redo: ${redoLabel}` : 'Redo'}
+          title={redoLabel ? `Redo: ${redoLabel} (Ctrl+Y)` : 'Nothing to redo'}
         >
           Redo
         </button>
@@ -338,9 +342,11 @@ export function WorkspaceToolbar({
           if (state.workingLayout) {
             dispatch({ type: 'SAVE_AS_VARIANT', payload: { name: `${state.workingLayout.name} copy`, source: 'working' } });
           } else {
-            dispatch({ type: 'CREATE_WORKING_LAYOUT' });
-            dispatch({ type: 'SAVE_AS_VARIANT', payload: { name: `${state.activeLayout.name} copy`, source: 'working' } });
-            dispatch({ type: 'DISCARD_WORKING_LAYOUT' });
+            transact('Duplicate layout', () => {
+              dispatch({ type: 'CREATE_WORKING_LAYOUT' });
+              dispatch({ type: 'SAVE_AS_VARIANT', payload: { name: `${state.activeLayout.name} copy`, source: 'working' } });
+              dispatch({ type: 'DISCARD_WORKING_LAYOUT' });
+            });
           }
         }}
         costToggles={state.costToggles}
