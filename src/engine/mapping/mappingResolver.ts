@@ -15,7 +15,6 @@ import { type Voice } from '../../types/voice';
 import { type Layout } from '../../types/layout';
 import { type InstrumentConfig } from '../../types/performance';
 import { type PadCoord, parsePadKey } from '../../types/padGrid';
-import { isSoundId } from './voiceMap';
 
 // ============================================================================
 // Types
@@ -78,15 +77,16 @@ export function buildVoiceIdToPadIndex(padToVoice: Record<string, Voice>): Map<s
 /**
  * Resolves a performance event to a pad by its Sound.
  *
- * An event that belongs to a Sound (`voiceId`) is resolved by that Sound's
- * identity only. If the Sound has no pad, the event is unmapped: it never
- * borrows the pad of another Sound that happens to share its pitch (invariant
- * 5; T18). In 'allow-fallback' mode, used only for previews of a layout that
- * places nothing, the chromatic grid position stands in.
+ * An event that belongs to a Sound (`voiceId` present) is resolved by that
+ * Sound's identity only. If the Sound has no pad, the event is unmapped: it
+ * never borrows the pad of another Sound that happens to share its pitch
+ * (invariant 5; T18). In 'allow-fallback' mode, used only for previews of a
+ * layout that places nothing, the chromatic grid position stands in.
  *
- * Only an event with no Sound at all (no voiceId, or the pitch-string
- * placeholder the moment builder uses for such events) is resolved by pitch,
- * because pitch is then the only identity it has.
+ * Only an event with no Sound at all (`voiceId` undefined) is resolved by
+ * pitch, because pitch is then the only identity it has. Callers state that
+ * absence explicitly (PerformanceEvent.voiceId, NoteInstance.voiceId); it is
+ * never inferred from what an id looks like.
  */
 export function resolveEventToPad(
   event: { noteNumber: number; voiceId?: string },
@@ -95,7 +95,7 @@ export function resolveEventToPad(
   instrumentConfig: InstrumentConfig,
   mode: 'strict' | 'allow-fallback',
 ): MappingResolution {
-  if (isSoundId(event.voiceId, event.noteNumber)) {
+  if (event.voiceId !== undefined) {
     const fromVoiceId = voiceIdIndex.get(event.voiceId);
     if (fromVoiceId) {
       return { source: 'mapping', pad: fromVoiceId };

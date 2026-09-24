@@ -10,7 +10,7 @@
 import { type Layout } from '../../types/layout';
 import { type Performance } from '../../types/performance';
 import { buildNoteToPadIndex, buildVoiceIdToPadIndex } from './mappingResolver';
-import { isSoundId, soundKeyOf } from './voiceMap';
+import { soundKeyOf } from './voiceMap';
 
 // ============================================================================
 // Sound Set
@@ -56,7 +56,7 @@ export function computeMappingCoverage(
   const noteIndex = buildNoteToPadIndex(layout.padToVoice);
 
   const isMapped = (event: { noteNumber: number; voiceId?: string }): boolean =>
-    isSoundId(event.voiceId, event.noteNumber)
+    event.voiceId !== undefined
       ? voiceIdIndex.has(event.voiceId)
       : noteIndex.has(event.noteNumber);
 

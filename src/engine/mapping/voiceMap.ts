@@ -29,20 +29,11 @@ export interface VoiceHint {
  * The key an event's Sound is filed under: its voiceId, or, for an event
  * with no Sound, its pitch as a string. The same convention the moment
  * builder and the greedy optimizer use (`event.voiceId ?? String(noteNumber)`).
+ * A grouping key only: whether an event has a Sound is read from `voiceId`,
+ * never from the shape of this key.
  */
 export function soundKeyOf(event: Pick<PerformanceEvent, 'voiceId' | 'noteNumber'>): string {
   return event.voiceId ?? String(event.noteNumber);
-}
-
-/**
- * True when `voiceId` names a Sound rather than standing in for a pitch.
- *
- * Moments carry `soundId = voiceId ?? String(noteNumber)`, so a "voiceId"
- * equal to the event's own pitch string is the no-Sound placeholder, and such
- * an event may still be resolved by pitch.
- */
-export function isSoundId(voiceId: string | undefined, noteNumber: number): voiceId is string {
-  return voiceId !== undefined && voiceId !== String(noteNumber);
 }
 
 /**

@@ -60,8 +60,16 @@ export interface PerformanceEvent {
  * Contains the note-level detail (sound, pad, MIDI provenance).
  */
 export interface NoteInstance {
-  /** Stable voice/sound identity. */
+  /**
+   * Grouping key for the note's Sound: its voiceId, or the pitch string for an
+   * event with no Sound. Use `voiceId` to know whether the note has a Sound.
+   */
   soundId: string;
+  /**
+   * The event's Sound identity (PerformanceEvent.voiceId), or undefined for an
+   * event with no Sound. Absence is stated here, never inferred from `soundId`.
+   */
+  voiceId?: string;
   /** Pad key "row,col" where this sound is mapped. */
   padId: string;
   /** MIDI note number (provenance). */

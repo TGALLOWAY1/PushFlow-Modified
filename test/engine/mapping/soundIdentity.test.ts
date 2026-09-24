@@ -16,7 +16,7 @@ import {
   resolveEventToPad,
 } from '../../../src/engine/mapping/mappingResolver';
 import { computeMappingCoverage } from '../../../src/engine/mapping/mappingCoverage';
-import { buildVoiceMap, isSoundId, soundKeyOf } from '../../../src/engine/mapping/voiceMap';
+import { buildVoiceMap, soundKeyOf } from '../../../src/engine/mapping/voiceMap';
 import { createBeamSolver } from '../../../src/engine/solvers/beamSolver';
 import { evaluatePerformance } from '../../../src/engine/evaluation/canonicalEvaluator';
 import { buildPerformanceMoments } from '../../../src/engine/structure/momentBuilder';
@@ -77,19 +77,38 @@ describe('resolveEventToPad', () => {
   it('keys an event with no Sound by its pitch', () => {
     expect(resolveEventToPad({ noteNumber: 36 }, voiceIndex, noteIndex, config, 'strict'))
       .toEqual({ source: 'mapping', pad: { row: 2, col: 2 } });
-    // The moment builder's placeholder for such an event is its pitch string.
+  });
+
+  it('treats a Sound whose id happens to equal its pitch as a Sound, not as a missing one', () => {
+    // Absence of a Sound is stated by an undefined voiceId, never read from the id's text.
+    const oddLayout: Layout = {
+      ...sharedPitchLayout(),
+      padToVoice: { '2,2': voice('kick-a', 36), '5,5': voice('36', 36, 'Sound named by its pitch') },
+    };
+    const oddVoiceIndex = buildVoiceIdToPadIndex(oddLayout.padToVoice);
+    const oddNoteIndex = buildNoteToPadIndex(oddLayout.padToVoice);
+    expect(resolveEventToPad({ noteNumber: 36, voiceId: '36' }, oddVoiceIndex, oddNoteIndex, config, 'strict'))
+      .toEqual({ source: 'mapping', pad: { row: 5, col: 5 } });
+    // Unplaced, it stays unmapped even though kick-a shares its pitch.
     expect(resolveEventToPad({ noteNumber: 36, voiceId: '36' }, voiceIndex, noteIndex, config, 'strict'))
-      .toEqual({ source: 'mapping', pad: { row: 2, col: 2 } });
+      .toEqual({ source: 'unmapped' });
   });
 });
 
 describe('sound keys', () => {
-  it('names a Sound by voiceId and a Sound-less event by pitch', () => {
+  it('files a Sound under its voiceId and a Sound-less event under its pitch', () => {
     expect(soundKeyOf({ voiceId: 'kick-a', noteNumber: 36 })).toBe('kick-a');
     expect(soundKeyOf({ noteNumber: 36 })).toBe('36');
-    expect(isSoundId('kick-a', 36)).toBe(true);
-    expect(isSoundId('36', 36)).toBe(false);
-    expect(isSoundId(undefined, 36)).toBe(false);
+  });
+
+  it('moments state whether a note has a Sound, separately from its grouping key', () => {
+    const [withSound, withoutSound] = buildPerformanceMoments([
+      { noteNumber: 36, voiceId: 'kick-a', startTime: 0 },
+      { noteNumber: 36, startTime: 1 },
+    ]).map(m => m.notes[0]);
+    expect(withSound).toMatchObject({ soundId: 'kick-a', voiceId: 'kick-a' });
+    expect(withoutSound).toMatchObject({ soundId: '36' });
+    expect(withoutSound.voiceId).toBeUndefined();
   });
 
   it('builds voices by id: hints match by id only, never by pitch', () => {
@@ -128,6 +147,15 @@ describe('computeMappingCoverage', () => {
     };
     const coverage = computeMappingCoverage(performance, sharedPitchLayout());
     expect(coverage).toMatchObject({ totalNotes: 2, mappedNotes: 1, unmappedNotes: [40], unmappedSoundKeys: ['40'] });
+  });
+
+  it('counts an unplaced Sound whose id equals its pitch as unmapped', () => {
+    const performance: Performance = {
+      name: 'odd id', tempo: 120,
+      events: [{ noteNumber: 36, voiceId: '36', startTime: 0 }, { noteNumber: 36, voiceId: 'kick-a', startTime: 1 }],
+    };
+    const coverage = computeMappingCoverage(performance, sharedPitchLayout());
+    expect(coverage).toMatchObject({ totalNotes: 2, mappedNotes: 1, unmappedSoundKeys: ['36'] });
   });
 });
 

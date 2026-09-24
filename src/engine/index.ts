@@ -62,7 +62,7 @@ export {
 // Mapping
 export { buildNoteToPadIndex, buildVoiceIdToPadIndex, resolveNoteToPad, resolveEventToPad, hashLayout } from './mapping/mappingResolver';
 export { computeMappingCoverage, getPerformanceSoundKeys } from './mapping/mappingCoverage';
-export { buildVoiceMap, soundKeyOf, isSoundId, type VoiceHint } from './mapping/voiceMap';
+export { buildVoiceMap, soundKeyOf, type VoiceHint } from './mapping/voiceMap';
 export { applicableLocks, findLockViolations, holdsLocks, describeDroppedForLocks, type LockViolation } from './mapping/placementLocks';
 export { seedLayoutFromPose0, orderSoundsByUsage, type SeedFromPoseOptions } from './mapping/seedFromPose';
 
