@@ -95,10 +95,51 @@ export async function generateAndWait(page: Page, pf: PfHandle, timeout = 120_00
   }, { timeout }).toBe(true);
 }
 
-/** Saves explicitly (toolbar "Save project"), reloads, and waits for the project to come back. */
+/** The layouts and Sounds of a project, reduced to what a save must carry. */
+type SavedShape = { sounds: number; active: string[]; working: string[] | null; variants: number; recovered: number };
+
+/** Reads this project's stored record straight from IndexedDB (waits for pending writes). */
+async function storedShape(page: Page): Promise<SavedShape | null> {
+  return page.evaluate(() => new Promise<SavedShape | null>((resolve) => {
+    const id = location.pathname.split('/').pop()!;
+    const open = indexedDB.open('pushflow');
+    open.onerror = () => resolve(null);
+    open.onsuccess = () => {
+      const get = open.result.transaction('projects').objectStore('projects').get(id);
+      get.onerror = () => resolve(null);
+      get.onsuccess = () => {
+        const p = get.result;
+        open.result.close();
+        resolve(p ? {
+          sounds: p.soundStreams?.length ?? 0,
+          active: Object.keys(p.activeLayout?.padToVoice ?? {}).sort(),
+          working: p.workingLayout ? Object.keys(p.workingLayout.padToVoice).sort() : null,
+          variants: p.savedVariants?.length ?? 0,
+          recovered: p.recoveredDrafts?.length ?? 0,
+        } : null);
+      };
+    };
+  }));
+}
+
+/**
+ * Saves explicitly (toolbar "Save project"), waits until IndexedDB holds the
+ * current project, reloads, and waits for the project to come back.
+ *
+ * The toolbar says "Saved" as soon as Save is clicked, before the write lands
+ * (T57, fixed in S1a.4), so the label alone is not a signal to reload on.
+ */
 export async function saveAndReload(page: Page, pf: PfHandle): Promise<void> {
+  const s = await pf.call('state');
+  const want: SavedShape = {
+    sounds: s.soundStreams.length,
+    active: Object.keys(s.activeLayout.padToVoice).sort(),
+    working: s.workingLayout ? Object.keys(s.workingLayout.padToVoice).sort() : null,
+    variants: s.savedVariants.length,
+    recovered: (s.recoveredDrafts ?? []).length,
+  };
   await page.getByTitle('Save project').click();
-  await expect(page.getByTitle('Save project')).toHaveText('Saved');
+  await expect.poll(() => storedShape(page), { timeout: 15_000 }).toEqual(want);
   await page.reload();
   await pf.ready();
   await expect.poll(async () => (await pf.call('status')).soundCount).toBeGreaterThan(0);

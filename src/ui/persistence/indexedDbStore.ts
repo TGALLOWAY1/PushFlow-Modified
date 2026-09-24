@@ -76,15 +76,19 @@ function openDb(): Promise<IDBDatabase> {
 
 /**
  * Save or update a project in IndexedDB.
+ *
+ * Resolves when the transaction commits, not when the put request succeeds: a
+ * page reload between the two aborts the transaction, so resolving early let
+ * the toolbar say "Saved" for a write that was then lost.
  */
 export async function putProject(project: PersistedProject): Promise<void> {
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(PROJECTS_STORE, 'readwrite');
-    const store = tx.objectStore(PROJECTS_STORE);
-    const request = store.put(project);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
+    tx.objectStore(PROJECTS_STORE).put(project);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
   });
 }
 

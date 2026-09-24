@@ -37,6 +37,8 @@ async function activeThenCandidates(page: Page, pf: PfHandle): Promise<number> {
   await generateAndWait(page, pf);
   await page.getByTestId('candidate-row').first().getByRole('button', { name: 'Preview' }).click();
   expect((await pf.call('state')).workingLayout, 'Preview left a draft that differs from Active').not.toBeNull();
+  // Let the draft's own analysis land, as it would before a user opens Compare.
+  await waitForAnalysis(pf);
   return standalone;
 }
 
