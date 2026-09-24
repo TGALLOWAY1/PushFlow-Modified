@@ -59,16 +59,16 @@ describe('MIDI diagnostic', () => {
     midi = loadTestMidi();
     performance = { events: midi.events, tempo: midi.tempo, name: 'TEST MIDI 1' };
 
-    const existingVoices = new Map<number, Voice>();
+    const existingVoices = new Map<string, Voice>();
     midi.uniqueNotes.forEach((n, i) => {
-      existingVoices.set(n, {
+      existingVoices.set(String(n), {
         id: `stream-${n}`, name: `Note ${n}`, sourceType: 'midi_track',
         sourceFile: '', originalMidiNote: n, color: '#444',
       });
     });
 
     const pose0 = createDefaultPose0();
-    layout = seedLayoutFromPose0(performance, pose0, 0, existingVoices);
+    layout = seedLayoutFromPose0(performance, pose0, 0, { voices: existingVoices });
   });
 
   it('diagnose event grouping and zone validity', () => {

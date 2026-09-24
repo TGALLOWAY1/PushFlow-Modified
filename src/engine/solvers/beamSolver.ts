@@ -31,6 +31,7 @@ import {
 } from '../../types/executionPlan';
 import { MOMENT_EPSILON } from '../../types/performanceEvent';
 import { buildNoteToPadIndex, buildVoiceIdToPadIndex, resolveEventToPad, hashLayout } from '../mapping/mappingResolver';
+import { soundKeyOf } from '../mapping/voiceMap';
 import { isZoneValid } from '../surface/handZone';
 import { generateValidGripsWithTier } from '../prior/feasibility';
 import {
@@ -1984,14 +1985,15 @@ export class BeamSolver implements SolverStrategy {
     }
     const { exhaustedGroupIndices } = search;
 
-    // Find best node
-    const requiredNotes = new Set(performance.events.map(e => e.noteNumber));
-    const unmappedNoteNumbers = new Set(
-      eventsWithPositions.filter(e => !e.position).map(e => e.event.noteNumber)
+    // Find best node. Coverage counts Sounds (by identity), so two Sounds that
+    // share a pitch are two Sounds, and an unplaced one is reported as unmapped.
+    const requiredSounds = new Set(performance.events.map(soundKeyOf));
+    const unmappedSounds = new Set(
+      eventsWithPositions.filter(e => !e.position).map(e => soundKeyOf(e.event))
     );
     const coverage = {
-      totalNotes: requiredNotes.size,
-      unmappedNotesCount: unmappedNoteNumbers.size,
+      totalNotes: requiredSounds.size,
+      unmappedNotesCount: unmappedSounds.size,
       fallbackNotesCount: fallbackCount,
     };
 

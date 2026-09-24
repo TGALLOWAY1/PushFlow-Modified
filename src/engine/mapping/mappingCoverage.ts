@@ -1,26 +1,29 @@
 /**
- * Mapping Coverage - Computes how well a layout covers performance notes.
+ * Mapping Coverage - Computes how well a layout covers a performance's Sounds.
  *
- * Coverage is keyed by noteNumber only (channel ignored for this iteration).
+ * Coverage is by Sound identity: an event's Sound (voiceId) must have a pad.
+ * Only an event with no Sound at all is counted by pitch (see voiceMap.ts).
  *
  * Ported from Version1/src/engine/mappingCoverage.ts with terminology updates.
  */
 
 import { type Layout } from '../../types/layout';
 import { type Performance } from '../../types/performance';
-import { buildNoteToPadIndex } from './mappingResolver';
+import { buildNoteToPadIndex, buildVoiceIdToPadIndex } from './mappingResolver';
+import { isSoundId, soundKeyOf } from './voiceMap';
 
 // ============================================================================
-// Note Set
+// Sound Set
 // ============================================================================
 
 /**
- * Returns the set of unique note numbers used in the performance.
+ * Returns the set of sound keys used in the performance (voiceId, or the pitch
+ * string for an event with no Sound).
  */
-export function getPerformanceNoteSet(performance: Performance): Set<number> {
-  const set = new Set<number>();
+export function getPerformanceSoundKeys(performance: Performance): Set<string> {
+  const set = new Set<string>();
   for (const event of performance.events) {
-    set.add(event.noteNumber);
+    set.add(soundKeyOf(event));
   }
   return set;
 }
@@ -30,47 +33,60 @@ export function getPerformanceNoteSet(performance: Performance): Set<number> {
 // ============================================================================
 
 export interface MappingCoverageResult {
+  /** Sounds with a pad. */
   mappedNotes: number;
+  /** Sounds in the performance. */
   totalNotes: number;
+  /** Pitches of the Sounds with no pad (one entry per unmapped Sound). */
   unmappedNotes: number[];
+  /** Sound keys with no pad. */
+  unmappedSoundKeys: string[];
   mappedEventCount: number;
   totalEventCount: number;
 }
 
 /**
- * Computes how well a layout covers the notes used in a performance.
+ * Computes how well a layout covers the Sounds used in a performance.
  */
 export function computeMappingCoverage(
   performance: Performance,
   layout: Layout
 ): MappingCoverageResult {
-  const requiredNotes = getPerformanceNoteSet(performance);
-  const index = buildNoteToPadIndex(layout.padToVoice);
+  const voiceIdIndex = buildVoiceIdToPadIndex(layout.padToVoice);
+  const noteIndex = buildNoteToPadIndex(layout.padToVoice);
 
-  const unmappedNotes: number[] = [];
-  let mappedNotes = 0;
+  const isMapped = (event: { noteNumber: number; voiceId?: string }): boolean =>
+    isSoundId(event.voiceId, event.noteNumber)
+      ? voiceIdIndex.has(event.voiceId)
+      : noteIndex.has(event.noteNumber);
 
-  for (const note of requiredNotes) {
-    if (index.has(note)) {
-      mappedNotes++;
-    } else {
-      unmappedNotes.push(note);
-    }
-  }
-
+  const seen = new Map<string, { noteNumber: number; mapped: boolean }>();
   let mappedEventCount = 0;
   for (const event of performance.events) {
-    if (index.has(event.noteNumber)) {
-      mappedEventCount++;
-    }
+    const mapped = isMapped(event);
+    if (mapped) mappedEventCount++;
+    const key = soundKeyOf(event);
+    if (!seen.has(key)) seen.set(key, { noteNumber: event.noteNumber, mapped });
   }
 
+  const unmappedNotes: number[] = [];
+  const unmappedSoundKeys: string[] = [];
+  let mappedNotes = 0;
+  for (const [key, { noteNumber, mapped }] of seen) {
+    if (mapped) {
+      mappedNotes++;
+    } else {
+      unmappedNotes.push(noteNumber);
+      unmappedSoundKeys.push(key);
+    }
+  }
   unmappedNotes.sort((a, b) => a - b);
 
   return {
     mappedNotes,
-    totalNotes: requiredNotes.size,
+    totalNotes: seen.size,
     unmappedNotes,
+    unmappedSoundKeys,
     mappedEventCount,
     totalEventCount: performance.events.length,
   };

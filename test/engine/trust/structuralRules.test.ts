@@ -277,7 +277,7 @@ describe('hand separation and one finger per sound are kept wherever possible', 
     const notes = [...new Set(events.map(e => e.noteNumber))].sort((a, b) => a - b);
     const performance = { events, tempo: 120, name: 'TEST MIDI 1' };
     const layout = seedLayoutFromPose0(
-      performance, createDefaultPose0(), 0, new Map(notes.map(n => [n, voice(`s-${n}`, n)])),
+      performance, createDefaultPose0(), 0, { voices: new Map(notes.map(n => [String(n), voice(`s-${n}`, n)])) },
     );
 
     const plan = await solve(layout, performance);

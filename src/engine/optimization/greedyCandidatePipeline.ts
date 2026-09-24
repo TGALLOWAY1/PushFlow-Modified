@@ -15,7 +15,6 @@
 
 import { type Performance, type InstrumentConfig } from '../../types/performance';
 import { type Layout } from '../../types/layout';
-import { type Voice } from '../../types/voice';
 import { type Section } from '../../types/performanceStructure';
 import { type EngineConfiguration } from '../../types/engineConfig';
 import { type CostToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
@@ -41,6 +40,8 @@ import {
   buildGenerationSummary,
 } from '../analysis/diversityMeasurement';
 import { generateId } from '../../utils/idGenerator';
+import { buildVoiceMap } from '../mapping/voiceMap';
+import { applicableLocks, findLockViolations } from '../mapping/placementLocks';
 import { createSeededRng } from '../../utils/seededRng';
 import { type CandidateGenerationResult } from './multiCandidateGenerator';
 import { detectStructuralGroups } from '../structure/structuralGroupDetection';
@@ -191,6 +192,13 @@ export async function generateGreedyCandidates(
   // Build voice map from base layout or performance events
   const voices = buildVoiceMap(input.performance, input.baseLayout, input.voiceHints);
 
+  // Locks a candidate must honour: those whose Sound exists. A candidate that
+  // moves a locked Sound is dropped after optimization and the list says so.
+  const knownVoiceIds = new Set<string>(voices.keys());
+  for (const voice of Object.values(input.baseLayout?.padToVoice ?? {})) knownVoiceIds.add(voice.id);
+  const locks = applicableLocks(input.baseLayout?.placementLocks, knownVoiceIds);
+  let droppedForLocks = 0;
+
   // Phase 1b: Detect structural groups (shared across all candidates)
   const structuralGroups = detectStructuralGroups(
     input.performance.events,
@@ -259,6 +267,11 @@ export async function generateGreedyCandidates(
       try {
         const result = await optimizer.optimize(optimizerInput, runOptions);
 
+        if (findLockViolations(locks, result.layout).length > 0) {
+          droppedForLocks++;
+          continue;
+        }
+
         // Build CandidateSolution
         const difficultyAnalysis = analyzeDifficulty(result.executionPlan, sections);
         const coherenceScore = scoreStructuralCoherence(result.layout, structuralGroups);
@@ -301,7 +314,13 @@ export async function generateGreedyCandidates(
   }
 
   if (allScored.length === 0) {
-    return { candidates: [], summary: null };
+    // Nothing survived; if candidates were dropped for breaking a lock, say so.
+    return {
+      candidates: [],
+      summary: input.activeLayout
+        ? buildGenerationSummary(droppedForLocks, 0, [], input.activeLayout, droppedForLocks)
+        : null,
+    };
   }
 
   // Phase 3: Diversity-aware finalist selection, tier by tier. Candidates that
@@ -384,10 +403,11 @@ export async function generateGreedyCandidates(
 
   const summary = input.activeLayout
     ? buildGenerationSummary(
-        allScored.length,
+        allScored.length + droppedForLocks,
         duplicatesRemoved,
         finalCandidates,
         input.activeLayout,
+        droppedForLocks,
       )
     : null;
 
@@ -573,59 +593,3 @@ function buildExplanation(
 // Helpers
 // ============================================================================
 
-/**
- * Build a voice map from layout, voiceHints (canonical soundStreams), and/or performance events.
- * Priority: layout voices > voiceHints (by id, then by noteNumber) > hardcoded defaults.
- */
-function buildVoiceMap(
-  performance: Performance,
-  baseLayout?: Layout,
-  voiceHints?: ReadonlyArray<{ id: string; name: string; color: string; originalMidiNote: number | null }>,
-): Map<string, Voice> {
-  const voices = new Map<string, Voice>();
-
-  // Voices from layout take priority
-  if (baseLayout) {
-    for (const voice of Object.values(baseLayout.padToVoice)) {
-      voices.set(voice.id, voice);
-      // Also index by noteNumber string so feature-based lookups work
-      // (features are keyed by event.voiceId ?? String(event.noteNumber))
-      if (voice.originalMidiNote != null) {
-        const noteKey = String(voice.originalMidiNote);
-        if (!voices.has(noteKey)) {
-          voices.set(noteKey, voice);
-        }
-      }
-    }
-  }
-
-  // Build hint lookup maps for voices not in the layout
-  const hintById = new Map<string, { id: string; name: string; color: string; originalMidiNote: number | null }>();
-  const hintByNote = new Map<number, { id: string; name: string; color: string; originalMidiNote: number | null }>();
-  if (voiceHints) {
-    for (const hint of voiceHints) {
-      hintById.set(hint.id, hint);
-      if (hint.originalMidiNote != null) {
-        hintByNote.set(hint.originalMidiNote, hint);
-      }
-    }
-  }
-
-  // Fill in from performance events, using voiceHints before hardcoded defaults
-  for (const event of performance.events) {
-    const id = event.voiceId ?? String(event.noteNumber);
-    if (!voices.has(id)) {
-      const hint = hintById.get(id) ?? hintByNote.get(event.noteNumber);
-      voices.set(id, {
-        id: hint?.id ?? id,
-        name: hint?.name ?? `Sound ${event.noteNumber}`,
-        sourceType: 'midi_track',
-        sourceFile: '',
-        originalMidiNote: event.noteNumber,
-        color: hint?.color ?? '#888888',
-      });
-    }
-  }
-
-  return voices;
-}

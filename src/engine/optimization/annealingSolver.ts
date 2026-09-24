@@ -71,6 +71,8 @@ export class AnnealingSolver implements SolverStrategy {
   private bestLayout: Layout | null = null;
   private seed: number;
   private annealingConfig: AnnealingConfig;
+  /** The user's finger preferences, applied to every evaluation of the run. */
+  private manualAssignments: Record<string, { hand: 'left' | 'right'; finger: FingerType }> | undefined;
 
   constructor(config: SolverConfig) {
     this.instrumentConfig = config.instrumentConfig;
@@ -151,7 +153,11 @@ export class AnnealingSolver implements SolverStrategy {
       beamWidth,
     };
 
-    const result = await beamSolver.solve(performance, evaluationConfig);
+    // Preferences are keyed by event, not by pad, so they stay valid as
+    // annealing moves Sounds between pads. Evaluating every candidate layout
+    // under them means the layout is chosen for how it plays WITH the user's
+    // fingering, not for a fingering the final plan then has to abandon.
+    const result = await beamSolver.solve(performance, evaluationConfig, this.manualAssignments);
     const relaxedStrikes = countRelaxedStrikes(result);
 
     return {
@@ -161,12 +167,13 @@ export class AnnealingSolver implements SolverStrategy {
     };
   }
 
-  /** Deep-copy a Layout to prevent shared mutation. */
+  /** Deep-copy a Layout to prevent shared mutation. Locks travel with it. */
   private deepCopyLayout(layout: Layout): Layout {
     return {
       ...layout,
       padToVoice: { ...layout.padToVoice },
       fingerConstraints: { ...layout.fingerConstraints },
+      placementLocks: { ...(layout.placementLocks ?? {}) },
     };
   }
 
@@ -201,6 +208,7 @@ export class AnnealingSolver implements SolverStrategy {
       throw new Error('AnnealingSolver requires an initial Layout. Cannot optimize an empty layout.');
     }
 
+    this.manualAssignments = manualAssignments;
     const ac = this.annealingConfig;
     const iterations = Math.max(1, ac.iterations);
     const restartCount = Math.max(0, ac.restartCount);

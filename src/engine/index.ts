@@ -61,8 +61,10 @@ export {
 
 // Mapping
 export { buildNoteToPadIndex, buildVoiceIdToPadIndex, resolveNoteToPad, resolveEventToPad, hashLayout } from './mapping/mappingResolver';
-export { computeMappingCoverage } from './mapping/mappingCoverage';
-export { seedLayoutFromPose0 } from './mapping/seedFromPose';
+export { computeMappingCoverage, getPerformanceSoundKeys } from './mapping/mappingCoverage';
+export { buildVoiceMap, soundKeyOf, isSoundId, type VoiceHint } from './mapping/voiceMap';
+export { applicableLocks, findLockViolations, holdsLocks, describeDroppedForLocks, type LockViolation } from './mapping/placementLocks';
+export { seedLayoutFromPose0, orderSoundsByUsage, type SeedFromPoseOptions } from './mapping/seedFromPose';
 
 // Evaluation (primary scoring model)
 export {
