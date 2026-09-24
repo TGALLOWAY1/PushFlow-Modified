@@ -6,9 +6,10 @@
  * editing controls, generation, compare trigger, and settings.
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useProject } from '../../state/ProjectContext';
 import { hasWorkingChanges } from '../../state/projectState';
+import { useToast } from '../shared/Toast';
 import { type GenerationMode } from '../../hooks/useAutoAnalysis';
 import { type SaveStatus } from '../../hooks/useAutoSave';
 import { type OptimizerMethodKey } from '../../../engine/optimization/optimizerInterface';
@@ -47,7 +48,29 @@ export function WorkspaceToolbar({
 }: WorkspaceToolbarProps) {
   const { state, dispatch, transact, undo, redo, canUndo, canRedo, undoLabel, redoLabel } = useProject();
   const { settings: viewSettings, toggleGridLabel, toggleLayoutDisplay } = useViewSettings();
+  const toast = useToast();
   const hasChanges = hasWorkingChanges(state);
+
+  // Discard is confirmed by a toast with Undo. Finger preferences live in
+  // voiceConstraints and survive Discard (decision Q2), and the toast says so.
+  // The toast's Undo is only offered while Discard is still the step Undo would
+  // revert, so it can never undo a later edit instead.
+  const discardToastRef = useRef<number | null>(null);
+  const handleDiscard = () => {
+    const keepsPreferences = Object.values(state.voiceConstraints).some(c => c.hand || c.finger);
+    dispatch({ type: 'DISCARD_WORKING_LAYOUT' });
+    if (discardToastRef.current !== null) toast.dismiss(discardToastRef.current);
+    discardToastRef.current = toast.show({
+      message: keepsPreferences ? 'Draft discarded \u00b7 Finger preferences kept' : 'Draft discarded',
+      action: { label: 'Undo', onClick: undo },
+    });
+  };
+  useEffect(() => {
+    if (discardToastRef.current !== null && undoLabel !== 'Discard') {
+      toast.dismiss(discardToastRef.current);
+      discardToastRef.current = null;
+    }
+  }, [undoLabel, toast]);
 
   // Editable project name
   const [editingName, setEditingName] = useState(false);
@@ -188,7 +211,7 @@ export function WorkspaceToolbar({
             </button>
             <button
               className="pf-btn pf-btn-subtle text-pf-sm hover:bg-red-900/30 hover:text-red-300 hover:border-red-500/30"
-              onClick={() => dispatch({ type: 'DISCARD_WORKING_LAYOUT' })}
+              onClick={handleDiscard}
               title="Discard working changes"
             >
               Discard

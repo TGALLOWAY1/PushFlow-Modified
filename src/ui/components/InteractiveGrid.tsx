@@ -441,7 +441,13 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     // Check pad-to-pad drag first (swap) — must come before stream check
     // because handlePadDragStart sets both data types
     const padData = e.dataTransfer.getData('application/pushflow-pad');
-    if (padData && padData !== padKey) {
+    if (padData === padKey) {
+      // Dropped back on its own pad: nothing to do (T14). The reducer would
+      // refuse it too; not dispatching keeps the gesture from looking like an edit.
+      setDragSourcePad(null);
+      return;
+    }
+    if (padData) {
       dispatch({ type: 'SWAP_PADS', payload: { padKeyA: padData, padKeyB: padKey } });
       setDragSourcePad(null);
       return;
