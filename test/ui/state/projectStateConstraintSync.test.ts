@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyLayout } from '../../../src/types/layout';
-import { projectReducer, createEmptyProjectState, type SoundStream } from '../../../src/ui/state/projectState';
+import { projectReducer, createEmptyProjectState, isPadLocked, placementBlockedByLock, type SoundStream } from '../../../src/ui/state/projectState';
 
 function makeStream(id: string, name: string, midi: number, color: string): SoundStream {
   return {
@@ -45,7 +45,32 @@ function makeState() {
 }
 
 describe('projectReducer constraint sync', () => {
-  it('moves pad constraints and locks with the voice when assigning to a new pad', () => {
+  it('moves pad constraints with an unlocked voice and leaves other locks alone', () => {
+    const { state, kick } = makeState();
+    state.voiceConstraints[kick.id] = { hand: 'right', finger: 'pinky' };
+    state.activeLayout.fingerConstraints['0,0'] = 'R5';
+
+    const next = projectReducer(state, {
+      type: 'ASSIGN_VOICE_TO_PAD',
+      payload: { padKey: '2,2', stream: kick },
+    });
+
+    expect(next.workingLayout?.padToVoice['2,2']?.id).toBe(kick.id);
+    expect(next.workingLayout?.padToVoice['0,0']).toBeUndefined();
+    expect(next.workingLayout?.fingerConstraints).toEqual({
+      '0,1': 'L2',
+      '0,2': 'R3',
+      '2,2': 'R5',
+    });
+    expect(next.workingLayout?.placementLocks).toEqual({
+      'stream-snare': '0,1',
+      'stream-hihat': '0,2',
+    });
+  });
+
+  // S1a.3 (T11, canon section 11): locks are hard for manual edits. A refused
+  // gesture returns the same state, so it makes no draft and no undo step.
+  it('refuses to drag a locked Sound off its pad (P1a-5b)', () => {
     const { state, snare } = makeState();
 
     const next = projectReducer(state, {
@@ -53,16 +78,33 @@ describe('projectReducer constraint sync', () => {
       payload: { padKey: '2,2', stream: snare },
     });
 
-    expect(next.workingLayout?.padToVoice['2,2']?.id).toBe(snare.id);
-    expect(next.workingLayout?.padToVoice['0,1']).toBeUndefined();
-    expect(next.workingLayout?.fingerConstraints).toEqual({
-      '0,2': 'R3',
-      '2,2': 'L2',
+    expect(next).toBe(state);
+    expect(next.workingLayout).toBeNull();
+    expect(next.activeLayout.padToVoice['0,1']?.id).toBe(snare.id);
+    expect(next.activeLayout.placementLocks).toEqual({ 'stream-snare': '0,1', 'stream-hihat': '0,2' });
+  });
+
+  it('refuses to drop another Sound onto a locked pad (P1a-5b)', () => {
+    const { state, kick, snare } = makeState();
+
+    const next = projectReducer(state, {
+      type: 'ASSIGN_VOICE_TO_PAD',
+      payload: { padKey: '0,1', stream: kick },
     });
-    expect(next.workingLayout?.placementLocks).toEqual({
-      [snare.id]: '2,2',
-      'stream-hihat': '0,2',
+
+    expect(next).toBe(state);
+    expect(next.activeLayout.padToVoice['0,1']?.id).toBe(snare.id);
+    expect(next.activeLayout.padToVoice['0,0']?.id).toBe(kick.id);
+  });
+
+  it('lets a locked Sound be dropped onto its own pad as a no-op', () => {
+    const { state, snare } = makeState();
+    const next = projectReducer(state, {
+      type: 'ASSIGN_VOICE_TO_PAD',
+      payload: { padKey: '0,1', stream: snare },
     });
+    expect(next.workingLayout?.padToVoice['0,1']?.id ?? next.activeLayout.padToVoice['0,1']?.id).toBe(snare.id);
+    expect((next.workingLayout ?? next.activeLayout).placementLocks).toEqual({ 'stream-snare': '0,1', 'stream-hihat': '0,2' });
   });
 
   it('clears stale pad constraints and locks when removing a voice from a pad', () => {
@@ -134,23 +176,52 @@ describe('projectReducer constraint sync', () => {
     expect(next.workingLayout).toBeNull();
   });
 
-  it('swaps derived constraints and lock targets with the swapped voices', () => {
-    const { state, snare, hihat } = makeState();
+  it('refuses a swap that involves a locked pad (P1a-5b)', () => {
+    const { state } = makeState();
 
     const next = projectReducer(state, {
       type: 'SWAP_PADS',
       payload: { padKeyA: '0,1', padKeyB: '0,2' },
     });
 
-    expect(next.workingLayout?.padToVoice['0,1']?.id).toBe(hihat.id);
-    expect(next.workingLayout?.padToVoice['0,2']?.id).toBe(snare.id);
+    expect(next).toBe(state);
+    const ontoLocked = projectReducer(state, {
+      type: 'SWAP_PADS',
+      payload: { padKeyA: '0,0', padKeyB: '0,1' },
+    });
+    expect(ontoLocked).toBe(state);
+  });
+
+  it('swaps derived constraints with two unlocked voices and keeps the locks where they are', () => {
+    const { state, kick, snare, hihat } = makeState();
+    // Unlock the snare so a swap between the kick and the snare is allowed.
+    state.activeLayout.placementLocks = { [hihat.id]: '0,2' };
+
+    const next = projectReducer(state, {
+      type: 'SWAP_PADS',
+      payload: { padKeyA: '0,0', padKeyB: '0,1' },
+    });
+
+    expect(next.workingLayout?.padToVoice['0,0']?.id).toBe(snare.id);
+    expect(next.workingLayout?.padToVoice['0,1']?.id).toBe(kick.id);
     expect(next.workingLayout?.fingerConstraints).toEqual({
-      '0,1': 'R3',
-      '0,2': 'L2',
+      '0,0': 'L2',
+      '0,2': 'R3',
     });
-    expect(next.workingLayout?.placementLocks).toEqual({
-      [snare.id]: '0,2',
-      [hihat.id]: '0,1',
-    });
+    expect(next.workingLayout?.placementLocks).toEqual({ [hihat.id]: '0,2' });
+  });
+});
+
+describe('placement lock helpers', () => {
+  it('names why a placement is refused', () => {
+    const { state, kick, snare } = makeState();
+    const layout = state.activeLayout;
+    expect(placementBlockedByLock(layout, snare.id, '2,2')).toBe('sound-locked');
+    expect(placementBlockedByLock(layout, kick.id, '0,1')).toBe('pad-locked');
+    expect(placementBlockedByLock(layout, snare.id, '0,1')).toBeNull();
+    expect(placementBlockedByLock(layout, kick.id, '2,2')).toBeNull();
+    expect(isPadLocked(layout, '0,1')).toBe(true);
+    expect(isPadLocked(layout, '0,0')).toBe(false);
+    expect(isPadLocked(layout, '5,5')).toBe(false);
   });
 });

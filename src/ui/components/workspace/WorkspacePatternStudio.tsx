@@ -25,6 +25,7 @@ import { parsePadKey } from '../../../types/padGrid';
 import { getDisplayedLayout } from '../../state/projectState';
 import { saveLoopState, loadLoopState } from '../../persistence/loopStorage';
 import { parseFingerConstraint } from '../../../utils/fingerConstraints';
+import { WORKSPACE_PATTERN_LANE_ID_PREFIX, laneForVoice, voiceForLane } from './composerLaneIdentity';
 
 const LANE_COLORS = ['#ef4444', '#f97316', '#22c55e', '#eab308', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6'];
 const DEFAULT_MIDI_NOTES = [36, 38, 42, 46, 48, 60, 62, 64];
@@ -98,19 +99,15 @@ export function WorkspacePatternStudio() {
   }, []);
 
   // Build a mapping from composer lane IDs → voice IDs in layout.padToVoice.
-  // Lanes and voices live in different ID spaces; this bridges them via name/MIDI note.
+  // A lane is its project Sound (id under WORKSPACE_PATTERN_LANE_ID_PREFIX);
+  // never matched by MIDI pitch (invariant 5).
   const laneToVoiceId = useMemo(() => {
     const layout = getDisplayedLayout(projectState);
     if (!layout) return {} as Record<string, string>;
     const map: Record<string, string> = {};
     const voices = Object.values(layout.padToVoice);
     for (const lane of loopState.lanes) {
-      // Direct ID match (rare but possible)
-      let v = voices.find(v => v.id === lane.id);
-      // Name match
-      if (!v) v = voices.find(v => v.name === lane.name);
-      // MIDI note match
-      if (!v && lane.midiNote !== null) v = voices.find(v => v.originalMidiNote === lane.midiNote);
+      const v = voiceForLane(lane, voices);
       if (v) map[lane.id] = v.id;
     }
     return map;
@@ -225,7 +222,7 @@ export function WorkspacePatternStudio() {
         sourceFileName: WORKSPACE_PATTERN_NAME,
         groupId: WORKSPACE_PATTERN_GROUP_ID,
         groupName: WORKSPACE_PATTERN_NAME,
-        laneIdPrefix: 'workspace_pattern_',
+        laneIdPrefix: WORKSPACE_PATTERN_LANE_ID_PREFIX,
         preserveLaneIds: true,
       });
 
@@ -290,10 +287,8 @@ export function WorkspacePatternStudio() {
       const fingerConstraints = layout.fingerConstraints ?? {};
 
       for (const [padKeyStr, voice] of Object.entries(layout.padToVoice)) {
-        // Match pads to composer lanes: try ID match, then name match, then MIDI note match
-        let lane = loopState.lanes.find(l => l.id === voice.id);
-        if (!lane) lane = loopState.lanes.find(l => l.name === voice.name);
-        if (!lane) lane = loopState.lanes.find(l => l.midiNote !== null && l.midiNote === voice.originalMidiNote);
+        // Match pads to composer lanes by identity, never by MIDI pitch (invariant 5).
+        const lane = laneForVoice(voice, loopState.lanes);
         if (!lane) continue;
 
         const coord = parsePadKey(padKeyStr);

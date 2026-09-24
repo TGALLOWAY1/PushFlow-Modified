@@ -61,6 +61,7 @@ export function buildPerformanceMoments(
 
     currentNotes.push({
       soundId: event.voiceId ?? String(event.noteNumber),
+      voiceId: event.voiceId,
       padId: padLookup ? (padLookup(event) ?? '') : '',
       noteNumber: event.noteNumber,
       velocity: event.velocity,

@@ -109,6 +109,7 @@ export async function generateBeamAnnealingAsApp(
     sections: state.sections,
     baseLayout: layout,
     activeLayout: layout,
+    voiceHints: state.soundStreams,
   });
   return result.candidates;
 }

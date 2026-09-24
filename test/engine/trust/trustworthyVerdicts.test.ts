@@ -69,10 +69,10 @@ function loadReferenceMidi() {
 }
 
 function referenceLayout(events: PerformanceEvent[], uniqueNotes: number[]) {
-  const voices = new Map<number, Voice>();
-  uniqueNotes.forEach(n => voices.set(n, voice(`stream-${n}`, n)));
+  const voices = new Map<string, Voice>();
+  uniqueNotes.forEach(n => voices.set(String(n), voice(`stream-${n}`, n)));
   const perf = { events, tempo: 120, name: 'TEST MIDI 1' };
-  return { perf, layout: seedLayoutFromPose0(perf, createDefaultPose0(), 0, voices) };
+  return { perf, layout: seedLayoutFromPose0(perf, createDefaultPose0(), 0, { voices }) };
 }
 
 describe('the solver never presents a search failure as a physical impossibility', () => {

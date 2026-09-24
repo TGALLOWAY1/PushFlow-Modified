@@ -194,6 +194,11 @@ export interface CandidateGenerationSummary {
   isLowDiversity: boolean;
   /** Explanation when diversity is low (why candidates are similar). */
   lowDiversityExplanation?: string;
+  /**
+   * Candidates dropped after optimization because they moved a locked Sound
+   * (canon section 11). Counted in candidatesGenerated; the list header says why.
+   */
+  droppedForLockViolations?: number;
 }
 
 /**

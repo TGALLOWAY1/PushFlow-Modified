@@ -11,8 +11,10 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import chroma from 'chroma-js';
+import { Lock } from 'lucide-react';
 import { useProject } from '../state/ProjectContext';
-import { getDisplayedLayout, getDisplayedLayoutRole } from '../state/projectState';
+import { getDisplayedLayout, getDisplayedLayoutRole, isPadLocked } from '../state/projectState';
+import { LOCKED_SOUND_DRAG_TYPE } from './dragTypes';
 import { PadContextMenu } from './PadContextMenu';
 import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
@@ -143,9 +145,9 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const key = `${a.row},${a.col}`;
       let summary = map.get(key);
       if (!summary) {
-        const voice = soundStreamLookup.forAssignment(a.voiceId, a.noteNumber);
+        const voice = soundStreamLookup.forAssignment(a.voiceId);
         summary = {
-          voiceName: voice?.name ?? `N${a.noteNumber}`,
+          voiceName: voice?.name ?? 'Unknown Sound',
           voiceColor: voice?.color ?? null,
           noteNumber: a.noteNumber,
           hands: new Set(),
@@ -156,7 +158,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       }
       // Use solver hand for glow coloring (visual feedback).
       // Show finger labels from user constraints or solver assignments (when toggle is on).
-      const voice = soundStreamLookup.forAssignment(a.voiceId, a.noteNumber);
+      const voice = soundStreamLookup.forAssignment(a.voiceId);
       const constraint = voice ? voiceConstraints[voice.id] : undefined;
       const effectiveHand = constraint?.hand ?? a.assignedHand;
       summary.hands.add(effectiveHand);
@@ -413,6 +415,14 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     e.preventDefault();
     setDragOverPad(null);
 
+    // A locked pad takes no drop, and a locked Sound goes nowhere else (canon
+    // section 11). The reducer refuses these too; this keeps the gesture from
+    // looking accepted.
+    if ((layout && isPadLocked(layout, padKey)) || e.dataTransfer.types.includes(LOCKED_SOUND_DRAG_TYPE)) {
+      setDragSourcePad(null);
+      return;
+    }
+
     // Check for composer preset drop first
     const presetData = e.dataTransfer.getData(COMPOSER_PRESET_DRAG_TYPE);
     if (presetData && onPresetDrop) {
@@ -456,9 +466,16 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     }
 
     setDragSourcePad(null);
-  }, [state.soundStreams, dispatch]);
+  }, [state.soundStreams, dispatch, layout, onPresetDrop]);
 
   const handleDragOver = useCallback((e: React.DragEvent, padKey: string) => {
+    // No drop onto a locked pad, and none of a locked Sound: without
+    // preventDefault the browser refuses the drop and the pointer says so.
+    if ((layout && isPadLocked(layout, padKey)) || e.dataTransfer.types.includes(LOCKED_SOUND_DRAG_TYPE)) {
+      e.dataTransfer.dropEffect = 'none';
+      setDragOverPad(null);
+      return;
+    }
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     setDragOverPad(padKey);
@@ -468,7 +485,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const [rowStr, colStr] = padKey.split(',');
       onGridDragOver(parseInt(rowStr, 10), parseInt(colStr, 10));
     }
-  }, [onGridDragOver]);
+  }, [onGridDragOver, layout]);
 
   const handleDragLeave = useCallback(() => {
     setDragOverPad(null);
@@ -674,11 +691,11 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           onDragOver={e => !isMuted && handleDragOver(e, padKey)}
           onDragLeave={handleDragLeave}
           onDrop={e => !isMuted && handleDrop(e, padKey)}
-          draggable={!!voice && !isMuted}
-          onDragStart={e => voice && !isMuted && handlePadDragStart(e, padKey, voice)}
+          draggable={!!voice && !isMuted && !isLocked}
+          onDragStart={e => voice && !isMuted && !isLocked && handlePadDragStart(e, padKey, voice)}
           onDragEnd={() => { setDragSourcePad(null); setDragOverPad(null); }}
           title={voice
-            ? `[${row},${col}] ${voice.name}${summary ? ` | ${summary.hitCount} hits` : ''}${constraint ? ` | Constraint: ${constraint}` : ''}`
+            ? `[${row},${col}] ${voice.name}${summary ? ` | ${summary.hitCount} hits` : ''}${constraint ? ` | Constraint: ${constraint}` : ''}${isLocked ? ' | Locked · Unlock to move' : ''}`
             : `[${row},${col}] empty — drop a sound here`}
         >
           {/* Ghost preview for preset drag */}
@@ -735,13 +752,15 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                   </span>
                 )}
 
-                {/* Lock indicator */}
+                {/* Lock glyph, in the corner outside the name area */}
                 {isLocked && (
                   <span
-                    className="absolute top-0 left-0 w-4 h-4 flex items-center justify-center text-[8px] text-amber-400"
-                    title="Placement locked"
+                    className="absolute top-0.5 left-0.5 w-3 h-3 flex items-center justify-center text-amber-400 pointer-events-none"
+                    title="Locked · Unlock to move"
+                    aria-label="Locked · Unlock to move"
+                    data-testid="pad-lock"
                   >
-                    &#x1F512;
+                    <Lock size={9} strokeWidth={2.5} aria-hidden="true" />
                   </span>
                 )}
 

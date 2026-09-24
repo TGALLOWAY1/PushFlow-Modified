@@ -11,6 +11,7 @@ import { useProject } from '../state/ProjectContext';
 import { getDisplayedCandidate, getDisplayedLayout, type SoundStream } from '../state/projectState';
 import type { LaneGroup } from '../../types/performanceLane';
 import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
+import { LOCKED_SOUND_DRAG_TYPE } from './dragTypes';
 import { generateId } from '../../utils/idGenerator';
 import { formatPadPosition } from '../../utils/padPosition';
 import { FingerAssignmentInput, type FingerAssignmentValue } from './shared/FingerAssignmentInput';
@@ -138,7 +139,7 @@ export function VoicePalette() {
     if (!fingerAssignments) return map;
     // Map voiceId to its first assignment's finger info
     for (const fa of fingerAssignments) {
-      const stream = soundStreamLookup.forAssignment(fa.voiceId, fa.noteNumber);
+      const stream = soundStreamLookup.forAssignment(fa.voiceId);
       if (!stream || map.has(stream.id) || fa.assignedHand === 'Unplayable' || !fa.finger) continue;
       map.set(stream.id, {
           label: `${fa.assignedHand[0].toUpperCase()}${FINGER_ABBREV[fa.finger] ?? fa.finger}`,
@@ -183,6 +184,9 @@ export function VoicePalette() {
       originalMidiNote: stream.originalMidiNote,
       source: 'palette',
     }));
+    // A locked Sound stays on its pad: the grid refuses to drop it elsewhere.
+    const lockedPad = layout?.placementLocks[stream.id];
+    if (lockedPad) e.dataTransfer.setData(LOCKED_SOUND_DRAG_TYPE, lockedPad);
     e.dataTransfer.effectAllowed = 'copyMove';
   };
 
@@ -581,7 +585,7 @@ function StreamRow({
       {/* Pad location(s) + lock indicator */}
       {padKeys.length > 0 && (
         <span className="text-pf-xs text-[var(--text-secondary)] font-mono flex-shrink-0 flex items-center gap-0.5 tabular-nums">
-          {isLocked && <span className="text-[8px] text-amber-400" title="Placement locked">&#x1F512;</span>}
+          {isLocked && <span className="text-[8px] text-amber-400" title="Locked · Unlock to move" aria-label="Locked · Unlock to move">&#x1F512;</span>}
           {formatPadPosition(padKeys[0])}
           {padKeys.length > 1 && `+${padKeys.length - 1}`}
         </span>

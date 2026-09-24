@@ -108,7 +108,7 @@ export function evaluateEvent(input: EvaluateEventInput): EventCostBreakdown {
 
   for (const note of moment.notes) {
     const resolution = resolveEventToPad(
-      { noteNumber: note.noteNumber, voiceId: note.soundId },
+      { noteNumber: note.noteNumber, voiceId: note.voiceId },
       voiceIdIndex,
       noteIndex,
       config.instrumentConfig,
@@ -674,7 +674,7 @@ export function validateAssignment(input: ValidateAssignmentInput): AssignmentVa
   for (const moment of moments) {
     for (const note of moment.notes) {
       const resolution = resolveEventToPad(
-        { noteNumber: note.noteNumber, voiceId: note.soundId },
+        { noteNumber: note.noteNumber, voiceId: note.voiceId },
         voiceIdIndex,
         noteIndex,
         config.instrumentConfig,
@@ -821,7 +821,7 @@ function resolveMomentPadKeysFromIndexes(
   const padKeys: string[] = [];
   for (const note of moment.notes) {
     const resolution = resolveEventToPad(
-      { noteNumber: note.noteNumber, voiceId: note.soundId },
+      { noteNumber: note.noteNumber, voiceId: note.voiceId },
       voiceIdIndex,
       noteIndex,
       instrumentConfig,

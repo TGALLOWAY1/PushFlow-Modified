@@ -926,7 +926,7 @@ class GreedyOptimizer implements OptimizerMethod {
         if (!padKeyStr) {
           const resolveConfig = instrumentConfig ?? { rows: 8, cols: 8, bottomLeftNote: 36, id: '', name: '', layoutMode: 'drum_64' as const };
           const resolution = resolveEventToPad(
-            { noteNumber: note.noteNumber, voiceId: note.soundId },
+            { noteNumber: note.noteNumber, voiceId: note.voiceId },
             voiceIdIndex,
             noteIndex,
             resolveConfig,

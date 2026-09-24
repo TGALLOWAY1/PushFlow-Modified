@@ -1,8 +1,7 @@
 /**
  * Nightly: the [7,0] lock case for Annealing "Thorough" (deep). A separate file
- * so it runs in parallel with the unlocked deep run. Generation, the duration
- * report and the basic checks run as normal code, so a crash, timeout or empty
- * result fails the job; only the lock assertion is expected to fail.
+ * so it runs in parallel with the unlocked deep run. A crash, timeout or empty
+ * result fails the job, and so does a candidate that moved the locked Sound.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -30,9 +29,9 @@ describe('TEST MIDI 1 · annealing Thorough (deep) with a Sound locked at [7,0]'
     }
   });
 
-  // Expected to fail until S1a.3 (C3 / T11): generateCandidates re-seeds every
-  // candidate from the natural hand pose and returns placementLocks {}.
-  it.fails('holds in every candidate (fails until S1a.3)', () => {
+  // S1a.3 (C3 / T11): the seed pre-places the locked Sound, every mutation
+  // leaves locked pads alone, and a violating candidate would be dropped.
+  it('holds in every candidate', () => {
     for (const candidate of candidates) {
       expect(candidate.layout.padToVoice[LOCK_PAD]?.id).toBe(lockedId);
       expect(candidate.layout.placementLocks).toEqual({ [lockedId]: LOCK_PAD });

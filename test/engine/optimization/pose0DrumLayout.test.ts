@@ -34,17 +34,21 @@ import {
 
 function buildExistingVoices(
   specs: Array<{ id: string; name: string; midi: number; color: string }>
-): Map<number, Voice> {
-  const map = new Map<number, Voice>();
+): Map<string, Voice> {
+  // Keyed by sound key, as buildVoiceMap does: by Sound id for events that
+  // carry a voiceId, and by pitch string for events that have no Sound.
+  const map = new Map<string, Voice>();
   for (const s of specs) {
-    map.set(s.midi, {
+    const voice: Voice = {
       id: s.id,
       name: s.name,
       sourceType: 'midi_track',
       sourceFile: '',
       originalMidiNote: s.midi,
       color: s.color,
-    });
+    };
+    map.set(s.id, voice);
+    map.set(String(s.midi), voice);
   }
   return map;
 }
@@ -68,7 +72,7 @@ describe('Pose0-seeded drum layout', () => {
     ]);
 
     const pose0 = createDefaultPose0();
-    const layout = seedLayoutFromPose0(perf, pose0, 0, drumVoices);
+    const layout = seedLayoutFromPose0(perf, pose0, 0, { voices: drumVoices });
 
     // All voices should be placed
     const voices = Object.values(layout.padToVoice);
@@ -92,7 +96,7 @@ describe('Pose0-seeded drum layout', () => {
     ]);
 
     const pose0 = createDefaultPose0();
-    const layout = seedLayoutFromPose0(perf, pose0, 0, drumVoices);
+    const layout = seedLayoutFromPose0(perf, pose0, 0, { voices: drumVoices });
 
     const voiceIds = Object.values(layout.padToVoice).map(v => v.id);
     expect(voiceIds).toContain('stream-kick');
@@ -134,7 +138,7 @@ describe('Pose0-seeded drum layout', () => {
     ]);
 
     const pose0 = createDefaultPose0();
-    const layout = seedLayoutFromPose0(perf, pose0, 0, drumVoices);
+    const layout = seedLayoutFromPose0(perf, pose0, 0, { voices: drumVoices });
 
     const result = await generateCandidates(perf, pose0, {
       count: 3,
@@ -164,7 +168,7 @@ describe('Pose0-seeded drum layout', () => {
     ]);
 
     const pose0 = createDefaultPose0();
-    const layout = seedLayoutFromPose0(perf, pose0, 0, drumVoices);
+    const layout = seedLayoutFromPose0(perf, pose0, 0, { voices: drumVoices });
 
     const result = await generateCandidates(perf, pose0, {
       count: 1,
@@ -195,7 +199,7 @@ describe('Pose0-seeded drum layout', () => {
     ]);
 
     const pose0 = createDefaultPose0();
-    const layout = seedLayoutFromPose0(perf, pose0, 0, drumVoices);
+    const layout = seedLayoutFromPose0(perf, pose0, 0, { voices: drumVoices });
 
     // Default pose0: L_INDEX at (3,3), R_INDEX at (3,4)
     // Hi-hat (most played) should be at one of the index finger positions
@@ -256,7 +260,7 @@ describe('Pose0-seeded layout with strict-mode solver', () => {
     ]);
 
     const pose0 = createDefaultPose0();
-    const layout = seedLayoutFromPose0(perf, pose0, 0, drumVoices);
+    const layout = seedLayoutFromPose0(perf, pose0, 0, { voices: drumVoices });
 
     // Strict mode — exactly like auto-analysis path
     const solverConfig: SolverConfig = {
@@ -306,7 +310,7 @@ describe('Pose0-seeded layout with strict-mode solver', () => {
 
     const perf = createDrumPerformanceWithVoiceIds(notes);
     const pose0 = createDefaultPose0();
-    const layout = seedLayoutFromPose0(perf, pose0, 0, drumVoices);
+    const layout = seedLayoutFromPose0(perf, pose0, 0, { voices: drumVoices });
 
     const solverConfig: SolverConfig = {
       instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG,
@@ -333,7 +337,7 @@ describe('Pose0-seeded layout with strict-mode solver', () => {
     ]);
 
     const pose0 = createDefaultPose0();
-    const layout = seedLayoutFromPose0(perf, pose0, 0, drumVoices);
+    const layout = seedLayoutFromPose0(perf, pose0, 0, { voices: drumVoices });
 
     const solverConfig: SolverConfig = {
       instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG,

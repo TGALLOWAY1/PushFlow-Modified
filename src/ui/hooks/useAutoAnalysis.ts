@@ -5,8 +5,9 @@
  * a re-analysis using the beam solver (fast, count:1).
  *
  * Constraint handling (Phase 2):
- * - Placement locks (layout.placementLocks): hard constraints enforced by the
- *   mutation service — locked voices cannot be moved during candidate generation.
+ * - Placement locks (layout.placementLocks): hard constraints. Every method
+ *   pre-places locked Sounds and never moves them, and a candidate that would
+ *   break a lock is dropped (the candidate list says so).
  * - Finger constraints (layout.fingerConstraints): soft preferences passed via
  *   SolverConstraints.softPreferences — the solver biases toward them but may
  *   deviate for a globally better solution.
@@ -89,7 +90,8 @@ const AUTO_ANALYSIS_DEBOUNCE_MS = 1000;
  * The legacy `manualAssignments` parameter is preserved for backward
  * compatibility but new code should use the SolverConstraints structure.
  *
- * Uses voiceId for matching when available, falling back to noteNumber.
+ * Matches events to preferences by Sound identity (voiceId) only, never by
+ * pitch (invariant 5); an event with no Sound gets no preference.
  */
 function buildSolverConstraints(
   performance: Performance,
@@ -98,29 +100,22 @@ function buildSolverConstraints(
   const constraints = layout.fingerConstraints;
   if (!constraints || Object.keys(constraints).length === 0) return {};
 
-  // Build voiceId → {hand, finger} and noteNumber → {hand, finger} from pad constraints
+  // Build voiceId → {hand, finger} from pad constraints: a preference belongs
+  // to the Sound on the pad.
   const voiceIdConstraints = new Map<string, { hand: 'left' | 'right'; finger: FingerType }>();
-  const noteConstraints = new Map<number, { hand: 'left' | 'right'; finger: FingerType }>();
   for (const [padKey, constraintStr] of Object.entries(constraints)) {
     const voice = layout.padToVoice[padKey];
-    if (!voice) continue;
+    if (!voice?.id) continue;
     const parsed = parseFingerConstraint(constraintStr);
     if (!parsed) continue;
-    if (voice.id) {
-      voiceIdConstraints.set(voice.id, parsed);
-    }
-    if (voice.originalMidiNote != null) {
-      noteConstraints.set(voice.originalMidiNote, parsed);
-    }
+    voiceIdConstraints.set(voice.id, parsed);
   }
-  if (voiceIdConstraints.size === 0 && noteConstraints.size === 0) return {};
+  if (voiceIdConstraints.size === 0) return {};
 
-  // Map each event to its soft preference by eventKey (voiceId-first, noteNumber-fallback)
+  // Map each event to its soft preference by eventKey, through its Sound.
   const softPreferences: Record<string, { hand: 'left' | 'right'; finger: FingerType }> = {};
   for (const event of performance.events) {
-    const constraint =
-      (event.voiceId ? voiceIdConstraints.get(event.voiceId) : undefined) ??
-      noteConstraints.get(event.noteNumber);
+    const constraint = event.voiceId ? voiceIdConstraints.get(event.voiceId) : undefined;
     if (constraint && event.eventKey) {
       softPreferences[event.eventKey] = constraint;
     }
@@ -308,6 +303,7 @@ export function useAutoAnalysis() {
         // the grid and the draft's analysis are left alone (invariant 7). The
         // user tries one with Preview.
         dispatch({ type: 'SET_CANDIDATES', payload: candidates });
+        dispatch({ type: 'SET_GENERATION_SUMMARY', payload: generationResult.summary });
 
         return candidates.length;
       }
@@ -333,10 +329,13 @@ export function useAutoAnalysis() {
         manualAssignments,
         baseLayout: effectiveLayout,
         activeLayout: effectiveLayout,
+        // Sounds with no pad yet, by identity, so a seeded candidate can place them.
+        voiceHints: state.soundStreams,
       });
 
       setGenerationProgress('Ranking results...');
       dispatch({ type: 'SET_CANDIDATES', payload: generationResult.candidates });
+      dispatch({ type: 'SET_GENERATION_SUMMARY', payload: generationResult.summary });
       return generationResult.candidates.length;
     } catch (err) {
       dispatch({ type: 'SET_ERROR', payload: err instanceof Error ? err.message : 'Generation failed' });

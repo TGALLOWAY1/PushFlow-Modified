@@ -1,8 +1,13 @@
 /**
  * Pose0-based Layout Seeding.
  *
- * Deterministically seeds a full Layout from performance notes and Pose0.
- * Ensures 100% coverage before optimization.
+ * Deterministically seeds a full Layout for a performance's Sounds from Pose0
+ * (the natural hand pose), so every Sound has a pad before optimization.
+ *
+ * Sounds are placed by identity, never by pitch (invariant 5): the busiest
+ * Sounds take the anchor pads in finger-priority order, and the rest fill the
+ * remaining pads row by row. Locked Sounds are placed first, on their locked
+ * pads, and the locks are carried into the seeded layout (canon section 11).
  *
  * Ported from Version1/src/engine/seedMappingFromPose0.ts with canonical terminology.
  */
@@ -13,120 +18,126 @@ import { type Voice } from '../../types/voice';
 import { padKey } from '../../types/padGrid';
 import { type NaturalHandPose } from '../../types/ergonomicPrior';
 import { getPose0PadsWithOffset, FINGER_PRIORITY_ORDER } from '../prior/naturalHandPose';
-import { getPerformanceNoteSet } from './mappingCoverage';
 import { generateId } from '../../utils/idGenerator';
+import { buildVoiceMap, soundKeyOf } from './voiceMap';
+import { applicableLocks } from './placementLocks';
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-
-function getNoteName(midiNote: number): string {
-  const octave = Math.floor(midiNote / 12) - 2;
-  const note = NOTE_NAMES[midiNote % 12];
-  return `${note}${octave}`;
+export interface SeedFromPoseOptions {
+  /**
+   * Voice objects by sound key (voiceId, or the pitch string for an event with
+   * no Sound). Built from the base layout and the performance when omitted.
+   */
+  voices?: Map<string, Voice>;
+  /** Locks to honour. Defaults to the base layout's locks. */
+  placementLocks?: Record<string, string>;
+  /** Supplies voices and locks when the options above are omitted. */
+  baseLayout?: Layout | null;
+  /**
+   * Tie order for Sounds with equal usage: sound keys, first wins. In the app
+   * this is the Sounds panel order. Defaults to the order of `voices`.
+   */
+  soundOrder?: Iterable<string>;
 }
 
-const COLORS = [
-  '#ef4444', '#f97316', '#f59e0b', '#84cc16',
-  '#22c55e', '#10b981', '#3b82f6', '#8b5cf6',
-];
-
 /**
- * Creates a minimal Voice for a note number.
+ * The performance's Sounds, busiest first. Ties go to the Sound listed first
+ * in `tieOrder` (the Sounds panel order in the app), then to the one that
+ * appears first in the event list. The order never depends on pitch, nor on
+ * ids that differ from one import to the next.
  */
-function createVoiceForNote(noteNumber: number, index: number, voiceId?: string): Voice {
-  return {
-    id: voiceId ?? generateId('sound'),
-    name: `${getNoteName(noteNumber)} (${noteNumber})`,
-    sourceType: 'midi_track',
-    sourceFile: 'seed',
-    originalMidiNote: noteNumber,
-    color: COLORS[index % COLORS.length],
-  };
+export function orderSoundsByUsage(performance: Performance, tieOrder?: Iterable<string>): string[] {
+  const rank = new Map<string, number>();
+  for (const key of tieOrder ?? []) if (!rank.has(key)) rank.set(key, rank.size);
+  const stats = new Map<string, { count: number; order: number }>();
+  performance.events.forEach((event, index) => {
+    const key = soundKeyOf(event);
+    const entry = stats.get(key);
+    if (entry) {
+      entry.count++;
+    } else {
+      stats.set(key, { count: 1, order: index });
+    }
+  });
+  const tie = (key: string) => rank.get(key) ?? Number.MAX_SAFE_INTEGER;
+  return [...stats.entries()]
+    .sort(([keyA, a], [keyB, b]) => b.count - a.count || tie(keyA) - tie(keyB) || a.order - b.order)
+    .map(([key]) => key);
 }
 
-// ============================================================================
-// Layout Seeding
-// ============================================================================
-
 /**
- * Seeds a full Layout from performance notes using Pose0 anchor pads.
- * Deterministic: same inputs produce same layout.
+ * Seeds a full Layout for a performance using Pose0 anchor pads.
+ * Deterministic: same inputs produce the same layout.
  *
  * Algorithm:
- * 1. Sorts notes by frequency (most-used first), breaking ties by note number
- * 2. Places the most important notes on Pose0 anchor pads (finger priority order)
- * 3. Remaining notes fill remaining pads in row-major order
+ * 1. Places every locked Sound on its locked pad.
+ * 2. Orders the remaining Sounds by usage (most-played first).
+ * 3. Places them on the free Pose0 anchor pads in finger-priority order, then
+ *    on the remaining free pads in row-major order.
  *
  * @param performance - Performance with note events
  * @param pose0 - Natural hand pose (anchor pads)
  * @param offsetRow - Vertical offset 0..4 (default 0)
- * @param existingVoices - Optional map of noteNumber -> Voice for names/colors
- * @returns A fully seeded Layout
+ * @param options - Voices, locks and the base layout they default from
+ * @returns A fully seeded Layout carrying the honoured locks
  */
 export function seedLayoutFromPose0(
   performance: Performance,
   pose0: NaturalHandPose,
   offsetRow: number = 0,
-  existingVoices?: Map<number, Voice>
+  options: SeedFromPoseOptions = {},
 ): Layout {
-  const requiredNotes = getPerformanceNoteSet(performance);
+  const baseLayout = options.baseLayout ?? null;
+  const voices = options.voices ?? buildVoiceMap(performance, baseLayout);
+  const knownVoiceIds = new Set<string>(voices.keys());
+  for (const voice of Object.values(baseLayout?.padToVoice ?? {})) knownVoiceIds.add(voice.id);
+  const locks = applicableLocks(options.placementLocks ?? baseLayout?.placementLocks, knownVoiceIds);
 
-  // Sort by importance: event count desc, then noteNumber asc
-  const noteCounts = new Map<number, number>();
-  for (const e of performance.events) {
-    noteCounts.set(e.noteNumber, (noteCounts.get(e.noteNumber) ?? 0) + 1);
+  const padToVoice: Record<string, Voice> = {};
+  const occupied = new Set<string>();
+  const placed = new Set<string>();
+  const honouredLocks: Record<string, string> = {};
+
+  // 1. Locked Sounds first, on their own pads.
+  const baseVoicesById = new Map(
+    Object.values(baseLayout?.padToVoice ?? {}).map(voice => [voice.id, voice] as const),
+  );
+  for (const [voiceId, lockedPad] of Object.entries(locks)) {
+    const voice = voices.get(voiceId) ?? baseVoicesById.get(voiceId);
+    if (!voice || occupied.has(lockedPad)) continue;
+    padToVoice[lockedPad] = voice;
+    occupied.add(lockedPad);
+    placed.add(voiceId);
+    honouredLocks[voiceId] = lockedPad;
   }
-  const sortedNotes = Array.from(requiredNotes).sort((a, b) => {
-    const countA = noteCounts.get(a) ?? 0;
-    const countB = noteCounts.get(b) ?? 0;
-    if (countB !== countA) return countB - countA;
-    return a - b;
-  });
 
-  const voiceIdByNote = new Map<number, string>();
-  for (const event of performance.events) {
-    if (event.voiceId && !voiceIdByNote.has(event.noteNumber)) {
-      voiceIdByNote.set(event.noteNumber, event.voiceId);
-    }
-  }
-
-  // Get Pose0 pads with offset, ordered by finger priority
+  // 2. Anchor pads in finger-priority order, then the rest row by row.
   const posePads = getPose0PadsWithOffset(pose0, offsetRow, true);
   const orderedPosePads = FINGER_PRIORITY_ORDER.flatMap((fid) => {
     const entry = posePads.find((p) => p.fingerId === fid);
-    return entry ? [{ row: entry.row, col: entry.col }] : [];
-  }).filter((p) => p.row >= 0 && p.row <= 7 && p.col >= 0 && p.col <= 7);
-
-  // Build set of occupied pads
-  const occupied = new Set<string>();
-  for (const p of orderedPosePads) {
-    occupied.add(padKey(p.row, p.col));
-  }
-
-  // Remaining pads in row-major order
-  const remainingPads: { row: number; col: number }[] = [];
+    return entry ? [padKey(entry.row, entry.col)] : [];
+  }).filter((key) => {
+    const [row, col] = key.split(',').map(Number);
+    return row >= 0 && row <= 7 && col >= 0 && col <= 7;
+  });
+  const anchorSet = new Set(orderedPosePads);
+  const remainingPads: string[] = [];
   for (let row = 0; row < 8; row++) {
     for (let col = 0; col < 8; col++) {
-      if (!occupied.has(padKey(row, col))) {
-        remainingPads.push({ row, col });
-      }
+      const key = padKey(row, col);
+      if (!anchorSet.has(key)) remainingPads.push(key);
     }
   }
+  const freePads = [...orderedPosePads, ...remainingPads].filter((key) => !occupied.has(key));
 
-  // Assign notes to pads: anchor pads first, then remaining
-  const padToVoice: Record<string, Voice> = {};
-  const padOrder = [...orderedPosePads, ...remainingPads];
-
-  for (let i = 0; i < sortedNotes.length && i < padOrder.length; i++) {
-    const noteNumber = sortedNotes[i];
-    const pad = padOrder[i];
-    const key = padKey(pad.row, pad.col);
-    const voice = existingVoices?.get(noteNumber)
-      ?? createVoiceForNote(noteNumber, i, voiceIdByNote.get(noteNumber));
-    padToVoice[key] = { ...voice, originalMidiNote: noteNumber };
+  // 3. The remaining Sounds, busiest first.
+  let cursor = 0;
+  for (const key of orderSoundsByUsage(performance, options.soundOrder ?? voices.keys())) {
+    const voice = voices.get(key);
+    if (!voice || placed.has(key) || placed.has(voice.id)) continue;
+    if (cursor >= freePads.length) break;
+    padToVoice[freePads[cursor++]] = voice;
+    placed.add(key);
+    placed.add(voice.id);
   }
 
   return {
@@ -134,7 +145,7 @@ export function seedLayoutFromPose0(
     name: `${performance.name ?? 'Performance'} Layout`,
     padToVoice,
     fingerConstraints: {},
-    placementLocks: {},
+    placementLocks: honouredLocks,
     scoreCache: null,
     layoutMode: 'optimized',
     role: 'working' as const,

@@ -17,6 +17,7 @@ import { useState, useCallback, useRef, useEffect, useReducer, useMemo } from 'r
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useProject } from '../../state/ProjectContext';
 import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
+import { useIdentityMatchingNotice } from '../../hooks/useIdentityMatchingNotice';
 import { useAutoSave } from '../../hooks/useAutoSave';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useViewSettings, ViewSettingsProvider } from '../../state/viewSettings';
@@ -77,6 +78,7 @@ function PerformanceWorkspaceInner() {
   const { state, dispatch } = useProject();
   const navigate = useNavigate();
   const { generateFull, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason } = useAutoAnalysis();
+  useIdentityMatchingNotice(state);
   const { saveStatus, saveNow } = useAutoSave(state);
   useKeyboardShortcuts();
   const { settings: viewSettings } = useViewSettings();
@@ -251,7 +253,8 @@ function PerformanceWorkspaceInner() {
         name: lane?.name ?? 'Preset Pad',
         sourceType: 'midi_track' as const,
         sourceFile: `preset:${preset.name}`,
-        originalMidiNote: lane?.midiNote ?? 36,
+        // Provenance only; a preset lane without a pitch has none (invariant 5).
+        originalMidiNote: lane?.midiNote ?? null,
         color: lane?.color ?? '#888',
       };
     }
@@ -431,7 +434,8 @@ function PerformanceWorkspaceInner() {
         name: lane?.name ?? 'Preset Pad',
         sourceType: 'midi_track' as const,
         sourceFile: `preset:${instance.presetName}`,
-        originalMidiNote: lane?.midiNote ?? 36,
+        // Provenance only; a preset lane without a pitch has none (invariant 5).
+        originalMidiNote: lane?.midiNote ?? null,
         color: lane?.color ?? '#888',
       };
     }

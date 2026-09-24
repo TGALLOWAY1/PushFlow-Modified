@@ -75,11 +75,18 @@ export function buildVoiceIdToPadIndex(padToVoice: Record<string, Voice>): Map<s
 }
 
 /**
- * Resolves a performance event to a pad using voiceId-first, noteNumber-fallback strategy.
+ * Resolves a performance event to a pad by its Sound.
  *
- * Priority:
- * 1. If voiceId is present and exists in voiceIdIndex → use it (stable identity)
- * 2. Else fall back to noteNumber-based resolution via resolveNoteToPad
+ * An event that belongs to a Sound (`voiceId` present) is resolved by that
+ * Sound's identity only. If the Sound has no pad, the event is unmapped: it
+ * never borrows the pad of another Sound that happens to share its pitch
+ * (invariant 5; T18). In 'allow-fallback' mode, used only for previews of a
+ * layout that places nothing, the chromatic grid position stands in.
+ *
+ * Only an event with no Sound at all (`voiceId` undefined) is resolved by
+ * pitch, because pitch is then the only identity it has. Callers state that
+ * absence explicitly (PerformanceEvent.voiceId, NoteInstance.voiceId); it is
+ * never inferred from what an id looks like.
  */
 export function resolveEventToPad(
   event: { noteNumber: number; voiceId?: string },
@@ -88,14 +95,13 @@ export function resolveEventToPad(
   instrumentConfig: InstrumentConfig,
   mode: 'strict' | 'allow-fallback',
 ): MappingResolution {
-  // Prefer voiceId when available
-  if (event.voiceId) {
+  if (event.voiceId !== undefined) {
     const fromVoiceId = voiceIdIndex.get(event.voiceId);
     if (fromVoiceId) {
       return { source: 'mapping', pad: fromVoiceId };
     }
+    return chromaticFallback(event.noteNumber, instrumentConfig, mode);
   }
-  // Fall back to pitch-based lookup
   return resolveNoteToPad(event.noteNumber, noteIndex, instrumentConfig, mode);
 }
 
@@ -149,13 +155,21 @@ export function resolveNoteToPad(
     return { source: 'mapping', pad: fromMapping };
   }
 
+  return chromaticFallback(noteNumber, instrumentConfig, mode);
+}
+
+/** The chromatic grid position in 'allow-fallback' mode; unmapped otherwise. */
+function chromaticFallback(
+  noteNumber: number,
+  instrumentConfig: InstrumentConfig,
+  mode: 'strict' | 'allow-fallback',
+): MappingResolution {
   if (mode === 'allow-fallback') {
     const pad = noteToGrid(noteNumber, instrumentConfig);
     if (pad) {
       return { source: 'fallback', pad };
     }
   }
-
   return { source: 'unmapped' };
 }
 

@@ -60,14 +60,10 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
   const badgeSize = compact ? 'text-[6px]' : 'text-[7px]';
   const zoneWidth = compact ? 'w-[calc(4*2.5rem+3*0.25rem)]' : 'w-[calc(4*3.5rem+3*0.25rem)]';
   const rowLabelWidth = compact ? 'w-3 text-pf-micro' : 'w-4 text-pf-xs';
-  // Build voice lookup by originalMidiNote
-  const voiceByNote = useMemo(() => {
-    const map = new Map<number, Voice>();
-    for (const v of voices) {
-      if (v.originalMidiNote !== null) {
-        map.set(v.originalMidiNote, v);
-      }
-    }
+  // Voices by Sound identity, never by pitch (invariant 5)
+  const voiceById = useMemo(() => {
+    const map = new Map<string, Voice>();
+    for (const v of voices) map.set(v.id, v);
     return map;
   }, [voices]);
 
@@ -81,9 +77,9 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
         const key = `${a.row},${a.col}`;
         let summary = map.get(key);
         if (!summary) {
-          const voice = voiceByNote.get(a.noteNumber);
+          const voice = a.voiceId ? voiceById.get(a.voiceId) : undefined;
           summary = {
-            voiceName: voice?.name ?? `N${a.noteNumber}`,
+            voiceName: voice?.name ?? 'Unknown Sound',
             voiceColor: voice?.color ?? null,
             noteNumber: a.noteNumber,
             hands: new Set(),
@@ -101,7 +97,7 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
     }
 
     return map;
-  }, [assignments, voiceByNote]);
+  }, [assignments, voiceById]);
 
   // Find selected assignment's pad
   const selectedAssignment = assignments?.find(a => a.eventIndex === selectedEventIndex);

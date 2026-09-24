@@ -82,7 +82,8 @@ export function ActiveLayoutSummary() {
   );
 
   // Event detail helpers
-  const stream = assignment ? activeStreams.find(s => s.originalMidiNote === assignment.noteNumber) : null;
+  // The event's Sound, by identity and never by pitch (invariant 5).
+  const stream = assignment?.voiceId ? activeStreams.find(s => s.id === assignment.voiceId) ?? null : null;
   const padKey = assignment?.row !== undefined && assignment?.col !== undefined
     ? `${assignment.row},${assignment.col}`
     : null;
@@ -279,7 +280,7 @@ export function ActiveLayoutSummary() {
               </div>
 
               <div className="grid grid-cols-3 gap-1.5">
-                <DetailChip label="Sound" value={stream?.name ?? `Note ${assignment.noteNumber}`} />
+                <DetailChip label="Sound" value={stream?.name ?? 'Unknown Sound'} />
                 <DetailChip label="Time" value={`${assignment.startTime.toFixed(3)}s`} />
                 <DetailChip label="Pad" value={padKey ?? '—'} />
                 <DetailChip

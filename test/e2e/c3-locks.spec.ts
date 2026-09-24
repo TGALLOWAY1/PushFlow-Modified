@@ -1,16 +1,17 @@
 /**
- * C3 · Beam and Annealing ignore and delete placement locks (T11).
+ * C3 · Placement locks are honoured by every method and every drag (T11).
  *
- * Register root cause: Beam and Annealing runs never receive the placement
- * locks (useAutoAnalysis.ts), and generateCandidates re-seeds every candidate
- * from the natural hand pose rather than the current grid, returning
- * placementLocks {}. Manual drags ignore locks too.
+ * Register root cause (fixed in S1a.3): Beam and Annealing re-seeded every
+ * candidate from the natural hand pose by pitch, returning placementLocks {},
+ * and manual drags ignored locks too. Now every method pre-places locked
+ * Sounds, a candidate that moves one is dropped, and a locked pad refuses
+ * drag-out and drop-onto.
  *
  * Runs greedy (one strategy, to keep it short), beam and annealing Quick; deep
- * annealing runs nightly (test/nightly). All expected-fail cases flip in S1a.3.
+ * annealing runs nightly (test/nightly).
  */
 
-import { test, expect, EXPECTED_FAIL } from './fixtures';
+import { test, expect } from './fixtures';
 import { openTestMidi1, placeSounds, chooseMethod, generateAndWait, shownPads, dragPad } from './project';
 import type { Page } from '@playwright/test';
 import type { PfHandle } from './fixtures';
@@ -58,7 +59,6 @@ test.describe('C3 · placement locks', () => {
   });
 
   test('beam: a lock at [7,0] holds in every candidate', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C3: beam candidates are re-seeded from the hand pose and drop the lock (flips in S1a.3)');
     const lockedId = await placeAndLock(page, pf);
     await chooseMethod(page, 'Beam');
     await generateAndWait(page, pf);
@@ -66,7 +66,6 @@ test.describe('C3 · placement locks', () => {
   });
 
   test('annealing Quick: a lock at [7,0] holds in every candidate', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C3: annealing Quick runs the same re-seeding path and drops the lock (flips in S1a.3)');
     const lockedId = await placeAndLock(page, pf);
     await chooseMethod(page, 'Annealing');
     await page.getByTitle('Intensity').selectOption({ label: 'Quick' });
@@ -75,14 +74,12 @@ test.describe('C3 · placement locks', () => {
   });
 
   test('dragging another pad onto the locked pad is refused', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C3: pad drops ignore placement locks (flips in S1a.3)');
     const lockedId = await placeAndLock(page, pf);
     await dragPad(page, '7,1', '7,0');
     expect((await shownPads(pf))[LOCK_PAD]).toBe(lockedId);
   });
 
   test('dragging the locked Sound off its pad is refused', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C3: a locked pad can be dragged out (flips in S1a.3)');
     const lockedId = await placeAndLock(page, pf);
     await dragPad(page, '7,0', '4,4');
     const pads = await shownPads(pf);

@@ -145,7 +145,7 @@ function rankFingerOptions(col: number): Array<{ hand: HandSide; finger: FingerT
  */
 export function buildFingerAssignmentFromLayout(
   layout: Layout,
-  moments?: Array<{ notes: Array<{ padId?: string; soundId?: string; noteNumber?: number }> }>,
+  moments?: Array<{ notes: Array<{ padId?: string; soundId?: string; voiceId?: string; noteNumber?: number }> }>,
   /**
    * Per-Sound finger preferences set by the user, keyed by voice id.
    *
@@ -185,13 +185,14 @@ export function buildFingerAssignmentFromLayout(
   const noteToPad = buildNoteToPadIndex(layout.padToVoice);
 
   const knownPads = new Set(padKeys);
-  const resolvePad = (note: { padId?: string; soundId?: string; noteNumber?: number }) => {
+  // By Sound identity when the note has a Sound, by pitch only when it has
+  // none: an unplaced Sound never borrows a same-pitch Sound's pad (T18).
+  const resolvePad = (note: { padId?: string; soundId?: string; voiceId?: string; noteNumber?: number }) => {
     if (note.padId && knownPads.has(note.padId)) return note.padId;
-    const byVoice = note.soundId ? voiceIdToPad.get(note.soundId) : undefined;
-    if (byVoice) return padKey(byVoice.row, byVoice.col);
-    const byNote = note.noteNumber != null ? noteToPad.get(note.noteNumber) : undefined;
-    if (byNote) return padKey(byNote.row, byNote.col);
-    return null;
+    const coord = note.voiceId !== undefined
+      ? voiceIdToPad.get(note.voiceId)
+      : note.noteNumber != null ? noteToPad.get(note.noteNumber) : undefined;
+    return coord ? padKey(coord.row, coord.col) : null;
   };
 
   const coOccurring = new Map<string, Set<string>>();

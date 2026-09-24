@@ -36,6 +36,8 @@ import {
 import { type Section } from '../../types/performanceStructure';
 import { type FingerType } from '../../types/fingerModel';
 import { seedLayoutFromPose0 } from '../mapping/seedFromPose';
+import { buildVoiceMap, type VoiceHint } from '../mapping/voiceMap';
+import { applicableLocks, findLockViolations } from '../mapping/placementLocks';
 import { getMaxSafeOffset, poseHasAssignments, fingerIdToHandAndFingerType, getPose0PadsWithOffset } from '../prior/naturalHandPose';
 import { createAnnealingSolver } from './annealingSolver';
 import { createBeamSolver } from '../solvers/beamSolver';
@@ -142,6 +144,11 @@ export interface CandidateGenerationConfig {
    * Cost toggles for the optimizer. Required when optimizationMethod is 'greedy'.
    */
   costToggles?: import('../../types/costToggles').CostToggles;
+  /**
+   * The project's Sounds (name, colour, id) for Sounds that have no pad yet, so
+   * a seeded layout can place them by identity. Matched by id, never by pitch.
+   */
+  voiceHints?: ReadonlyArray<VoiceHint>;
 }
 
 // ============================================================================
@@ -169,11 +176,14 @@ interface CandidateStrategy {
  * Generates a compact layout by clustering all voices from the base layout
  * into adjacent pads within a hand zone.
  *
- * Voices are sorted by MIDI note (low → high) and packed into a tight
- * rectangular block, centered in the target zone. The block is at most
- * 4 columns wide (matching natural hand span).
+ * Locked Sounds stay on their locked pads (canon section 11) and the locks are
+ * carried into the result. The other voices keep the base layout's reading
+ * order (row by row, left to right — never pitch, invariant 5) and are packed
+ * into a tight rectangular block, centred in the target zone and at most 4
+ * columns wide (matching natural hand span), skipping any locked pad inside it.
  *
- * Returns null if the voices can't fit in the target zone.
+ * Returns null if the voices can't fit in the target zone, or if the result
+ * would be identical to the base layout.
  */
 function generateCompactLayout(
   baseLayout: Layout,
@@ -181,16 +191,35 @@ function generateCompactLayout(
   rows: number,
   cols: number,
 ): Layout | null {
-  const voices = Object.values(baseLayout.padToVoice);
-  if (voices.length === 0) return null;
+  const entries = Object.entries(baseLayout.padToVoice);
+  if (entries.length === 0) return null;
 
-  // Sort voices by MIDI note for consistent left-to-right ordering
-  const sorted = [...voices].sort(
-    (a, b) => (a.originalMidiNote ?? 0) - (b.originalMidiNote ?? 0),
-  );
+  const knownIds = new Set(entries.map(([, voice]) => voice.id));
+  const locks = applicableLocks(baseLayout.placementLocks, knownIds);
+
+  const padToVoice: Layout['padToVoice'] = {};
+  const occupied = new Set<string>();
+  const honouredLocks: Record<string, string> = {};
+  for (const [voiceId, lockedPad] of Object.entries(locks)) {
+    const voice = entries.find(([, v]) => v.id === voiceId)?.[1];
+    if (!voice || occupied.has(lockedPad)) continue;
+    padToVoice[lockedPad] = voice;
+    occupied.add(lockedPad);
+    honouredLocks[voiceId] = lockedPad;
+  }
+
+  // Unlocked voices in the base layout's reading order.
+  const byPad = (key: string) => {
+    const [row, col] = key.split(',').map(Number);
+    return row * cols + col;
+  };
+  const movable = entries
+    .filter(([, voice]) => !honouredLocks[voice.id])
+    .sort(([a], [b]) => byPad(a) - byPad(b))
+    .map(([, voice]) => voice);
 
   // Calculate cluster dimensions: prefer wide over tall (natural hand shape)
-  const count = sorted.length;
+  const count = entries.length;
   const clusterCols = Math.min(count, 4);
   const clusterRows = Math.ceil(count / clusterCols);
 
@@ -207,14 +236,17 @@ function generateCompactLayout(
   if (anchorRow < 0 || anchorRow + clusterRows > rows) return null;
   if (anchorCol < 0 || anchorCol + clusterCols > cols) return null;
 
-  const padToVoice: Layout['padToVoice'] = {};
-  let i = 0;
-  for (let r = 0; r < clusterRows && i < count; r++) {
-    for (let c = 0; c < clusterCols && i < count; c++) {
-      padToVoice[`${anchorRow + r},${anchorCol + c}`] = sorted[i];
-      i++;
+  const blockPads: string[] = [];
+  for (let r = 0; r < clusterRows; r++) {
+    for (let c = 0; c < clusterCols; c++) {
+      const key = `${anchorRow + r},${anchorCol + c}`;
+      if (!occupied.has(key)) blockPads.push(key);
     }
   }
+  if (blockPads.length < movable.length) return null; // Locked pads leave no room
+  movable.forEach((voice, i) => {
+    padToVoice[blockPads[i]] = voice;
+  });
 
   // Check that the new layout is actually different from the base
   const baseKeys = new Set(Object.keys(baseLayout.padToVoice));
@@ -235,6 +267,7 @@ function generateCompactLayout(
     id: generateId('layout'),
     padToVoice,
     fingerConstraints: {},
+    placementLocks: honouredLocks,
     scoreCache: null,
     layoutMode: 'optimized' as const,
   };
@@ -346,6 +379,14 @@ export async function generateCandidates(
   const strategies = generateStrategies(pose0, count);
   const candidates: CandidateSolution[] = [];
 
+  // Every Sound by identity (layout voices first, then the project's Sounds),
+  // and the locks a candidate must honour: those whose Sound exists.
+  const voices = buildVoiceMap(performance, config.baseLayout, config.voiceHints);
+  const knownVoiceIds = new Set<string>(voices.keys());
+  for (const voice of Object.values(config.baseLayout?.padToVoice ?? {})) knownVoiceIds.add(voice.id);
+  const locks = applicableLocks(config.baseLayout?.placementLocks, knownVoiceIds);
+  let droppedForLocks = 0;
+
   for (const strategy of strategies) {
     const startTime = Date.now();
 
@@ -354,19 +395,16 @@ export async function generateCandidates(
     const ls = strategy.layoutStrategy;
 
     if (ls.type === 'pose0-offset') {
-      // Pose0-based: seed layout from natural hand pose with offset.
-      // Extract existing voices from baseLayout to preserve voiceId chain.
-      let existingVoices: Map<number, import('../../types/voice').Voice> | undefined;
-      if (config.baseLayout) {
-        existingVoices = new Map();
-        for (const voice of Object.values(config.baseLayout.padToVoice)) {
-          if (voice.originalMidiNote != null) {
-            existingVoices.set(voice.originalMidiNote, voice);
-          }
-        }
-      }
+      // Pose0-based: seed a layout from the natural hand pose with this offset.
+      // Sounds are placed by identity, locked Sounds first on their locked pads,
+      // and the locks travel with the seeded layout.
       layout = pose0 && poseHasAssignments(pose0)
-        ? seedLayoutFromPose0(performance, pose0, ls.offsetRow, existingVoices)
+        ? seedLayoutFromPose0(performance, pose0, ls.offsetRow, {
+            voices,
+            placementLocks: locks,
+            baseLayout: config.baseLayout,
+            soundOrder: config.voiceHints?.map(hint => hint.id),
+          })
         : config.baseLayout ?? {
             id: generateId('layout'),
             name: `Generated Layout (${strategy.name})`,
@@ -441,7 +479,7 @@ export async function generateCandidates(
         initialPadOwnership,
       };
       const solver = createAnnealingSolver(solverConfig);
-      executionPlan = await solver.solve(performance, candidateEngineConfig);
+      executionPlan = await solver.solve(performance, candidateEngineConfig, config.manualAssignments);
       finalLayout = solver.getBestLayout() ?? layout;
     } else {
       // Run beam search only (no annealing requested or empty layout)
@@ -454,6 +492,15 @@ export async function generateCandidates(
       };
       const solver = createBeamSolver(solverConfig);
       executionPlan = await solver.solve(performance, candidateEngineConfig, config.manualAssignments);
+    }
+
+    // Post-validation: a candidate that moved a locked Sound is dropped, and
+    // the list header says so. A surviving candidate keeps the layout its plan
+    // was computed on (the seed and the compact layouts already carry the
+    // locks they honour), so the plan's layout binding still matches it.
+    if (findLockViolations(locks, finalLayout).length > 0) {
+      droppedForLocks++;
+      continue;
     }
 
     const sections = config.sections ?? [];
@@ -545,10 +592,11 @@ export async function generateCandidates(
 
   // Build generation summary (includes low-diversity explanation)
   const summary = buildGenerationSummary(
-    candidates.length,
+    candidates.length + droppedForLocks,
     duplicatesRemoved,
     finalCandidates,
     activeLayout,
+    droppedForLocks,
   );
 
   return { candidates: finalCandidates, summary };
