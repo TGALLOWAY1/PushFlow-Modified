@@ -58,5 +58,6 @@ const ACTION_LABELS: Partial<Record<ProjectAction['type'], string>> = {
 
 /** The undo step name for a single recorded dispatch. */
 export function historyLabelFor(action: ProjectAction): string {
+  if (action.type === 'UPSERT_LANE_SOURCE' && action.payload.notesOnly) return 'Composer edit';
   return ACTION_LABELS[action.type] ?? 'Edit';
 }

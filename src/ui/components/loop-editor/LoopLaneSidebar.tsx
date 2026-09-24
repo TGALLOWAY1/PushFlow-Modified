@@ -13,8 +13,8 @@ interface LoopLaneSidebarProps {
   dispatch: React.Dispatch<LoopEditorAction>;
   /** Per-lane finger assignments, keyed by lane ID. */
   fingerAssignments?: Record<string, LaneFingerAssignment>;
-  /** Callback when a lane's finger assignment changes. */
-  onFingerAssignmentChange?: (laneId: string, assignment: LaneFingerAssignment) => void;
+  /** Callback when a lane's finger assignment changes; null clears it. */
+  onFingerAssignmentChange?: (laneId: string, assignment: LaneFingerAssignment | null) => void;
   /** Callback to add a new lane. */
   onAddLane?: () => void;
   /** Per-lane pad positions (e.g. "3,5"), keyed by lane ID. */

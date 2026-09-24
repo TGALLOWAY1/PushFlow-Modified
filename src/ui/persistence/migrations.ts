@@ -16,8 +16,10 @@
  * version 0; projectSerializer converts them to version 1 before this runner
  * sees them.
  *
- * Later phases add their migrations to MIGRATIONS (S1a.5 preset fingerings,
- * and so on), bumping PERSISTED_SCHEMA_VERSION with each.
+ * Later phases add their migrations to MIGRATIONS, bumping
+ * PERSISTED_SCHEMA_VERSION with each. The global Composer preset store is not
+ * part of a project and runs its own list through the same runner
+ * (presetMigrations.ts, S1a.5 preset fingerings).
  */
 
 import { PERSISTED_SCHEMA_VERSION } from './persistedProject';

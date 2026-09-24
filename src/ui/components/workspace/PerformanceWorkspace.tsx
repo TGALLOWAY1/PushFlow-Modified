@@ -13,7 +13,7 @@
  * - Bottom drawer: Pattern Composer (collapsible)
  */
 
-import { useState, useCallback, useRef, useEffect, useReducer, useMemo } from 'react';
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, useReducer, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useProject } from '../../state/ProjectContext';
 import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
@@ -23,7 +23,7 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { exportProjectToFile } from '../../persistence/projectStorage';
 import { useToast } from '../shared/Toast';
 import { useViewSettings, ViewSettingsProvider } from '../../state/viewSettings';
-import { getDisplayedCandidate, getSelectedCandidate } from '../../state/projectState';
+import { getDisplayedCandidate, getSelectedCandidate, isPadLocked, placementDisturbsLock } from '../../state/projectState';
 
 import { WorkspaceToolbar } from './WorkspaceToolbar';
 import { VoicePalette } from '../VoicePalette';
@@ -44,6 +44,7 @@ import {
   type ComposerPreset,
   type PresetDragPreview,
   createInitialComposerWorkspaceState,
+  presetPadFingerConstraint,
 } from '../../../types/composerPreset';
 import {
   composerWorkspaceReducer,
@@ -67,6 +68,32 @@ const LEFT_DEFAULT = 320;
 const RIGHT_MIN = 280;
 const RIGHT_MAX = 600;
 const RIGHT_DEFAULT = 340;
+
+/**
+ * One bottom-drawer tab's content. The inactive panel stays mounted but is not
+ * displayed and is inert: nothing in it can take focus, clicks or keys.
+ */
+function DrawerPanel({ tab, active, className = '', children }: {
+  tab: TimelineTab;
+  active: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (ref.current) ref.current.inert = !active;
+  }, [active]);
+  return (
+    <div
+      ref={ref}
+      data-testid={`drawer-panel-${tab}`}
+      aria-hidden={!active}
+      className={`h-full ${active ? '' : 'hidden'} ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
 
 export function PerformanceWorkspace() {
   return (
@@ -268,27 +295,25 @@ function PerformanceWorkspaceInner() {
         color: lane?.color ?? '#888',
       };
     }
+    // A placement that would disturb a lock is refused as a whole, before
+    // anything (pads, fingers, the placed instance) is recorded.
+    if (placementDisturbsLock(state.workingLayout ?? state.activeLayout, padToVoice)) {
+      window.alert('Cannot place preset here:\nLocked \u00b7 Unlock to move');
+      return;
+    }
     dispatch({ type: 'MERGE_ASSIGN_PADS', payload: padToVoice });
 
-    // Set finger constraints for placed pads
+    // Set finger constraints for placed pads; unverified fingering is not applied (F9-12)
     for (const pad of preset.pads) {
-      const absRow = anchorRow + pad.position.rowOffset;
-      const absCol = anchorCol + pad.position.colOffset;
-      const key = padKey(absRow, absCol);
-      const handChar = pad.hand === 'left' ? 'L' : 'R';
-      const fingerMap: Record<string, number> = {
-        thumb: 1, index: 2, middle: 3, ring: 4, pinky: 5,
-      };
-      const fingerNum = fingerMap[pad.finger] ?? 2;
-      dispatch({
-        type: 'SET_FINGER_CONSTRAINT',
-        payload: { padKey: key, constraint: `${handChar}${fingerNum}` },
-      });
+      const constraint = presetPadFingerConstraint(pad);
+      if (!constraint) continue;
+      const key = padKey(anchorRow + pad.position.rowOffset, anchorCol + pad.position.colOffset);
+      dispatch({ type: 'SET_FINGER_CONSTRAINT', payload: { padKey: key, constraint } });
     }
 
     // Add to workspace state
     composerDispatch({ type: 'PLACE_PRESET', instance });
-  }, [dispatch, occupiedPads, draggingPreset]);
+  }, [dispatch, occupiedPads, draggingPreset, state.workingLayout, state.activeLayout]);
 
   // Resizable panel state
   const [leftWidth, setLeftWidth] = useState(LEFT_DEFAULT);
@@ -415,6 +440,12 @@ function PerformanceWorkspaceInner() {
         instance.anchorCol + pad.position.colOffset,
       ));
     }
+    // A locked Sound is not moved by a mirror (canon section 11).
+    const shownLayout = state.workingLayout ?? state.activeLayout;
+    if ([...currentPadKeys].some(k => isPadLocked(shownLayout, k))) {
+      window.alert('Cannot mirror here:\nLocked \u00b7 Unlock to move');
+      return;
+    }
     const occupiedWithoutSelf = new Set([...occupiedPads].filter(k => !currentPadKeys.has(k)));
     const validation = validatePlacement(mirroredPads, instance.anchorRow, instance.anchorCol, occupiedWithoutSelf);
 
@@ -451,20 +482,12 @@ function PerformanceWorkspaceInner() {
     }
     dispatch({ type: 'MERGE_ASSIGN_PADS', payload: newPadToVoice });
 
-    // Set finger constraints for mirrored pads
+    // Set finger constraints for mirrored pads; unverified fingering is not applied (F9-12)
     for (const pad of mirroredPads) {
-      const absRow = instance.anchorRow + pad.position.rowOffset;
-      const absCol = instance.anchorCol + pad.position.colOffset;
-      const key = padKey(absRow, absCol);
-      const handChar = pad.hand === 'left' ? 'L' : 'R';
-      const fingerMap: Record<string, number> = {
-        thumb: 1, index: 2, middle: 3, ring: 4, pinky: 5,
-      };
-      const fingerNum = fingerMap[pad.finger] ?? 2;
-      dispatch({
-        type: 'SET_FINGER_CONSTRAINT',
-        payload: { padKey: key, constraint: `${handChar}${fingerNum}` },
-      });
+      const constraint = presetPadFingerConstraint(pad);
+      if (!constraint) continue;
+      const key = padKey(instance.anchorRow + pad.position.rowOffset, instance.anchorCol + pad.position.colOffset);
+      dispatch({ type: 'SET_FINGER_CONSTRAINT', payload: { padKey: key, constraint } });
     }
 
     // Update workspace state
@@ -474,7 +497,7 @@ function PerformanceWorkspaceInner() {
       mirroredPads,
       boundingBox: instance.boundingBox,
     });
-  }, [composerWorkspace.placedInstances, dispatch, occupiedPads]);
+  }, [composerWorkspace.placedInstances, dispatch, occupiedPads, state.workingLayout, state.activeLayout]);
 
   // Compute highlighted stream IDs for the selected instance (for timeline sync)
   const highlightedStreamIds = useMemo(() => {
@@ -699,15 +722,19 @@ function PerformanceWorkspaceInner() {
                 Composer
               </button>
             </div>
-            {/* Tab content */}
+            {/* Tab content. Both tabs stay mounted, so a tab switch never stops
+                playback or drops a pending Composer edit (T60, T67); the
+                inactive one is hidden and inert. */}
             <div className="flex-1 min-h-0 overflow-hidden">
-              {timelineTab === 'timeline' ? (
-                <UnifiedTimeline highlightedStreamIds={highlightedStreamIds} />
-              ) : (
-                <div className="h-full overflow-auto">
-                  <WorkspacePatternStudio />
-                </div>
-              )}
+              <DrawerPanel tab="timeline" active={timelineTab === 'timeline'}>
+                <UnifiedTimeline
+                  highlightedStreamIds={highlightedStreamIds}
+                  isVisible={timelineTab === 'timeline'}
+                />
+              </DrawerPanel>
+              <DrawerPanel tab="composer" active={timelineTab === 'composer'} className="overflow-auto">
+                <WorkspacePatternStudio isActive={timelineTab === 'composer'} />
+              </DrawerPanel>
             </div>
           </div>
         </div>

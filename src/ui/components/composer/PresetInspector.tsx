@@ -9,7 +9,7 @@
  */
 
 import { useMemo, useState, useCallback } from 'react';
-import { type ComposerPreset, type PresetPad, type PlacedPresetInstance, computeHandedness, isMirrorEligible } from '../../../types/composerPreset';
+import { type ComposerPreset, type PresetPad, type PlacedPresetInstance, computeHandedness, isMirrorEligible, isPresetFingerVerified } from '../../../types/composerPreset';
 import { type FingerType } from '../../../types/fingerModel';
 import { GRID_ROWS, GRID_COLS } from '../../../types/padGrid';
 import { totalSteps } from '../../../types/loopEditor';
@@ -105,6 +105,11 @@ export function PresetInspector({ preset, instance, onRemoveInstance, onMirrorIn
                 <span className="text-gray-600">
                   {FINGER_LABELS[pad.finger]}
                 </span>
+                {!isPresetFingerVerified(pad) && (
+                  <span className="text-amber-300/80" title="Not a finger preference when saved; not applied on placement">
+                    unverified
+                  </span>
+                )}
               </div>
             );
           })}

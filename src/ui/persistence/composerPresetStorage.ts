@@ -8,15 +8,37 @@
 
 import { type ComposerPreset } from '../../types/composerPreset';
 import { generateId } from '../../utils/idGenerator';
+import { needsMigration, runMigrations } from './migrations';
+import { PRESET_MIGRATIONS, PRESET_STORE_VERSION } from './presetMigrations';
 
 const STORAGE_KEY = 'pushflow_composer_presets';
+/** The store's schema version (absent = 0, from before versioning). */
+const VERSION_KEY = 'pushflow_composer_presets_version';
+/** The untouched list, written before a migration: `${BACKUP_KEY_PREFIX}${fromVersion}`. */
+export const PRESET_BACKUP_KEY_PREFIX = 'pushflow_composer_presets_backup_v';
 
-/** Load all composer presets from localStorage. */
+/**
+ * Load all composer presets from localStorage, migrating the store first when
+ * it is older than PRESET_STORE_VERSION: the untouched list is backed up, then
+ * the migrated list is written. If the backup cannot be written, the store is
+ * left as it is and the migrated list is returned without being saved, so old
+ * fingering is still never applied.
+ */
 export function loadComposerPresets(): ComposerPreset[] {
   try {
     const json = localStorage.getItem(STORAGE_KEY);
     if (!json) return [];
-    return JSON.parse(json) as ComposerPreset[];
+    const presets = JSON.parse(json) as unknown;
+    const record = { schemaVersion: Number(localStorage.getItem(VERSION_KEY) ?? 0), presets };
+    if (!needsMigration(record, PRESET_STORE_VERSION)) return presets as ComposerPreset[];
+    const migrated = runMigrations(record, PRESET_MIGRATIONS).record.presets as ComposerPreset[];
+    try {
+      localStorage.setItem(`${PRESET_BACKUP_KEY_PREFIX}${record.schemaVersion}`, json);
+    } catch {
+      return migrated;
+    }
+    writePresets(migrated);
+    return migrated;
   } catch {
     return [];
   }
@@ -102,6 +124,7 @@ export function renameComposerPreset(
 function writePresets(presets: ComposerPreset[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
+    localStorage.setItem(VERSION_KEY, String(PRESET_STORE_VERSION));
   } catch {
     // localStorage full — silently fail
     console.warn('Failed to save composer presets: localStorage may be full');

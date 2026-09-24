@@ -50,7 +50,10 @@ export function LoopGridCanvas({
   const spb = stepsPerBar(config.subdivision);
   const sortedLanes = [...lanes].sort((a, b) => a.orderIndex - b.orderIndex);
 
-  // Measure container width to compute dynamic cell sizing
+  // Measure container width to compute dynamic cell sizing. The container is a
+  // different element with and without lanes, so observe whichever is mounted.
+  // While the Composer tab is hidden it measures 0; it re-measures when shown.
+  const hasLanes = sortedLanes.length > 0;
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -62,7 +65,7 @@ export function LoopGridCanvas({
     observer.observe(el);
     setContainerWidth(el.clientWidth);
     return () => observer.disconnect();
-  }, []);
+  }, [hasLanes]);
 
   const cellWidth = containerWidth > 0
     ? Math.max(MIN_CELL_WIDTH, containerWidth / steps)
@@ -177,6 +180,8 @@ export function LoopGridCanvas({
               return (
                 <div
                   key={step}
+                  data-testid={`composer-cell-${laneIndex}-${step}`}
+                  data-on={hasEvent ? 'true' : undefined}
                   className="relative cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
                   style={{ width: cellWidth, height: CELL_HEIGHT }}
                   onClick={() => handleCellClick(lane.id, step)}
@@ -231,7 +236,7 @@ export function LoopGridCanvas({
 
   return (
     <div ref={containerRef} className="flex-1 min-w-0 overflow-hidden overflow-y-auto relative">
-      {containerWidth > 0 && renderGrid()}
+      {renderGrid()}
     </div>
   );
 }

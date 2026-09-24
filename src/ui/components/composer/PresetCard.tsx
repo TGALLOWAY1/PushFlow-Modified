@@ -7,7 +7,7 @@
  */
 
 import { useMemo, type DragEvent } from 'react';
-import { type ComposerPreset, type PresetPad } from '../../../types/composerPreset';
+import { type ComposerPreset, type PresetPad, hasUnverifiedFingering } from '../../../types/composerPreset';
 import { GRID_ROWS, GRID_COLS } from '../../../types/padGrid';
 import { totalSteps } from '../../../types/loopEditor';
 
@@ -126,6 +126,14 @@ export function PresetCard({
         <span className="text-[10px] text-gray-500">
           {preset.pads.length === 0 ? 'pattern only' : `${preset.pads.length} pads`} · {preset.events.length} events
         </span>
+        {preset.pads.length > 0 && hasUnverifiedFingering(preset.pads) && (
+          <span
+            className="text-[10px] text-amber-300/80"
+            title="Some fingering in this preset was not a finger preference when it was saved. It is shown for reference and not applied when you place the preset."
+          >
+            Fingering unverified
+          </span>
+        )}
         <div className="flex-1" />
         {/* Action buttons (visible on hover) */}
         <div className="hidden group-hover:flex items-center gap-1">

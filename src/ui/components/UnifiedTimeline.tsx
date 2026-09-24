@@ -42,9 +42,14 @@ const HAND_COLORS: Record<string, { bg: string; text: string }> = {
 interface UnifiedTimelineProps {
   /** Stream IDs to highlight (e.g., from a selected placed preset instance). */
   highlightedStreamIds?: Set<string>;
+  /**
+   * False while the drawer shows another tab. The timeline stays mounted (so
+   * playback carries on), and re-measures its container when shown again.
+   */
+  isVisible?: boolean;
 }
 
-export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps = {}) {
+export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: UnifiedTimelineProps = {}) {
   const { state, dispatch } = useProject();
   const { importFiles } = useLaneImport();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -222,19 +227,24 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
   }, [state.isPlaying, dispatch]);
 
   // Auto-fit zoom: measure container width and fill it with the clip
-  // Re-measure when totalDuration changes (e.g. after MIDI import)
+  // Re-measure when totalDuration changes (e.g. after MIDI import), and when the
+  // drawer shows the timeline again: while hidden it measures 0, so a window
+  // resize during that time is caught only on return (T60).
   const [containerWidth, setContainerWidth] = useState(0);
   useEffect(() => {
     const el = scrollContainerRef.current;
-    if (!el) return;
-    const measure = () => setContainerWidth(el.clientWidth);
+    if (!el || !isVisible) return;
+    const measure = () => {
+      // A hidden container reports 0; keep the last real width until shown.
+      if (el.clientWidth > 0) setContainerWidth(el.clientWidth);
+    };
     measure();
     // Re-measure after a frame to catch layout shifts from content changes
     const raf = requestAnimationFrame(measure);
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => { observer.disconnect(); cancelAnimationFrame(raf); };
-  }, [totalDuration]);
+  }, [totalDuration, isVisible]);
 
   // Auto-fit: scale so full bar-snapped duration fills the container width exactly
   const autoFitZoom = containerWidth > 0 && totalDuration > 0
@@ -743,6 +753,7 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
         {/* Scrollable Track Area */}
         <div
           ref={scrollContainerRef}
+          data-testid="timeline-scroll"
           className="flex-1 min-w-0 overflow-auto"
           onScroll={handleTimelineScroll}
         >
@@ -751,6 +762,7 @@ export function UnifiedTimeline({ highlightedStreamIds }: UnifiedTimelineProps =
             {/* Row 1: Bar numbers */}
             <div
               ref={rulerRef}
+              data-testid="timeline-ruler"
               className="sticky top-0 z-40 bg-[var(--bg-app)] border-b border-[var(--border-default)] cursor-text select-none"
               style={{ height: BAR_HEADER_HEIGHT, width: timelineWidth }}
               onMouseDown={handleRulerMouseDown}

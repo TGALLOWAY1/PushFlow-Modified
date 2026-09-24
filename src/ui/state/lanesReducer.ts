@@ -18,7 +18,21 @@ import { buildLegacySourceFile, buildPerformanceLanesFromStreams } from './strea
 export type LaneAction =
   // Lane operations
   | { type: 'IMPORT_LANES'; payload: { lanes: PerformanceLane[]; sourceFile: SourceFile; group?: LaneGroup } }
-  | { type: 'UPSERT_LANE_SOURCE'; payload: { lanes: PerformanceLane[]; sourceFile: SourceFile; group?: LaneGroup | null } }
+  | {
+      type: 'UPSERT_LANE_SOURCE';
+      payload: {
+        lanes: PerformanceLane[];
+        sourceFile: SourceFile;
+        group?: LaneGroup | null;
+        /**
+         * Composer sync (T66, F9-03): lanes already in the project keep their
+         * name, colour, mute, solo, group and order, and only their notes are
+         * replaced. New lanes are added as given; lanes of this source that the
+         * payload no longer has are removed.
+         */
+        notesOnly?: boolean;
+      };
+    }
   | { type: 'REMOVE_LANE_SOURCE'; payload: { sourceFileId: string; groupId?: string | null } }
   | { type: 'RENAME_LANE'; payload: { laneId: string; name: string } }
   | { type: 'SET_LANE_COLOR'; payload: { laneId: string; color: string; colorMode: LaneColorMode } }
@@ -138,6 +152,59 @@ function withoutOrphanedVoices(next: ProjectState): ProjectState {
   };
 }
 
+/** Whether two lanes hold the same notes (event ids aside). */
+function sameNotes(a: PerformanceLane['events'], b: PerformanceLane['events']): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((e, i) => {
+    const o = b[i];
+    return e.startTime === o.startTime && e.duration === o.duration
+      && e.velocity === o.velocity && e.rawPitch === o.rawPitch;
+  });
+}
+
+/**
+ * UPSERT_LANE_SOURCE with notesOnly, for a source already in the project. The
+ * project's lanes are the record for everything but the notes, so a Sound
+ * renamed, recoloured or muted elsewhere stays that way. When no notes change
+ * and no lane is added or removed, the state is returned as is: no stale
+ * analysis, no unsaved change, no undo step.
+ */
+function upsertNotesOnly(
+  state: ProjectState,
+  incoming: PerformanceLane[],
+  sourceFileId: string,
+  group: LaneGroup | null,
+  now: string,
+): ProjectState {
+  const incomingById = new Map(incoming.map(l => [l.id, l]));
+  let changed = false;
+  const kept: PerformanceLane[] = [];
+  for (const lane of state.performanceLanes) {
+    if (lane.sourceFileId !== sourceFileId) { kept.push(lane); continue; }
+    const next = incomingById.get(lane.id);
+    if (!next) { changed = true; continue; }
+    if (sameNotes(lane.events, next.events)) { kept.push(lane); continue; }
+    changed = true;
+    kept.push({ ...lane, events: next.events });
+  }
+  const existingIds = new Set(state.performanceLanes.map(l => l.id));
+  const added = incoming.filter(l => !existingIds.has(l.id));
+  if (!changed && added.length === 0) return state;
+
+  const needsGroup = group
+    && added.some(l => l.groupId === group.groupId)
+    && !state.laneGroups.some(g => g.groupId === group.groupId);
+  const performanceLanes = [...kept, ...added];
+  const laneCount = performanceLanes.filter(l => l.sourceFileId === sourceFileId).length;
+  return withSyncedStreams({
+    ...state,
+    updatedAt: now,
+    performanceLanes,
+    laneGroups: needsGroup && group ? [...state.laneGroups, group] : state.laneGroups,
+    sourceFiles: state.sourceFiles.map(sf => (sf.id === sourceFileId ? { ...sf, laneCount } : sf)),
+  });
+}
+
 export function lanesReducer(state: ProjectState, action: LaneAction): ProjectState {
   const now = new Date().toISOString();
 
@@ -160,7 +227,10 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
     }
 
     case 'UPSERT_LANE_SOURCE': {
-      const { lanes, sourceFile, group } = action.payload;
+      const { lanes, sourceFile, group, notesOnly } = action.payload;
+      if (notesOnly && state.sourceFiles.some(sf => sf.id === sourceFile.id)) {
+        return upsertNotesOnly(state, lanes, sourceFile.id, group ?? null, now);
+      }
       const nextLanes = [
         ...state.performanceLanes.filter(l => l.sourceFileId !== sourceFile.id),
         ...lanes,
