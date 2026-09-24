@@ -23,7 +23,7 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { exportProjectToFile } from '../../persistence/projectStorage';
 import { useToast } from '../shared/Toast';
 import { useViewSettings, ViewSettingsProvider } from '../../state/viewSettings';
-import { getDisplayedCandidate, getSelectedCandidate, isPadLocked } from '../../state/projectState';
+import { getDisplayedCandidate, getSelectedCandidate, isPadLocked, placementDisturbsLock } from '../../state/projectState';
 
 import { WorkspaceToolbar } from './WorkspaceToolbar';
 import { VoicePalette } from '../VoicePalette';
@@ -295,6 +295,12 @@ function PerformanceWorkspaceInner() {
         color: lane?.color ?? '#888',
       };
     }
+    // A placement that would disturb a lock is refused as a whole, before
+    // anything (pads, fingers, the placed instance) is recorded.
+    if (placementDisturbsLock(state.workingLayout ?? state.activeLayout, padToVoice)) {
+      window.alert('Cannot place preset here:\nLocked \u00b7 Unlock to move');
+      return;
+    }
     dispatch({ type: 'MERGE_ASSIGN_PADS', payload: padToVoice });
 
     // Set finger constraints for placed pads; unverified fingering is not applied (F9-12)
@@ -307,7 +313,7 @@ function PerformanceWorkspaceInner() {
 
     // Add to workspace state
     composerDispatch({ type: 'PLACE_PRESET', instance });
-  }, [dispatch, occupiedPads, draggingPreset]);
+  }, [dispatch, occupiedPads, draggingPreset, state.workingLayout, state.activeLayout]);
 
   // Resizable panel state
   const [leftWidth, setLeftWidth] = useState(LEFT_DEFAULT);

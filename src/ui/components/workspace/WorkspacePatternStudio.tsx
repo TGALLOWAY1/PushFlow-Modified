@@ -78,8 +78,10 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
 
   // Track whether the user explicitly cleared the composer (vs loading empty state)
   const userExplicitlyClearedRef = useRef(false);
-  // The pattern as it was before the last Clear, until Clear is undone or the Composer is edited again.
-  const clearedPatternRef = useRef<LoopState | null>(null);
+  // The pattern as it was before the last Clear, kept until the Composer is
+  // edited again, so Undo and Redo of Clear can restore or clear it again.
+  // `cleared`: whether the Composer is currently cleared.
+  const clearSnapshotRef = useRef<{ pattern: LoopState; cleared: boolean } | null>(null);
   // The Clear toast; `viaUndo` when its Undo is the project's Undo.
   const clearToastRef = useRef<{ id: number; viaUndo: boolean } | null>(null);
 
@@ -218,7 +220,7 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
   const dispatchComposer = useCallback((action: LoopEditorAction) => {
     setHasTouchedComposer(true);
     userExplicitlyClearedRef.current = false;
-    clearedPatternRef.current = null;
+    clearSnapshotRef.current = null;
     dispatch(action);
   }, []);
 
@@ -357,13 +359,20 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
 
   // Clear undone (from its toast or with Undo anywhere): the Sounds are back in
   // the project, so the Composer gets its pattern back from memory (F9-08).
+  // Clear redone: the Sounds are gone again, so the Composer clears again.
   useEffect(() => {
-    const cleared = clearedPatternRef.current;
-    if (!cleared) return;
-    if (!projectState.sourceFiles.some(sf => sf.id === WORKSPACE_PATTERN_SOURCE_ID)) return;
-    clearedPatternRef.current = null;
-    userExplicitlyClearedRef.current = false;
-    dispatch({ type: 'LOAD_LOOP_STATE', payload: cleared });
+    const snapshot = clearSnapshotRef.current;
+    if (!snapshot) return;
+    const inProject = projectState.sourceFiles.some(sf => sf.id === WORKSPACE_PATTERN_SOURCE_ID);
+    if (snapshot.cleared && inProject) {
+      clearSnapshotRef.current = { ...snapshot, cleared: false };
+      userExplicitlyClearedRef.current = false;
+      dispatch({ type: 'LOAD_LOOP_STATE', payload: snapshot.pattern });
+    } else if (!snapshot.cleared && !inProject) {
+      clearSnapshotRef.current = { ...snapshot, cleared: true };
+      userExplicitlyClearedRef.current = true;
+      dispatch({ type: 'LOAD_LOOP_STATE', payload: createInitialLoopState() });
+    }
   }, [projectState.sourceFiles]);
 
   // Clear's toast offers Undo only while Clear is still the step Undo would revert.
@@ -491,7 +500,7 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
     syncTimerRef.current = undefined;
     setHasTouchedComposer(true);
     userExplicitlyClearedRef.current = true;
-    clearedPatternRef.current = { ...previous, isPlaying: false };
+    clearSnapshotRef.current = { pattern: { ...previous, isPlaying: false }, cleared: true };
     dispatch({ type: 'LOAD_LOOP_STATE', payload: createInitialLoopState() });
     if (inProject) {
       transact(CLEAR_LABEL, () => projectDispatch({
@@ -504,11 +513,11 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
     // their pads and finger preferences. With nothing in the project yet, the
     // pattern alone comes back from memory.
     const restoreLocal = () => {
-      const cleared = clearedPatternRef.current;
-      if (!cleared) return;
-      clearedPatternRef.current = null;
+      const snapshot = clearSnapshotRef.current;
+      if (!snapshot?.cleared) return;
+      clearSnapshotRef.current = null;
       userExplicitlyClearedRef.current = false;
-      dispatch({ type: 'LOAD_LOOP_STATE', payload: cleared });
+      dispatch({ type: 'LOAD_LOOP_STATE', payload: snapshot.pattern });
     };
     if (clearToastRef.current !== null) toast.dismiss(clearToastRef.current.id);
     const notes = `${noteCount} ${noteCount === 1 ? 'note' : 'notes'}`;

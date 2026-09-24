@@ -220,6 +220,25 @@ describe('P1a-12c · Undo after Clear restores the notes, Sounds and pads', () =
     expect(composerSounds(project().state)).toHaveLength(1);
   });
 
+  it('Redo after Undo clears the Composer again, and a second Undo restores it', async () => {
+    const { project } = setup();
+    await addLaneWithNote(project, 0, 0);
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    act(() => { project().undo(); });
+    expect(onCells()).toBe(1);
+
+    act(() => { project().redo(); });
+    expect(onCells()).toBe(0);
+    expect(composerSounds(project().state)).toHaveLength(0);
+    // The sync the restore scheduled must not bring the Sounds back.
+    await new Promise(r => setTimeout(r, 300));
+    expect(composerSounds(project().state)).toHaveLength(0);
+
+    act(() => { project().undo(); });
+    expect(onCells()).toBe(1);
+    expect(composerSounds(project().state)).toHaveLength(1);
+  });
+
   it('drops the toast\'s Undo once another step is recorded', async () => {
     const { project } = setup();
     const id = await addLaneWithNote(project, 0, 0);

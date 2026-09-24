@@ -557,6 +557,20 @@ export function isPadLocked(layout: Pick<Layout, 'padToVoice' | 'placementLocks'
   return !!occupant && layout.placementLocks?.[occupant.id] === padKey;
 }
 
+/**
+ * Whether assigning these pads would displace a locked Sound or put a locked
+ * Sound on another pad (canon section 11). MERGE_ASSIGN_PADS refuses such a
+ * placement; callers check first so they record nothing for it either.
+ */
+export function placementDisturbsLock(
+  layout: Pick<Layout, 'padToVoice' | 'placementLocks'>,
+  padToVoice: Record<string, { id: string } | null | undefined>,
+): boolean {
+  const locks = layout.placementLocks ?? {};
+  return Object.entries(padToVoice).some(([padKey, voice]) =>
+    isPadLocked(layout, padKey) || (!!voice && voice.id in locks && locks[voice.id] !== padKey));
+}
+
 function prunePlacementLocks(
   padToVoice: Layout['padToVoice'],
   placementLocks: Layout['placementLocks'],
@@ -912,12 +926,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       // Placing a preset never displaces a locked Sound or puts one on another
       // pad (canon section 11): the whole placement is refused, like a drop
       // onto a locked pad. Nothing changes, so no draft and no undo step.
-      const shown = state.workingLayout ?? state.activeLayout;
-      const lockedIds = new Set(Object.keys(shown.placementLocks ?? {}));
-      if (Object.entries(action.payload).some(([padKey, voice]) =>
-        isPadLocked(shown, padKey) || (voice && lockedIds.has(voice.id) && shown.placementLocks[voice.id] !== padKey))) {
-        return state;
-      }
+      if (placementDisturbsLock(state.workingLayout ?? state.activeLayout, action.payload)) return state;
       return updateWorkingLayout(state, layout => {
         const nextPadToVoice = { ...layout.padToVoice, ...action.payload };
         return {
