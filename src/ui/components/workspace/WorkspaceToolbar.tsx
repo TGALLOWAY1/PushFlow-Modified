@@ -135,7 +135,7 @@ export function WorkspaceToolbar({
           />
         ) : (
           <span
-            className="text-pf-base font-semibold text-[var(--text-primary)] truncate editable-field hover:text-white transition-colors cursor-pointer"
+            className="block text-pf-base font-semibold text-[var(--text-primary)] truncate editable-field hover:text-white transition-colors cursor-pointer"
             onClick={() => {
               setNameDraft(state.name || 'Untitled');
               setEditingName(true);
@@ -170,7 +170,7 @@ export function WorkspaceToolbar({
         />
       ) : (
         <span
-          className="text-pf-sm text-[var(--text-tertiary)] cursor-pointer hover:text-[var(--text-secondary)] transition-colors tabular-nums editable-field"
+          className="text-pf-sm text-[var(--text-tertiary)] cursor-pointer hover:text-[var(--text-secondary)] transition-colors tabular-nums editable-field whitespace-nowrap"
           onClick={() => {
             setBpmDraft(String(state.tempo));
             setEditingBpm(true);

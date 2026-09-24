@@ -38,7 +38,7 @@ export function SaveStatusControl({ status, onSave, onExport }: SaveStatusContro
         role="alert"
         data-testid="save-status"
         data-save-status="error"
-        className="flex items-center gap-1 rounded-pf-md border border-red-500/40 bg-red-500/10 pl-2.5 pr-1 py-0.5 text-pf-sm text-red-300"
+        className="flex items-center gap-1 whitespace-nowrap rounded-pf-md border border-red-500/40 bg-red-500/10 pl-2.5 pr-1 py-0.5 text-pf-sm text-red-300"
       >
         <span>Couldn’t save</span>
         <span aria-hidden="true">·</span>
