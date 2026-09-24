@@ -1,364 +1,207 @@
 /**
- * Integration test: TEST MIDI 1.mid end-to-end through the engine pipeline.
+ * Integration test: TEST MIDI 1.mid end-to-end through the app's own paths
+ * (the CLAUDE.md TEST MIDI 1 gate, roadmap P0 "Extended TEST MIDI 1 gate").
  *
- * Simulates the exact user flow:
- * 1. Parse the MIDI file (like useLaneImport does)
- * 2. Build sound streams from lanes (like SYNC_STREAMS_FROM_LANES does)
- * 3. Build auto-layout from natural hand pose (like useAutoAnalysis does)
- * 4. Run the beam solver and generate candidates
- * 5. Assert that candidates have playable events (not all unplayable)
+ * 1. Import the fixture the way the app does (useLaneImport → IMPORT_LANES), so
+ *    Sound ids come from import and nothing is keyed by MIDI pitch.
+ * 2. "Suggest a starting layout" (SUGGEST_STARTING_LAYOUT).
+ * 3. Run each optimization method the way useAutoAnalysis.generateFull does:
+ *    greedy, beam, and annealing Quick. Annealing Thorough (deep) runs nightly
+ *    only: test/nightly/testMidi1DeepAnnealing.nightly.ts.
+ * 4. Every candidate of every method has 0 unplayable events in strict mode.
+ * 5. A Sound locked at [7,0] stays there in every candidate.
+ * 6. Fixed-seed snapshots pin each method's output.
+ *
+ * In the app, Beam and Annealing "Quick" run the same code: generateCandidates
+ * with optimizationMode 'fast', which is beam search only (annealing runs only in
+ * 'deep'). Both cases are kept so each method the UI offers has its own gate.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import * as fs from 'fs';
-import * as path from 'path';
-import { Midi } from '@tonejs/midi';
-import { type Performance } from '../../../src/types/performance';
-import { type PerformanceEvent } from '../../../src/types/performanceEvent';
-import { type Voice } from '../../../src/types/voice';
-import { seedLayoutFromPose0 } from '../../../src/engine/mapping/seedFromPose';
-import { createDefaultPose0, getPose0PadsWithOffset, fingerIdToHandAndFingerType } from '../../../src/engine/prior/naturalHandPose';
-import { generateCandidates } from '../../../src/engine/optimization/multiCandidateGenerator';
-import { generateGreedyCandidates } from '../../../src/engine/optimization/greedyCandidatePipeline';
 import { createBeamSolver } from '../../../src/engine/solvers/beamSolver';
+import { createDefaultPose0, getPose0PadsWithOffset, fingerIdToHandAndFingerType } from '../../../src/engine/prior/naturalHandPose';
+import { getActivePerformance, getDisplayedLayout, type ProjectState } from '../../../src/ui/state/projectState';
 import { type SolverConfig } from '../../../src/types/engineConfig';
-import { ALL_COSTS_ENABLED } from '../../../src/types/costToggles';
-import { resolveNeutralPadPositions, computeNeutralHandCenters } from '../../../src/engine/prior/handPose';
+import { type FingerType } from '../../../src/types/fingerModel';
+import { type CandidateSolution } from '../../../src/types/candidateSolution';
+import { countHandUsage } from '../../helpers/testHelpers';
 import {
-  DEFAULT_TEST_INSTRUMENT_CONFIG,
-  DEFAULT_ENGINE_CONFIG,
-  DEFAULT_RESTING_POSE,
-  countHandUsage,
-} from '../../helpers/testHelpers';
+  LOCK_PAD,
+  importTestMidi1,
+  suggestedTestMidi1,
+  lockBusiestSoundAt7_0,
+  generateGreedyAsApp,
+  generateBeamAnnealingAsApp,
+  unplayableCount,
+  candidateSnapshot,
+} from '../../helpers/testMidi1';
 
-// ============================================================================
-// Load and parse TEST MIDI 1.mid
-// ============================================================================
+// Greedy runs every candidate family; on a CI runner that takes up to a minute.
+const SLOW = 180_000;
 
-interface ParsedMidiData {
-  events: PerformanceEvent[];
-  tempo: number;
-  uniqueNotes: number[];
+type Method = 'greedy' | 'beam' | 'annealing-quick';
+
+function generate(method: Method, state: ProjectState): Promise<CandidateSolution[]> {
+  return method === 'greedy'
+    ? generateGreedyAsApp(state)
+    : generateBeamAnnealingAsApp(state, 'fast');
 }
 
-function loadTestMidi(): ParsedMidiData {
-  // Navigate from test/engine/optimization/ to the archived V1 test data
-  const midiPath = path.resolve(__dirname, '../../../archive/v1-reference/test-data/Scenario 1 Tests/TEST MIDI 1.mid');
-  const buffer = fs.readFileSync(midiPath);
-  const midiData = new Midi(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
-
-  const events: PerformanceEvent[] = [];
-  midiData.tracks.forEach((track) => {
-    const timeTally = new Map<string, number>();
-    track.notes.forEach((note) => {
-      const noteNumber = note.midi;
-      const channelLabel = track.channel + 1;
-      const nominalTime = note.ticks !== undefined ? note.ticks : Math.round(note.time * 10000);
-      const hashKey = `${nominalTime}:${noteNumber}:${channelLabel}`;
-      const ordinal = (timeTally.get(hashKey) || 0) + 1;
-      timeTally.set(hashKey, ordinal);
-      const eventKey = `${hashKey}:${ordinal}`;
-
-      events.push({
-        noteNumber,
-        startTime: note.time,
-        duration: note.duration,
-        velocity: Math.round(note.velocity * 127),
-        channel: channelLabel,
-        eventKey,
-      });
-    });
-  });
-
-  events.sort((a, b) => a.startTime - b.startTime);
-
-  const tempo = midiData.header.tempos.length > 0
-    ? Math.round(midiData.header.tempos[0].bpm)
-    : 120;
-
-  const uniqueNotes = [...new Set(events.map(e => e.noteNumber))].sort((a, b) => a - b);
-
-  return { events, tempo, uniqueNotes };
+function expectStrictZeroUnplayable(candidates: CandidateSolution[]) {
+  expect(candidates.length).toBeGreaterThan(0);
+  for (const candidate of candidates) {
+    const usage = countHandUsage(candidate.executionPlan);
+    expect({ strategy: candidate.metadata.strategy, unplayable: usage.unplayable })
+      .toEqual({ strategy: candidate.metadata.strategy, unplayable: 0 });
+    expect(usage.left + usage.right).toBe(candidate.executionPlan.fingerAssignments.length);
+    // Hand separation and one finger per Sound are hard rules, and this
+    // performance can be played within them.
+    expect(candidate.executionPlan.constraintRelaxation?.mode).toBe('strict');
+  }
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
+function expectLockHeld(candidates: CandidateSolution[], lockedId: string) {
+  expect(candidates.length).toBeGreaterThan(0);
+  for (const candidate of candidates) {
+    expect({ strategy: candidate.metadata.strategy, soundAt7_0: candidate.layout.padToVoice[LOCK_PAD]?.id })
+      .toEqual({ strategy: candidate.metadata.strategy, soundAt7_0: lockedId });
+    expect(candidate.layout.placementLocks).toEqual({ [lockedId]: LOCK_PAD });
+  }
+}
 
 describe('TEST MIDI 1.mid end-to-end', () => {
-  let midiData: ParsedMidiData;
+  let suggested: ProjectState;
 
-  beforeAll(() => {
-    midiData = loadTestMidi();
+  beforeAll(async () => {
+    suggested = await suggestedTestMidi1();
   });
 
-  it('should parse the MIDI file successfully', () => {
-    expect(midiData.events.length).toBeGreaterThan(0);
-    expect(midiData.uniqueNotes.length).toBeGreaterThan(0);
-    console.log(`  Parsed: ${midiData.events.length} events, ${midiData.uniqueNotes.length} unique notes (${midiData.uniqueNotes.join(', ')}), tempo=${midiData.tempo} BPM`);
-  });
-
-  it('should seed a layout from natural hand pose with all voices placed', () => {
-    const performance: Performance = {
-      events: midiData.events,
-      tempo: midiData.tempo,
-      name: 'TEST MIDI 1',
-    };
-
-    // Build voices with stable IDs (simulating stream IDs)
-    const existingVoices = new Map<number, Voice>();
-    midiData.uniqueNotes.forEach((noteNumber, i) => {
-      existingVoices.set(noteNumber, {
-        id: `stream-${noteNumber}`,
-        name: `Note ${noteNumber}`,
-        sourceType: 'midi_track',
-        sourceFile: 'TEST MIDI 1.mid',
-        originalMidiNote: noteNumber,
-        color: `#${((i * 37 + 128) % 256).toString(16).padStart(2, '0')}4444`,
-      });
-    });
-
-    const pose0 = createDefaultPose0();
-    const layout = seedLayoutFromPose0(performance, pose0, 0, existingVoices);
-
-    const placedVoices = Object.values(layout.padToVoice);
-    expect(placedVoices.length).toBe(midiData.uniqueNotes.length);
-
-    // All voice IDs should match stream IDs
-    for (const voice of placedVoices) {
-      expect(voice.id).toMatch(/^stream-\d+$/);
+  it('imports through the app path: 7 Sounds with import ids, 48 events, tempo from the file', async () => {
+    const imported = await importTestMidi1();
+    expect(imported.soundStreams).toHaveLength(7);
+    for (const stream of imported.soundStreams) {
+      expect(stream.id).toMatch(/^lane_/);
     }
-
-    // Log pad positions
-    console.log('  Pad positions:');
-    for (const [key, voice] of Object.entries(layout.padToVoice)) {
-      console.log(`    ${key} => ${voice.name} (id=${voice.id})`);
-    }
+    expect(getActivePerformance(imported).events).toHaveLength(48);
+    expect(imported.tempo).toBeGreaterThan(0);
+    // Import places nothing (invariant 7).
+    expect(Object.keys(getDisplayedLayout(imported)!.padToVoice)).toHaveLength(0);
   });
 
-  it('should produce playable candidates via generateCandidates', async () => {
-    const performance: Performance = {
-      events: midiData.events,
-      tempo: midiData.tempo,
-      name: 'TEST MIDI 1',
-    };
-
-    const existingVoices = new Map<number, Voice>();
-    midiData.uniqueNotes.forEach((noteNumber, i) => {
-      existingVoices.set(noteNumber, {
-        id: `stream-${noteNumber}`,
-        name: `Note ${noteNumber}`,
-        sourceType: 'midi_track',
-        sourceFile: 'TEST MIDI 1.mid',
-        originalMidiNote: noteNumber,
-        color: '#444444',
-      });
-    });
-
-    const pose0 = createDefaultPose0();
-    const layout = seedLayoutFromPose0(performance, pose0, 0, existingVoices);
-
-    const result = await generateCandidates(performance, pose0, {
-      count: 3,
-      engineConfig: DEFAULT_ENGINE_CONFIG,
-      instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG,
-      baseLayout: layout,
-      activeLayout: layout,
-    });
-
-    expect(result.candidates.length).toBeGreaterThan(0);
-    console.log(`  Generated ${result.candidates.length} candidates`);
-
-    for (let i = 0; i < result.candidates.length; i++) {
-      const candidate = result.candidates[i];
-      const usage = countHandUsage(candidate.executionPlan);
-      const total = usage.left + usage.right + usage.unplayable;
-      const playableRatio = (usage.left + usage.right) / total;
-
-      console.log(`  Candidate #${i + 1} (${candidate.metadata.strategy}): L=${usage.left} R=${usage.right} Unplayable=${usage.unplayable} (${(playableRatio * 100).toFixed(0)}% playable)`);
-
-      // Log rejection reasons if any
-      if (candidate.executionPlan.rejectionReasons) {
-        const counts: Record<string, number> = {};
-        for (const reasons of Object.values(candidate.executionPlan.rejectionReasons)) {
-          for (const r of reasons) counts[r] = (counts[r] || 0) + 1;
-        }
-        console.log(`    Rejection reasons: ${JSON.stringify(counts)}`);
-      }
-
-      // THIS IS THE KEY ASSERTION: candidates must have playable events
-      expect(playableRatio).toBeGreaterThan(0.5);
-      // Hand separation and one finger per sound are hard rules, and this
-      // performance can be played within them.
-      expect(candidate.executionPlan.constraintRelaxation?.mode).toBe('strict');
-    }
+  it('Suggest a starting layout places every Sound once, by id', () => {
+    const layout = getDisplayedLayout(suggested)!;
+    const placedIds = Object.values(layout.padToVoice).map(v => v.id).sort();
+    expect(placedIds).toEqual(suggested.soundStreams.map(s => s.id).sort());
   });
 
-  it('should produce playable results via direct beam solver (allow-fallback)', async () => {
-    const performance: Performance = {
-      events: midiData.events,
-      tempo: midiData.tempo,
-      name: 'TEST MIDI 1',
-    };
-
-    const existingVoices = new Map<number, Voice>();
-    midiData.uniqueNotes.forEach((noteNumber) => {
-      existingVoices.set(noteNumber, {
-        id: `stream-${noteNumber}`,
-        name: `Note ${noteNumber}`,
-        sourceType: 'midi_track',
-        sourceFile: '',
-        originalMidiNote: noteNumber,
-        color: '#444',
-      });
-    });
-
-    const pose0 = createDefaultPose0();
-    const layout = seedLayoutFromPose0(performance, pose0, 0, existingVoices);
-
-    const solverConfig: SolverConfig = {
-      instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG,
-      layout,
-      mappingResolverMode: 'allow-fallback',
-    };
-    const solver = createBeamSolver(solverConfig);
-    const planResult = await solver.solve(performance, DEFAULT_ENGINE_CONFIG);
-
-    const usage = countHandUsage(planResult);
-    const total = usage.left + usage.right + usage.unplayable;
-    const playableRatio = total > 0 ? (usage.left + usage.right) / total : 0;
-
-    console.log(`  Direct solver (fallback): L=${usage.left} R=${usage.right} Unplayable=${usage.unplayable} Score=${planResult.score.toFixed(1)} (${(playableRatio * 100).toFixed(0)}% playable)`);
-
-    // Must have >50% playable events
-    expect(playableRatio).toBeGreaterThan(0.5);
-  });
-
-  it('should produce ZERO unplayable events via strict-mode solver', async () => {
-    // This matches the exact auto-analysis path in useAutoAnalysis.ts
-    const performance: Performance = {
-      events: midiData.events,
-      tempo: midiData.tempo,
-      name: 'TEST MIDI 1',
-    };
-
-    const existingVoices = new Map<number, Voice>();
-    midiData.uniqueNotes.forEach((noteNumber) => {
-      existingVoices.set(noteNumber, {
-        id: `stream-${noteNumber}`,
-        name: `Note ${noteNumber}`,
-        sourceType: 'midi_track',
-        sourceFile: '',
-        originalMidiNote: noteNumber,
-        color: '#444',
-      });
-    });
-
-    const pose0 = createDefaultPose0();
-    const layout = seedLayoutFromPose0(performance, pose0, 0, existingVoices);
-
-    // Strict mode with initial pad ownership — same as auto-analysis path.
-    // Compute ownership from pose0 finger positions.
-    const posePads = getPose0PadsWithOffset(pose0, 0, true);
-    const initialPadOwnership: Record<string, { hand: 'left' | 'right'; finger: import('../../../src/types/fingerModel').FingerType }> = {};
-    for (const entry of posePads) {
+  it('auto-analysis (strict beam, pose0 ownership) has 0 unplayable events', async () => {
+    // Mirrors useAutoAnalysis's re-analysis effect.
+    const performance = getActivePerformance(suggested);
+    const layout = getDisplayedLayout(suggested)!;
+    const initialPadOwnership: Record<string, { hand: 'left' | 'right'; finger: FingerType }> = {};
+    for (const entry of getPose0PadsWithOffset(createDefaultPose0(), 0, true)) {
       const padKey = `${entry.row},${entry.col}`;
-      if (layout.padToVoice[padKey]) {
-        const { hand, finger } = fingerIdToHandAndFingerType(entry.fingerId);
-        initialPadOwnership[padKey] = { hand, finger };
-      }
+      if (layout.padToVoice[padKey]) initialPadOwnership[padKey] = fingerIdToHandAndFingerType(entry.fingerId);
     }
-
     const solverConfig: SolverConfig = {
-      instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG,
+      instrumentConfig: suggested.instrumentConfig,
       layout,
+      sourceLayoutRole: layout.role,
       initialPadOwnership,
     };
-    const solver = createBeamSolver(solverConfig);
-    const planResult = await solver.solve(
-      performance,
-      { ...DEFAULT_ENGINE_CONFIG, beamWidth: 15 },
-    );
-
-    const usage = countHandUsage(planResult);
-    const total = usage.left + usage.right + usage.unplayable;
-    console.log(`  Direct solver (strict): L=${usage.left} R=${usage.right} Unplayable=${usage.unplayable} / ${total} total`);
-
-    // Zero unplayable — this is the exit criterion
+    const plan = await createBeamSolver(solverConfig).solve(performance, { ...suggested.engineConfig, beamWidth: 15 });
+    const usage = countHandUsage(plan);
     expect(usage.unplayable).toBe(0);
-    expect(usage.left + usage.right).toBe(total);
-    expect(planResult.constraintRelaxation?.mode).toBe('strict');
+    expect(usage.left + usage.right).toBe(performance.events.length);
+    expect(plan.constraintRelaxation?.mode).toBe('strict');
   });
 
-  it('should produce candidates with 0 unplayable events via greedy candidate pipeline', { timeout: 60000 }, async () => {
-    const performance: Performance = {
-      events: midiData.events,
-      tempo: midiData.tempo,
-      name: 'TEST MIDI 1',
+  it('direct beam solver in allow-fallback mode has 0 unplayable events', async () => {
+    const performance = getActivePerformance(suggested);
+    const solverConfig: SolverConfig = {
+      instrumentConfig: suggested.instrumentConfig,
+      layout: getDisplayedLayout(suggested)!,
+      mappingResolverMode: 'allow-fallback',
     };
+    const plan = await createBeamSolver(solverConfig).solve(performance, suggested.engineConfig);
+    const usage = countHandUsage(plan);
+    expect(usage.unplayable).toBe(0);
+    expect(usage.left + usage.right).toBe(performance.events.length);
+  });
 
-    const existingVoices = new Map<number, Voice>();
-    midiData.uniqueNotes.forEach((noteNumber) => {
-      existingVoices.set(noteNumber, {
-        id: `stream-${noteNumber}`,
-        name: `Note ${noteNumber}`,
-        sourceType: 'midi_track',
-        sourceFile: 'TEST MIDI 1.mid',
-        originalMidiNote: noteNumber,
-        color: '#444',
+  describe.each<Method>(['greedy', 'beam', 'annealing-quick'])('%s', method => {
+    let candidates: CandidateSolution[];
+
+    beforeAll(async () => {
+      candidates = await generate(method, suggested);
+    }, SLOW);
+
+    it('every candidate has 0 unplayable events in strict mode', () => {
+      expectStrictZeroUnplayable(candidates);
+    });
+
+    it('matches its fixed-seed snapshot', () => {
+      // The pipelines use fixed seeds (greedy 42 + i·7919; beam strategies 42/49/56),
+      // so the same input must give the same candidates, run after run.
+      expect(candidates.map(c => candidateSnapshot(suggested, c))).toMatchSnapshot();
+    });
+
+    it('every candidate carries its strategy and seed', () => {
+      for (const candidate of candidates) {
+        expect(candidate.metadata.strategy).toBeTruthy();
+        expect(typeof candidate.metadata.seed).toBe('number');
+      }
+    });
+
+    it.runIf(method === 'greedy')('every candidate carries an explanation card', () => {
+      for (const candidate of candidates) {
+        expect(candidate.metadata.candidateFamily).toBeDefined();
+        expect(candidate.metadata.explanation?.bestFor).toBeTruthy();
+        expect(candidate.metadata.explanation!.wonBecause.length).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  describe('a Sound locked at [7,0]', () => {
+    let locked: ProjectState;
+    let lockedId: string;
+
+    beforeAll(() => {
+      ({ state: locked, lockedId } = lockBusiestSoundAt7_0(suggested));
+    });
+
+    it('is set up through the reducer: on [7,0] and locked there', () => {
+      const layout = getDisplayedLayout(locked)!;
+      expect(layout.padToVoice[LOCK_PAD]?.id).toBe(lockedId);
+      expect(layout.placementLocks).toEqual({ [lockedId]: LOCK_PAD });
+    });
+
+    it('greedy: holds in every candidate, with 0 unplayable events', async () => {
+      const candidates = await generateGreedyAsApp(locked);
+      expectLockHeld(candidates, lockedId);
+      expect(candidates.map(unplayableCount)).toEqual(candidates.map(() => 0));
+    }, SLOW);
+
+    describe.each(['beam', 'annealing-quick'] as const)('%s', method => {
+      let candidates: CandidateSolution[];
+
+      // Generation runs outside the expected failure, so a crash or an empty
+      // result fails the suite; only the lock assertion is expected to fail.
+      beforeAll(async () => {
+        candidates = await generate(method, locked);
+      });
+
+      it('produces candidates with 0 unplayable events', () => {
+        expect(candidates.length).toBeGreaterThan(0);
+        expect(candidates.map(unplayableCount)).toEqual(candidates.map(() => 0));
+      });
+
+      // Expected to fail until S1a.3 (C3 / T11): generateCandidates re-seeds every
+      // candidate from the natural hand pose and returns placementLocks {}.
+      // Annealing Quick runs the same path as beam.
+      it.fails('holds in every candidate (fails until S1a.3)', () => {
+        expectLockHeld(candidates, lockedId);
       });
     });
-
-    const pose0 = createDefaultPose0();
-    const layout = seedLayoutFromPose0(performance, pose0, 0, existingVoices);
-
-    // Build evaluation config (same as auto-analysis path)
-    const neutralPads = resolveNeutralPadPositions(layout, DEFAULT_TEST_INSTRUMENT_CONFIG);
-    const neutralHandCenters = computeNeutralHandCenters(neutralPads);
-
-    const result = await generateGreedyCandidates({
-      performance,
-      instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG,
-      engineConfig: DEFAULT_ENGINE_CONFIG,
-      evaluationConfig: {
-        restingPose: DEFAULT_RESTING_POSE,
-        stiffness: DEFAULT_ENGINE_CONFIG.stiffness,
-        instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG,
-        neutralHandCenters,
-      },
-      costToggles: ALL_COSTS_ENABLED,
-      baseLayout: layout,
-      activeLayout: layout,
-      count: 4,
-    });
-
-    expect(result.candidates.length).toBeGreaterThan(0);
-    console.log(`  Greedy pipeline generated ${result.candidates.length} candidates`);
-
-    for (let i = 0; i < result.candidates.length; i++) {
-      const candidate = result.candidates[i];
-      const usage = countHandUsage(candidate.executionPlan);
-      const total = usage.left + usage.right + usage.unplayable;
-
-      const family = candidate.metadata.candidateFamily ?? candidate.metadata.strategy;
-      console.log(`  Greedy #${i + 1} (${family}): L=${usage.left} R=${usage.right} Unplayable=${usage.unplayable} / ${total} total, Score=${candidate.executionPlan.score.toFixed(1)}`);
-
-      if (candidate.metadata.explanation) {
-        console.log(`    Best for: ${candidate.metadata.explanation.bestFor}`);
-        console.log(`    Won because: ${candidate.metadata.explanation.wonBecause.join(', ')}`);
-      }
-
-      // KEY ASSERTION: 0 unplayable events on TEST MIDI 1
-      expect(usage.unplayable).toBe(0);
-      expect(candidate.executionPlan.constraintRelaxation?.mode).toBe('strict');
-    }
-
-    // All candidates should have explanation cards
-    for (const candidate of result.candidates) {
-      expect(candidate.metadata.candidateFamily).toBeDefined();
-      expect(candidate.metadata.explanation).toBeDefined();
-      expect(candidate.metadata.explanation!.bestFor).toBeTruthy();
-      expect(candidate.metadata.explanation!.wonBecause.length).toBeGreaterThan(0);
-    }
   });
 });

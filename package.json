@@ -11,6 +11,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:nightly": "vitest run --config vitest.nightly.config.ts",
     "check:no-test-hook": "node scripts/check-no-test-hook.mjs",
     "test:e2e": "playwright test"
   },

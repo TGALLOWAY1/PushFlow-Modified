@@ -183,7 +183,11 @@ function ComparisonCard({
   const diff = candidate.difficultyAnalysis;
 
   return (
-    <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 space-y-3">
+    <div
+      data-testid="compare-card"
+      data-candidate-id={candidate.id}
+      className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 space-y-3"
+    >
       <div className="flex items-center justify-between">
         <span className="text-pf-sm font-medium text-[var(--text-primary)]">{label}</span>
         <span className={`text-pf-sm font-mono font-medium ${

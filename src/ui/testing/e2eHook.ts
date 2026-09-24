@@ -20,9 +20,25 @@ export interface E2EHookSource {
   redoDepth: number;
 }
 
+/** A few scalar fields, cheap to poll (state() copies the whole project, candidates included). */
+export interface PfStatus {
+  isProcessing: boolean;
+  analysisStale: boolean;
+  hasAnalysis: boolean;
+  candidateIds: string[];
+  soundCount: number;
+  hasWorkingLayout: boolean;
+  isPlaying: boolean;
+  currentTime: number;
+  selectedEventIndex: number | null;
+  selectedMomentIndex: number | null;
+}
+
 export interface PfTestHook {
   /** Deep copy of the current project state; mutating it changes nothing. */
   state(): ProjectState;
+  /** Small status summary for polling; prefer it to state() in expect.poll loops. */
+  status(): PfStatus;
   /** Layout hash of the Active Layout, the Working/Test Layout (null if none), or whichever is shown. */
   layoutHash(which?: 'active' | 'working' | 'shown'): string | null;
   /** Number of undo and redo steps currently available. */
@@ -42,6 +58,21 @@ declare global {
 export function installE2EHook(get: () => E2EHookSource): () => void {
   const hook: PfTestHook = {
     state: () => structuredClone(get().state),
+    status() {
+      const s = get().state;
+      return {
+        isProcessing: s.isProcessing,
+        analysisStale: s.analysisStale,
+        hasAnalysis: !!s.analysisResult,
+        candidateIds: s.candidates.map(c => c.id),
+        soundCount: s.soundStreams.length,
+        hasWorkingLayout: s.workingLayout !== null,
+        isPlaying: s.isPlaying,
+        currentTime: s.currentTime,
+        selectedEventIndex: s.selectedEventIndex,
+        selectedMomentIndex: s.selectedMomentIndex,
+      };
+    },
     layoutHash(which = 'shown') {
       const { activeLayout, workingLayout } = get().state;
       if (which === 'active') return hashLayout(activeLayout);

@@ -33,6 +33,18 @@ const projects: Project[] = viewports.map(({ name, viewport }) => ({
   },
 }));
 
+// 1920x1080 only for the C1 pad-menu spec (roadmap P0 "Playwright runner").
+projects.push({
+  name: 'chromium-1920',
+  testMatch: /c1-pad-menu\.spec\.ts/,
+  use: {
+    ...devices['Desktop Chrome'],
+    viewport: { width: 1920, height: 1080 },
+    deviceScaleFactor: 1,
+    launchOptions: { executablePath },
+  },
+});
+
 if (process.env.PW_FIREFOX) {
   projects.push({
     name: 'firefox-1366',

@@ -99,7 +99,12 @@ npm run test:run         # Run tests once (CI mode)
 npm run test:coverage    # Run tests with coverage report
 npx playwright test      # e2e specs in test/e2e/ (Chromium at 1366x768 and 1600x1000)
 npm run check:no-test-hook  # after a build: fails if window.__pf leaked into dist/
+npm run test:nightly     # deep annealing on TEST MIDI 1 (~45 min; nightly.yml)
 ```
+
+The C1–C9 regression specs (`test/e2e/c*.spec.ts`) are expected-fail until the
+session that fixes each case deletes its `test.fail(EXPECTED_FAIL, …)` line. Run
+`PF_UNMARK=1 npx playwright test c2` to see a spec's real failures.
 
 In a cloud session, point Playwright at the preinstalled browser:
 `PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test`. Screenshot baselines

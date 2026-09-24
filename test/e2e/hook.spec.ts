@@ -17,6 +17,7 @@ test('window.__pf exposes project state, layout hash and undo depth in the edito
   expect(state.activeLayout).toBeTruthy();
   expect(typeof (await pf.call('layoutHash', 'active'))).toBe('string');
   expect(await pf.call('history')).toEqual({ undo: expect.any(Number), redo: expect.any(Number) });
+  expect(await pf.call('status')).toMatchObject({ isProcessing: expect.any(Boolean), candidateIds: [], soundCount: 0 });
 
   // The snapshot is a copy: mutating it in the page does not touch app state.
   const unchanged = await page.evaluate(() => {

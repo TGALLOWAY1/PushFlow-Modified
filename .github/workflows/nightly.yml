@@ -2,7 +2,8 @@ name: Nightly
 
 # Roadmap P0 "CI": the slower checks that don't run on every PR.
 # - The Playwright suite in Firefox.
-# S0.2 adds the deep-annealing TEST MIDI 1 gate to this workflow.
+# - The deep-annealing TEST MIDI 1 gate (npm run test:nightly), which writes its
+#   duration to the job summary.
 
 on:
   schedule:
@@ -13,6 +14,18 @@ permissions:
   contents: read
 
 jobs:
+  deep-annealing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run test:nightly
+
   e2e-firefox:
     runs-on: ubuntu-latest
     timeout-minutes: 30
