@@ -379,6 +379,8 @@ export async function generateCandidates(
       activeLayout: config.activeLayout,
       sections: config.sections,
       count: config.count ?? 4,
+      // Pins (muted placed Sounds) must reach greedy through this entry too.
+      pinnedPlacements: config.pinnedPlacements,
     });
   }
 

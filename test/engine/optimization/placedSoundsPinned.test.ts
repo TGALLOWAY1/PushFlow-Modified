@@ -244,4 +244,27 @@ describe('Greedy with a muted, placed Sound', () => {
     // The trace is still produced (CLAUDE.md: trace must stay wired).
     expect(candidates[0].iterationTrace?.length).toBeGreaterThan(0);
   }, 120_000);
+
+  it('is reached through the unified generateCandidates API too (optimizationMethod greedy)', async () => {
+    const layout = baseLayout();
+    const performance = performanceWithout(['tom']);
+    const { candidates, summary } = await generateCandidates(performance, createDefaultPose0(), {
+      count: 2,
+      optimizationMethod: 'greedy',
+      engineConfig: DEFAULT_ENGINE_CONFIG,
+      instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG,
+      evaluationConfig: {
+        restingPose: DEFAULT_ENGINE_CONFIG.restingPose,
+        stiffness: DEFAULT_ENGINE_CONFIG.stiffness,
+        instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG,
+        neutralHandCenters: getNeutralHandCenters(layout, DEFAULT_TEST_INSTRUMENT_CONFIG),
+      },
+      costToggles: ALL_COSTS_ENABLED,
+      baseLayout: layout,
+      activeLayout: layout,
+      pinnedPlacements: pinnedPlacements(layout, performance),
+    });
+    expectTomPinned(candidates);
+    expect(summary?.pinnedPlacements).toBe(1);
+  }, 180_000);
 });
