@@ -15,6 +15,8 @@ interface ContinuePracticingHeroProps {
   projectState: ProjectState | null;
   onResume: () => void;
   onOpenEditor: () => void;
+  /** Saves the project's pre-migration backup; shown only when one exists. */
+  onDownloadBackup?: () => void;
 }
 
 function relativeDate(iso: string): string {
@@ -40,6 +42,7 @@ export function ContinuePracticingHero({
   projectState,
   onResume,
   onOpenEditor,
+  onDownloadBackup,
 }: ContinuePracticingHeroProps) {
   const tempo = projectState?.tempo ?? project.tempo;
   const soundCount = projectState?.soundStreams.length ?? project.soundCount;
@@ -101,6 +104,15 @@ export function ContinuePracticingHero({
             <Pencil size={14} />
             Open Layout Editor
           </button>
+          {onDownloadBackup && (
+            <button
+              onClick={onDownloadBackup}
+              className="px-4 py-3 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] font-headline text-sm rounded-xl transition-colors"
+              title="Save this project as it was before PushFlow last updated its stored format"
+            >
+              Download backup
+            </button>
+          )}
 
           {/* Stat pills */}
           <div className="flex gap-4 ml-2">

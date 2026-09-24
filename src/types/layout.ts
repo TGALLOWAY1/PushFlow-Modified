@@ -68,6 +68,11 @@ export interface Layout {
   version?: number;
   /** ISO timestamp when saved. */
   savedAt?: string;
+  /**
+   * Where a stored layout came from. 'recovered': a Working/Test Layout kept
+   * automatically when an explicit action replaced it (ProjectDocument.recoveredDrafts).
+   */
+  provenance?: 'recovered';
 }
 
 /**

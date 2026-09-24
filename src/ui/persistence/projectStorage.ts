@@ -20,7 +20,13 @@ import {
   deleteProjectFromDb,
   listAllProjects,
   getFullProject,
+  putBackup,
+  listBackups,
+  deleteBackupsForProject,
+  backupKey,
+  type ProjectBackup,
 } from './indexedDbStore';
+import { migrateWithBackup, needsMigration, type StoredRecord } from './migrations';
 
 // ============================================================================
 // Legacy localStorage keys (for migration)
@@ -42,6 +48,31 @@ export type { ProjectIndexEntry };
  */
 export interface ProjectLibraryEntry extends ProjectIndexEntry {
   difficulty: string | null;
+}
+
+// ============================================================================
+// Schema migrations (with a backup first)
+// ============================================================================
+
+/** Stores the untouched record in the backups store before it is migrated. */
+async function backupBeforeMigration(record: StoredRecord, fromVersion: number): Promise<void> {
+  const projectId = String(record.id);
+  await putBackup({
+    key: backupKey(projectId, fromVersion),
+    projectId,
+    fromVersion,
+    createdAt: new Date().toISOString(),
+    record,
+  });
+}
+
+/**
+ * Brings a stored record up to the current schema: backs it up first when it
+ * needs migrating, then runs the migrations and fills defaults.
+ */
+async function migrateStoredRecord(record: unknown): Promise<PersistedProject> {
+  if (!record || typeof record !== 'object') return validateAndMigrateRaw(record);
+  return migrateWithBackup(record as StoredRecord, backupBeforeMigration, validateAndMigrateRaw);
 }
 
 // ============================================================================
@@ -76,7 +107,7 @@ async function ensureMigration(): Promise<void> {
           if (!projectJson) continue;
 
           const parsed = JSON.parse(projectJson);
-          const persisted = validateAndMigrateRaw(parsed);
+          const persisted = await migrateStoredRecord(parsed);
           await putProject(persisted);
         } catch (err) {
           console.warn(`Failed to migrate project ${entry.id}:`, err);
@@ -113,8 +144,12 @@ export async function listProjectsAsync(): Promise<ProjectLibraryEntry[]> {
 export async function loadProjectAsync(id: string): Promise<ProjectState | null> {
   await ensureMigration();
 
-  const persisted = await getProject(id);
-  if (persisted) {
+  const stored = await getProject(id);
+  if (stored) {
+    const migrating = needsMigration(stored as unknown as StoredRecord);
+    const persisted = await migrateStoredRecord(stored);
+    // Store the migrated record so the migration runs once (its backup exists).
+    if (migrating) await putProject(persisted);
     return deserializeProject(persisted);
   }
 
@@ -123,7 +158,7 @@ export async function loadProjectAsync(id: string): Promise<ProjectState | null>
     const json = localStorage.getItem(`${LEGACY_PROJECT_PREFIX}${id}`);
     if (json) {
       const parsed = JSON.parse(json);
-      const migrated = validateAndMigrateRaw(parsed);
+      const migrated = await migrateStoredRecord(parsed);
       await putProject(migrated); // Save to IndexedDB for next time
       return deserializeProject(migrated);
     }
@@ -148,6 +183,9 @@ export async function saveProjectAsync(state: ProjectState): Promise<void> {
  */
 export async function deleteProjectAsync(id: string): Promise<void> {
   await deleteProjectFromDb(id);
+  // A deleted project leaves no copy behind, and a later project that reuses
+  // the id (a re-import) must not offer the old project's backup.
+  await deleteBackupsForProject(id);
   // Also clean up localStorage if present
   try {
     localStorage.removeItem(`${LEGACY_PROJECT_PREFIX}${id}`);
@@ -187,21 +225,53 @@ export function loadProject(id: string): ProjectState | null {
 }
 
 // ============================================================================
+// Pre-migration backups
+// ============================================================================
+
+/** Ids of the projects that have a pre-migration backup. */
+export async function listBackedUpProjectIds(): Promise<Set<string>> {
+  const backups = await listBackups();
+  return new Set(backups.map(b => b.projectId));
+}
+
+/** The newest pre-migration backup of a project, if any. */
+export async function getLatestBackup(projectId: string): Promise<ProjectBackup | null> {
+  const backups = await listBackups();
+  return backups.find(b => b.projectId === projectId) ?? null;
+}
+
+/**
+ * Saves a project's newest pre-migration backup as a JSON file (the user's
+ * "Download backup" action; nothing downloads automatically). The file imports
+ * like any exported project. Returns false when there is no backup.
+ */
+export async function downloadProjectBackup(projectId: string, projectName: string): Promise<boolean> {
+  const backup = await getLatestBackup(projectId);
+  if (!backup) return false;
+  const safeName = projectName.replace(/[^a-zA-Z0-9_-]/g, '_');
+  downloadJson(backup.record, `${safeName}.backup-v${backup.fromVersion}.pushflow.json`);
+  return true;
+}
+
+function downloadJson(value: unknown, fileName: string): void {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// ============================================================================
 // JSON File Export/Import
 // ============================================================================
 
 export function exportProjectToFile(state: ProjectState): void {
   const persisted = serializeProject(state);
-  const json = JSON.stringify(persisted, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${state.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.pushflow.json`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  downloadJson(persisted, `${state.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.pushflow.json`);
 }
 
 export type ImportResult =

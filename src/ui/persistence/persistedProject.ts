@@ -24,9 +24,13 @@ import { type CandidateSolution } from '../../types/candidateSolution';
 
 /**
  * Current persisted schema version.
- * Bump this when the persisted shape changes in a breaking way.
+ * Every change to the stored shape bumps this and adds a step to MIGRATIONS
+ * (migrations.ts), which runs on load after backing the record up.
+ *
+ * 1: the IndexedDB format.
+ * 2: recoveredDrafts (S1a.2).
  */
-export const PERSISTED_SCHEMA_VERSION = 1;
+export const PERSISTED_SCHEMA_VERSION = 2;
 
 // ============================================================================
 // Persisted Project Document
@@ -55,6 +59,12 @@ export interface PersistedProject {
   workingLayout?: Layout | null;
   /** Durable named alternative layouts. */
   savedVariants: Layout[];
+  /**
+   * Working/Test Layouts kept automatically when an explicit action replaced
+   * them (provenance 'recovered'). Added in schema 2; absent in older records
+   * until the migration runner adds it.
+   */
+  recoveredDrafts?: Layout[];
 
   // --- Sound State ---
   /** Independent timing tracks (one per sound). */

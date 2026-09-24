@@ -19,7 +19,11 @@ import type { PfHandle } from './fixtures';
 
 const compareButton = (page: Page) => page.getByTitle(/^Compare \d+ selected layouts$|^Select 2\+ candidates to compare$/);
 
-/** Suggest → Promote (so Active is analysed) → Generate with Beam, which leaves a differing draft. Returns Active's standalone score. */
+/**
+ * Suggest → Promote (so Active is analysed) → Generate with Beam → Preview #1,
+ * which leaves a differing draft (Generate itself only proposes, from S1a.2).
+ * Returns Active's standalone score.
+ */
 async function activeThenCandidates(page: Page, pf: PfHandle): Promise<number> {
   await openTestMidi1(page, pf);
   await suggestStartingLayout(page, pf);
@@ -31,7 +35,10 @@ async function activeThenCandidates(page: Page, pf: PfHandle): Promise<number> {
   const standalone = s.analysisResult!.executionPlan.score;
   await chooseMethod(page, 'Beam');
   await generateAndWait(page, pf);
-  expect((await pf.call('state')).workingLayout, 'Generate left a draft that differs from Active').not.toBeNull();
+  await page.getByTestId('candidate-row').first().getByRole('button', { name: 'Preview' }).click();
+  expect((await pf.call('state')).workingLayout, 'Preview left a draft that differs from Active').not.toBeNull();
+  // Let the draft's own analysis land, as it would before a user opens Compare.
+  await waitForAnalysis(pf);
   return standalone;
 }
 

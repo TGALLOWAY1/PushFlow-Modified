@@ -54,7 +54,7 @@ test.describe('C4 · undo', () => {
     expect(await shownPads(pf)).toEqual(before);
   });
 
-  test('one Undo after Generate reverts the applied candidate and keeps the candidates and trace', async ({ page, pf }) => {
+  test('after Generate, one Undo keeps the candidates and trace and undoes the previous user edit', async ({ page, pf }) => {
     test.setTimeout(120_000);
     await openTestMidi1(page, pf);
     await placeSounds(pf, ['0,0', '0,1', '1,0', '0,7', '1,7', '0,6', '7,3']);
@@ -65,15 +65,18 @@ test.describe('C4 · undo', () => {
     await generateAndWait(page, pf);
     const after = await pf.call('state');
     const candidateIds = after.candidates.map(c => c.id);
+    // Generate only proposes (S1a.2): the draft is untouched.
+    expect(await shownPads(pf)).toEqual(draft);
     // Today generateFull clears the trace and never sets it (see Follow-ups in
     // UI_ROADMAP_PROGRESS.md), so this compares an empty trace until S3.4.
     await clickUndo(page);
     const undone = await pf.call('state');
+    const { ['7,3']: _lastPlaced, ...draftBeforeLastEdit } = draft;
     expect({
       pads: await shownPads(pf),
       candidates: undone.candidates.map(c => c.id),
       trace: undone.moveHistory?.length ?? 0,
-    }).toEqual({ pads: draft, candidates: candidateIds, trace: after.moveHistory?.length ?? 0 });
+    }).toEqual({ pads: draftBeforeLastEdit, candidates: candidateIds, trace: after.moveHistory?.length ?? 0 });
   });
 
   test('Undo during playback keeps playing from the current time', async ({ page, pf }) => {

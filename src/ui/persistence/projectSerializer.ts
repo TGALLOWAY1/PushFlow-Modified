@@ -26,6 +26,7 @@ import { type CostToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
 import { type OptimizerMethodKey } from '../../engine/optimization/optimizerInterface';
 import { type GreedyLayoutStrategy } from '../../engine/optimization/greedyCandidatePipeline';
 import { buildLegacySourceFile, buildPerformanceLanesFromStreams } from '../state/streamsToLanes';
+import { runMigrations, type StoredRecord } from './migrations';
 
 // ============================================================================
 // Serialize: ProjectState → PersistedProject
@@ -48,6 +49,7 @@ export function serializeProject(state: ProjectState): PersistedProject {
     activeLayout: state.activeLayout,
     workingLayout: state.workingLayout ?? null,
     savedVariants: state.savedVariants,
+    recoveredDrafts: state.recoveredDrafts ?? [],
 
     // Sound state
     soundStreams: state.soundStreams,
@@ -140,6 +142,9 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
     savedVariants: Array.isArray(persisted.savedVariants)
       ? persisted.savedVariants.map(l => reconcileLayoutVoices(ensureLayoutDefaults(l, 'variant'), soundStreams))
       : [],
+    recoveredDrafts: Array.isArray(persisted.recoveredDrafts)
+      ? persisted.recoveredDrafts.map(l => reconcileLayoutVoices(ensureRecoveredDefaults(l), soundStreams))
+      : [],
 
     // Constraints
     voiceConstraints: (persisted.voiceConstraints && typeof persisted.voiceConstraints === 'object')
@@ -206,13 +211,14 @@ export function validateAndMigrateRaw(parsed: unknown): PersistedProject {
     throw new Error('Project data missing id.');
   }
 
-  // If this is already a PersistedProject (has schemaVersion), return with defaults
-  if (typeof p.schemaVersion === 'number') {
-    return applyPersistedDefaults(p as Partial<PersistedProject> & { id: string });
-  }
-
-  // Legacy localStorage format: convert
-  return migrateLegacyToPersistedProject(p);
+  // A record with no schemaVersion is the legacy localStorage format: convert
+  // it to schema 1 first. Then the migration runner brings it up to date, and
+  // missing fields get their defaults.
+  const versioned: StoredRecord = typeof p.schemaVersion === 'number'
+    ? p
+    : migrateLegacyToPersistedProject(p) as unknown as StoredRecord;
+  const { record } = runMigrations(versioned);
+  return applyPersistedDefaults(record as Partial<PersistedProject> & { id: string });
 }
 
 // ============================================================================
@@ -241,6 +247,10 @@ function ensureLayoutDefaults(layout: any, role: Layout['role']): Layout {
     placementLocks: layout.placementLocks ?? {},
     padToVoice,
   };
+}
+
+function ensureRecoveredDefaults(layout: Layout): Layout {
+  return { ...ensureLayoutDefaults(layout, 'variant'), provenance: 'recovered' };
 }
 
 /** Working layouts must reference their baseline; repair records that lost it. */
@@ -278,6 +288,9 @@ function applyPersistedDefaults(p: Partial<PersistedProject> & { id: string }): 
       : null,
     savedVariants: Array.isArray(p.savedVariants)
       ? p.savedVariants.map(l => ensureLayoutDefaults(l, 'variant'))
+      : [],
+    recoveredDrafts: Array.isArray(p.recoveredDrafts)
+      ? p.recoveredDrafts.map(ensureRecoveredDefaults)
       : [],
     soundStreams: Array.isArray(p.soundStreams) ? p.soundStreams : [],
     instrumentConfig: p.instrumentConfig ?? base.instrumentConfig,
@@ -374,6 +387,7 @@ function migrateLegacyToPersistedProject(p: Record<string, unknown>): PersistedP
       : ALL_COSTS_ENABLED,
     createdAt: typeof p.createdAt === 'string' ? p.createdAt : new Date().toISOString(),
     updatedAt: typeof p.updatedAt === 'string' ? p.updatedAt : new Date().toISOString(),
-    schemaVersion: PERSISTED_SCHEMA_VERSION,
+    // Schema 1: the migration runner takes it the rest of the way.
+    schemaVersion: 1,
   };
 }

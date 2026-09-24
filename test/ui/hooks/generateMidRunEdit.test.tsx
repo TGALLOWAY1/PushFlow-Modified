@@ -7,8 +7,8 @@
  * browser this can't be an e2e case: with an edit mid-run, greedy Generate did
  * not finish within 10 minutes (see Follow-ups in UI_ROADMAP_PROGRESS.md).
  *
- * Expected to fail until S1a.2: Generate dispatches APPLY_GENERATION_TO_LAYOUT
- * after the run, replacing the draft and losing the edit.
+ * Flipped in S1a.2: Generate no longer dispatches APPLY_GENERATION_TO_LAYOUT,
+ * so the draft (with the edit) is left alone when the run finishes.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -20,7 +20,7 @@ import { useAutoAnalysis } from '../../../src/ui/hooks/useAutoAnalysis';
 import { suggestedTestMidi1 } from '../../helpers/testMidi1';
 
 describe('C2 · Generate and a mid-run edit', () => {
-  it.fails('keeps an edit made while Generate runs (fails until S1a.2)', async () => {
+  it('keeps an edit made while Generate runs', async () => {
     let initial = await suggestedTestMidi1();
     initial = projectReducer(initial, { type: 'SET_OPTIMIZER_METHOD', payload: 'greedy' });
     initial = projectReducer(initial, { type: 'SET_GREEDY_STRATEGY', payload: 'natural-pose' });

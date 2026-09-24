@@ -33,6 +33,8 @@ const ACTION_LABELS: Partial<Record<ProjectAction['type'], string>> = {
   SAVE_AS_VARIANT: 'Save as variant',
   LOAD_SAVED_VARIANT: 'Load variant',
   RENAME_LAYOUT: 'Rename layout',
+  RESTORE_RECOVERED_DRAFT: 'Restore draft',
+  DELETE_RECOVERED_DRAFT: 'Delete recovered draft',
   APPLY_GENERATION_TO_LAYOUT: 'Use candidate',
   SUGGEST_STARTING_LAYOUT: 'Suggest layout',
   SET_INSTRUMENT_CONFIG: 'Instrument settings',

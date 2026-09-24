@@ -325,7 +325,8 @@ function OverviewInfographic() {
           </p>
           <p>
             <strong className="text-[var(--text-primary)]">What are candidates?</strong> Each candidate is a complete layout + execution plan proposal.
-            PushFlow generates multiple alternatives so you can compare tradeoffs.
+            PushFlow generates multiple alternatives so you can compare tradeoffs. Generating never changes your layout:
+            Preview a candidate to try it. If that replaces a draft you made, the draft is kept under Recovered drafts.
           </p>
           <p>
             <strong className="text-[var(--text-primary)]">What is the Greedy optimizer?</strong> It builds a layout step by step, then improves it

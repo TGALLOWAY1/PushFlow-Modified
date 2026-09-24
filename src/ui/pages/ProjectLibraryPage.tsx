@@ -19,6 +19,8 @@ import {
   loadProjectAsync,
   exportProjectToFile,
   importProjectFromFile,
+  listBackedUpProjectIds,
+  downloadProjectBackup,
   type ProjectLibraryEntry,
 } from '../persistence/projectStorage';
 import { generateId } from '../../utils/idGenerator';
@@ -32,6 +34,7 @@ export function ProjectLibraryPage() {
   const navigate = useNavigate();
   const [savedProjects, setSavedProjects] = useState<ProjectLibraryEntry[]>([]);
   const [projectStates, setProjectStates] = useState<Map<string, ProjectState>>(new Map());
+  const [backedUpIds, setBackedUpIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
@@ -54,6 +57,12 @@ export function ProjectLibraryPage() {
         }
       }
       setProjectStates(stateMap);
+      // After the loads above, which back up and migrate old records.
+      try {
+        setBackedUpIds(await listBackedUpProjectIds());
+      } catch {
+        setBackedUpIds(new Set());
+      }
     } catch (err) {
       console.error('Failed to load projects:', err);
     } finally {
@@ -105,6 +114,10 @@ export function ProjectLibraryPage() {
     const state = projectStates.get(id) ?? await loadProjectAsync(id);
     if (state) exportProjectToFile(state);
   }, [projectStates]);
+
+  const backupHandler = (entry: ProjectLibraryEntry) => (
+    backedUpIds.has(entry.id) ? () => { void downloadProjectBackup(entry.id, entry.name); } : undefined
+  );
 
   const handleImportFile = useCallback(async (file: File) => {
     setImportError(null);
@@ -203,6 +216,7 @@ export function ProjectLibraryPage() {
           projectState={projectStates.get(heroProject.id) ?? null}
           onResume={() => navigate(`/project/${heroProject.id}`)}
           onOpenEditor={() => navigate(`/project/${heroProject.id}`)}
+          onDownloadBackup={backupHandler(heroProject)}
         />
       ) : (
         <section className="relative rounded-xl overflow-hidden" style={{ minHeight: 300 }}>
@@ -248,6 +262,7 @@ export function ProjectLibraryPage() {
                   onOpen={() => navigate(`/project/${entry.id}`)}
                   onDelete={() => handleDeleteProject(entry)}
                   onExport={() => handleExportProject(entry.id)}
+                  onDownloadBackup={backupHandler(entry)}
                 />
               ))}
               {/* Add placeholder */}

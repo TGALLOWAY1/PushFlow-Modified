@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 import { useProject } from '../../state/ProjectContext';
+import { useDraftReplacement } from '../../hooks/useDraftReplacement';
 import { getAnalysisForLayout } from '../../state/projectState';
 import { CompareGridView } from '../CompareGridView';
 import { CandidateCompare } from '../CandidateCompare';
@@ -48,7 +49,8 @@ function buildActiveCandidate(state: ReturnType<typeof useProject>['state']): Ca
 }
 
 export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
-  const { state, dispatch } = useProject();
+  const { state } = useProject();
+  const replaceDraft = useDraftReplacement();
 
   // Find candidates from IDs — handle special '__active__' ID
   const allCandidates = state.candidates;
@@ -82,7 +84,7 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
   const handlePromote = (candidate: CandidateSolution) => {
     if (candidate.id === '__active__') return; // Can't promote active to active
     if (confirm('Promote this candidate to become the Active Layout? The current active layout will be auto-saved as a variant.')) {
-      dispatch({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
+      replaceDraft({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
       // Don't close — remaining candidates are preserved so the user can keep comparing
     }
   };

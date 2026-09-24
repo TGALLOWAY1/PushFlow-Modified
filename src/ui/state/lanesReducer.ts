@@ -133,6 +133,7 @@ function withoutOrphanedVoices(next: ProjectState): ProjectState {
     activeLayout: prune(next.activeLayout),
     workingLayout: next.workingLayout ? prune(next.workingLayout) : next.workingLayout,
     savedVariants: next.savedVariants.map(prune),
+    recoveredDrafts: (next.recoveredDrafts ?? []).map(prune),
     voiceConstraints: constraintsChanged ? voiceConstraints : next.voiceConstraints,
   };
 }
