@@ -34,9 +34,12 @@ vi.mock('../../../src/ui/persistence/indexedDbStore', () => ({
     backups.set(b.key, structuredClone(b) as never);
   }),
   listBackups: vi.fn(async () => [...backups.values()]),
+  deleteBackupsForProject: vi.fn(async (projectId: string) => {
+    for (const [key, b] of backups) if (b.projectId === projectId) backups.delete(key);
+  }),
 }));
 
-import { loadProjectAsync, listBackedUpProjectIds, getLatestBackup } from '../../../src/ui/persistence/projectStorage';
+import { loadProjectAsync, listBackedUpProjectIds, getLatestBackup, deleteProjectAsync } from '../../../src/ui/persistence/projectStorage';
 
 beforeEach(() => {
   log.length = 0;
@@ -73,5 +76,19 @@ describe('loadProjectAsync migrates behind a backup', () => {
     await expect(loadProjectAsync(saved.id)).rejects.toThrow('backup write failed');
     expect(log).toEqual([]);
     expect(projects.get(saved.id)).toEqual(saved);
+  });
+});
+
+describe('deleting a project', () => {
+  it('deletes its pre-migration backups too', async () => {
+    const saved = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
+    projects.set(saved.id, saved);
+    backups.set('other@v1', { key: 'other@v1', projectId: 'other', fromVersion: 1, createdAt: '', record: {} });
+    await loadProjectAsync(saved.id);
+    expect(await listBackedUpProjectIds()).toEqual(new Set([saved.id, 'other']));
+
+    await deleteProjectAsync(saved.id);
+    expect(await getLatestBackup(saved.id)).toBeNull();
+    expect(await listBackedUpProjectIds()).toEqual(new Set(['other']));
   });
 });

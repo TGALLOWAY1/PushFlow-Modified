@@ -22,6 +22,7 @@ import {
   getFullProject,
   putBackup,
   listBackups,
+  deleteBackupsForProject,
   backupKey,
   type ProjectBackup,
 } from './indexedDbStore';
@@ -182,6 +183,9 @@ export async function saveProjectAsync(state: ProjectState): Promise<void> {
  */
 export async function deleteProjectAsync(id: string): Promise<void> {
   await deleteProjectFromDb(id);
+  // A deleted project leaves no copy behind, and a later project that reuses
+  // the id (a re-import) must not offer the old project's backup.
+  await deleteBackupsForProject(id);
   // Also clean up localStorage if present
   try {
     localStorage.removeItem(`${LEGACY_PROJECT_PREFIX}${id}`);

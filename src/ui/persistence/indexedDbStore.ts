@@ -215,6 +215,25 @@ export async function putBackup(backup: ProjectBackup): Promise<void> {
   });
 }
 
+/** Deletes every pre-migration backup of a project (with the project itself). */
+export async function deleteBackupsForProject(projectId: string): Promise<void> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(BACKUPS_STORE, 'readwrite');
+    const store = tx.objectStore(BACKUPS_STORE);
+    const request = store.openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      if ((cursor.value as ProjectBackup).projectId === projectId) cursor.delete();
+      cursor.continue();
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
 /** Every backup, newest first. */
 export async function listBackups(): Promise<ProjectBackup[]> {
   const db = await openDb();

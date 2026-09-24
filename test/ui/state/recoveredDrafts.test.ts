@@ -183,3 +183,24 @@ describe('P1a-3: Recovered drafts are deduped by hash and capped at 5', () => {
     expect(state.recoveredDrafts.map(l => l.id)).toEqual(['rebuilt']);
   });
 });
+
+describe('deleting a Sound prunes it from Recovered drafts', () => {
+  it('a restored draft never brings back a deleted Sound or its lock', async () => {
+    let state = await withCandidatesAndVariant();
+    const draft = state.workingLayout!;
+    const [pad, voice] = Object.entries(draft.padToVoice)[0];
+    state = projectReducer(state, { type: 'TOGGLE_PLACEMENT_LOCK', payload: { voiceId: voice.id, padKey: pad } });
+    state = projectReducer(state, { type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: 'cand-a' } });
+    expect(state.recoveredDrafts[0].placementLocks[voice.id]).toBe(pad);
+
+    const lane = state.performanceLanes.find(l => l.id === voice.id)!;
+    state = projectReducer(state, { type: 'DELETE_LANE', payload: lane.id });
+    expect(state.soundStreams.some(s => s.id === voice.id)).toBe(false);
+    const kept = state.recoveredDrafts[0];
+    expect(Object.values(kept.padToVoice).some(v => v.id === voice.id)).toBe(false);
+    expect(kept.placementLocks[voice.id]).toBeUndefined();
+
+    const restored = projectReducer(state, { type: 'RESTORE_RECOVERED_DRAFT', payload: { layoutId: kept.id } });
+    expect(Object.values(restored.workingLayout!.padToVoice).some(v => v.id === voice.id)).toBe(false);
+  });
+});
