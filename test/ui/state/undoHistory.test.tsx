@@ -232,7 +232,7 @@ describe('one undo step per user intent', () => {
       .toEqual({ active: 0, draft: true });
   });
 
-  it('interim (until S1a.2): one Undo after Generate reverts the auto-applied candidate and keeps candidates and trace', async () => {
+  it('P1a-1c: after Generate, Undo keeps the candidate list and the trace and undoes the previous user edit', async () => {
     let initial = await suggestedTestMidi1();
     initial = projectReducer(initial, { type: 'SET_OPTIMIZER_METHOD', payload: 'greedy' });
     initial = projectReducer(initial, { type: 'SET_GREEDY_STRATEGY', payload: 'natural-pose' });
@@ -245,22 +245,25 @@ describe('one undo step per user intent', () => {
 
     const after = result.current.project.state;
     expect(after.candidates.length).toBeGreaterThan(0);
-    expect(result.current.project.undoLabel).toBe('Use candidate');
+    // Generate only proposes: it records no step, and the draft is untouched.
+    expect(pads(result)).toEqual(draft);
+    expect(result.current.project.undoLabel).toBe('Swap pads');
     act(() => result.current.project.undo());
     const undone = result.current.project.state;
     expect({
       pads: pads(result),
       candidates: undone.candidates.map(c => c.id),
       trace: undone.moveHistory,
-      undoLabel: result.current.project.undoLabel,
-      // The grid shows the restored draft, so no candidate stays selected.
-      selectedCandidateId: undone.selectedCandidateId,
+      iterationTraces: undone.candidates.map(c => c.iterationTrace?.length ?? null),
+      // The swap was the only step (history starts empty when the project opens).
+      canUndo: result.current.project.canUndo,
     }).toEqual({
-      pads: draft,
+      // The swap is undone: back to the Suggested layout.
+      pads: Object.keys(initial.workingLayout!.padToVoice).sort(),
       candidates: after.candidates.map(c => c.id),
       trace: after.moveHistory,
-      undoLabel: 'Swap pads',
-      selectedCandidateId: null,
+      iterationTraces: after.candidates.map(c => c.iterationTrace?.length ?? null),
+      canUndo: false,
     });
   }, 120_000);
 });

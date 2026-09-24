@@ -7,8 +7,8 @@
  * (useAutoAnalysis.ts). Preview, a card-body click, Load Draft and Promote
  * replace the draft the same way, with no copy kept.
  *
- * Flips: the Generate, mid-run edit and recoverable-draft cases in S1a.2
- * (Generate only proposes; Recovered drafts); the Inspect case in S3.2.
+ * Flipped in S1a.2: the Generate, mid-run edit and recoverable-draft cases
+ * (Generate only proposes; Recovered drafts). Flips in S3.2: the Inspect case.
  */
 
 import { test, expect, EXPECTED_FAIL } from './fixtures';
@@ -52,7 +52,6 @@ async function expectRecoverableNowAndAfterReload(page: Page, pf: PfHandle, pads
 
 test.describe('C2 · Working/Test Layout overwritten', () => {
   test('Generate leaves the draft unchanged', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C2: Generate dispatches APPLY_GENERATION_TO_LAYOUT, replacing the draft (flips in S1a.2)');
     await openTestMidi1(page, pf);
     await placeSounds(pf, HAND_PADS);
     const draftHash = await pf.call('layoutHash', 'working');
@@ -68,28 +67,24 @@ test.describe('C2 · Working/Test Layout overwritten', () => {
 
   test.describe('the hand-made draft stays recoverable, including after a reload', () => {
     test('after Preview', async ({ page, pf }) => {
-      test.fail(EXPECTED_FAIL, 'C2: Preview clones the candidate over the draft and keeps no copy (flips in S1a.2)');
       const pads = await candidatesAndHandDraft(page, pf);
       await page.getByTestId('candidate-row').nth(1).getByRole('button', { name: 'Preview' }).click();
       await expectRecoverableNowAndAfterReload(page, pf, pads);
     });
 
     test('after a card-body click', async ({ page, pf }) => {
-      test.fail(EXPECTED_FAIL, 'C2: a card-body click previews, replacing the draft (flips in S1a.2)');
       const pads = await candidatesAndHandDraft(page, pf);
       await page.getByTestId('candidate-row').nth(2).getByText(/^#3$/).click();
       await expectRecoverableNowAndAfterReload(page, pf, pads);
     });
 
     test('after Load Draft', async ({ page, pf }) => {
-      test.fail(EXPECTED_FAIL, 'C2: Load Draft replaces the draft with the variant (flips in S1a.2)');
       const pads = await candidatesAndHandDraft(page, pf);
       await page.getByTestId('variant-row').first().getByRole('button', { name: 'Load Draft' }).click();
       await expectRecoverableNowAndAfterReload(page, pf, pads);
     });
 
     test('after a candidate card Promote', async ({ page, pf }) => {
-      test.fail(EXPECTED_FAIL, 'C2: card Promote discards the draft (flips in S1a.2)');
       const pads = await candidatesAndHandDraft(page, pf);
       const promote = page.getByTestId('candidate-row').nth(1).getByRole('button', { name: /Promote|Confirm\?/ });
       const activeBefore = await pf.call('layoutHash', 'active');
@@ -100,7 +95,6 @@ test.describe('C2 · Working/Test Layout overwritten', () => {
     });
 
     test('after a saved variant Promote', async ({ page, pf }) => {
-      test.fail(EXPECTED_FAIL, 'C2: variant Promote discards the draft (flips in S1a.2)');
       const pads = await candidatesAndHandDraft(page, pf);
       const promote = page.getByTestId('variant-row').first().getByRole('button', { name: /Promote|Confirm\?/ });
       const activeBefore = await pf.call('layoutHash', 'active');

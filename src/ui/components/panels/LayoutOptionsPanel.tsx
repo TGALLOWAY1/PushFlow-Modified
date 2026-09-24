@@ -7,6 +7,9 @@
 
 import { useState } from 'react';
 import { useProject } from '../../state/ProjectContext';
+import { useDraftReplacement } from '../../hooks/useDraftReplacement';
+import { type Layout } from '../../../types/layout';
+import { type SoundStream, RECOVERED_DRAFTS_CAP } from '../../state/projectState';
 import { CandidatePreviewCard } from './CandidatePreviewCard';
 import { MiniGridPreview } from './MiniGridPreview';
 
@@ -24,7 +27,8 @@ export function LayoutOptionsPanel({
   onCompare,
   onRetryGenerate,
 }: LayoutOptionsPanelProps) {
-  const { state, dispatch, transact } = useProject();
+  const { state, dispatch } = useProject();
+  const replaceDraft = useDraftReplacement();
   const [viewAllOpen, setViewAllOpen] = useState(false);
   const [editingLayoutName, setEditingLayoutName] = useState(false);
   const [layoutNameDraft, setLayoutNameDraft] = useState('');
@@ -53,7 +57,7 @@ export function LayoutOptionsPanel({
               Compare ({compareCount})
             </button>
           )}
-          {(state.candidates.length > 4 || state.savedVariants.length > 3) && (
+          {state.candidates.length > 4 && (
             <button
               className="text-pf-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
               onClick={() => setViewAllOpen(true)}
@@ -188,6 +192,10 @@ export function LayoutOptionsPanel({
         {/* Candidate list */}
         {hasCandidates && (
           <div className="flex flex-col gap-2">
+            {/* Generate only proposes; the grid and the draft are untouched. */}
+            <p data-testid="candidates-hint" className="text-pf-xs text-[var(--text-tertiary)] px-0.5">
+              Preview #1 to try it on the grid. Your draft stays as it is until you do.
+            </p>
             {state.candidates.map((candidate, idx) => (
               <CandidatePreviewCard
                 key={candidate.id}
@@ -197,18 +205,18 @@ export function LayoutOptionsPanel({
                 isSelected={candidate.id === state.selectedCandidateId}
                 isCheckedForCompare={selectedForCompare.has(candidate.id)}
                 onSelect={() => {
-                  // Selecting a candidate drives display via the selector layer
-                  // (getDisplayedCandidate reads selectedCandidateId first), so we do
-                  // NOT overwrite analysisResult here — that kept analysis-cache and
-                  // candidate-selection as two conflated stores. APPLY_GENERATION makes
-                  // the candidate the editable working layout.
-                  transact('Use candidate', () => {
-                    dispatch({ type: 'SELECT_CANDIDATE', payload: candidate.id });
-                    dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: candidate.id } });
-                  });
+                  // Preview: selecting a candidate drives display via the selector
+                  // layer (getDisplayedCandidate reads selectedCandidateId first), so
+                  // analysisResult is not overwritten. APPLY_GENERATION makes the
+                  // candidate the editable working layout, keeping a differing draft
+                  // in Recovered drafts.
+                  replaceDraft(
+                    { type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: candidate.id } },
+                    { label: 'Use candidate', alsoDispatch: [{ type: 'SELECT_CANDIDATE', payload: candidate.id }] },
+                  );
                 }}
                 onPromote={() => {
-                  dispatch({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
+                  replaceDraft({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
                 }}
                 onDelete={() => {
                   dispatch({ type: 'DELETE_CANDIDATE', payload: { candidateId: candidate.id } });
@@ -228,14 +236,39 @@ export function LayoutOptionsPanel({
               </span>
             </div>
             <div className="flex flex-col gap-2">
-              {state.savedVariants.slice(-3).reverse().map((variant) => (
+              {[...state.savedVariants].reverse().map((variant) => (
                 <SavedVariantCard
                   key={variant.id}
                   variant={variant}
                   soundStreams={state.soundStreams}
-                  onLoad={() => dispatch({ type: 'LOAD_SAVED_VARIANT', payload: { variantId: variant.id } })}
-                  onPromote={() => dispatch({ type: 'PROMOTE_VARIANT', payload: { variantId: variant.id } })}
+                  onLoad={() => replaceDraft({ type: 'LOAD_SAVED_VARIANT', payload: { variantId: variant.id } })}
+                  onPromote={() => replaceDraft({ type: 'PROMOTE_VARIANT', payload: { variantId: variant.id } })}
                   onDelete={() => dispatch({ type: 'DELETE_VARIANT', payload: { variantId: variant.id } })}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Recovered drafts: drafts kept automatically when an action replaced them */}
+        {(state.recoveredDrafts ?? []).length > 0 && (
+          <div className="pt-3 mt-3 border-t border-[var(--border-subtle)] space-y-2" data-testid="recovered-drafts">
+            <div className="flex items-center justify-between">
+              <span className="section-header">
+                Recovered drafts ({state.recoveredDrafts.length})
+              </span>
+            </div>
+            <p className="text-pf-xs text-[var(--text-tertiary)] px-0.5">
+              Kept when Preview, Load Draft or Promote replaced your draft. The newest {RECOVERED_DRAFTS_CAP} are kept.
+            </p>
+            <div className="flex flex-col gap-2">
+              {[...state.recoveredDrafts].reverse().map((draft) => (
+                <RecoveredDraftCard
+                  key={draft.id}
+                  draft={draft}
+                  soundStreams={state.soundStreams}
+                  onRestore={() => replaceDraft({ type: 'RESTORE_RECOVERED_DRAFT', payload: { layoutId: draft.id } })}
+                  onDelete={() => dispatch({ type: 'DELETE_RECOVERED_DRAFT', payload: { layoutId: draft.id } })}
                 />
               ))}
             </div>
@@ -254,7 +287,8 @@ export function LayoutOptionsPanel({
 }
 
 function ViewAllOverlay({ onClose }: { onClose: () => void }) {
-  const { state, dispatch, transact } = useProject();
+  const { state, dispatch } = useProject();
+  const replaceDraft = useDraftReplacement();
 
   return (
     <>
@@ -281,14 +315,14 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
                     isCheckedForCompare={false}
                     onSelect={() => {
                       // Display flows through the selector layer; no analysisResult overwrite.
-                      transact('Use candidate', () => {
-                        dispatch({ type: 'SELECT_CANDIDATE', payload: c.id });
-                        dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: c.id } });
-                      });
+                      replaceDraft(
+                        { type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: c.id } },
+                        { label: 'Use candidate', alsoDispatch: [{ type: 'SELECT_CANDIDATE', payload: c.id }] },
+                      );
                     }}
                     onPromote={() => {
                       if (confirm('Promote this candidate to become the Active Layout?')) {
-                        dispatch({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: c.id } });
+                        replaceDraft({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: c.id } });
                       }
                     }}
                     onDelete={() => {
@@ -313,10 +347,10 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
                     variant={variant}
                     soundStreams={state.soundStreams}
                     onLoad={() => {
-                      dispatch({ type: 'LOAD_SAVED_VARIANT', payload: { variantId: variant.id } });
+                      replaceDraft({ type: 'LOAD_SAVED_VARIANT', payload: { variantId: variant.id } });
                       onClose();
                     }}
-                    onPromote={() => dispatch({ type: 'PROMOTE_VARIANT', payload: { variantId: variant.id } })}
+                    onPromote={() => replaceDraft({ type: 'PROMOTE_VARIANT', payload: { variantId: variant.id } })}
                     onDelete={() => dispatch({ type: 'DELETE_VARIANT', payload: { variantId: variant.id } })}
                   />
                 ))}
@@ -336,8 +370,8 @@ function SavedVariantCard({
   onPromote,
   onDelete,
 }: {
-  variant: import('../../../types/layout').Layout;
-  soundStreams: import('../../state/projectState').SoundStream[];
+  variant: Layout;
+  soundStreams: SoundStream[];
   onLoad: () => void;
   onPromote: () => void;
   onDelete: () => void;
@@ -405,6 +439,61 @@ function SavedVariantCard({
             &times;
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+function RecoveredDraftCard({
+  draft,
+  soundStreams,
+  onRestore,
+  onDelete,
+}: {
+  draft: Layout;
+  soundStreams: SoundStream[];
+  onRestore: () => void;
+  onDelete: () => void;
+}) {
+  const kept = draft.savedAt ? new Date(draft.savedAt) : null;
+  return (
+    <div
+      data-testid="recovered-row"
+      data-layout-id={draft.id}
+      className="rounded-pf-lg border border-dashed border-[var(--border-default)] bg-[var(--bg-card)] p-3"
+    >
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="min-w-0">
+          <div className="text-pf-sm text-[var(--text-primary)] font-medium truncate">{draft.name}</div>
+          <div className="text-pf-xs text-[var(--text-tertiary)]">
+            {Object.keys(draft.padToVoice).length} pads assigned
+          </div>
+          {kept && (
+            <div className="text-pf-xs text-[var(--text-tertiary)]">
+              Kept {kept.toLocaleDateString()} {kept.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          )}
+        </div>
+        <div className="flex-shrink-0">
+          <MiniGridPreview layout={draft} soundStreams={soundStreams} size={0.8} />
+        </div>
+      </div>
+      <div className="flex items-center justify-end gap-1.5">
+        <button
+          className="px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-blue-600/15 border border-blue-500/30 text-blue-400 hover:bg-blue-600/25"
+          onClick={onRestore}
+          title="Make this your Working/Test Layout again"
+        >
+          Restore
+        </button>
+        <button
+          className="px-2 py-1 text-pf-xs rounded-pf-sm transition-colors text-[var(--text-tertiary)] hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20"
+          onClick={onDelete}
+          title="Delete recovered draft"
+          aria-label="Delete recovered draft"
+        >
+          &times;
+        </button>
       </div>
     </div>
   );

@@ -68,13 +68,14 @@ export function CandidatePreviewCard({
     <div
       data-testid="candidate-row"
       data-candidate-id={candidate.id}
-      className={`rounded-pf-lg border transition-all cursor-pointer relative ${
+      className={`rounded-pf-lg border transition-all relative ${
         isSelected
           ? 'border-blue-500 bg-blue-500/5 ring-1 ring-blue-500/20'
           : 'border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--border-default)]'
       }`}
-      onClick={onSelect}
     >
+      {/* Only the Preview button previews: a click on the card body changes
+          nothing, so a stray click can't replace the Working/Test Layout. */}
       {/* Compare checkbox */}
       <button
         className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded-pf-sm border flex items-center justify-center transition-all ${

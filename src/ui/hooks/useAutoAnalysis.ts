@@ -304,11 +304,10 @@ export function useAutoAnalysis() {
 
         const candidates = generationResult.candidates;
 
+        // Generate only proposes: the candidates fill the list, and the draft,
+        // the grid and the draft's analysis are left alone (invariant 7). The
+        // user tries one with Preview.
         dispatch({ type: 'SET_CANDIDATES', payload: candidates });
-        if (candidates.length > 0) {
-          dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidates[0] });
-          dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: candidates[0].id } });
-        }
 
         return candidates.length;
       }
@@ -338,10 +337,6 @@ export function useAutoAnalysis() {
 
       setGenerationProgress('Ranking results...');
       dispatch({ type: 'SET_CANDIDATES', payload: generationResult.candidates });
-      if (generationResult.candidates.length > 0) {
-        dispatch({ type: 'SET_ANALYSIS_RESULT', payload: generationResult.candidates[0] });
-        dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: generationResult.candidates[0].id } });
-      }
       return generationResult.candidates.length;
     } catch (err) {
       dispatch({ type: 'SET_ERROR', payload: err instanceof Error ? err.message : 'Generation failed' });

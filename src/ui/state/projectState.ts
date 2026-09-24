@@ -382,6 +382,8 @@ export type ProjectAction =
   | { type: 'SAVE_AS_VARIANT'; payload: { name: string; source: 'working' | 'candidate'; candidateId?: string } }
   | { type: 'LOAD_SAVED_VARIANT'; payload: { variantId: string } }
   | { type: 'RENAME_LAYOUT'; payload: { target: 'active' | 'working'; name: string } }
+  | { type: 'RESTORE_RECOVERED_DRAFT'; payload: { layoutId: string } }
+  | { type: 'DELETE_RECOVERED_DRAFT'; payload: { layoutId: string } }
 
   // Analysis
   | { type: 'SET_ANALYSIS_RESULT'; payload: CandidateSolution | null }
@@ -532,6 +534,40 @@ function prunePlacementLocks(
     }
   }
   return nextLocks;
+}
+
+/** Recovered drafts kept per project; the oldest is pruned beyond this. */
+export const RECOVERED_DRAFTS_CAP = 5;
+
+/**
+ * The Recovered drafts list after an explicit action replaces the draft with
+ * `incoming` (Preview, Load Draft, a candidate or variant Promote, Restore).
+ *
+ * The draft is kept when it has pads and its hash differs from the Active
+ * Layout, from the incoming layout, from every saved variant and from every
+ * candidate: in those cases it is still recoverable where it is. A kept draft
+ * keeps its id (so a "Restore" toast can name it), replaces any recovered
+ * draft with the same hash, and the oldest are pruned beyond the cap. Returns
+ * the same array when nothing is kept.
+ */
+function keepReplacedDraft(state: ProjectState, incoming: Layout | null, now: string): Layout[] {
+  const kept = state.recoveredDrafts ?? [];
+  const draft = state.workingLayout;
+  if (!draft || Object.keys(draft.padToVoice).length === 0) return kept;
+  const hash = hashLayout(draft);
+  const stillRecoverable = [
+    state.activeLayout,
+    incoming,
+    ...state.savedVariants,
+    ...state.candidates.map(c => c.layout),
+  ];
+  if (stillRecoverable.some(layout => layout && hashLayout(layout) === hash)) return kept;
+  const entry: Layout = {
+    ...cloneLayout(draft, draft.id, draft.name, 'variant'),
+    provenance: 'recovered',
+    savedAt: now,
+  };
+  return [...kept.filter(layout => hashLayout(layout) !== hash), entry].slice(-RECOVERED_DRAFTS_CAP);
 }
 
 // ============================================================================
@@ -1048,6 +1084,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         activeLayout: promoted,
         workingLayout: null,
         savedVariants: autoSavedVariants,
+        recoveredDrafts: keepReplacedDraft(state, promoted, now),
         updatedAt: now,
         // Re-bind the candidate's plan to the promoted layout so the finger
         // assignments, costs and timeline pills keep rendering after promotion.
@@ -1097,9 +1134,11 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       const variant = state.savedVariants.find(layout => layout.id === action.payload.variantId);
       if (!variant) return state;
       const reconciledVariant = reconcileLayoutVoices(variant, state.soundStreams);
+      const now = new Date().toISOString();
       return {
         ...state,
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
+        recoveredDrafts: keepReplacedDraft(state, reconciledVariant, now),
         workingLayout: cloneLayout(reconciledVariant, generateId(), reconciledVariant.name, 'working'),
         selectedCandidateId: null,
         compareCandidateId: null,
@@ -1138,6 +1177,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         activeLayout: promoted,
         workingLayout: null,
         savedVariants: autoSavedVariants,
+        recoveredDrafts: keepReplacedDraft(state, promoted, now),
         updatedAt: now,
         analysisStale: true,
         analysisResult: null,
@@ -1173,6 +1213,40 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return state;
     }
 
+    case 'RESTORE_RECOVERED_DRAFT': {
+      const recovered = (state.recoveredDrafts ?? []).find(l => l.id === action.payload.layoutId);
+      if (!recovered) return state;
+      const now = new Date().toISOString();
+      const restored: Layout = {
+        ...reconcileLayoutVoices(recovered, state.soundStreams),
+        role: 'working',
+        baselineId: state.activeLayout.id,
+        provenance: undefined,
+        savedAt: undefined,
+        scoreCache: null,
+      };
+      // The draft being replaced may itself need keeping (restoring over a
+      // hand-made draft); the restored entry leaves the list either way.
+      const withoutRestored = { ...state, recoveredDrafts: (state.recoveredDrafts ?? []).filter(l => l !== recovered) };
+      return {
+        ...state,
+        workingLayout: restored,
+        recoveredDrafts: keepReplacedDraft(withoutRestored, restored, now),
+        updatedAt: now,
+        analysisStale: true,
+        selectedCandidateId: null,
+        compareCandidateId: null,
+        selectedEventIndex: null,
+        selectedMomentIndex: null,
+      };
+    }
+
+    case 'DELETE_RECOVERED_DRAFT': {
+      const remaining = (state.recoveredDrafts ?? []).filter(l => l.id !== action.payload.layoutId);
+      if (remaining.length === (state.recoveredDrafts ?? []).length) return state;
+      return { ...state, recoveredDrafts: remaining, updatedAt: new Date().toISOString() };
+    }
+
     // -- Analysis --
 
     // Analysis results and candidates are analysis-only state (never persisted),
@@ -1182,10 +1256,12 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return { ...state, analysisResult: action.payload, analysisStale: false };
 
     case 'SET_CANDIDATES':
+      // Candidates are proposals: a new list selects none of them, so the grid
+      // keeps showing the user's layout until they Preview one.
       return {
         ...state,
         candidates: action.payload,
-        selectedCandidateId: action.payload[0]?.id ?? null,
+        selectedCandidateId: null,
         compareCandidateId: null,
         isProcessing: false,
       };
@@ -1295,6 +1371,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
       return {
         ...state,
+        recoveredDrafts: keepReplacedDraft(state, reconciledCandidateLayout, now),
         workingLayout: working,
         // The pad map changed, so any existing analysis describes a different
         // layout. Marking it stale re-runs analysis instead of showing figures

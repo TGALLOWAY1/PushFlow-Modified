@@ -480,8 +480,10 @@ function PerformanceWorkspaceInner() {
   const assignments = displayedCandidate?.executionPlan.fingerAssignments;
   const selectedCandidate = getSelectedCandidate(state);
 
-  // Active trace for Visual Debugger
-  const activeTrace = state.iterationTrace ?? selectedCandidate?.iterationTrace;
+  // Active trace for Visual Debugger. Generate no longer selects a candidate,
+  // so with none previewed the trace shown is the top-ranked candidate's.
+  const activeTrace = state.iterationTrace
+    ?? (selectedCandidate ?? state.candidates[0])?.iterationTrace;
   const debuggerIteration = (activeTrace && state.moveHistoryIndex !== null)
     ? activeTrace[state.moveHistoryIndex]
     : undefined;
