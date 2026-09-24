@@ -542,7 +542,7 @@ export const HARD_CONSTRAINTS = [
       {
         name: 'Placement Locks',
         key: 'placementLock',
-        description: `A lock pins a Sound to one pad, and it is the one hard placement rule you set. ${LOCK_ENFORCING_METHODS.slice(0, -1).join(', ')} and ${LOCK_ENFORCING_METHODS[LOCK_ENFORCING_METHODS.length - 1]} all place locked Sounds first, on their locked pads, and never move them; a candidate that would break a lock is dropped, and the candidate list says so. Manual edits enforce locks too: a locked Sound cannot be dragged off its pad, and nothing can be dropped onto a locked pad (Locked \u00b7 Unlock to move); Remove from pad is refused too until the Sound is unlocked.`,
+        description: `A lock pins a Sound to one pad, and it is the one hard placement rule you set. ${LOCK_ENFORCING_METHODS.slice(0, -1).join(', ')} and ${LOCK_ENFORCING_METHODS[LOCK_ENFORCING_METHODS.length - 1]} all place locked Sounds first, on their locked pads, and never move them; a candidate that would break a lock is dropped, and the candidate list says so. Manual edits enforce locks too: a locked Sound cannot be dragged off its pad, and nothing can be dropped onto a locked pad (Locked \u00b7 Unlock to move); Remove from pad is refused too until the Sound is unlocked, and a Composer preset is never placed or mirrored over a locked Sound.`,
       },
       {
         name: 'Sound Identity',
@@ -612,7 +612,7 @@ export const HARD_CONSTRAINTS = [
       {
         name: 'One Finger Per Sound',
         key: 'ownership',
-        description: 'Every sound is played by the same finger for the whole performance, so the pad\u2192finger mapping is something you can memorise. If you set a finger for a sound, that is its finger; otherwise the solver picks one, looking ahead to avoid a finger that a later chord\u2019s grip cannot keep.',
+        description: 'Every sound is played by the same finger for the whole performance, so the pad\u2192finger mapping is something you can memorise. If you set a finger for a sound, that is its finger; otherwise the solver picks one, looking ahead to avoid a finger that a later chord\u2019s grip cannot keep. A Sound has one finger setting, shared by the Sounds panel, the grid and the Composer; clearing it in any of them clears it everywhere. Placing a Composer preset applies only fingering that was a finger preference when the preset was saved: fingering marked unverified is shown but never applied.',
       },
       {
         name: 'When a Rule Gives Way',

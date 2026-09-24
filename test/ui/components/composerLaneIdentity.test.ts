@@ -28,9 +28,15 @@ describe('composer lane identity', () => {
     expect(laneForVoice(voices[0], lanes)).toBeUndefined();
   });
 
-  it('keeps the name fallback for pads placed before lanes carried project ids', () => {
-    const voices = [voice('legacy-pad', 'Snare', 61)];
-    expect(voiceForLane(lanes[1], voices)?.id).toBe('legacy-pad');
-    expect(laneForVoice(voices[0], lanes)?.id).toBe('l2');
+  it('never matches by name: a Sound that only shares the lane\'s name is not the lane (S1a.5, T66)', () => {
+    const voices = [voice('imported-snare', 'Snare', 61)];
+    expect(voiceForLane(lanes[1], voices)).toBeUndefined();
+    expect(laneForVoice(voices[0], lanes)).toBeUndefined();
+  });
+
+  it('matches a pad a preset placed under the raw lane id', () => {
+    const voices = [voice('l3', 'Hat', 42)];
+    expect(voiceForLane(lanes[2], voices)?.id).toBe('l3');
+    expect(laneForVoice(voices[0], lanes)?.id).toBe('l3');
   });
 });

@@ -908,7 +908,16 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         layoutMode: 'auto',
       }));
 
-    case 'MERGE_ASSIGN_PADS':
+    case 'MERGE_ASSIGN_PADS': {
+      // Placing a preset never displaces a locked Sound or puts one on another
+      // pad (canon section 11): the whole placement is refused, like a drop
+      // onto a locked pad. Nothing changes, so no draft and no undo step.
+      const shown = state.workingLayout ?? state.activeLayout;
+      const lockedIds = new Set(Object.keys(shown.placementLocks ?? {}));
+      if (Object.entries(action.payload).some(([padKey, voice]) =>
+        isPadLocked(shown, padKey) || (voice && lockedIds.has(voice.id) && shown.placementLocks[voice.id] !== padKey))) {
+        return state;
+      }
       return updateWorkingLayout(state, layout => {
         const nextPadToVoice = { ...layout.padToVoice, ...action.payload };
         return {
@@ -919,6 +928,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
           layoutMode: 'manual',
         };
       });
+    }
 
     case 'REMOVE_VOICE_FROM_PAD':
       // A locked Sound stays on its pad until it is unlocked (canon section

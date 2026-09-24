@@ -42,7 +42,17 @@ export interface PresetPad {
   finger: FingerType;
   /** Which hand plays this pad. */
   hand: HandSide;
+  /**
+   * Where hand and finger came from. 'preference': the Sound's finger
+   * preference when the preset was saved, applied (as a soft preference) on
+   * placement. 'unverified' (or absent, in presets saved before this was
+   * recorded): made up by Save Preset (hand from the column, index finger),
+   * shown as unverified and never applied (F9-12).
+   */
+  fingerSource?: PresetFingerSource;
 }
+
+export type PresetFingerSource = 'preference' | 'unverified';
 
 // ============================================================================
 // Handedness
@@ -206,6 +216,27 @@ export function normalizePadPositions(pads: PresetPad[]): PresetPad[] {
       colOffset: pad.position.colOffset - minCol,
     },
   }));
+}
+
+/** Whether a pad's hand and finger are a real preference (and so may be applied). */
+export function isPresetFingerVerified(pad: PresetPad): boolean {
+  return pad.fingerSource === 'preference';
+}
+
+/** Whether any of a preset's pads carries fingering that is not applied. */
+export function hasUnverifiedFingering(pads: PresetPad[]): boolean {
+  return pads.some(pad => !isPresetFingerVerified(pad));
+}
+
+const FINGER_NUMBER: Record<FingerType, number> = { thumb: 1, index: 2, middle: 3, ring: 4, pinky: 5 };
+
+/**
+ * The finger constraint ('L2') placing this pad applies, or null when its
+ * fingering is unverified and must not be applied (F9-12).
+ */
+export function presetPadFingerConstraint(pad: PresetPad): string | null {
+  if (!isPresetFingerVerified(pad)) return null;
+  return `${pad.hand === 'left' ? 'L' : 'R'}${FINGER_NUMBER[pad.finger] ?? 2}`;
 }
 
 /** Create the initial empty composer workspace state. */

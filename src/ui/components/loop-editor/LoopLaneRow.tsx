@@ -23,8 +23,8 @@ interface LoopLaneRowProps {
   dispatch: React.Dispatch<LoopEditorAction>;
   /** Current finger assignment for this lane (if set). */
   fingerAssignment?: LaneFingerAssignment;
-  /** Callback when finger assignment changes. */
-  onFingerAssignmentChange?: (laneId: string, assignment: LaneFingerAssignment) => void;
+  /** Callback when finger assignment changes; null clears it. */
+  onFingerAssignmentChange?: (laneId: string, assignment: LaneFingerAssignment | null) => void;
   /** Pad position string (e.g. "3,5") if lane is assigned to a pad. */
   padPosition?: string;
 }
@@ -53,8 +53,7 @@ export function LoopLaneRow({ lane, dispatch, fingerAssignment, onFingerAssignme
   };
 
   const handleFingerChange = useCallback((assignment: FingerAssignmentValue | null) => {
-    if (!onFingerAssignmentChange || !assignment) return;
-    onFingerAssignmentChange(lane.id, assignment);
+    onFingerAssignmentChange?.(lane.id, assignment);
   }, [onFingerAssignmentChange, lane.id]);
 
   return (
