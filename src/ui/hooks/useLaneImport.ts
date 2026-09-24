@@ -19,13 +19,23 @@ const GROUP_COLORS = [
 ];
 
 export function useLaneImport() {
-  const { state, dispatch } = useProject();
+  const { state, dispatch, transact } = useProject();
 
   const importFiles = useCallback(async (files: File[]) => {
+    // Parse everything first, so the whole import lands as one undo step.
+    const parsed: { file: File; projectData: Awaited<ReturnType<typeof parseMidiFileToProject>> }[] = [];
     for (const file of files) {
       try {
-        const projectData = await parseMidiFileToProject(file);
+        parsed.push({ file, projectData: await parseMidiFileToProject(file) });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to parse MIDI file';
+        dispatch({ type: 'SET_ERROR', payload: `Import error (${file.name}): ${message}` });
+      }
+    }
+    if (parsed.length === 0) return;
 
+    transact('Import', () => {
+      for (const { file, projectData } of parsed) {
         const currentMaxOrder = state.performanceLanes.length > 0
           ? Math.max(...state.performanceLanes.map(l => l.orderIndex))
           : -1;
@@ -64,13 +74,9 @@ export function useLaneImport() {
 
         // bottomLeftNote stays at default (36/C1). MIDI pitch is metadata
         // only and must not affect grid placement.
-
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to parse MIDI file';
-        dispatch({ type: 'SET_ERROR', payload: `Import error (${file.name}): ${message}` });
       }
-    }
-  }, [state.performanceLanes, state.laneGroups, state.instrumentConfig, state.sourceFiles, state.tempo, dispatch]);
+    });
+  }, [state.performanceLanes, state.laneGroups, state.instrumentConfig, state.sourceFiles, state.tempo, dispatch, transact]);
 
   return { importFiles };
 }

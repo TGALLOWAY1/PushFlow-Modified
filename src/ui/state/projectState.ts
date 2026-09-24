@@ -431,8 +431,6 @@ const EPHEMERAL_ACTIONS = new Set<ProjectAction['type']>([
   // Session-only, listed so high-frequency dispatches skip the document check.
   'SET_CURRENT_TIME',
   'TICK_TIME',
-  // Not yet recorded; the transaction wrapper makes it one undo step.
-  'SUGGEST_STARTING_LAYOUT',
 ]);
 
 export function isEphemeralAction(action: ProjectAction): boolean {

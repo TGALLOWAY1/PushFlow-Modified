@@ -18,7 +18,8 @@ import {
   validateAndMigrateRaw,
 } from '../../../src/ui/persistence/projectSerializer';
 import * as greedyPipeline from '../../../src/engine/optimization/greedyCandidatePipeline';
-import { importTestMidi1 } from '../../helpers/testMidi1';
+import { importTestMidi1, suggestedTestMidi1 } from '../../helpers/testMidi1';
+import { projectReducer } from '../../../src/ui/state/projectState';
 
 function renderProject(initial: ProjectState) {
   const wrapper = ({ children }: { children: ReactNode }) => (
@@ -135,6 +136,130 @@ describe('Undo covers only your edits', () => {
     expect(pads(result)).toEqual(['3,3']);
     expect(result.current.project.state.isPlaying).toBe(true);
   });
+});
+
+describe('one undo step per user intent', () => {
+  it('P1a-1b: one Undo after Suggest restores the pre-Suggest grid', async () => {
+    const initial = await importTestMidi1();
+    const { result } = renderProject(initial);
+    act(() => {
+      result.current.project.dispatch({ type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey: '0,0', stream: initial.soundStreams[0] } });
+    });
+    const before = pads(result);
+    act(() => result.current.project.dispatch({ type: 'SUGGEST_STARTING_LAYOUT' }));
+    expect(pads(result)).toHaveLength(initial.soundStreams.length);
+    expect(result.current.project.undoLabel).toBe('Suggest layout');
+    act(() => result.current.project.undo());
+    expect(pads(result)).toEqual(before);
+    expect(result.current.project.undoLabel).toBe('Place Sound');
+    expect(result.current.project.redoLabel).toBe('Suggest layout');
+  });
+
+  it('transact makes a compound gesture one named step', async () => {
+    const initial = await importTestMidi1();
+    const { result } = renderProject(initial);
+    const [a, b, c] = initial.soundStreams;
+    act(() => {
+      const { dispatch, transact } = result.current.project;
+      transact('Group', () => {
+        dispatch({ type: 'CREATE_LANE_GROUP', payload: { groupId: 'g1', name: 'Group 1', color: '#fff', orderIndex: 0, isCollapsed: false } });
+        for (const s of [a, b, c]) dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: s.id, groupId: 'g1' } });
+      });
+    });
+    expect(result.current.project.state.laneGroups).toHaveLength(1);
+    expect(result.current.project.undoLabel).toBe('Group');
+    act(() => result.current.project.undo());
+    const s = result.current.project.state;
+    expect({ groups: s.laneGroups.length, grouped: s.performanceLanes.filter(l => l.groupId).length, canUndo: result.current.project.canUndo })
+      .toEqual({ groups: 0, grouped: 0, canUndo: false });
+  });
+
+  it('a transaction that changes nothing records nothing, and nesting joins the outer step', async () => {
+    const initial = await importTestMidi1();
+    const { result } = renderProject(initial);
+    act(() => {
+      result.current.project.transact('Nothing', () => {
+        result.current.project.dispatch({ type: 'SELECT_EVENT', payload: 3 });
+      });
+    });
+    expect(result.current.project.canUndo).toBe(false);
+    act(() => {
+      const { dispatch, transact } = result.current.project;
+      transact('Outer', () => {
+        dispatch({ type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey: '1,1', stream: initial.soundStreams[0] } });
+        transact('Inner', () => {
+          dispatch({ type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey: '1,2', stream: initial.soundStreams[1] } });
+        });
+      });
+    });
+    expect(result.current.project.undoLabel).toBe('Outer');
+    act(() => result.current.project.undo());
+    expect({ pads: pads(result), canUndo: result.current.project.canUndo }).toEqual({ pads: [], canUndo: false });
+  });
+
+  it('an import (lanes plus tempo) is one step', async () => {
+    const imported = await importTestMidi1();
+    const { result } = renderProject(projectReducer(imported, { type: 'RESET' }));
+    act(() => {
+      const { dispatch, transact } = result.current.project;
+      transact('Import', () => {
+        dispatch({ type: 'IMPORT_LANES', payload: { lanes: imported.performanceLanes, sourceFile: imported.sourceFiles[0] } });
+        dispatch({ type: 'SET_TEMPO', payload: imported.tempo + 7 });
+      });
+    });
+    expect(result.current.project.state.soundStreams).toHaveLength(imported.soundStreams.length);
+    act(() => result.current.project.undo());
+    const s = result.current.project.state;
+    expect({ sounds: s.soundStreams.length, tempo: s.tempo, canUndo: result.current.project.canUndo })
+      .toEqual({ sounds: 0, tempo: 120, canUndo: false });
+  });
+
+  it('Discard and Promote are one named step each', async () => {
+    const initial = await suggestedTestMidi1();
+    const { result } = renderProject(initial);
+    const suggested = pads(result);
+    act(() => result.current.project.dispatch({ type: 'PROMOTE_WORKING_LAYOUT' }));
+    expect(result.current.project.undoLabel).toBe('Promote');
+    act(() => result.current.project.dispatch({ type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey: suggested[0] } }));
+    act(() => result.current.project.dispatch({ type: 'DISCARD_WORKING_LAYOUT' }));
+    expect(result.current.project.undoLabel).toBe('Discard');
+    act(() => result.current.project.undo());
+    expect(pads(result)).toEqual(suggested.slice(1));
+    expect(result.current.project.state.workingLayout).not.toBeNull();
+    act(() => { result.current.project.undo(); result.current.project.undo(); });
+    const s = result.current.project.state;
+    expect({ active: Object.keys(s.activeLayout.padToVoice).length, draft: s.workingLayout !== null })
+      .toEqual({ active: 0, draft: true });
+  });
+
+  it('interim (until S1a.2): one Undo after Generate reverts the auto-applied candidate and keeps candidates and trace', async () => {
+    let initial = await suggestedTestMidi1();
+    initial = projectReducer(initial, { type: 'SET_OPTIMIZER_METHOD', payload: 'greedy' });
+    initial = projectReducer(initial, { type: 'SET_GREEDY_STRATEGY', payload: 'natural-pose' });
+    const { result } = renderProject(initial);
+    act(() => {
+      result.current.project.dispatch({ type: 'SWAP_PADS', payload: { padKeyA: pads(result)[0], padKeyB: '7,7' } });
+    });
+    const draft = pads(result);
+    await act(async () => { await result.current.analysis.generateFull('fast'); });
+
+    const after = result.current.project.state;
+    expect(after.candidates.length).toBeGreaterThan(0);
+    expect(result.current.project.undoLabel).toBe('Use candidate');
+    act(() => result.current.project.undo());
+    const undone = result.current.project.state;
+    expect({
+      pads: pads(result),
+      candidates: undone.candidates.map(c => c.id),
+      trace: undone.moveHistory,
+      undoLabel: result.current.project.undoLabel,
+    }).toEqual({
+      pads: draft,
+      candidates: after.candidates.map(c => c.id),
+      trace: after.moveHistory,
+      undoLabel: 'Swap pads',
+    });
+  }, 120_000);
 });
 
 describe('P1a-1f: isProcessing resets after Generate', () => {

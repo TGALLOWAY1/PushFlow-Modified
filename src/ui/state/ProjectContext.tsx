@@ -13,16 +13,26 @@ import {
   createEmptyProjectState,
 } from './projectState';
 import { pickDocument, documentChanged, restoreDocument } from './projectDocument';
+import { historyLabelFor } from './historyLabels';
 import { useUndoRedo, type UndoRedoOptions } from './useUndoRedo';
 import { installE2EHook } from '../testing/e2eHook';
 
 interface ProjectContextValue {
   state: ProjectState;
   dispatch: (action: ProjectAction) => void;
+  /**
+   * Runs fn's dispatches as one undo step named label. Use it for every gesture
+   * that dispatches more than once (an import, a grouping, a duplicate).
+   */
+  transact: (label: string, fn: () => void) => void;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  /** What Undo would revert ("Discard"), or null. */
+  undoLabel: string | null;
+  /** What Redo would re-apply, or null. */
+  redoLabel: string | null;
 }
 
 const HISTORY_OPTIONS: UndoRedoOptions<ProjectState, ReturnType<typeof pickDocument>, ProjectAction> = {
@@ -30,15 +40,19 @@ const HISTORY_OPTIONS: UndoRedoOptions<ProjectState, ReturnType<typeof pickDocum
   changed: documentChanged,
   restore: restoreDocument,
   isEphemeral: isEphemeralAction,
+  labelFor: historyLabelFor,
 };
 
 const ProjectContext = createContext<ProjectContextValue>({
   state: createEmptyProjectState(),
   dispatch: () => {},
+  transact: (_label, fn) => fn(),
   undo: () => {},
   redo: () => {},
   canUndo: false,
   canRedo: false,
+  undoLabel: null,
+  redoLabel: null,
 });
 
 export function ProjectProvider({
@@ -48,7 +62,9 @@ export function ProjectProvider({
   initialState: ProjectState;
   children: React.ReactNode;
 }) {
-  const { state, dispatch, undo, redo, canUndo, canRedo, undoDepth, redoDepth } = useUndoRedo(
+  const {
+    state, dispatch, transact, undo, redo, canUndo, canRedo, undoDepth, redoDepth, undoLabel, redoLabel,
+  } = useUndoRedo(
     projectReducer,
     initialState,
     HISTORY_OPTIONS,
@@ -75,12 +91,15 @@ export function ProjectProvider({
     () => ({
       state: state as ProjectState,
       dispatch: dispatch as (action: ProjectAction) => void,
+      transact,
       undo,
       redo,
       canUndo,
       canRedo,
+      undoLabel,
+      redoLabel,
     }),
-    [state, dispatch, undo, redo, canUndo, canRedo],
+    [state, dispatch, transact, undo, redo, canUndo, canRedo, undoLabel, redoLabel],
   );
 
   return (

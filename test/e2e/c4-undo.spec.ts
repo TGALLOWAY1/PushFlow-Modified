@@ -1,19 +1,19 @@
 /**
  * C4 · Undo is unreliable: analysis fills the history (T02).
  *
- * Register root cause: EPHEMERAL_ACTIONS (projectState.ts) omits
+ * Register root cause: EPHEMERAL_ACTIONS (projectState.ts) omitted
  * SET_ANALYSIS_RESULT, SET_CANDIDATES and APPLY_GENERATION_TO_LAYOUT, so
- * analysis results become undo steps, while SUGGEST_STARTING_LAYOUT is marked
- * ephemeral and never recorded. useUndoRedo snapshots the whole ProjectState,
- * so Undo also rewinds candidates, trace and the transport.
+ * analysis results became undo steps, while SUGGEST_STARTING_LAYOUT was marked
+ * ephemeral and never recorded. useUndoRedo snapshotted the whole ProjectState,
+ * so Undo also rewound candidates, trace and the transport.
  *
- * All cases flip in S1a.1. Until S1a.2 removes Generate's auto-apply, the
- * Generate case reads "one Undo reverts the auto-applied candidate as a single
- * step and keeps the candidate list and trace"; S1a.2 changes it to "undoes the
- * previous user edit".
+ * Flipped in S1a.1: history now holds only the document (projectDocument.ts).
+ * Until S1a.2 removes Generate's auto-apply, the Generate case reads "one Undo
+ * reverts the auto-applied candidate as a single step and keeps the candidate
+ * list and trace"; S1a.2 changes it to "undoes the previous user edit".
  */
 
-import { test, expect, EXPECTED_FAIL } from './fixtures';
+import { test, expect } from './fixtures';
 import {
   openTestMidi1,
   placeSounds,
@@ -26,14 +26,13 @@ import {
 import type { Page } from '@playwright/test';
 
 async function clickUndo(page: Page) {
-  const undo = page.getByTitle('Undo (Ctrl+Z)');
+  const undo = page.getByTestId('undo-button');
   await expect(undo).toBeEnabled();
   await undo.click();
 }
 
 test.describe('C4 · undo', () => {
   test('placing 3 Sounds, letting analysis settle, then 3 Undos empties the grid', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C4: analysis results are undo steps, so 3 Undos only rewind analysis (flips in S1a.1)');
     await openTestMidi1(page, pf);
     await placeSounds(pf, ['3,3', '3,4', '4,3']);
     await waitForAnalysis(pf);
@@ -42,7 +41,6 @@ test.describe('C4 · undo', () => {
   });
 
   test('one Undo after Suggest restores the pre-Suggest grid', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C4: SUGGEST_STARTING_LAYOUT is ephemeral, so it is never recorded (flips in S1a.1)');
     await openTestMidi1(page, pf);
     await placeSounds(pf, ['0,0']);
     await waitForAnalysis(pf);
@@ -57,7 +55,6 @@ test.describe('C4 · undo', () => {
   });
 
   test('one Undo after Generate reverts the applied candidate and keeps the candidates and trace', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C4: SET_CANDIDATES and the analysis result are undo steps, so one Undo does not reach the pre-Generate draft (flips in S1a.1)');
     test.setTimeout(120_000);
     await openTestMidi1(page, pf);
     await placeSounds(pf, ['0,0', '0,1', '1,0', '0,7', '1,7', '0,6', '7,3']);
@@ -80,7 +77,6 @@ test.describe('C4 · undo', () => {
   });
 
   test('Undo during playback keeps playing from the current time', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C4: Undo restores a whole-state snapshot, including isPlaying and currentTime (flips in S1a.1)');
     await openTestMidi1(page, pf);
     await placeSounds(pf, ['3,3', '3,4']);
     await waitForAnalysis(pf);
@@ -93,7 +89,6 @@ test.describe('C4 · undo', () => {
   });
 
   test('a reopened project starts with an empty history', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C4: loading and analysing a project records undo steps (flips in S1a.1)');
     await openTestMidi1(page, pf);
     await placeSounds(pf, ['3,3', '3,4']);
     await waitForAnalysis(pf);

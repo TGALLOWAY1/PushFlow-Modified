@@ -24,7 +24,7 @@ export function LayoutOptionsPanel({
   onCompare,
   onRetryGenerate,
 }: LayoutOptionsPanelProps) {
-  const { state, dispatch } = useProject();
+  const { state, dispatch, transact } = useProject();
   const [viewAllOpen, setViewAllOpen] = useState(false);
   const [editingLayoutName, setEditingLayoutName] = useState(false);
   const [layoutNameDraft, setLayoutNameDraft] = useState('');
@@ -202,8 +202,10 @@ export function LayoutOptionsPanel({
                   // NOT overwrite analysisResult here — that kept analysis-cache and
                   // candidate-selection as two conflated stores. APPLY_GENERATION makes
                   // the candidate the editable working layout.
-                  dispatch({ type: 'SELECT_CANDIDATE', payload: candidate.id });
-                  dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: candidate.id } });
+                  transact('Use candidate', () => {
+                    dispatch({ type: 'SELECT_CANDIDATE', payload: candidate.id });
+                    dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: candidate.id } });
+                  });
                 }}
                 onPromote={() => {
                   dispatch({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
@@ -252,7 +254,7 @@ export function LayoutOptionsPanel({
 }
 
 function ViewAllOverlay({ onClose }: { onClose: () => void }) {
-  const { state, dispatch } = useProject();
+  const { state, dispatch, transact } = useProject();
 
   return (
     <>
@@ -279,8 +281,10 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
                     isCheckedForCompare={false}
                     onSelect={() => {
                       // Display flows through the selector layer; no analysisResult overwrite.
-                      dispatch({ type: 'SELECT_CANDIDATE', payload: c.id });
-                      dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: c.id } });
+                      transact('Use candidate', () => {
+                        dispatch({ type: 'SELECT_CANDIDATE', payload: c.id });
+                        dispatch({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: c.id } });
+                      });
                     }}
                     onPromote={() => {
                       if (confirm('Promote this candidate to become the Active Layout?')) {
