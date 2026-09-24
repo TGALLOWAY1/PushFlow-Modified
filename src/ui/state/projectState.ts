@@ -921,6 +921,10 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       });
 
     case 'REMOVE_VOICE_FROM_PAD':
+      // A locked Sound stays on its pad until it is unlocked (canon section
+      // 11); Remove is refused like a drag out. Nothing changes, so no draft
+      // and no undo step.
+      if (isPadLocked(state.workingLayout ?? state.activeLayout, action.payload.padKey)) return state;
       return updateWorkingLayout(state, layout => {
         const removedVoice = layout.padToVoice[action.payload.padKey];
         const { [action.payload.padKey]: _, ...rest } = layout.padToVoice;

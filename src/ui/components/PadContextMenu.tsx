@@ -87,14 +87,17 @@ export function PadContextMenu({ padKey, x, y, onClose }: PadContextMenuProps) {
         Pad [{padKey}] {voice ? `— ${voice.name}` : '— empty'}
       </div>
 
-      {/* Remove voice */}
+      {/* Remove voice; refused while the Sound is locked to this pad (canon section 11) */}
       {voice && (
         <button
-          className="w-full px-3 py-1.5 text-left text-pf-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+          className="w-full px-3 py-1.5 text-left text-pf-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           onClick={() => {
             dispatch({ type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey } });
             onClose();
           }}
+          disabled={isLocked}
+          aria-disabled={isLocked}
+          title={isLocked ? 'Locked \u00b7 Unlock to remove' : undefined}
         >
           Remove from pad
         </button>

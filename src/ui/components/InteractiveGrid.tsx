@@ -770,19 +770,21 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                   </span>
                 )}
 
-                {/* Remove button (visible on hover via parent group) */}
-                <button
-                  className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center
-                             text-[9px] text-red-300 bg-red-500/30 rounded-bl opacity-0
-                             group-hover:opacity-100 transition-opacity"
-                  onClick={e => {
-                    e.stopPropagation();
-                    handleRemovePad(padKey);
-                  }}
-                  title="Remove from pad"
-                >
-                  ×
-                </button>
+                {/* Remove button (visible on hover via parent group); a locked Sound has none until unlocked. */}
+                {!isLocked && (
+                  <button
+                    className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center
+                               text-[9px] text-red-300 bg-red-500/30 rounded-bl opacity-0
+                               group-hover:opacity-100 transition-opacity"
+                    onClick={e => {
+                      e.stopPropagation();
+                      handleRemovePad(padKey);
+                    }}
+                    title="Remove from pad"
+                  >
+                    ×
+                  </button>
+                )}
               </>
             )
           ) : (

@@ -542,7 +542,7 @@ export const HARD_CONSTRAINTS = [
       {
         name: 'Placement Locks',
         key: 'placementLock',
-        description: `A lock pins a Sound to one pad, and it is the one hard placement rule you set. ${LOCK_ENFORCING_METHODS.slice(0, -1).join(', ')} and ${LOCK_ENFORCING_METHODS[LOCK_ENFORCING_METHODS.length - 1]} all place locked Sounds first, on their locked pads, and never move them; a candidate that would break a lock is dropped, and the candidate list says so. Manual edits enforce locks too: a locked Sound cannot be dragged off its pad, and nothing can be dropped onto a locked pad (Locked \u00b7 Unlock to move).`,
+        description: `A lock pins a Sound to one pad, and it is the one hard placement rule you set. ${LOCK_ENFORCING_METHODS.slice(0, -1).join(', ')} and ${LOCK_ENFORCING_METHODS[LOCK_ENFORCING_METHODS.length - 1]} all place locked Sounds first, on their locked pads, and never move them; a candidate that would break a lock is dropped, and the candidate list says so. Manual edits enforce locks too: a locked Sound cannot be dragged off its pad, and nothing can be dropped onto a locked pad (Locked \u00b7 Unlock to move); Remove from pad is refused too until the Sound is unlocked.`,
       },
       {
         name: 'Sound Identity',
