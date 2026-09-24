@@ -76,7 +76,14 @@ export const PROJECT_STATE_VERSION = 2;
 /** Tempo a new project starts at, before any MIDI is imported. */
 export const DEFAULT_PROJECT_TEMPO = 120;
 
-export interface ProjectState {
+/**
+ * The document slice: the project the user authors.
+ *
+ * Undo and Redo snapshot and restore exactly these fields, and nothing else
+ * (see projectDocument.ts). Every reducer result that leaves them unchanged
+ * records no history entry.
+ */
+export interface ProjectDocument {
   /** Persistence format version. */
   version: number;
 
@@ -84,7 +91,6 @@ export interface ProjectState {
   id: string;
   name: string;
   createdAt: string;
-  updatedAt: string;
   // Sound Streams (canonical performance data)
   soundStreams: SoundStream[];
   tempo: number;
@@ -98,9 +104,8 @@ export interface ProjectState {
   activeLayout: Layout;
 
   /**
-   * Session-scoped exploratory draft. Created automatically on first edit.
+   * Exploratory draft. Created automatically on first edit.
    * Null when no edits have been made since last promote/discard.
-   * Stripped on save/load (session-scoped per default).
    */
   workingLayout: Layout | null;
 
@@ -113,14 +118,6 @@ export interface ProjectState {
   /** @deprecated Use activeLayout.id. Kept only for migration from V1 format. */
   activeLayoutId?: string;
 
-  // Analysis cache
-  analysisResult: CandidateSolution | null;
-  candidates: CandidateSolution[];
-  selectedCandidateId: string | null;
-
-  // Config
-  engineConfig: EngineConfiguration;
-
   // Voice-level constraints (hand/finger per voice, key is stream ID)
   voiceConstraints: Record<string, { hand?: 'left' | 'right'; finger?: string }>;
 
@@ -128,6 +125,26 @@ export interface ProjectState {
   performanceLanes: PerformanceLane[];
   laneGroups: LaneGroup[];
   sourceFiles: SourceFile[];
+}
+
+/**
+ * The session slice: everything derived from or about the document.
+ *
+ * Never enters undo history, and Undo never restores it. Some of it is still
+ * saved with the project (updatedAt, engineConfig, optimizerMethod,
+ * greedyStrategy, costToggles): undo membership and persistence are separate.
+ */
+export interface ProjectSession {
+  /** Last change to anything saved; drives autosave. Undo and Redo bump it. */
+  updatedAt: string;
+
+  // Analysis cache
+  analysisResult: CandidateSolution | null;
+  candidates: CandidateSolution[];
+  selectedCandidateId: string | null;
+
+  // Config
+  engineConfig: EngineConfiguration;
 
   // === Optimizer configuration ===
 
@@ -138,7 +155,7 @@ export interface ProjectState {
   /** Cost toggle state (which cost families are active). */
   costToggles: CostToggles;
 
-  // Ephemeral UI state (not persisted, not in undo stack)
+  // Ephemeral UI state (not persisted)
   selectedEventIndex: number | null;
   /** Moment-level selection index (indexes into ExecutionPlanResult.momentAssignments). */
   selectedMomentIndex: number | null;
@@ -181,6 +198,12 @@ export interface ProjectState {
   /** Rehearsal audio settings (click track and audible hits). */
   rehearsalAudio: RehearsalAudioOptions;
 }
+
+/**
+ * The whole in-memory project: document plus session, kept flat so every
+ * consumer reads fields directly (state.moveHistory, state.activeLayout, ...).
+ */
+export type ProjectState = ProjectDocument & ProjectSession;
 
 // ============================================================================
 // Derived State Helpers
@@ -389,30 +412,27 @@ export type ProjectAction =
   // Performance Lanes (delegated to lanesReducer)
   | LaneAction;
 
-/** Actions that should NOT be recorded in the undo stack. */
+/**
+ * Actions that never record an undo step of their own.
+ *
+ * Undo history holds only the document (projectDocument.ts), and a dispatch that
+ * leaves the document unchanged records nothing, so session-only actions
+ * (analysis, candidates, selection, transport, trace) need no entry here. This
+ * list is for actions that do touch the document but are not a user edit in
+ * their own right: their change folds into the current step.
+ */
 const EPHEMERAL_ACTIONS = new Set<ProjectAction['type']>([
-  'SELECT_EVENT',
-  'SELECT_MOMENT',
-  'SET_COMPARE_CANDIDATE',
-  'SET_PROCESSING',
-  'SET_ERROR',
-  'MARK_ANALYSIS_STALE',
-  'SELECT_CANDIDATE',
+  // View state stored on the lane group.
   'TOGGLE_LANE_GROUP_COLLAPSE',
+  // Derived from the lanes after a lane edit (which already synced the Sounds).
+  'SYNC_STREAMS_FROM_LANES',
+  // Builds lanes for a project saved before lanes existed, on open.
+  'POPULATE_LANES_FROM_STREAMS',
+  // Session-only, listed so high-frequency dispatches skip the document check.
   'SET_CURRENT_TIME',
   'TICK_TIME',
-  'SET_IS_PLAYING',
-  'TOGGLE_PLAYING',
-  'SET_PLAYBACK_RATE',
-  'SET_LOOP_ENABLED',
-  'SET_LOOP_REGION',
-  'SET_COUNT_IN_BARS',
-  'SET_REHEARSAL_AUDIO',
+  // Not yet recorded; the transaction wrapper makes it one undo step.
   'SUGGEST_STARTING_LAYOUT',
-  'SET_MANUAL_COST_RESULT',
-  'SET_MOVE_HISTORY',
-  'SET_MOVE_HISTORY_INDEX',
-  'SET_GREEDY_STRATEGY',
 ]);
 
 export function isEphemeralAction(action: ProjectAction): boolean {

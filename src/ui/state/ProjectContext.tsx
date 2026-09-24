@@ -12,7 +12,8 @@ import {
   isEphemeralAction,
   createEmptyProjectState,
 } from './projectState';
-import { useUndoRedo } from './useUndoRedo';
+import { pickDocument, documentChanged, restoreDocument } from './projectDocument';
+import { useUndoRedo, type UndoRedoOptions } from './useUndoRedo';
 import { installE2EHook } from '../testing/e2eHook';
 
 interface ProjectContextValue {
@@ -23,6 +24,13 @@ interface ProjectContextValue {
   canUndo: boolean;
   canRedo: boolean;
 }
+
+const HISTORY_OPTIONS: UndoRedoOptions<ProjectState, ReturnType<typeof pickDocument>, ProjectAction> = {
+  pick: pickDocument,
+  changed: documentChanged,
+  restore: restoreDocument,
+  isEphemeral: isEphemeralAction,
+};
 
 const ProjectContext = createContext<ProjectContextValue>({
   state: createEmptyProjectState(),
@@ -43,7 +51,7 @@ export function ProjectProvider({
   const { state, dispatch, undo, redo, canUndo, canRedo, undoDepth, redoDepth } = useUndoRedo(
     projectReducer,
     initialState,
-    isEphemeralAction,
+    HISTORY_OPTIONS,
   );
 
   // E2E test hook (window.__pf). The env check is a build-time constant, so

@@ -1,0 +1,1177 @@
+{
+ "id": "fixture-saved-by-main",
+ "name": "Saved by main",
+ "bpm": 120,
+ "activeLayout": {
+  "id": "layout-1790212333744-0",
+  "name": "Default (suggested)",
+  "padToVoice": {
+   "2,3": {
+    "id": "lane_1790212333742_k1lhgi",
+    "name": "TEST MIDI 1 1",
+    "sourceType": "midi_track",
+    "sourceFile": "",
+    "originalMidiNote": 0,
+    "color": "#f59e0b"
+   },
+   "3,3": {
+    "id": "lane_1790212333742_q33d4p",
+    "name": "TEST MIDI 1 2",
+    "sourceType": "midi_track",
+    "sourceFile": "",
+    "originalMidiNote": 1,
+    "color": "#f59e0b"
+   },
+   "4,2": {
+    "id": "lane_1790212333742_loc5ks",
+    "name": "TEST MIDI 1 3",
+    "sourceType": "midi_track",
+    "sourceFile": "",
+    "originalMidiNote": 4,
+    "color": "#f59e0b"
+   },
+   "4,1": {
+    "id": "lane_1790212333742_jm0lqi",
+    "name": "TEST MIDI 1 4",
+    "sourceType": "midi_track",
+    "sourceFile": "",
+    "originalMidiNote": 5,
+    "color": "#f59e0b"
+   },
+   "4,0": {
+    "id": "lane_1790212333742_lx49ac",
+    "name": "TEST MIDI 1 6",
+    "sourceType": "midi_track",
+    "sourceFile": "",
+    "originalMidiNote": 13,
+    "color": "#f59e0b"
+   },
+   "2,4": {
+    "id": "lane_1790212333742_50fyvz",
+    "name": "TEST MIDI 1 7",
+    "sourceType": "midi_track",
+    "sourceFile": "",
+    "originalMidiNote": 14,
+    "color": "#f59e0b"
+   },
+   "3,4": {
+    "id": "lane_1790212333742_44h08h",
+    "name": "TEST MIDI 1 5",
+    "sourceType": "midi_track",
+    "sourceFile": "",
+    "originalMidiNote": 12,
+    "color": "#f59e0b"
+   }
+  },
+  "fingerConstraints": {},
+  "placementLocks": {},
+  "scoreCache": null,
+  "layoutMode": "none",
+  "role": "active",
+  "savedAt": "2026-09-24T01:12:13.745Z"
+ },
+ "workingLayout": {
+  "id": "layout-1790212333745-1",
+  "name": "Default (suggested) (draft)",
+  "padToVoice": {
+   "3,3": {
+    "id": "lane_1790212333742_q33d4p",
+    "name": "TEST MIDI 1 2",
+    "sourceType": "midi_track",
+    "sourceFile": "",
+    "originalMidiNote": 1,
+    "color": "#f59e0b"
+   },
+   "4,2": {
+    "id": "lane_1790212333742_loc5ks",
+    "name": "TEST MIDI 1 3",
+    "sourceType": "midi_track",
+    "sourceFile": "",
+    "originalMidiNote": 4,
+    "color": "#f59e0b"
+   },
+   "4,1": {
+    "id": "lane_1790212333742_jm0lqi",
+    "name": "TEST MIDI 1 4",
+    "sourceType": "midi_track",
+    "sourceFile": "",
+    "originalMidiNote": 5,
+    "color": "#f59e0b"
+   },
+   "4,0": {
+    "id": "lane_1790212333742_lx49ac",
+    "name": "TEST MIDI 1 6",
+    "sourceType": "midi_track",
+    "sourceFile": "",
+    "originalMidiNote": 13,
+    "color": "#f59e0b"
+   },
+   "2,4": {
+    "id": "lane_1790212333742_50fyvz",
+    "name": "TEST MIDI 1 7",
+    "sourceType": "midi_track",
+    "sourceFile": "",
+    "originalMidiNote": 14,
+    "color": "#f59e0b"
+   },
+   "3,4": {
+    "id": "lane_1790212333742_44h08h",
+    "name": "TEST MIDI 1 5",
+    "sourceType": "midi_track",
+    "sourceFile": "",
+    "originalMidiNote": 12,
+    "color": "#f59e0b"
+   },
+   "7,0": {
+    "id": "lane_1790212333742_k1lhgi",
+    "name": "TEST MIDI 1 1",
+    "sourceType": "midi_track",
+    "sourceFile": "",
+    "originalMidiNote": 0,
+    "color": "#f59e0b"
+   }
+  },
+  "fingerConstraints": {
+   "3,3": "R2"
+  },
+  "placementLocks": {
+   "lane_1790212333742_k1lhgi": "7,0"
+  },
+  "scoreCache": null,
+  "layoutMode": "manual",
+  "role": "working",
+  "baselineId": "layout-1790212333744-0"
+ },
+ "savedVariants": [
+  {
+   "id": "layout-1790212333745-2",
+   "name": "Fixture variant",
+   "padToVoice": {
+    "3,3": {
+     "id": "lane_1790212333742_q33d4p",
+     "name": "TEST MIDI 1 2",
+     "sourceType": "midi_track",
+     "sourceFile": "",
+     "originalMidiNote": 1,
+     "color": "#f59e0b"
+    },
+    "4,2": {
+     "id": "lane_1790212333742_loc5ks",
+     "name": "TEST MIDI 1 3",
+     "sourceType": "midi_track",
+     "sourceFile": "",
+     "originalMidiNote": 4,
+     "color": "#f59e0b"
+    },
+    "4,1": {
+     "id": "lane_1790212333742_jm0lqi",
+     "name": "TEST MIDI 1 4",
+     "sourceType": "midi_track",
+     "sourceFile": "",
+     "originalMidiNote": 5,
+     "color": "#f59e0b"
+    },
+    "4,0": {
+     "id": "lane_1790212333742_lx49ac",
+     "name": "TEST MIDI 1 6",
+     "sourceType": "midi_track",
+     "sourceFile": "",
+     "originalMidiNote": 13,
+     "color": "#f59e0b"
+    },
+    "2,4": {
+     "id": "lane_1790212333742_50fyvz",
+     "name": "TEST MIDI 1 7",
+     "sourceType": "midi_track",
+     "sourceFile": "",
+     "originalMidiNote": 14,
+     "color": "#f59e0b"
+    },
+    "3,4": {
+     "id": "lane_1790212333742_44h08h",
+     "name": "TEST MIDI 1 5",
+     "sourceType": "midi_track",
+     "sourceFile": "",
+     "originalMidiNote": 12,
+     "color": "#f59e0b"
+    },
+    "7,0": {
+     "id": "lane_1790212333742_k1lhgi",
+     "name": "TEST MIDI 1 1",
+     "sourceType": "midi_track",
+     "sourceFile": "",
+     "originalMidiNote": 0,
+     "color": "#f59e0b"
+    }
+   },
+   "fingerConstraints": {
+    "3,3": "R2"
+   },
+   "placementLocks": {
+    "lane_1790212333742_k1lhgi": "7,0"
+   },
+   "scoreCache": null,
+   "layoutMode": "manual",
+   "role": "variant",
+   "baselineId": "layout-1790212333745-1",
+   "savedAt": "2026-09-24T01:12:13.745Z"
+  }
+ ],
+ "soundStreams": [
+  {
+   "id": "lane_1790212333742_k1lhgi",
+   "name": "TEST MIDI 1 1",
+   "color": "#f59e0b",
+   "originalMidiNote": 0,
+   "events": [
+    {
+     "startTime": 0,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "0:0:1:1"
+    },
+    {
+     "startTime": 2,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "384:0:1:1"
+    },
+    {
+     "startTime": 4,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "768:0:1:1"
+    },
+    {
+     "startTime": 6,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "1152:0:1:1"
+    },
+    {
+     "startTime": 7.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "1440:0:1:1"
+    },
+    {
+     "startTime": 8,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "1536:0:1:1"
+    },
+    {
+     "startTime": 10,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "1920:0:1:1"
+    },
+    {
+     "startTime": 12,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "2304:0:1:1"
+    },
+    {
+     "startTime": 14,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "2688:0:1:1"
+    },
+    {
+     "startTime": 15.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "2976:0:1:1"
+    }
+   ],
+   "muted": false
+  },
+  {
+   "id": "lane_1790212333742_q33d4p",
+   "name": "TEST MIDI 1 2",
+   "color": "#f59e0b",
+   "originalMidiNote": 1,
+   "events": [
+    {
+     "startTime": 1,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "192:1:1:1"
+    },
+    {
+     "startTime": 3,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "576:1:1:1"
+    },
+    {
+     "startTime": 5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "960:1:1:1"
+    },
+    {
+     "startTime": 7,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "1344:1:1:1"
+    },
+    {
+     "startTime": 9,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "1728:1:1:1"
+    },
+    {
+     "startTime": 11,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "2112:1:1:1"
+    },
+    {
+     "startTime": 13,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "2496:1:1:1"
+    },
+    {
+     "startTime": 15,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "2880:1:1:1"
+    }
+   ],
+   "muted": false
+  },
+  {
+   "id": "lane_1790212333742_loc5ks",
+   "name": "TEST MIDI 1 3",
+   "color": "#f59e0b",
+   "originalMidiNote": 4,
+   "events": [
+    {
+     "startTime": 0.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "96:4:1:1"
+    },
+    {
+     "startTime": 2.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "480:4:1:1"
+    },
+    {
+     "startTime": 4.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "864:4:1:1"
+    },
+    {
+     "startTime": 6.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "1248:4:1:1"
+    },
+    {
+     "startTime": 8.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "1632:4:1:1"
+    },
+    {
+     "startTime": 10.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "2016:4:1:1"
+    },
+    {
+     "startTime": 12.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "2400:4:1:1"
+    },
+    {
+     "startTime": 14.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "2784:4:1:1"
+    }
+   ],
+   "muted": false
+  },
+  {
+   "id": "lane_1790212333742_jm0lqi",
+   "name": "TEST MIDI 1 4",
+   "color": "#f59e0b",
+   "originalMidiNote": 5,
+   "events": [
+    {
+     "startTime": 1.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "288:5:1:1"
+    },
+    {
+     "startTime": 3.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "672:5:1:1"
+    },
+    {
+     "startTime": 5.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "1056:5:1:1"
+    },
+    {
+     "startTime": 7.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "1440:5:1:1"
+    },
+    {
+     "startTime": 9.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "1824:5:1:1"
+    },
+    {
+     "startTime": 11.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "2208:5:1:1"
+    },
+    {
+     "startTime": 13.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "2592:5:1:1"
+    },
+    {
+     "startTime": 15.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "2976:5:1:1"
+    }
+   ],
+   "muted": false
+  },
+  {
+   "id": "lane_1790212333742_44h08h",
+   "name": "TEST MIDI 1 5",
+   "color": "#f59e0b",
+   "originalMidiNote": 12,
+   "events": [
+    {
+     "startTime": 0,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "0:12:1:1"
+    },
+    {
+     "startTime": 8,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "1536:12:1:1"
+    }
+   ],
+   "muted": false
+  },
+  {
+   "id": "lane_1790212333742_lx49ac",
+   "name": "TEST MIDI 1 6",
+   "color": "#f59e0b",
+   "originalMidiNote": 13,
+   "events": [
+    {
+     "startTime": 2,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "384:13:1:1"
+    },
+    {
+     "startTime": 4,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "768:13:1:1"
+    },
+    {
+     "startTime": 6,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "1152:13:1:1"
+    },
+    {
+     "startTime": 10,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "1920:13:1:1"
+    },
+    {
+     "startTime": 12,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "2304:13:1:1"
+    },
+    {
+     "startTime": 14,
+     "duration": 0.5,
+     "velocity": 100,
+     "eventKey": "2688:13:1:1"
+    }
+   ],
+   "muted": false
+  },
+  {
+   "id": "lane_1790212333742_50fyvz",
+   "name": "TEST MIDI 1 7",
+   "color": "#f59e0b",
+   "originalMidiNote": 14,
+   "events": [
+    {
+     "startTime": 0,
+     "duration": 2.5,
+     "velocity": 100,
+     "eventKey": "0:14:1:1"
+    },
+    {
+     "startTime": 2.5,
+     "duration": 1.5,
+     "velocity": 100,
+     "eventKey": "480:14:1:1"
+    },
+    {
+     "startTime": 4,
+     "duration": 2.5,
+     "velocity": 100,
+     "eventKey": "768:14:1:1"
+    },
+    {
+     "startTime": 6.5,
+     "duration": 1.5,
+     "velocity": 100,
+     "eventKey": "1248:14:1:1"
+    },
+    {
+     "startTime": 8,
+     "duration": 2.5,
+     "velocity": 100,
+     "eventKey": "1536:14:1:1"
+    },
+    {
+     "startTime": 10.5,
+     "duration": 1.5,
+     "velocity": 100,
+     "eventKey": "2016:14:1:1"
+    }
+   ],
+   "muted": false
+  }
+ ],
+ "instrumentConfig": {
+  "id": "default",
+  "name": "Push 3",
+  "rows": 8,
+  "cols": 8,
+  "bottomLeftNote": 36,
+  "layoutMode": "drum_64"
+ },
+ "sections": [],
+ "voiceProfiles": [],
+ "voiceConstraints": {
+  "lane_1790212333742_q33d4p": {
+   "hand": "right",
+   "finger": "index"
+  }
+ },
+ "performanceLanes": [
+  {
+   "id": "lane_1790212333742_k1lhgi",
+   "name": "TEST MIDI 1 1",
+   "sourceFileId": "src_1790212333742_4gjwyz",
+   "sourceFileName": "TEST MIDI 1.mid",
+   "groupId": "grp-fixture",
+   "orderIndex": 0,
+   "color": "#3b82f6",
+   "colorMode": "inherited",
+   "events": [
+    {
+     "eventId": "0:0:1:1",
+     "laneId": "lane_1790212333742_k1lhgi",
+     "startTime": 0,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 0,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "384:0:1:1",
+     "laneId": "lane_1790212333742_k1lhgi",
+     "startTime": 2,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 0,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "768:0:1:1",
+     "laneId": "lane_1790212333742_k1lhgi",
+     "startTime": 4,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 0,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "1152:0:1:1",
+     "laneId": "lane_1790212333742_k1lhgi",
+     "startTime": 6,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 0,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "1440:0:1:1",
+     "laneId": "lane_1790212333742_k1lhgi",
+     "startTime": 7.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 0,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "1536:0:1:1",
+     "laneId": "lane_1790212333742_k1lhgi",
+     "startTime": 8,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 0,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "1920:0:1:1",
+     "laneId": "lane_1790212333742_k1lhgi",
+     "startTime": 10,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 0,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "2304:0:1:1",
+     "laneId": "lane_1790212333742_k1lhgi",
+     "startTime": 12,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 0,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "2688:0:1:1",
+     "laneId": "lane_1790212333742_k1lhgi",
+     "startTime": 14,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 0,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "2976:0:1:1",
+     "laneId": "lane_1790212333742_k1lhgi",
+     "startTime": 15.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 0,
+     "rawChannel": 1
+    }
+   ],
+   "isHidden": false,
+   "isMuted": false,
+   "isSolo": false
+  },
+  {
+   "id": "lane_1790212333742_q33d4p",
+   "name": "TEST MIDI 1 2",
+   "sourceFileId": "src_1790212333742_4gjwyz",
+   "sourceFileName": "TEST MIDI 1.mid",
+   "groupId": null,
+   "orderIndex": 1,
+   "color": "#f59e0b",
+   "colorMode": "inherited",
+   "events": [
+    {
+     "eventId": "192:1:1:1",
+     "laneId": "lane_1790212333742_q33d4p",
+     "startTime": 1,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 1,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "576:1:1:1",
+     "laneId": "lane_1790212333742_q33d4p",
+     "startTime": 3,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 1,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "960:1:1:1",
+     "laneId": "lane_1790212333742_q33d4p",
+     "startTime": 5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 1,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "1344:1:1:1",
+     "laneId": "lane_1790212333742_q33d4p",
+     "startTime": 7,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 1,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "1728:1:1:1",
+     "laneId": "lane_1790212333742_q33d4p",
+     "startTime": 9,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 1,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "2112:1:1:1",
+     "laneId": "lane_1790212333742_q33d4p",
+     "startTime": 11,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 1,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "2496:1:1:1",
+     "laneId": "lane_1790212333742_q33d4p",
+     "startTime": 13,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 1,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "2880:1:1:1",
+     "laneId": "lane_1790212333742_q33d4p",
+     "startTime": 15,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 1,
+     "rawChannel": 1
+    }
+   ],
+   "isHidden": false,
+   "isMuted": false,
+   "isSolo": false
+  },
+  {
+   "id": "lane_1790212333742_loc5ks",
+   "name": "TEST MIDI 1 3",
+   "sourceFileId": "src_1790212333742_4gjwyz",
+   "sourceFileName": "TEST MIDI 1.mid",
+   "groupId": null,
+   "orderIndex": 2,
+   "color": "#f59e0b",
+   "colorMode": "inherited",
+   "events": [
+    {
+     "eventId": "96:4:1:1",
+     "laneId": "lane_1790212333742_loc5ks",
+     "startTime": 0.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 4,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "480:4:1:1",
+     "laneId": "lane_1790212333742_loc5ks",
+     "startTime": 2.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 4,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "864:4:1:1",
+     "laneId": "lane_1790212333742_loc5ks",
+     "startTime": 4.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 4,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "1248:4:1:1",
+     "laneId": "lane_1790212333742_loc5ks",
+     "startTime": 6.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 4,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "1632:4:1:1",
+     "laneId": "lane_1790212333742_loc5ks",
+     "startTime": 8.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 4,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "2016:4:1:1",
+     "laneId": "lane_1790212333742_loc5ks",
+     "startTime": 10.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 4,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "2400:4:1:1",
+     "laneId": "lane_1790212333742_loc5ks",
+     "startTime": 12.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 4,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "2784:4:1:1",
+     "laneId": "lane_1790212333742_loc5ks",
+     "startTime": 14.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 4,
+     "rawChannel": 1
+    }
+   ],
+   "isHidden": false,
+   "isMuted": false,
+   "isSolo": false
+  },
+  {
+   "id": "lane_1790212333742_jm0lqi",
+   "name": "TEST MIDI 1 4",
+   "sourceFileId": "src_1790212333742_4gjwyz",
+   "sourceFileName": "TEST MIDI 1.mid",
+   "groupId": null,
+   "orderIndex": 3,
+   "color": "#f59e0b",
+   "colorMode": "inherited",
+   "events": [
+    {
+     "eventId": "288:5:1:1",
+     "laneId": "lane_1790212333742_jm0lqi",
+     "startTime": 1.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 5,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "672:5:1:1",
+     "laneId": "lane_1790212333742_jm0lqi",
+     "startTime": 3.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 5,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "1056:5:1:1",
+     "laneId": "lane_1790212333742_jm0lqi",
+     "startTime": 5.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 5,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "1440:5:1:1",
+     "laneId": "lane_1790212333742_jm0lqi",
+     "startTime": 7.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 5,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "1824:5:1:1",
+     "laneId": "lane_1790212333742_jm0lqi",
+     "startTime": 9.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 5,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "2208:5:1:1",
+     "laneId": "lane_1790212333742_jm0lqi",
+     "startTime": 11.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 5,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "2592:5:1:1",
+     "laneId": "lane_1790212333742_jm0lqi",
+     "startTime": 13.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 5,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "2976:5:1:1",
+     "laneId": "lane_1790212333742_jm0lqi",
+     "startTime": 15.5,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 5,
+     "rawChannel": 1
+    }
+   ],
+   "isHidden": false,
+   "isMuted": false,
+   "isSolo": false
+  },
+  {
+   "id": "lane_1790212333742_44h08h",
+   "name": "TEST MIDI 1 5",
+   "sourceFileId": "src_1790212333742_4gjwyz",
+   "sourceFileName": "TEST MIDI 1.mid",
+   "groupId": null,
+   "orderIndex": 4,
+   "color": "#f59e0b",
+   "colorMode": "inherited",
+   "events": [
+    {
+     "eventId": "0:12:1:1",
+     "laneId": "lane_1790212333742_44h08h",
+     "startTime": 0,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 12,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "1536:12:1:1",
+     "laneId": "lane_1790212333742_44h08h",
+     "startTime": 8,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 12,
+     "rawChannel": 1
+    }
+   ],
+   "isHidden": false,
+   "isMuted": false,
+   "isSolo": false
+  },
+  {
+   "id": "lane_1790212333742_lx49ac",
+   "name": "TEST MIDI 1 6",
+   "sourceFileId": "src_1790212333742_4gjwyz",
+   "sourceFileName": "TEST MIDI 1.mid",
+   "groupId": null,
+   "orderIndex": 5,
+   "color": "#f59e0b",
+   "colorMode": "inherited",
+   "events": [
+    {
+     "eventId": "384:13:1:1",
+     "laneId": "lane_1790212333742_lx49ac",
+     "startTime": 2,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 13,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "768:13:1:1",
+     "laneId": "lane_1790212333742_lx49ac",
+     "startTime": 4,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 13,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "1152:13:1:1",
+     "laneId": "lane_1790212333742_lx49ac",
+     "startTime": 6,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 13,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "1920:13:1:1",
+     "laneId": "lane_1790212333742_lx49ac",
+     "startTime": 10,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 13,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "2304:13:1:1",
+     "laneId": "lane_1790212333742_lx49ac",
+     "startTime": 12,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 13,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "2688:13:1:1",
+     "laneId": "lane_1790212333742_lx49ac",
+     "startTime": 14,
+     "duration": 0.5,
+     "velocity": 100,
+     "rawPitch": 13,
+     "rawChannel": 1
+    }
+   ],
+   "isHidden": false,
+   "isMuted": false,
+   "isSolo": false
+  },
+  {
+   "id": "lane_1790212333742_50fyvz",
+   "name": "TEST MIDI 1 7",
+   "sourceFileId": "src_1790212333742_4gjwyz",
+   "sourceFileName": "TEST MIDI 1.mid",
+   "groupId": null,
+   "orderIndex": 6,
+   "color": "#f59e0b",
+   "colorMode": "inherited",
+   "events": [
+    {
+     "eventId": "0:14:1:1",
+     "laneId": "lane_1790212333742_50fyvz",
+     "startTime": 0,
+     "duration": 2.5,
+     "velocity": 100,
+     "rawPitch": 14,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "480:14:1:1",
+     "laneId": "lane_1790212333742_50fyvz",
+     "startTime": 2.5,
+     "duration": 1.5,
+     "velocity": 100,
+     "rawPitch": 14,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "768:14:1:1",
+     "laneId": "lane_1790212333742_50fyvz",
+     "startTime": 4,
+     "duration": 2.5,
+     "velocity": 100,
+     "rawPitch": 14,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "1248:14:1:1",
+     "laneId": "lane_1790212333742_50fyvz",
+     "startTime": 6.5,
+     "duration": 1.5,
+     "velocity": 100,
+     "rawPitch": 14,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "1536:14:1:1",
+     "laneId": "lane_1790212333742_50fyvz",
+     "startTime": 8,
+     "duration": 2.5,
+     "velocity": 100,
+     "rawPitch": 14,
+     "rawChannel": 1
+    },
+    {
+     "eventId": "2016:14:1:1",
+     "laneId": "lane_1790212333742_50fyvz",
+     "startTime": 10.5,
+     "duration": 1.5,
+     "velocity": 100,
+     "rawPitch": 14,
+     "rawChannel": 1
+    }
+   ],
+   "isHidden": false,
+   "isMuted": false,
+   "isSolo": false
+  }
+ ],
+ "laneGroups": [
+  {
+   "groupId": "grp-fixture",
+   "name": "Kit",
+   "color": "#3b82f6",
+   "orderIndex": 0,
+   "isCollapsed": false
+  }
+ ],
+ "sourceFiles": [
+  {
+   "id": "src_1790212333742_4gjwyz",
+   "fileName": "TEST MIDI 1.mid",
+   "importedAt": "2026-09-24T01:12:13.742Z",
+   "laneCount": 7
+  }
+ ],
+ "engineConfig": {
+  "beamWidth": 30,
+  "stiffness": 0.3,
+  "restingPose": {
+   "left": {
+    "centroid": {
+     "x": 1.5,
+     "y": 3.5
+    },
+    "fingers": {}
+   },
+   "right": {
+    "centroid": {
+     "x": 5.5,
+     "y": 3.5
+    },
+    "fingers": {}
+   }
+  }
+ },
+ "optimizerMethod": "greedy",
+ "greedyStrategy": "all",
+ "costToggles": {
+  "poseNaturalness": true,
+  "transitionCost": true,
+  "constraintPenalty": true,
+  "alternation": true,
+  "handBalance": true
+ },
+ "createdAt": "2026-09-24T00:00:00.000Z",
+ "updatedAt": "2026-09-24T00:00:00.000Z",
+ "schemaVersion": 1
+}
