@@ -7,6 +7,9 @@ import { findSelectedMoment } from '../../analysis/selectedMoment';
 import { analysisScopeLine, planSoundIds } from '../../analysis/analysisScope';
 import { EventCostChart } from './EventCostChart';
 import { formatPlanScore, getPlanScoreQuality, getPlanScoreSummary } from '../../analysis/planScore';
+import { momentDifficultyCounts } from '../../analysis/momentCounts';
+import { COST_FAMILY_FACTOR, FACTOR_META } from '../../analysis/factorMeta';
+import { type CostToggles } from '../../../types/costToggles';
 
 export function PerformanceCostsPanel() {
   const { state, dispatch } = useProject();
@@ -26,6 +29,8 @@ export function PerformanceCostsPanel() {
     currentPlan ? planSoundIds(currentPlan.fingerAssignments) : undefined,
   );
   const liveScope = analysisScopeLine(state.soundStreams, getDisplayedLayout(state));
+  // Events are moments for both solvers (T23).
+  const counts = useMemo(() => momentDifficultyCounts(currentPlan?.fingerAssignments), [currentPlan]);
 
   if (!currentPlan && !state.isProcessing) {
     return (
@@ -55,9 +60,9 @@ export function PerformanceCostsPanel() {
             so from the user's side the button did nothing and one of the two ways
             to get a cost story for the current layout was unusable. */}
         {state.manualCostResult && (
-          <div className="rounded-pf-sm border border-[var(--accent-primary)]/30 bg-[var(--accent-primary)]/5 p-2.5 space-y-2">
+          <div className="rounded-pf-sm border border-accent-primary/30 bg-accent-primary/5 p-2.5 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-pf-xs font-semibold text-[var(--accent-primary)]">
+              <span className="text-pf-xs font-semibold text-[var(--accent-primary-soft)]">
                 Calculated cost
               </span>
               <button
@@ -74,7 +79,7 @@ export function PerformanceCostsPanel() {
             </div>
             <div className="grid grid-cols-2 gap-1.5 text-pf-xs">
               <div>
-                <div className="text-[var(--text-tertiary)]">Per moment</div>
+                <div className="text-[var(--text-tertiary)]">Per event</div>
                 <div className="font-mono text-[var(--text-primary)]">
                   {state.manualCostResult.costPerMoment.toFixed(3)}
                 </div>
@@ -87,25 +92,25 @@ export function PerformanceCostsPanel() {
               </div>
             </div>
             <div className="space-y-0.5 text-pf-micro font-mono text-[var(--text-secondary)]">
-              {([
-                ['Transition', state.manualCostResult.dimensions.transitionCost],
-                ['Grip', state.manualCostResult.dimensions.poseNaturalness],
-                ['Alternation', state.manualCostResult.dimensions.alternation],
-                ['Hand balance', state.manualCostResult.dimensions.handBalance],
-                ['Constraints', state.manualCostResult.dimensions.constraintPenalty],
-              ] as const).map(([label, value]) => (
-                <div key={label} className="flex justify-between">
-                  <span>{label}</span>
-                  <span>{value.toFixed(2)}</span>
-                </div>
-              ))}
+              {(Object.keys(COST_FAMILY_FACTOR) as (keyof CostToggles)[]).map(family => {
+                const meta = FACTOR_META[COST_FAMILY_FACTOR[family]];
+                return (
+                  <div key={family} className="flex justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: meta.color }} aria-hidden="true" />
+                      {meta.label}
+                    </span>
+                    <span>{state.manualCostResult!.dimensions[family].toFixed(2)}</span>
+                  </div>
+                );
+              })}
             </div>
             {state.manualCostResult.costTogglesUsed && (
               <div className="text-pf-micro text-[var(--text-tertiary)]">
                 Cost families active:{' '}
-                {Object.entries(state.manualCostResult.costTogglesUsed)
+                {(Object.entries(state.manualCostResult.costTogglesUsed) as [keyof CostToggles, boolean][])
                   .filter(([, on]) => on)
-                  .map(([name]) => name)
+                  .map(([family]) => FACTOR_META[COST_FAMILY_FACTOR[family]]?.label ?? family)
                   .join(', ') || 'none'}
               </div>
             )}
@@ -127,26 +132,32 @@ export function PerformanceCostsPanel() {
               />
               <QuickStat
                 label="Events"
-                value={String(new Set(currentPlan.fingerAssignments.map(a => a.startTime)).size)}
+                value={String(counts.events)}
+                subtitle={`${counts.events} events · ${counts.notes} notes`}
               />
               <QuickStat
                 label="Hard"
-                value={String(currentPlan.hardCount)}
-                quality={currentPlan.hardCount === 0 ? 'good' : 'bad'}
+                value={String(counts.hard)}
+                quality={counts.hard === 0 ? 'good' : 'bad'}
+                subtitle="Events that are hard to play"
               />
               <QuickStat
                 label="Unplay"
-                value={String(currentPlan.unplayableCount)}
-                quality={currentPlan.unplayableCount === 0 ? 'good' : 'bad'}
+                value={String(counts.unplayable)}
+                quality={counts.unplayable === 0 ? 'good' : 'bad'}
+                subtitle={`${counts.unplayable} events with a note that can't be played (${counts.unplayableNotes} of ${counts.notes} notes)`}
               />
             </div>
 
             <CostBreakdownBars
               metrics={currentPlan.averageMetrics}
               diagnostics={currentPlan.diagnostics}
-              hardCount={currentPlan.hardCount}
-              unplayableCount={currentPlan.unplayableCount}
-              mediumCount={currentPlan.mediumCount}
+              hardCount={counts.hard}
+              unplayableCount={counts.unplayable}
+              mediumCount={counts.medium}
+              unplayableNotes={counts.unplayableNotes}
+              noteCount={counts.notes}
+              events={counts.events}
               scope={scope}
             />
 
@@ -160,12 +171,13 @@ export function PerformanceCostsPanel() {
                   className="flex items-center gap-1.5 text-pf-xs text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors mb-1"
                   onClick={() => setChartOpen(!chartOpen)}
                 >
-                  <span className="text-[8px]">{chartOpen ? '\u25BE' : '\u25B8'}</span>
+                  <span className="text-pf-micro" aria-hidden="true">{chartOpen ? '\u25BE' : '\u25B8'}</span>
                   Event Difficulty Chart
                 </button>
                 {chartOpen && (
                   <EventCostChart
                     fingerAssignments={currentPlan.fingerAssignments}
+                    tempo={state.tempo}
                     selectedEventIndex={state.selectedEventIndex}
                     onEventClick={(idx) => dispatch({ type: 'SELECT_EVENT', payload: idx })}
                   />

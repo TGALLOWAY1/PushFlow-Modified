@@ -161,7 +161,7 @@ export function ProjectLibraryPage() {
       {/* ---- Header ---- */}
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="font-headline text-2xl font-bold tracking-tighter text-[var(--accent-primary)]">
+          <h1 className="font-headline text-2xl font-bold tracking-tighter text-accent-primary-soft">
             PushFlow
           </h1>
         </div>
@@ -199,7 +199,7 @@ export function ProjectLibraryPage() {
           </button>
           <button
             onClick={() => handleNewProject()}
-            className="flex items-center gap-2 px-5 py-2.5 bg-[var(--bg-card)] border border-[var(--accent-primary)]/20 text-[var(--accent-primary)] font-headline font-bold rounded-xl hover:bg-[var(--accent-primary)]/5 transition-colors"
+            className="flex items-center gap-2 px-5 py-2.5 bg-[var(--bg-card)] border border-accent-primary/20 text-accent-primary-soft font-headline font-bold rounded-xl hover:bg-accent-primary/5 transition-colors"
           >
             <Plus size={16} />
             New Project
@@ -279,10 +279,10 @@ export function ProjectLibraryPage() {
               {!searchQuery.trim() && (
                 <button
                   onClick={() => handleNewProject()}
-                  className="rounded-xl border border-dashed border-[var(--border-default)] bg-[var(--bg-panel)] flex items-center justify-center min-h-[220px] hover:border-[var(--accent-primary)]/30 hover:bg-[var(--accent-primary)]/5 transition-all group"
+                  className="rounded-xl border border-dashed border-[var(--border-default)] bg-[var(--bg-panel)] flex items-center justify-center min-h-[220px] hover:border-accent-primary/30 hover:bg-accent-primary/5 transition-all group"
                 >
                   <div className="text-center">
-                    <span className="material-symbols-outlined text-[var(--text-tertiary)] group-hover:text-[var(--accent-primary)] text-2xl transition-colors">
+                    <span className="material-symbols-outlined text-[var(--text-tertiary)] group-hover:text-accent-primary-soft text-2xl transition-colors">
                       add
                     </span>
                     <span className="text-xs font-label uppercase tracking-widest text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)] mt-2 block transition-colors">

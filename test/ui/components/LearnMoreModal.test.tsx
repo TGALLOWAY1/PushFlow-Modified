@@ -105,6 +105,17 @@ describe('Learn More sync (P1b-8)', () => {
     expect(screen.getByTestId('verdict-badge').textContent).toContain(VERDICT_TIERS.find(t => t.level === 'unknown')!.label);
   });
 
+  it('renders its factor list from FACTOR_META, in order, with the registry’s colours (P2-9)', () => {
+    openTab('Cost Factors');
+    const rows = screen.getAllByTestId('learn-more-factor');
+    expect(rows.map(row => row.getAttribute('data-factor'))).toEqual([...FACTOR_KEYS]);
+    rows.forEach((row, i) => {
+      const meta = FACTOR_META[FACTOR_KEYS[i]!];
+      expect(row.textContent).toContain(meta.label);
+      expect(row.textContent).toContain(meta.description);
+    });
+  });
+
   it('explains per-event cost with the Selected event card’s factor labels', () => {
     openTab('Cost Factors');
     const text = screen.getByTestId('learn-per-event-cost').textContent ?? '';

@@ -47,9 +47,9 @@ export function padLabelCharsPerLine(padSize: number): number {
   return Math.max(2, Math.floor((padSize - 6) / 6.5));
 }
 
-/** The label a pad shows for a Sound. */
-export function padLabel(name: string, prefix: string, padSize: number): string {
+/** The label a pad shows for a Sound, on at most `lines` lines. */
+export function padLabel(name: string, prefix: string, padSize: number, lines: number = padLabelLines(padSize)): string {
   const trimmed = prefix && name.startsWith(prefix) ? name.slice(prefix.length) : name;
   const label = trimmed.trim() || name;
-  return middleTruncate(label, padLabelCharsPerLine(padSize) * padLabelLines(padSize));
+  return middleTruncate(label, padLabelCharsPerLine(padSize) * lines);
 }

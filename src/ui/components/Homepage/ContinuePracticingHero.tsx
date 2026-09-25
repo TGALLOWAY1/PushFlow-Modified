@@ -77,7 +77,7 @@ export function ContinuePracticingHero({
       {/* Content */}
       <div className="relative h-full flex flex-col justify-end p-10 space-y-5" style={{ minHeight: 380 }}>
         <div className="space-y-2">
-          <span className="font-label uppercase tracking-[0.2em] text-[var(--accent-primary)] text-xs font-semibold">
+          <span className="font-label uppercase tracking-[0.2em] text-accent-primary-soft text-xs font-semibold">
             Current Session
           </span>
           <h1 className="font-headline text-5xl font-bold tracking-tighter text-[var(--text-primary)]">
@@ -117,7 +117,7 @@ export function ContinuePracticingHero({
           {/* Stat pills */}
           <div className="flex gap-4 ml-2">
             <div className="glass-panel-blur px-4 py-2 rounded-lg">
-              <span className="block font-label uppercase text-[10px] text-[var(--accent-primary)] tracking-widest">BPM</span>
+              <span className="block font-label uppercase text-[10px] text-accent-primary-soft tracking-widest">BPM</span>
               <span className="font-headline text-xl font-bold text-[var(--text-primary)]">{tempo}</span>
             </div>
             <div className="glass-panel-blur px-4 py-2 rounded-lg">
@@ -146,7 +146,7 @@ export function ContinuePracticingHero({
               <span className="font-label text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
                 Active Pads
               </span>
-              <span className="text-[var(--accent-primary)] font-bold text-xs">
+              <span className="text-accent-primary-soft font-bold text-xs">
                 {padsUsed} / 64
               </span>
             </div>

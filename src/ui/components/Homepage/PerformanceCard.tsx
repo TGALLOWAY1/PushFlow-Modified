@@ -71,13 +71,13 @@ export function PerformanceCard({
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-[var(--bg-panel)] to-[var(--bg-app)]" />
         )}
-        <div className="absolute inset-0 bg-[var(--bg-app)]/10" />
+        <div className="absolute inset-0 bg-bg-app/10" />
 
         {/* Export / delete buttons (hover) */}
         <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all z-10">
           {onExport && (
             <button
-              className="w-7 h-7 rounded-lg bg-[var(--bg-app)]/80 flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10 transition-colors"
+              className="w-7 h-7 rounded-lg bg-bg-app/80 flex items-center justify-center text-[var(--text-tertiary)] hover:text-accent-primary-soft hover:bg-accent-primary/10 transition-colors"
               onClick={e => { e.stopPropagation(); onExport(); }}
               title="Export project file"
             >
@@ -86,7 +86,7 @@ export function PerformanceCard({
           )}
           {onDownloadBackup && (
             <button
-              className="w-7 h-7 rounded-lg bg-[var(--bg-app)]/80 flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10 transition-colors"
+              className="w-7 h-7 rounded-lg bg-bg-app/80 flex items-center justify-center text-[var(--text-tertiary)] hover:text-accent-primary-soft hover:bg-accent-primary/10 transition-colors"
               onClick={e => { e.stopPropagation(); onDownloadBackup(); }}
               title="Download backup (the project as it was before PushFlow last updated its stored format)"
               aria-label="Download backup"
@@ -95,7 +95,7 @@ export function PerformanceCard({
             </button>
           )}
           <button
-            className="w-7 h-7 rounded-lg bg-[var(--bg-app)]/80 flex items-center justify-center text-[var(--text-tertiary)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            className="w-7 h-7 rounded-lg bg-bg-app/80 flex items-center justify-center text-[var(--text-tertiary)] hover:text-red-400 hover:bg-red-500/10 transition-colors"
             onClick={e => { e.stopPropagation(); onDelete(); }}
             title="Delete project"
           >
@@ -105,11 +105,11 @@ export function PerformanceCard({
 
         {/* Badges */}
         <div className="absolute bottom-2 left-2 flex gap-1.5">
-          <span className="bg-[var(--accent-primary)]/20 backdrop-blur-md text-[var(--accent-primary)] text-[10px] font-label uppercase tracking-widest px-2 py-0.5 rounded">
+          <span className="bg-accent-primary/20 backdrop-blur-md text-accent-primary-soft text-[10px] font-label uppercase tracking-widest px-2 py-0.5 rounded">
             {tempo} BPM
           </span>
           {soundCount > 0 && (
-            <span className="bg-[var(--accent-secondary)]/20 backdrop-blur-md text-[var(--accent-secondary)] text-[10px] font-label uppercase tracking-widest px-2 py-0.5 rounded">
+            <span className="bg-accent-secondary/20 backdrop-blur-md text-[var(--accent-secondary)] text-[10px] font-label uppercase tracking-widest px-2 py-0.5 rounded">
               {soundCount} Sounds
             </span>
           )}
@@ -131,7 +131,7 @@ export function PerformanceCard({
               {eventCount} Events{padsUsed > 0 ? ` \u00b7 ${padsUsed} Pads` : ''}
             </p>
           </div>
-          <span className="material-symbols-outlined text-[var(--accent-primary)] group-hover:translate-x-1 transition-transform text-lg">
+          <span className="material-symbols-outlined text-accent-primary-soft group-hover:translate-x-1 transition-transform text-lg">
             arrow_forward
           </span>
         </div>

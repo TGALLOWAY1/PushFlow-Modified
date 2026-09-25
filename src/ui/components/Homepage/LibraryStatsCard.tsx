@@ -59,7 +59,7 @@ export function LibraryStatsCard({ projects }: LibraryStatsCardProps) {
       </h3>
       <div className="grid grid-cols-2 gap-x-6 gap-y-3 w-full">
         <StatRow
-          icon={<LayoutGrid size={14} className="text-[var(--accent-primary)]" />}
+          icon={<LayoutGrid size={14} className="text-accent-primary-soft" />}
           label="Performances"
           value={String(projects.length)}
         />

@@ -8,6 +8,7 @@
  */
 
 import { type DiagnosticFactors, type V1CostBreakdown } from '../../types/diagnostics';
+import { type CostToggles } from '../../types/costToggles';
 
 export type FactorKey = Exclude<keyof DiagnosticFactors, 'total'>;
 
@@ -73,6 +74,33 @@ export const FACTOR_META: Record<FactorKey, FactorMeta> = {
     description: 'A hand rule had to give way, such as a hand leaving its side of the grid.',
     polarity: 'lower-is-better',
   },
+};
+
+/**
+ * A candidate's tradeoff profile, shown in Compare as scores out of 100 where
+ * higher is better (the factors above are costs, lower is better). The two
+ * dimensions that mirror a factor use that factor's name and colour, so no
+ * surface invents a second name for it (T20).
+ */
+export type TradeoffKey = 'playability' | 'compactness' | 'handBalance' | 'transitionEfficiency';
+
+export const TRADEOFF_DIMENSIONS: ReadonlyArray<{ key: TradeoffKey; label: string; color: string; description: string }> = [
+  { key: 'playability', label: 'Playability', color: 'var(--status-ok)', description: 'How much of the performance plays comfortably. Higher is better.' },
+  { key: 'compactness', label: 'Compactness', color: 'var(--text-secondary)', description: 'How close together the Sounds sit on the grid. Higher is better.' },
+  { key: 'handBalance', label: 'Hand balance', color: 'var(--factor-balance)', description: 'How evenly the work is shared between your hands. Higher is better.' },
+  { key: 'transitionEfficiency', label: 'Movement', color: 'var(--factor-transition)', description: 'How little your hands travel between events. Higher is better.' },
+];
+
+/**
+ * The factor each cost family feeds: the CostToggles keys, which are also the
+ * canonical evaluator's CostDimensions keys (poseNaturalness is Grip).
+ */
+export const COST_FAMILY_FACTOR: Record<keyof CostToggles, FactorKey> = {
+  transitionCost: 'transition',
+  poseNaturalness: 'gripNaturalness',
+  alternation: 'alternation',
+  handBalance: 'handBalance',
+  constraintPenalty: 'constraintPenalty',
 };
 
 /** The five canonical factors of one moment's (or note's) V1 cost breakdown. */

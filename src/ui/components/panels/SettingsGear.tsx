@@ -9,7 +9,15 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { type GridLabelSettings, type LayoutDisplaySettings } from '../../state/viewSettings';
-import { type CostToggles, TOGGLE_LABELS, TOGGLE_CATEGORIES, isExperimentalMode } from '../../../types/costToggles';
+import { type CostToggles, TOGGLE_CATEGORIES, isExperimentalMode } from '../../../types/costToggles';
+import { COST_FAMILY_FACTOR, FACTOR_META } from '../../analysis/factorMeta';
+import { DisabledReason, useDisabledReason } from '../shared/DisabledReason';
+
+/** A cost family's name is its factor's (FACTOR_META, T20). */
+const familyLabel = (key: keyof CostToggles) => FACTOR_META[COST_FAMILY_FACTOR[key]].label;
+
+/** The analysis supplies the finger assignment once a Sound is on the grid. */
+const CALCULATE_DISABLED_REASON = 'Place a Sound on the grid first: the cost needs a finger assignment';
 
 interface SettingsGearProps {
   gridLabels: GridLabelSettings;
@@ -173,8 +181,9 @@ function CostTogglesSection({
   onCalculate?: () => void;
   hasAssignment: boolean;
 }) {
-  const toggleKeys = Object.keys(TOGGLE_LABELS) as Array<keyof CostToggles>;
+  const toggleKeys = Object.keys(COST_FAMILY_FACTOR) as Array<keyof CostToggles>;
   const experimental = isExperimentalMode(costToggles);
+  const calculateReason = useDisabledReason(hasAssignment ? null : CALCULATE_DISABLED_REASON);
 
   const handleToggle = (key: keyof CostToggles) => {
     onToggleChange({ ...costToggles, [key]: !costToggles[key] });
@@ -191,23 +200,23 @@ function CostTogglesSection({
         {staticToggles.map(key => (
           <label key={key} className="flex items-center gap-2 cursor-pointer group">
             <input type="checkbox" checked={costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded-pf-sm accent-[var(--accent-primary)]" />
-            <span className={`text-pf-sm group-hover:text-[var(--text-primary)] ${costToggles[key] ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] line-through'}`}>{TOGGLE_LABELS[key]}</span>
+            <span className={`text-pf-sm group-hover:text-[var(--text-primary)] ${costToggles[key] ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] line-through'}`}>{familyLabel(key)}</span>
           </label>
         ))}
 
-        <div className="text-[10px] text-gray-500 uppercase tracking-wider pt-1">Temporal</div>
+        <div className="text-pf-micro text-[var(--text-tertiary)] uppercase tracking-wider pt-1">Temporal</div>
         {temporalToggles.map(key => (
           <label key={key} className="flex items-center gap-2 cursor-pointer group">
             <input type="checkbox" checked={costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded-pf-sm accent-[var(--accent-primary)]" />
-            <span className={`text-pf-sm group-hover:text-[var(--text-primary)] ${costToggles[key] ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] line-through'}`}>{TOGGLE_LABELS[key]}</span>
+            <span className={`text-pf-sm group-hover:text-[var(--text-primary)] ${costToggles[key] ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] line-through'}`}>{familyLabel(key)}</span>
           </label>
         ))}
 
-        <div className="text-[10px] text-gray-500 uppercase tracking-wider pt-1">Hard Rules</div>
+        <div className="text-pf-micro text-[var(--text-tertiary)] uppercase tracking-wider pt-1">Hard Rules</div>
         {hardToggles.map(key => (
           <label key={key} className="flex items-center gap-2 cursor-pointer group">
             <input type="checkbox" checked={costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded-pf-sm accent-[var(--accent-primary)]" />
-            <span className={`text-pf-sm group-hover:text-[var(--text-primary)] ${costToggles[key] ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] line-through'} ${!costToggles[key] ? 'text-orange-400' : ''}`}>{TOGGLE_LABELS[key]}</span>
+            <span className={`text-pf-sm group-hover:text-[var(--text-primary)] ${costToggles[key] ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] line-through'} ${!costToggles[key] ? 'text-orange-400' : ''}`}>{familyLabel(key)}</span>
             <span className="text-pf-micro text-[var(--text-tertiary)] ml-auto">(hard)</span>
           </label>
         ))}
@@ -220,16 +229,20 @@ function CostTogglesSection({
       )}
 
       {onCalculate && (
-        <button
-          className={`w-full px-3 py-2 rounded-pf-md text-pf-sm font-medium transition-colors ${
-            hasAssignment ? 'pf-btn-primary' : 'bg-[var(--bg-hover)] text-[var(--text-tertiary)] cursor-not-allowed'
-          }`}
-          onClick={onCalculate}
-          disabled={!hasAssignment}
-          title={!hasAssignment ? 'Run Generate first to create a finger assignment' : 'Evaluate with active cost toggles'}
-        >
-          Calculate Cost
-        </button>
+        <div className="space-y-1">
+          <button
+            className={`w-full px-3 py-2 rounded-pf-md text-pf-sm font-medium transition-colors ${
+              hasAssignment ? 'pf-btn-primary' : 'bg-[var(--bg-hover)] text-[var(--text-tertiary)] cursor-not-allowed'
+            }`}
+            onClick={onCalculate}
+            disabled={!hasAssignment}
+            aria-describedby={calculateReason.describedBy}
+            title={hasAssignment ? 'Evaluate with active cost toggles' : CALCULATE_DISABLED_REASON}
+          >
+            Calculate Cost
+          </button>
+          <DisabledReason id={calculateReason.id} reason={hasAssignment ? null : CALCULATE_DISABLED_REASON} className="block" />
+        </div>
       )}
     </div>
   );

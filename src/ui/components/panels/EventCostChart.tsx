@@ -14,8 +14,9 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { type FingerAssignment } from '../../../types/executionPlan';
-import { type V1CostBreakdown } from '../../../types/diagnostics';
 import { groupIntoMoments, summarizeMomentCost } from '@/engine';
+import { FACTOR_KEYS, FACTOR_META, factorsFromBreakdown, type FactorKey } from '../../analysis/factorMeta';
+import { formatBarBeat, formatSeconds } from '../../../utils/musicalTime';
 
 interface EventCostChartProps {
   fingerAssignments: FingerAssignment[];
@@ -25,27 +26,13 @@ interface EventCostChartProps {
   selectedEventIndex?: number | null;
   /** Callback when a bar is clicked */
   onEventClick?: (eventIndex: number | null) => void;
+  /** Project tempo, for bar.beat.sixteenth positions. */
+  tempo?: number;
 }
 
-interface CostLayer {
-  key: string;
-  label: string;
-  color: string;
-  accessor: (b: V1CostBreakdown) => number;
-}
-
-// Each layer must read the field whose name it carries. "Speed" was wired to
-// constraintPenalty and "Repetition" to handBalance, so toggling Speed never
-// changed the chart and a user diagnosing same-finger repetition was shown
-// hand-balance cost instead — on the product's main "which moments are hard and
-// why" surface.
-const COST_LAYERS: CostLayer[] = [
-  { key: 'stretch', label: 'Grip', color: '#a855f7', accessor: b => b.fingerPreference + b.handShapeDeviation },
-  { key: 'movement', label: 'Movement', color: '#f97316', accessor: b => b.transitionCost },
-  { key: 'repetition', label: 'Alternation', color: '#3b82f6', accessor: b => b.alternation },
-  { key: 'balance', label: 'Hand balance', color: '#22c55e', accessor: b => b.handBalance },
-  { key: 'constraints', label: 'Constraints', color: '#ef4444', accessor: b => b.constraintPenalty },
-];
+// One layer per canonical factor, named and coloured by FACTOR_META (T20), so
+// the chart and the ergonomics bars can never disagree on a factor's colour.
+const COST_LAYERS = FACTOR_KEYS.map(key => FACTOR_META[key]);
 
 interface EventBar {
   eventIndex: number;
@@ -56,8 +43,8 @@ interface EventBar {
   total: number;
 }
 
-export function EventCostChart({ fingerAssignments, candidateLabel, selectedEventIndex, onEventClick }: EventCostChartProps) {
-  const [enabledLayers, setEnabledLayers] = useState<Set<string>>(
+export function EventCostChart({ fingerAssignments, candidateLabel, selectedEventIndex, onEventClick, tempo = 120 }: EventCostChartProps) {
+  const [enabledLayers, setEnabledLayers] = useState<Set<FactorKey>>(
     new Set(COST_LAYERS.map(l => l.key))
   );
   const [hoveredEvent, setHoveredEvent] = useState<number | null>(null);
@@ -65,7 +52,7 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
   const closeEnlarged = useCallback(() => setEnlarged(false), []);
   const enlargedTitleId = useOverlayTitleId();
 
-  const toggleLayer = (key: string) => {
+  const toggleLayer = (key: FactorKey) => {
     setEnabledLayers(prev => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -80,12 +67,13 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
   const eventBars: EventBar[] = useMemo(() => {
     return groupIntoMoments(fingerAssignments).map(moment => {
       const { breakdown } = summarizeMomentCost(moment.items);
-      const segments = breakdown
+      const factors = breakdown ? factorsFromBreakdown(breakdown) : null;
+      const segments = factors
         ? COST_LAYERS
             .filter(l => enabledLayers.has(l.key))
             .map(l => ({
               key: l.key,
-              value: l.accessor(breakdown),
+              value: factors[l.key],
               color: l.color,
               label: l.label,
             }))
@@ -125,7 +113,7 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
         {/* Y-axis guide lines */}
         <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
           {[0, 0.25, 0.5, 0.75, 1].map(pct => (
-            <div key={pct} className="border-t border-[var(--border-subtle)]/50 w-full" />
+            <div key={pct} className="border-t border-border-subtle/50 w-full" />
           ))}
         </div>
 
@@ -176,8 +164,8 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
         {/* Hover tooltip */}
         {hoveredEvent !== null && eventBars[hoveredEvent] && (
           <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-[var(--bg-panel)] border border-[var(--border-default)] rounded-pf-sm px-2 py-1 text-pf-xs z-10 pointer-events-none shadow-lg whitespace-nowrap">
-            <div className="text-[var(--text-primary)] font-medium mb-0.5">
-              Event {hoveredEvent + 1} (t={eventBars[hoveredEvent].startTime.toFixed(3)}s)
+            <div className="text-[var(--text-primary)] font-medium mb-0.5" title={formatSeconds(eventBars[hoveredEvent].startTime)}>
+              Event {hoveredEvent + 1} · {formatBarBeat(eventBars[hoveredEvent].startTime, tempo)}
             </div>
             {eventBars[hoveredEvent].segments.map(seg => (
               <div key={seg.key} className="flex items-center gap-1.5">
@@ -201,7 +189,7 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
         {/* Header */}
         <div className="flex items-center justify-between">
           <h4 className="text-pf-sm text-[var(--text-secondary)] font-medium uppercase tracking-wider">
-            Stacked Difficulty Charts
+            Event difficulty chart
           </h4>
           <button
             className="text-pf-xs text-cyan-400 hover:text-cyan-300 transition-colors"
@@ -247,9 +235,9 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
         {/* X-axis labels */}
         {eventBars.length > 0 && (
           <div className="flex justify-between text-pf-micro text-[var(--text-tertiary)] px-px">
-            <span>0</span>
-            <span>{Math.floor(eventBars.length / 2)}</span>
-            <span>{eventBars.length - 1}</span>
+            <span>Event 1</span>
+            <span>{Math.floor(eventBars.length / 2) + 1}</span>
+            <span>{eventBars.length}</span>
           </div>
         )}
       </div>
@@ -265,7 +253,7 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
         >
             <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)]">
               <h3 id={enlargedTitleId} className="text-pf-md font-medium text-[var(--text-primary)]">
-                Per-Event Difficulty Breakdown
+                Event difficulty chart
                 {candidateLabel && <span className="text-[var(--text-secondary)] ml-2">({candidateLabel})</span>}
               </h3>
               <button
@@ -303,9 +291,9 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
               {chartContent(400)}
               {eventBars.length > 0 && (
                 <div className="flex justify-between text-pf-xs text-[var(--text-tertiary)] mt-1 px-px">
-                  <span>Event 0</span>
-                  <span>Event {Math.floor(eventBars.length / 2)}</span>
-                  <span>Event {eventBars.length - 1}</span>
+                  <span>Event 1 · {formatBarBeat(eventBars[0]!.startTime, tempo)}</span>
+                  <span>Event {Math.floor(eventBars.length / 2) + 1}</span>
+                  <span>Event {eventBars.length} · {formatBarBeat(eventBars[eventBars.length - 1]!.startTime, tempo)}</span>
                 </div>
               )}
             </div>

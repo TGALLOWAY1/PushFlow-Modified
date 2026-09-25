@@ -535,7 +535,7 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3 flex-wrap px-3 py-2 rounded-pf-lg bg-[var(--bg-panel)]/50 border border-[var(--border-default)]">
+      <div className="flex items-center gap-3 flex-wrap px-3 py-2 rounded-pf-lg bg-bg-panel/50 border border-[var(--border-default)]">
         <div>
           <div className="text-pf-md font-semibold text-[var(--text-primary)]">Pattern Composer</div>
           <div className="text-pf-xs text-[var(--text-secondary)]">Changes sync directly into the shared performance timeline.</div>
@@ -623,7 +623,7 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
       </div>
 
       <div className="flex gap-3 items-start">
-        <div className="flex-1 min-w-0 flex rounded-pf-lg bg-[var(--bg-card)]/20 border border-[var(--border-default)] overflow-hidden" style={{ minHeight: 260 }}>
+        <div className="flex-1 min-w-0 flex rounded-pf-lg bg-bg-card/20 border border-[var(--border-default)] overflow-hidden" style={{ minHeight: 260 }}>
           <LoopLaneSidebar
             lanes={displayLanes}
             dispatch={laneDispatch}

@@ -17,6 +17,7 @@ import { type GreedyLayoutStrategy, GREEDY_STRATEGY_LABELS } from '../../../engi
 import { SettingsGear } from '../panels/SettingsGear';
 import { SaveStatusControl } from './SaveStatusControl';
 import { useViewSettings } from '../../state/viewSettings';
+import { DisabledReason, useDisabledReason } from '../shared/DisabledReason';
 
 interface WorkspaceToolbarProps {
   onNavigateLibrary: () => void;
@@ -26,6 +27,8 @@ interface WorkspaceToolbarProps {
   canGenerate: boolean;
   generateDisabledReason: string | null;
   compareCount: number;
+  /** Why Compare is unavailable, shown next to it; null when it can open. */
+  compareDisabledReason?: string | null;
   onCompare: () => void;
   onCalculateCost?: () => void;
   hasAssignment?: boolean;
@@ -43,6 +46,7 @@ export function WorkspaceToolbar({
   canGenerate,
   generateDisabledReason,
   compareCount,
+  compareDisabledReason = null,
   onCompare,
   onCalculateCost,
   hasAssignment,
@@ -54,6 +58,8 @@ export function WorkspaceToolbar({
   const { settings: viewSettings, toggleGridLabel, toggleLayoutDisplay } = useViewSettings();
   const toast = useToast();
   const hasChanges = hasWorkingChanges(state);
+  const generateReason = useDisabledReason(canGenerate ? null : generateDisabledReason);
+  const compareReason = useDisabledReason(compareCount >= 2 ? null : compareDisabledReason);
 
   // Discard is confirmed by a toast with Undo. Finger preferences live in
   // voiceConstraints and survive Discard (decision Q2), and the toast says so.
@@ -194,7 +200,7 @@ export function WorkspaceToolbar({
               Promote
             </button>
             <button
-              className="pf-btn text-pf-sm bg-[var(--accent-primary)]/80 hover:bg-[var(--accent-primary)] text-white border border-[var(--accent-primary)]/30"
+              className="pf-btn text-pf-sm bg-accent-primary/80 hover:bg-accent-primary text-white border border-accent-primary/30"
               onClick={() => dispatch({ type: 'SAVE_AS_VARIANT', payload: { name: `${state.activeLayout.name} variant`, source: 'working' } })}
               title="Save current working layout as a named variant"
             >
@@ -258,7 +264,7 @@ export function WorkspaceToolbar({
       {state.isProcessing ? (
         <span className={`text-pf-sm animate-pulse px-2.5 py-1 rounded-pf-md border ${
           analysisPhase === 'generating'
-            ? 'text-[var(--accent-primary)] bg-[var(--accent-muted)] border-[var(--accent-primary)]/15'
+            ? 'text-accent-primary-soft bg-[var(--accent-muted)] border-accent-primary/15'
             : 'text-cyan-400 bg-cyan-500/8 border-cyan-500/15'
         }`}>
           {analysisPhase === 'generating'
@@ -312,15 +318,18 @@ export function WorkspaceToolbar({
             }`}
             onClick={() => canGenerate && generateFull(generationMode)}
             disabled={!canGenerate}
-            title={generateDisabledReason ?? 'Generate optimized layouts'}
+            aria-describedby={generateReason.describedBy}
+            title={canGenerate ? 'Generate optimized layouts' : generateDisabledReason ?? undefined}
           >
             Generate
           </button>
+          <DisabledReason id={generateReason.id} reason={canGenerate ? null : generateDisabledReason} className="whitespace-nowrap" />
         </div>
       )}
 
       {/* Compare */}
       <button
+        data-testid="toolbar-compare"
         className={`pf-btn text-pf-sm ${
           compareCount >= 2
             ? 'bg-purple-600 hover:bg-purple-500 text-white border border-purple-500/30'
@@ -328,10 +337,12 @@ export function WorkspaceToolbar({
         }`}
         onClick={onCompare}
         disabled={compareCount < 2}
-        title={compareCount >= 2 ? `Compare ${compareCount} selected layouts` : 'Select 2+ candidates to compare'}
+        aria-describedby={compareReason.describedBy}
+        title={compareCount >= 2 ? `Compare ${compareCount} selected layouts` : compareDisabledReason ?? undefined}
       >
         Compare{compareCount >= 2 ? ` (${compareCount})` : ''}
       </button>
+      <DisabledReason id={compareReason.id} reason={compareCount >= 2 ? null : compareDisabledReason} className="whitespace-nowrap" />
 
       {/* Settings gear */}
       <SettingsGear

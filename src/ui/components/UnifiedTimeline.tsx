@@ -10,12 +10,14 @@
  */
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import chroma from 'chroma-js';
 import { useProject } from '../state/ProjectContext';
 import { getDisplayedExecutionPlan, type SoundStream } from '../state/projectState';
 import { useLaneImport } from '../hooks/useLaneImport';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { RehearsalAudio, type RehearsalHit } from '../audio/rehearsalAudio';
 import { TimelineToolbar } from './TimelineToolbar';
+import { formatBarBeat, formatBarRange, formatSeconds } from '../../utils/musicalTime';
 import {
   BAR_HEADER_HEIGHT,
   BEAT_HEADER_HEIGHT,
@@ -33,12 +35,22 @@ const FINGER_ABBREV: Record<string, string> = {
   thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
 };
 
-const HAND_COLORS: Record<string, { bg: string; text: string }> = {
-  left: { bg: '#3b82f6', text: '#dbeafe' },
-  right: { bg: '#a855f7', text: '#f3e8ff' },
-  Unplayable: { bg: '#ef4444', text: '#fecaca' },
-  raw: { bg: '#4b5563', text: '#9ca3af' },
-};
+/** A labelled pill is at least this wide, so its 11 px "L2" fits (T64). */
+const LABELLED_PILL_MIN_WIDTH = 18;
+
+/**
+ * Dark or white pill text, whichever contrasts more with the pill as it is
+ * seen: its colour at its opacity over the timeline (T64). At least 4.4:1 on
+ * every --sound-* colour; a hand tint was 2.3:1 on amber.
+ */
+function pillTextColor(background: string, opacity: number): string {
+  try {
+    const seen = chroma.mix('#131313', background, opacity, 'rgb');
+    return chroma.contrast(seen, '#ffffff') >= chroma.contrast(seen, '#111827') ? '#ffffff' : '#111827';
+  } catch {
+    return '#ffffff';
+  }
+}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -603,6 +615,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
         onZoom={z => setZoomOverride(z)}
         onFit={() => setZoomOverride(null)}
         onReturn={handleReturn}
+        regionStart={minTime}
       />
       <input
         ref={fileInputRef}
@@ -669,6 +682,16 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                   </div>
                 ))}
               </div>
+              {/* The loop region reads in bars ("Bars 3–4", T43). */}
+              {state.loopEnabled && state.loopStart !== null && state.loopEnd !== null && (
+                <span
+                  data-testid="timeline-loop-label"
+                  className="absolute top-1 px-1.5 rounded-pf-sm bg-sky-500/20 border border-sky-400/40 text-[11px] leading-4 text-sky-200 pointer-events-none whitespace-nowrap"
+                  style={{ left: Math.max(0, (Math.min(state.loopStart, state.loopEnd) - minTime) * zoom) + 2 }}
+                >
+                  {formatBarRange(state.loopStart, state.loopEnd, state.tempo)}
+                </span>
+              )}
             </div>
             {/* Row 2: Beat subdivisions */}
             <div className="sticky z-40 bg-[var(--bg-panel)] border-b border-[var(--border-subtle)]" style={{ height: BEAT_HEADER_HEIGHT, top: BAR_HEADER_HEIGHT, width: timelineWidth }}>
@@ -748,7 +771,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                     />
                   ) : null}
                   <div
-                    className="absolute w-full border-b border-[var(--border-subtle)]/30"
+                    className="absolute w-full border-b border-border-subtle/30"
                     style={{ top: TOTAL_HEADER_HEIGHT + (i + 1) * TRACK_HEIGHT }}
                   />
                 </div>
@@ -801,7 +824,10 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                     const isUnplayable = hand === 'Unplayable';
                     // Always use sound color for pill background; only override for unplayable
                     const pillBg = isUnplayable ? '#ef4444' : stream.color;
-                    const pillText = isRaw ? '#ffffff' : (HAND_COLORS[a.assignedHand] ?? HAND_COLORS.raw).text;
+                    const pillOpacity = isSelected ? 1 : isRaw ? 0.5 : isUnplayable ? 0.6 : 0.85;
+                    // Readable on any Sound colour; the L/R letter carries the hand.
+                    const pillText = pillTextColor(pillBg, pillOpacity);
+                    const pillWidth = fingerLabel ? Math.max(w, LABELLED_PILL_MIN_WIDTH) : w;
 
                     // Difficulty indicator: colored bottom border for analyzed events.
                     // The middle band is 'Medium' (see DifficultyLevel); this tested
@@ -837,10 +863,10 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                         style={{
                           left: x,
                           top: trackY + 4,
-                          width: w,
+                          width: pillWidth,
                           height: TRACK_HEIGHT - 8,
                           backgroundColor: pillBg,
-                          opacity: isSelected ? 1 : isRaw ? 0.5 : isUnplayable ? 0.6 : 0.85,
+                          opacity: pillOpacity,
                           // Longhand only: mixing the `border` shorthand with
                           // `borderBottom` makes React drop one of them between
                           // renders, which silently loses the difficulty marker.
@@ -853,7 +879,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                           outlineOffset: relaxed.length > 0 ? 1 : undefined,
                         }}
                         onClick={() => handleEventClick(a.eventIndex ?? ai)}
-                        title={`${a.startTime.toFixed(3)}s${fingerLabel ? ` | ${handPrefix}-${fingerLabel}` : ''}${a.cost ? ` | cost: ${a.cost.toFixed(1)} | ${a.difficulty}` : ''}${a.constraintDiverges ? ' | differs from your finger preference' : ''}${relaxedNote}`}
+                        title={`${formatBarBeat(a.startTime, state.tempo)} (${formatSeconds(a.startTime)})${fingerLabel ? ` · ${handPrefix}${fingerLabel}` : ''}${a.cost ? ` · ${a.difficulty}` : ''}${a.constraintDiverges ? ' · differs from your finger preference' : ''}${relaxedNote.replace(' | ', ' · ')}`}
                       >
                         {a.constraintDiverges && (
                           <span
@@ -862,7 +888,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                           />
                         )}
                         {fingerLabel && (
-                          <span className="text-[7px] font-bold leading-none" style={{ color: pillText }}>
+                          <span className="text-[11px] font-bold leading-none" style={{ color: pillText }}>
                             {handPrefix}{fingerLabel}
                           </span>
                         )}
@@ -919,7 +945,7 @@ function VoiceRow({
 
   return (
     <div
-      className={`flex items-center gap-1.5 px-2 text-pf-sm border-b border-[var(--border-subtle)]/30 transition-colors
+      className={`flex items-center gap-1.5 px-2 text-pf-sm border-b border-border-subtle/30 transition-colors
         ${isGlobalSelected ? 'bg-blue-500/15 border-l-2 border-l-blue-400' : isInstanceHighlighted ? 'bg-violet-500/10 border-l-2 border-l-violet-400' : isEven ? '' : 'bg-white/[0.015]'}
         ${stream.muted ? 'opacity-40' : ''}`}
       style={{ height: TRACK_HEIGHT }}

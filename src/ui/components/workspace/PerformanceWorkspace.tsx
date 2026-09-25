@@ -568,6 +568,11 @@ function PerformanceWorkspaceInner() {
     [selectedForCompare, state.candidates, state.activeLayout], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const compareEnabled = canCompare(compareIds, state);
+  // Said next to the disabled Compare button (T31).
+  const compareDisabledReason = compareEnabled ? null
+    : state.candidates.length === 0 ? 'Generate candidates first'
+    : compareIds.length < 2 ? 'Tick 2 layouts to compare'
+    : 'The ticked layouts are the same';
   const liveCompareSet = useMemo(() => new Set(compareIds), [compareIds]);
   useEffect(() => {
     if (compareIds.length !== selectedForCompare.size) setSelectedForCompare(new Set(compareIds));
@@ -591,6 +596,7 @@ function PerformanceWorkspaceInner() {
         canGenerate={canGenerate}
         generateDisabledReason={generateDisabledReason ?? null}
         compareCount={compareEnabled ? compareIds.length : 0}
+        compareDisabledReason={compareDisabledReason}
         onCompare={handleOpenCompare}
         onCalculateCost={() => calculateCost(state.costToggles)}
         hasAssignment={!!assignments?.length}

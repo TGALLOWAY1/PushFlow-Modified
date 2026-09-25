@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { MoreHorizontal, Play, Repeat, SkipBack, Square, Timer, Volume2 } from 'lucide-react';
 import { useProject } from '../state/ProjectContext';
 import { Popover } from './shared/Overlay';
+import { formatBarBeat, formatBarRange, formatRate, formatSeconds } from '../../utils/musicalTime';
 import {
   TIMELINE_TOOLBAR_HEIGHT,
   TOOLBAR_GAP,
@@ -36,6 +37,8 @@ export interface TimelineToolbarProps {
   onFit: () => void;
   /** Go to the start, or to the loop start while looping a region; playback keeps its state. */
   onReturn: () => void;
+  /** Where the timeline starts (its first bar line): the position never reads earlier. */
+  regionStart: number;
 }
 
 /** An on/off transport toggle: aria-pressed, and filled vs outlined as well as colour. */
@@ -69,7 +72,7 @@ function ToggleButton({ pressed, onClick, width, icon, label, title, testId }: {
 }
 
 export function TimelineToolbar({
-  soundCount, onImportClick, zoom, minZoom, maxZoom, isAutoFit, onZoom, onFit, onReturn,
+  soundCount, onImportClick, zoom, minZoom, maxZoom, isAutoFit, onZoom, onFit, onReturn, regionStart,
 }: TimelineToolbarProps) {
   const { state, dispatch } = useProject();
 
@@ -176,7 +179,7 @@ export function TimelineToolbar({
             className={`pf-btn pf-btn-ghost text-pf-xs h-7 ${inMenu ? 'w-full justify-start' : 'flex-shrink-0'}`}
             style={inMenu ? undefined : { width: 88 }}
             onClick={() => dispatch({ type: 'SET_LOOP_REGION', payload: { start: null, end: null } })}
-            title="Clear the loop region"
+            title={hasRegion ? `Clear the loop region (${formatBarRange(state.loopStart!, state.loopEnd!, state.tempo)})` : 'Clear the loop region'}
           >
             ✕ Clear loop
           </button>
@@ -188,7 +191,7 @@ export function TimelineToolbar({
     <div
       ref={setToolbarEl}
       data-testid="timeline-toolbar"
-      className="flex items-center flex-nowrap overflow-hidden border-b border-[var(--border-subtle)] bg-[var(--bg-panel)]/40 flex-shrink-0"
+      className="flex items-center flex-nowrap overflow-hidden border-b border-[var(--border-subtle)] bg-bg-panel/40 flex-shrink-0"
       style={{ height: TIMELINE_TOOLBAR_HEIGHT, gap: TOOLBAR_GAP, paddingLeft: TOOLBAR_PADDING / 2, paddingRight: TOOLBAR_PADDING / 2 }}
     >
       {/* Transport cluster: always visible, fixed widths. */}
@@ -225,9 +228,9 @@ export function TimelineToolbar({
           data-testid="transport-position"
           className="flex-shrink-0 text-[var(--text-secondary)] font-mono text-pf-sm text-right tabular-nums whitespace-nowrap"
           style={{ width: TRANSPORT_WIDTHS.position }}
-          title="Playhead position"
+          title={`Playhead: bar.beat.sixteenth · ${formatSeconds(Math.max(regionStart, state.currentTime))}`}
         >
-          {state.currentTime.toFixed(2)}s
+          {formatBarBeat(Math.max(regionStart, state.currentTime), state.tempo)}
         </span>
         <label
           className="flex-shrink-0 flex items-center gap-1 text-pf-xs text-[var(--text-tertiary)] whitespace-nowrap"
@@ -242,7 +245,7 @@ export function TimelineToolbar({
             title="Rehearsal speed — the layout and analysis are unchanged"
           >
             {SPEEDS.map(rate => (
-              <option key={rate} value={rate}>{rate}x</option>
+              <option key={rate} value={rate}>{formatRate(rate, state.tempo)}</option>
             ))}
           </select>
         </label>
@@ -254,7 +257,7 @@ export function TimelineToolbar({
           icon={<Repeat size={12} aria-hidden="true" />}
           label="Loop"
           title={hasRegion
-            ? `Loop ${state.loopStart!.toFixed(2)}s – ${state.loopEnd!.toFixed(2)}s`
+            ? `Loop ${formatBarRange(state.loopStart!, state.loopEnd!, state.tempo)}`
             : 'Loop the whole performance (drag across the bar ruler to set a region)'}
         />
         <ToggleButton

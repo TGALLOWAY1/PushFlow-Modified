@@ -20,6 +20,8 @@ import { getActiveStreams, getDisplayedExecutionPlan, type SoundStream } from '.
 import { groupIntoMoments, summarizeMomentCost, type MomentCost } from '@/engine';
 import { MOMENT_EPSILON } from '../../types/performanceEvent';
 import { isOverlayOpen } from './shared/Overlay';
+import { formatBarBeat } from '../../utils/musicalTime';
+import { FACTOR_KEYS, FACTOR_META, factorsFromBreakdown } from '../analysis/factorMeta';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -41,15 +43,8 @@ export interface PerformanceMomentSummary {
 
 // ─── Moment Derivation ──────────────────────────────────────────────────────
 
-export function formatBeatPosition(time: number, tempo: number): string {
-  const beatDuration = 60 / (tempo || 120);
-  const totalBeats = time / beatDuration;
-  const bar = Math.floor(totalBeats / 4) + 1;
-  const beat = Math.floor(totalBeats % 4) + 1;
-  const subBeat = totalBeats % 1;
-  if (subBeat < 0.01) return `${bar}.${beat}`;
-  return `${bar}.${beat}`;
-}
+/** bar.beat.sixteenth (T43); both branches used to drop the sixteenth, so off-beat events read alike. */
+export const formatBeatPosition = formatBarBeat;
 
 /**
  * Derive PerformanceMoments from active SoundStreams, using the shared moment
@@ -218,9 +213,9 @@ export function EventsPanel({
       </div>
 
       {/* Column header */}
-      <div className="flex items-center gap-2 px-2 py-1 text-pf-micro font-mono text-[var(--text-tertiary)] uppercase tracking-wider border-b border-[var(--border-subtle)]/30">
+      <div className="flex items-center gap-2 px-2 py-1 text-pf-micro font-mono text-[var(--text-tertiary)] uppercase tracking-wider border-b border-border-subtle/30">
         <span className="w-8 flex-shrink-0">#</span>
-        <span className="flex-1">Beat</span>
+        <span className="flex-1">Position</span>
         <span className="flex-shrink-0 w-10 text-right">Cost</span>
         <span className="flex-shrink-0 w-8 text-right">Notes</span>
       </div>
@@ -300,32 +295,33 @@ function MomentRow({
         </span>
 
         {/* Note count badge */}
-        <span className={`text-pf-xs flex-shrink-0 w-8 text-right ${
-          moment.noteCount > 3 ? 'text-amber-400' : 'text-[var(--text-tertiary)]'
-        }`}>
-          {moment.noteCount}n
+        <span
+          className={`text-pf-xs flex-shrink-0 w-8 text-right ${
+            moment.noteCount > 3 ? 'text-amber-400' : 'text-[var(--text-tertiary)]'
+          }`}
+          title={`${moment.noteCount} ${moment.noteCount === 1 ? 'note' : 'notes'} struck together`}
+        >
+          {moment.noteCount}
         </span>
       </div>
 
       {/* Expanded cost breakdown */}
       {expanded && costBreakdown && (
         <div className="mt-1 ml-10 grid grid-cols-2 gap-x-3 gap-y-0.5 text-pf-micro" onClick={e => e.stopPropagation()}>
-          <span className="text-[var(--text-tertiary)]">Transition</span>
-          <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.transitionCost.toFixed(2)}</span>
-          <span className="text-[var(--text-tertiary)]">Grip</span>
-          <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.handShapeDeviation.toFixed(2)}</span>
-          <span className="text-[var(--text-tertiary)]">Finger Pref</span>
-          <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.fingerPreference.toFixed(2)}</span>
-          <span className="text-[var(--text-tertiary)]">Alternation</span>
-          <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.alternation.toFixed(2)}</span>
-          <span className="text-[var(--text-tertiary)]">Hand Balance</span>
-          <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.handBalance.toFixed(2)}</span>
-          {costBreakdown.constraintPenalty > 0 && (
-            <>
-              <span className="text-red-400">Constraint</span>
-              <span className="text-red-400 font-mono text-right">{costBreakdown.constraintPenalty.toFixed(2)}</span>
-            </>
-          )}
+          {/* The five factors, named and coloured by FACTOR_META (T20). */}
+          {FACTOR_KEYS.map(key => {
+            const meta = FACTOR_META[key];
+            const value = factorsFromBreakdown(costBreakdown)[key];
+            return (
+              <span key={key} className="contents">
+                <span className="flex items-center gap-1 text-[var(--text-tertiary)]" title={meta.description}>
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: meta.color }} aria-hidden="true" />
+                  {meta.label}
+                </span>
+                <span className="text-[var(--text-secondary)] font-mono text-right">{value.toFixed(2)}</span>
+              </span>
+            );
+          })}
         </div>
       )}
     </button>

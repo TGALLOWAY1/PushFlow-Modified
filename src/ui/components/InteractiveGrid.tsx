@@ -24,6 +24,8 @@ import { buildSelectedTransitionModel } from '../analysis/selectionModel';
 import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
 import { padLabel, padLabelLines, sharedNamePrefix } from '../analysis/padLabels';
 import { midiNoteToName } from '../../utils/midiNotes';
+import { formatPadPosition, spokenPadPosition } from '../../utils/padPosition';
+import { formatMilliseconds } from '../../utils/musicalTime';
 import { COMPOSER_PRESET_DRAG_TYPE } from './composer/PresetCard';
 import { type PresetDragPreview } from '../../types/composerPreset';
 import {
@@ -693,10 +695,10 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           data-testid={`pad-${row}-${col}`}
           // Focusable by script only, so the pad menu can hand focus back (T06).
           tabIndex={-1}
-          aria-label={`Row ${row}, column ${col}, ${voice ? voice.name : 'empty'}`}
+          aria-label={`${spokenPadPosition(row, col)}, ${voice ? voice.name : 'empty'}`}
           className={`
             group relative flex flex-col items-center justify-center flex-shrink-0
-            rounded-lg text-[10px] font-mono leading-tight
+            rounded-lg text-[11px] font-mono leading-tight
             border transition-[transform,box-shadow,background-color,border-color,filter] duration-100 select-none outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400
             ${isSelected ? 'z-10 scale-105 brightness-125 bg-[var(--bg-card)]' : ''}
             ${isBlinking && !isSelected ? 'z-10 scale-110 brightness-200 bg-[var(--bg-card)]' : ''}
@@ -750,8 +752,8 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           onDragStart={e => voice && !isMuted && !isLocked && handlePadDragStart(e, padKey, voice)}
           onDragEnd={() => { setDragSourcePad(null); setDragOverPad(null); }}
           title={voice
-            ? `[${row},${col}] ${voice.name}${summary ? ` | ${summary.hitCount} hits` : ''}${constraint ? ` | Constraint: ${constraint}` : ''}${isLocked ? ' | Locked · Unlock to move' : ''}`
-            : `[${row},${col}] empty — drop a sound here`}
+            ? `${formatPadPosition(padKey)} · ${voice.name}${summary ? ` · ${summary.hitCount} hits` : ''}${constraint ? ` · Finger preference ${constraint}` : ''}${isLocked ? ' · Locked · Unlock to move' : ''}`
+            : `${formatPadPosition(padKey)} · empty · drop a Sound here`}
         >
           {/* Ghost preview for preset drag */}
           {ghostInfo && (
@@ -795,19 +797,19 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                 )}
                 {/* Note label — the pad's Ableton Drum Rack note, by position (e.g. C1, C#1) */}
                 {gridLabels?.showNoteLabels && showSecondaryLabels && (
-                  <span className="block text-[10px] font-mono text-cyan-300/80 leading-none mt-0.5">
+                  <span className="block text-[11px] font-mono text-cyan-300/80 leading-none mt-0.5">
                     {midiNoteToName(padDrumRackNote(row, col))}
                   </span>
                 )}
                 {/* Position label */}
                 {gridLabels?.showPositionLabels && showSecondaryLabels && (
-                  <span className="block text-[8px] text-gray-500 leading-none mt-0.5">
-                    ({row},{col})
+                  <span className="block text-[11px] text-gray-400 leading-none mt-0.5">
+                    {row + 1}·{col + 1}
                   </span>
                 )}
                 {/* Fingers (from analysis) */}
                 {(gridLabels?.showFingerAssignment ?? true) && fingerList.length > 0 && (
-                  <span className="block text-[10px] font-medium leading-none mt-0.5" style={{ color: textColor }}>
+                  <span className="block text-[11px] font-medium leading-none mt-0.5" style={{ color: textColor }}>
                     {fingerList.join(' ')}
                   </span>
                 )}
@@ -828,7 +830,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                 {!isLocked && (
                   <button
                     className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center
-                               text-[9px] text-red-300 bg-red-500/30 rounded-bl opacity-0
+                               text-[11px] text-red-300 bg-red-500/30 rounded-bl opacity-0
                                group-hover:opacity-100 transition-opacity"
                     onClick={e => {
                       e.stopPropagation();
@@ -841,9 +843,9 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                 )}
               </>
             )
-          ) : showSecondaryLabels ? (
-            <span className="text-[8px] text-gray-600">
-              {gridLabels?.showNoteLabels ? midiNoteToName(padDrumRackNote(row, col)) : `${row},${col}`}
+          ) : showSecondaryLabels && (gridLabels?.showNoteLabels || gridLabels?.showPositionLabels) ? (
+            <span className="text-[11px] leading-none text-gray-500">
+              {gridLabels?.showNoteLabels ? midiNoteToName(padDrumRackNote(row, col)) : `${row + 1}·${col + 1}`}
             </span>
           ) : null}
         </div>
@@ -851,7 +853,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     }
     rows.push(
       <div key={row} className="flex items-center" style={{ gap: PAD_GAP }}>
-        <span className="w-4 flex-shrink-0 text-pf-xs text-[var(--text-tertiary)] text-right font-mono tabular-nums" style={{ marginRight: AXIS_WIDTH - 16 - PAD_GAP }}>{row}</span>
+        <span className="w-4 flex-shrink-0 text-pf-xs text-[var(--text-tertiary)] text-right font-mono tabular-nums" style={{ marginRight: AXIS_WIDTH - 16 - PAD_GAP }} aria-hidden="true">{row + 1}</span>
         {cells}
       </div>
     );
@@ -896,7 +898,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
               className="text-pf-xs text-sky-300/70 truncate min-w-0"
               title="Transition preview: the time to the next event, pads it shares with this one, and the fingers that move"
             >
-              Transition preview: {selectedTransition.timeDelta?.toFixed(3)}s to next event
+              Transition preview: {selectedTransition.timeDelta != null ? formatMilliseconds(selectedTransition.timeDelta) : '—'} to the next event
               {' · '}
               {selectedTransition.sharedPadKeys.size} shared pad{selectedTransition.sharedPadKeys.size === 1 ? '' : 's'}
               {' · '}
@@ -972,10 +974,10 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                   />
                   {/* Delta Label */}
                   <rect
-                    x={path.labelX - 12}
-                    y={path.labelY - 8}
-                    width="24"
-                    height="16"
+                    x={path.labelX - 18}
+                    y={path.labelY - 9}
+                    width="36"
+                    height="18"
                     rx="4"
                     fill="var(--bg-panel)"
                     fillOpacity="0.8"
@@ -984,8 +986,8 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                   />
                   <text
                     x={path.labelX}
-                    y={path.labelY + 3.5}
-                    fontSize="9"
+                    y={path.labelY + 4}
+                    fontSize="11"
                     fontWeight={path.isChosen ? "bold" : "normal"}
                     fontFamily="monospace"
                     textAnchor="middle"
@@ -1003,7 +1005,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           {/* Column labels */}
           <div className="flex" style={{ gap: PAD_GAP, marginLeft: GRID_OFFSET_X, height: COLUMN_LABELS_HEIGHT }}>
             {Array.from({ length: 8 }, (_, col) => (
-              <div key={col} className="flex-shrink-0 text-center text-pf-xs leading-4 text-[var(--text-tertiary)] font-mono tabular-nums" style={{ width: padSize }}>{col}</div>
+              <div key={col} className="flex-shrink-0 text-center text-pf-xs leading-4 text-[var(--text-tertiary)] font-mono tabular-nums" style={{ width: padSize }} aria-hidden="true">{col + 1}</div>
             ))}
           </div>
         </div>

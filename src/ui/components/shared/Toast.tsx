@@ -109,7 +109,7 @@ function Toast({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: number)
       {toast.action && (
         <button
           type="button"
-          className="pf-btn pf-btn-subtle text-pf-sm min-h-[24px] font-semibold text-[var(--accent-primary)]"
+          className="pf-btn pf-btn-subtle text-pf-sm min-h-[24px] font-semibold text-accent-primary-soft"
           onClick={() => {
             toast.action!.onClick();
             onDismiss(toast.id);

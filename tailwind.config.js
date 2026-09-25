@@ -1,3 +1,10 @@
+/**
+ * A --token colour that also takes Tailwind's opacity modifier
+ * (bg-accent-primary/80). A bare var() can't, so such classes used to compile
+ * to nothing (T38); color-mix scales the token's own alpha instead.
+ */
+const token = name => `color-mix(in srgb, var(--${name}) calc(<alpha-value> * 100%), transparent)`;
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -12,30 +19,30 @@ export default {
         'label': ['Inter', 'sans-serif'],
       },
       colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
-        border: "var(--border)",
-        'bg-app': "var(--bg-app)",
-        'bg-panel': "var(--bg-panel)",
-        'bg-card': "var(--bg-card)",
-        'bg-input': "var(--bg-input)",
-        'bg-hover': "var(--bg-hover)",
-        'bg-active': "var(--bg-active)",
-        'text-primary': "var(--text-primary)",
-        'text-secondary': "var(--text-secondary)",
-        'text-tertiary': "var(--text-tertiary)",
-        'text-warning': "var(--text-warning)",
-        'border-subtle': "var(--border-subtle)",
-        'border-default': "var(--border-default)",
-        'border-strong': "var(--border-strong)",
-        'accent-primary': "var(--accent-primary)",
-        'accent-primary-soft': "var(--accent-primary-soft)",
-        'accent-hover': "var(--accent-hover)",
-        'accent-muted': "var(--accent-muted)",
-        'accent-secondary': "var(--accent-secondary)",
-        'accent-secondary-strong': "var(--accent-secondary-strong)",
-        'accent-tertiary': "var(--accent-tertiary)",
-        'accent-tertiary-strong': "var(--accent-tertiary-strong)",
+        background: token('background'),
+        foreground: token('foreground'),
+        border: token('border'),
+        'bg-app': token('bg-app'),
+        'bg-panel': token('bg-panel'),
+        'bg-card': token('bg-card'),
+        'bg-input': token('bg-input'),
+        'bg-hover': token('bg-hover'),
+        'bg-active': token('bg-active'),
+        'text-primary': token('text-primary'),
+        'text-secondary': token('text-secondary'),
+        'text-tertiary': token('text-tertiary'),
+        'text-warning': token('text-warning'),
+        'border-subtle': token('border-subtle'),
+        'border-default': token('border-default'),
+        'border-strong': token('border-strong'),
+        'accent-primary': token('accent-primary'),
+        'accent-primary-soft': token('accent-primary-soft'),
+        'accent-hover': token('accent-hover'),
+        'accent-muted': token('accent-muted'),
+        'accent-secondary': token('accent-secondary'),
+        'accent-secondary-strong': token('accent-secondary-strong'),
+        'accent-tertiary': token('accent-tertiary'),
+        'accent-tertiary-strong': token('accent-tertiary-strong'),
         /* M3-inspired surface scale */
         'surface': '#131313',
         'surface-dim': '#0e0e0e',

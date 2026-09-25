@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { CONSTRAINT_RULE_NAMES, OPTIMIZER_METHOD_KEYS, OPTIMIZER_METHOD_LABELS } from '@/engine';
 import { VERDICT_TIERS } from '../../analysis/verdictTiers';
-import { FACTOR_KEYS, FACTOR_META } from '../../analysis/factorMeta';
+import { FACTOR_KEYS, FACTOR_META, type FactorKey } from '../../analysis/factorMeta';
 
 interface LearnMoreModalProps {
   open: boolean;
@@ -19,33 +19,18 @@ interface LearnMoreModalProps {
 
 type LearnMoreTab = 'overview' | 'workflow' | 'costs' | 'optimizers' | 'constraints';
 
-const COST_DEFINITIONS = [
-  {
-    name: 'Grip Quality',
-    color: '#a855f7',
-    description: 'Measures how far fingers must spread to reach the required pads. Combines attractor force (distance from resting pose), per-finger home distance, and finger dominance preference. Lower values mean more natural hand shapes.',
-  },
-  {
-    name: 'Movement',
-    color: '#f97316',
-    description: 'Fitts\'s Law transition cost between consecutive events. Captures how far the hand must travel between pads in sequence. Lower movement means smoother, faster performance.',
-  },
-  {
-    name: 'Hard Constraints',
-    color: '#ef4444',
-    description: 'Charged when a plan has to break a rule: one finger on two pads at once, a grip beyond the strict geometry limits, or \u2014 only where no plan can avoid it \u2014 a hand outside its zone or a sound played by a second finger. A plan that breaks a rule always ranks behind one that keeps it. Hard constraints can be toggled off for experimental evaluation.',
-  },
-  {
-    name: 'Repetition',
-    color: '#3b82f6',
-    description: 'Same-finger rapid repetition penalty. When the same finger must hit different pads in quick succession, alternation cost increases. Better layouts distribute work across fingers.',
-  },
-  {
-    name: 'Hand Balance',
-    color: '#22c55e',
-    description: 'Quadratic penalty when left/right hand usage deviates from 50/50 balance. Ensures both hands share the workload evenly for sustained performance.',
-  },
-];
+/**
+ * How each factor is computed: the detail under FACTOR_META's one-line
+ * description. Names, colours and the musician-facing sentence come from
+ * FACTOR_META only (T20, P2-9), so this tab can't drift from the panels.
+ */
+const FACTOR_DETAILS: Record<FactorKey, string> = {
+  transition: 'Computed from how far the hand travels between pads and how little time it has (a Fitts\'s-law style cost). Lower movement means smoother, faster playing.',
+  gripNaturalness: 'Combines the distance from a relaxed resting pose, each finger\'s distance from its home pad, and how comfortable the fingers used are. Lower values mean more natural hand shapes.',
+  alternation: 'Rises when one finger has to strike different pads in quick succession. Better layouts share the work across fingers.',
+  handBalance: 'A quadratic penalty as left/right use moves away from 50/50, so both hands share the work for sustained playing.',
+  constraintPenalty: 'Charged when a plan has to break a rule: one finger on two pads at once, a grip beyond the strict geometry limits, or \u2014 only where no plan can avoid it \u2014 a hand outside its zone or a Sound played by a second finger. A plan that breaks a rule always ranks behind one that keeps it. It can be switched off for experimental evaluation.',
+};
 
 const OPTIMIZER_METHODS = [
   {
@@ -236,18 +221,12 @@ function OverviewInfographic() {
                 <path d="M12 6v6l4 2"/>
               </svg>
             </div>
-            <div className="grid grid-cols-3 gap-1 text-[8px] text-gray-500 flex-1">
-              {[
-                { label: 'Static Ergonomic Cost', icon: '350' },
-                { label: 'Transition Cost', icon: '570' },
-                { label: 'Finger Usage Burden', icon: '' },
-                { label: 'Reach & Awkwardness', icon: '' },
-                { label: 'Movement Difficulty', icon: '' },
-                { label: 'Overall Playability', icon: '' },
-              ].map((f, i) => (
-                <div key={i} className="bg-[var(--bg-card)] rounded-pf-sm px-1 py-1 text-center border border-[var(--border-subtle)]">
-                  {f.icon && <div className="text-pf-xs text-[var(--text-secondary)] font-mono">{f.icon}</div>}
-                  <div className="leading-tight">{f.label}</div>
+            {/* The five factors, from FACTOR_META (no placeholder numbers). */}
+            <div className="grid grid-cols-3 gap-1 text-[11px] text-[var(--text-tertiary)] flex-1">
+              {FACTOR_KEYS.map(key => (
+                <div key={key} className="bg-[var(--bg-card)] rounded-pf-sm px-1 py-1 text-center border border-[var(--border-subtle)] flex items-center justify-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: FACTOR_META[key].color }} aria-hidden="true" />
+                  <span className="leading-tight">{FACTOR_META[key].label}</span>
                 </div>
               ))}
             </div>
@@ -458,26 +437,32 @@ function CostFactorsSection() {
       <p className="text-pf-sm text-[var(--text-tertiary)]">
         PushFlow evaluates layouts using these difficulty factors. Lower values mean easier performance.
       </p>
-      {COST_DEFINITIONS.map(cost => (
-        <div key={cost.name} className="flex gap-3">
-          <div
-            className="w-1 rounded-full flex-shrink-0"
-            style={{ backgroundColor: cost.color }}
-          />
-          <div>
-            <div className="text-pf-base font-medium text-[var(--text-primary)] flex items-center gap-2">
-              <span
-                className="w-2 h-2 rounded-full"
-                style={{ backgroundColor: cost.color }}
-              />
-              {cost.name}
-            </div>
-            <div className="text-pf-sm text-[var(--text-tertiary)] mt-0.5 leading-relaxed">
-              {cost.description}
+      {FACTOR_KEYS.map(key => {
+        const meta = FACTOR_META[key];
+        return (
+          <div key={key} data-testid="learn-more-factor" data-factor={key} className="flex gap-3">
+            <div
+              className="w-1 rounded-full flex-shrink-0"
+              style={{ backgroundColor: meta.color }}
+            />
+            <div>
+              <div className="text-pf-base font-medium text-[var(--text-primary)] flex items-center gap-2">
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: meta.color }}
+                />
+                {meta.label}
+              </div>
+              <div className="text-pf-sm text-[var(--text-secondary)] mt-0.5 leading-relaxed">
+                {meta.description}
+              </div>
+              <div className="text-pf-sm text-[var(--text-tertiary)] mt-0.5 leading-relaxed">
+                {FACTOR_DETAILS[key]}
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       <VerdictsSection />
     </div>

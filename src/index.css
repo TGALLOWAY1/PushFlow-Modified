@@ -326,7 +326,7 @@ button, a, [role="button"], select, input,
   border: 1px solid transparent;
   color: var(--text-secondary);
 }
-.pf-btn-ghost:hover {
+.pf-btn-ghost:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.04);
   color: var(--text-primary);
 }
@@ -336,7 +336,7 @@ button, a, [role="button"], select, input,
   border: 1px solid rgba(67, 70, 86, 0.15);
   color: var(--text-secondary);
 }
-.pf-btn-subtle:hover {
+.pf-btn-subtle:hover:not(:disabled) {
   background: var(--bg-hover);
   border-color: rgba(67, 70, 86, 0.3);
   color: var(--text-primary);
@@ -347,15 +347,17 @@ button, a, [role="button"], select, input,
   border: 1px solid rgba(184, 195, 255, 0.2);
   color: #efefff;
 }
-.pf-btn-primary:hover {
+.pf-btn-primary:hover:not(:disabled) {
   background: var(--accent-hover);
   box-shadow: 0 0 15px rgba(46, 91, 255, 0.3);
 }
 
+/* Disabled buttons keep their pointer events, so their tooltip shows and a
+   click can't fall through to whatever is underneath (T31). The hover rules
+   above skip them. */
 .pf-btn:disabled, .pf-btn[disabled] {
   opacity: 0.35;
   cursor: not-allowed;
-  pointer-events: none;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -411,7 +413,7 @@ button, a, [role="button"], select, input,
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;

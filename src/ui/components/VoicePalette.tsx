@@ -9,13 +9,14 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { Pencil } from 'lucide-react';
 import { useProject } from '../state/ProjectContext';
-import { gmDrumRenames } from '../../utils/gmDrumMap';
+import { gmDrumName, gmDrumRenames } from '../../utils/gmDrumMap';
+import { DisabledReason, useDisabledReason } from './shared/DisabledReason';
 import { getDisplayedCandidate, getDisplayedLayout, type SoundStream } from '../state/projectState';
 import type { LaneGroup } from '../../types/performanceLane';
 import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
 import { LOCKED_SOUND_DRAG_TYPE } from './dragTypes';
 import { generateId } from '../../utils/idGenerator';
-import { formatPadPosition } from '../../utils/padPosition';
+import { formatPadLocator, formatPadPosition } from '../../utils/padPosition';
 import { FingerAssignmentInput, type FingerAssignmentValue } from './shared/FingerAssignmentInput';
 import { type FingerType, type HandSide } from '../../types/fingerModel';
 
@@ -201,8 +202,13 @@ export function VoicePalette() {
     setRenamingId(neighbour ?? null);
   }, [dispatch, visibleOrder]);
 
-  // "Name from GM drum map" is offered only when it would rename something.
+  // "Name from GM drum map" is offered only when it would rename something,
+  // and otherwise says why not (T31).
   const gmRenameCount = useMemo(() => Object.keys(gmDrumRenames(state.soundStreams)).length, [state.soundStreams]);
+  const gmDisabledReason = gmRenameCount > 0 ? null
+    : state.soundStreams.some(s => gmDrumName(s.originalMidiNote)) ? 'Every GM drum Sound already has its name'
+    : 'No Sound has a GM drum pitch (35–81)';
+  const gmReason = useDisabledReason(gmDisabledReason);
 
   const handleDragStart = (e: React.DragEvent, stream: SoundStream) => {
     e.dataTransfer.setData('application/pushflow-stream', JSON.stringify({
@@ -270,22 +276,26 @@ export function VoicePalette() {
   return (
     <div className="space-y-0.5">
       {state.soundStreams.length > 0 && (
-        <div data-testid="sounds-header" className="flex items-center justify-between gap-2 px-2 pb-1.5">
-          <span className="text-pf-xs text-[var(--text-tertiary)]">
-            {state.soundStreams.length} {state.soundStreams.length === 1 ? 'Sound' : 'Sounds'}
-          </span>
-          <button
-            type="button"
-            data-testid="name-from-gm"
-            className="pf-btn pf-btn-ghost text-pf-xs px-2 py-1"
-            disabled={gmRenameCount === 0}
-            onClick={() => dispatch({ type: 'APPLY_GM_DRUM_NAMES' })}
-            title={gmRenameCount > 0
-              ? `Rename ${gmRenameCount} ${gmRenameCount === 1 ? 'Sound' : 'Sounds'} from the General MIDI drum map (36 → Kick, 38 → Snare …) · one undo step`
-              : 'No Sound has a General MIDI drum pitch (35–81) left to name'}
-          >
-            Name from GM drum map
-          </button>
+        <div data-testid="sounds-header" className="px-2 pb-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-pf-xs text-[var(--text-tertiary)]">
+              {state.soundStreams.length} {state.soundStreams.length === 1 ? 'Sound' : 'Sounds'}
+            </span>
+            <button
+              type="button"
+              data-testid="name-from-gm"
+              className="pf-btn pf-btn-ghost text-pf-xs px-2 py-1"
+              disabled={gmRenameCount === 0}
+              aria-describedby={gmReason.describedBy}
+              onClick={() => dispatch({ type: 'APPLY_GM_DRUM_NAMES' })}
+              title={gmRenameCount > 0
+                ? `Rename ${gmRenameCount} ${gmRenameCount === 1 ? 'Sound' : 'Sounds'} from the General MIDI drum map (36 → Kick, 38 → Snare …) · one undo step`
+                : gmDisabledReason ?? undefined}
+            >
+              Name from GM drum map
+            </button>
+          </div>
+          <DisabledReason id={gmReason.id} reason={gmDisabledReason} className="block text-right" />
         </div>
       )}
 
@@ -350,7 +360,7 @@ export function VoicePalette() {
       )}
 
       {selectedStreamIds.size > 0 && (
-        <div className="text-pf-xs text-[var(--accent-primary)] pt-2 px-2">
+        <div className="text-pf-xs text-accent-primary-soft pt-2 px-2">
           {selectedStreamIds.size} selected — press <kbd className="px-1 py-0.5 rounded-pf-sm bg-[var(--bg-card)] text-[var(--text-secondary)] font-mono text-pf-micro border border-[var(--border-subtle)]">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+G</kbd> to group/ungroup
         </div>
       )}
@@ -399,7 +409,7 @@ function GroupHeader({
     <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-pf-sm hover:bg-[var(--bg-hover)] transition-colors">
       {/* Collapse toggle */}
       <button
-        className="text-[8px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] w-3 flex-shrink-0 transition-colors"
+        className="text-pf-micro text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] w-3 flex-shrink-0 transition-colors"
         onClick={onToggleCollapse}
       >
         {group.isCollapsed ? '\u25B8' : '\u25BE'}
@@ -559,9 +569,9 @@ function StreamRow({
         ${isGrouped ? 'pl-6 pr-2' : 'px-2'}
         ${stream.muted ? 'opacity-35' : ''}
         ${isGlobalSelected
-          ? 'border-[var(--accent-primary)]/40 bg-[var(--accent-muted)] ring-1 ring-[var(--accent-primary)]/20'
+          ? 'border-accent-primary/40 bg-[var(--accent-muted)] ring-1 ring-accent-primary/20'
           : isSelected
-            ? 'border-[var(--accent-primary)]/25 bg-[var(--accent-muted)]'
+            ? 'border-accent-primary/25 bg-[var(--accent-muted)]'
             : 'border-transparent hover:bg-[var(--bg-hover)]'
         }
       `}
@@ -677,9 +687,13 @@ function StreamRow({
 
       {/* Pad location(s) + lock indicator */}
       {padKeys.length > 0 && (
-        <span className="text-pf-xs text-[var(--text-secondary)] font-mono flex-shrink-0 flex items-center gap-0.5 tabular-nums">
-          {isLocked && <span className="text-[8px] text-amber-400" title="Locked · Unlock to move" aria-label="Locked · Unlock to move">&#x1F512;</span>}
-          {formatPadPosition(padKeys[0])}
+        <span
+          data-testid="sound-pad-locator"
+          className="text-pf-xs text-[var(--text-secondary)] font-mono flex-shrink-0 flex items-center gap-0.5 tabular-nums"
+          title={padKeys.map(formatPadPosition).join(', ')}
+        >
+          {isLocked && <span className="text-pf-micro text-amber-400" title="Locked · Unlock to move" aria-label="Locked · Unlock to move">&#x1F512;</span>}
+          {formatPadLocator(padKeys[0])}
           {padKeys.length > 1 && `+${padKeys.length - 1}`}
         </span>
       )}

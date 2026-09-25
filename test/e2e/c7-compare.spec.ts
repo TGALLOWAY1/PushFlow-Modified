@@ -17,7 +17,8 @@ import { openTestMidi1, suggestStartingLayout, waitForAnalysis, chooseMethod, ge
 import type { Page } from '@playwright/test';
 import type { PfHandle } from './fixtures';
 
-const compareButton = (page: Page) => page.getByTitle(/^Compare \d+ selected layouts$|^Select 2\+ candidates to compare$/);
+/** The toolbar's Compare button, enabled or not (a disabled one names its reason, T31). */
+const compareButton = (page: Page) => page.getByTestId('toolbar-compare');
 
 /**
  * Suggest → Promote (so Active is analysed) → Generate with Beam → Preview #1,

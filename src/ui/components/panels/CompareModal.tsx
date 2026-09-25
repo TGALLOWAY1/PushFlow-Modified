@@ -15,6 +15,9 @@ import { CompareGridView } from '../CompareGridView';
 import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { CandidateCompare } from '../CandidateCompare';
 import { type CandidateSolution } from '../../../types/candidateSolution';
+import { strategyLabel } from '../../analysis/strategyLabels';
+import { momentDifficultyCounts } from '../../analysis/momentCounts';
+import { TRADEOFF_DIMENSIONS } from '../../analysis/factorMeta';
 
 interface CompareModalProps {
   candidateIds: string[];
@@ -63,7 +66,7 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
   function labelFor(c: CandidateSolution | typeof ACTIVE_COMPARE_ID) {
     if (typeof c === 'string' || c.id === ACTIVE_COMPARE_ID) return 'Active Layout';
     const idx = allCandidates.indexOf(c) + 1;
-    return `#${idx} ${c.metadata.strategy ?? 'Candidate'}`;
+    return `#${idx} ${strategyLabel(c.metadata.strategy)}`;
   }
 
   // Allow picking which two to compare if more than 2 selected
@@ -171,7 +174,7 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
           />
 
           {/* Tradeoff comparison */}
-          <CandidateCompare candidateA={candidateA} candidateB={candidateB} />
+          <CandidateCompare candidateA={candidateA} candidateB={candidateB} labelA={labelFor(candidateA)} labelB={labelFor(candidateB)} sounds={state.soundStreams} />
 
           {/* Score comparison table */}
           <div className="grid grid-cols-2 gap-4">
@@ -248,6 +251,8 @@ function ComparisonCard({
 }) {
   const plan = candidate.executionPlan;
   const diff = candidate.difficultyAnalysis;
+  // Events are moments for both solvers (T23).
+  const counts = momentDifficultyCounts(plan.fingerAssignments);
 
   return (
     <div
@@ -274,31 +279,26 @@ function ComparisonCard({
           <div className="text-[var(--text-primary)] font-mono">{plan.score.toFixed(1)}</div>
         </div>
         <div className="rounded-pf-sm bg-[var(--bg-panel)] px-2 py-1.5">
-          <div className="text-pf-micro text-[var(--text-tertiary)] uppercase">Unplayable</div>
-          <div className={`font-mono ${plan.unplayableCount === 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {plan.unplayableCount}
+          <div className="text-pf-micro text-[var(--text-tertiary)] uppercase">Unplayable events</div>
+          <div className={`font-mono ${counts.unplayable === 0 ? 'text-green-400' : 'text-red-400'}`} title={`${counts.unplayableNotes} of ${counts.notes} notes can't be played`}>
+            {counts.unplayable}
           </div>
         </div>
         <div className="rounded-pf-sm bg-[var(--bg-panel)] px-2 py-1.5">
-          <div className="text-pf-micro text-[var(--text-tertiary)] uppercase">Hard Events</div>
-          <div className="text-[var(--text-primary)] font-mono">{plan.hardCount}</div>
+          <div className="text-pf-micro text-[var(--text-tertiary)] uppercase">Hard events</div>
+          <div className="text-[var(--text-primary)] font-mono">{counts.hard}</div>
         </div>
         <div className="rounded-pf-sm bg-[var(--bg-panel)] px-2 py-1.5">
-          <div className="text-pf-micro text-[var(--text-tertiary)] uppercase">Balance</div>
-          <div className="text-[var(--text-primary)] font-mono">{candidate.tradeoffProfile.handBalance.toFixed(2)}</div>
+          <div className="text-pf-micro text-[var(--text-tertiary)] uppercase">Events</div>
+          <div className="text-[var(--text-primary)] font-mono">{counts.events}</div>
         </div>
       </div>
 
-      {/* Tradeoff bars */}
+      {/* Tradeoff bars: scores out of 100, higher is better */}
       <div className="space-y-1">
-        {([
-          ['Playability', candidate.tradeoffProfile.playability],
-          ['Compactness', candidate.tradeoffProfile.compactness],
-          ['Balance', candidate.tradeoffProfile.handBalance],
-          ['Transitions', candidate.tradeoffProfile.transitionEfficiency],
-        ] as const).map(([label, value]) => (
-          <div key={label} className="flex items-center gap-2">
-            <span className="text-pf-micro text-[var(--text-tertiary)] w-16">{label}</span>
+        {TRADEOFF_DIMENSIONS.map(({ key, label, description }) => ({ key, label, description, value: candidate.tradeoffProfile[key] })).map(({ key, label, description, value }) => (
+          <div key={key} className="flex items-center gap-2" title={description}>
+            <span className="text-pf-micro text-[var(--text-tertiary)] w-24">{label}</span>
             <div className="flex-1 h-1.5 bg-[var(--bg-hover)] rounded-full overflow-hidden">
               <div
                 className="h-full bg-blue-500/60 rounded-full"
