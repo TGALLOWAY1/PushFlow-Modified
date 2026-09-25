@@ -22,7 +22,7 @@ import { ActiveLayoutSummary } from '../../../src/ui/components/panels/ActiveLay
 import { CompareModal } from '../../../src/ui/components/panels/CompareModal';
 import { useAutoAnalysis } from '../../../src/ui/hooks/useAutoAnalysis';
 import { analyseLayoutCached, analysisKeyFor, peekLayoutAnalysis } from '../../../src/ui/analysis/layoutAnalysis';
-import { analysisCacheKey } from '../../../src/ui/analysis/analysisCache';
+import { analysisCacheKey, clearAnalysisCache } from '../../../src/ui/analysis/analysisCache';
 import * as analyze from '../../../src/ui/analysis/analyzeLayout';
 import { ACTIVE_COMPARE_ID } from '../../../src/ui/state/compareSet';
 import { projectReducer, type ProjectAction, type ProjectState } from '../../../src/ui/state/projectState';
@@ -100,6 +100,15 @@ describe('S3.1 · one yardstick', () => {
     // The draft's analysis is the cached plan, served without a second solve.
     expect(latest.analysisResult!.executionPlan.fingerAssignments).toEqual(onCandidatePath.analysis.executionPlan.fingerAssignments);
     expect(solves).toHaveBeenCalledTimes(1);
+
+    // Not an artefact of sharing an entry: solved afresh, each path gives the same number.
+    clearAnalysisCache();
+    const draftAfresh = await analyseLayoutCached(latest, draft);
+    clearAnalysisCache();
+    const candidateAfresh = await analyseLayoutCached(state, candidate.layout);
+    expect(solves).toHaveBeenCalledTimes(3);
+    expect(draftAfresh.score).toEqual(onCandidatePath.score);
+    expect(candidateAfresh.score).toEqual(onCandidatePath.score);
     solves.mockRestore();
   }, 60_000);
 

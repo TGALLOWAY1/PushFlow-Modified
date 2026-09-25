@@ -53,7 +53,10 @@ function CandidateScore({ candidate }: { candidate: CandidateSolution }) {
   if (scored.status === 'error') {
     return <span data-testid="candidate-score" className="text-red-300" title={scored.message}>{SCORE_FAILED_TEXT}</span>;
   }
-  return <span data-testid="candidate-score" className="animate-pulse" title={PLAYABILITY_TOOLTIP}>{scored.status === 'empty' ? 'Score: —' : SCORING_TEXT}</span>;
+  if (scored.status === 'empty') {
+    return <span data-testid="candidate-score" title={PLAYABILITY_TOOLTIP}>Score: —</span>;
+  }
+  return <span data-testid="candidate-score" className="animate-pulse" title={PLAYABILITY_TOOLTIP}>{SCORING_TEXT}</span>;
 }
 
 /** The factor that costs this plan most, by its FACTOR_META label (T20). */
