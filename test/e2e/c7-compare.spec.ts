@@ -12,7 +12,7 @@
  * a unit test S1b.3 adds with getAnalysisForLayout.
  */
 
-import { test, expect, EXPECTED_FAIL } from './fixtures';
+import { test, expect } from './fixtures';
 import { openTestMidi1, suggestStartingLayout, waitForAnalysis, chooseMethod, generateAndWait } from './project';
 import type { Page } from '@playwright/test';
 import type { PfHandle } from './fixtures';
@@ -57,7 +57,6 @@ async function activeCardScore(page: Page): Promise<{ text: string; score: numbe
 
 test.describe('C7 · Compare with the Active Layout', () => {
   test('with a differing draft, the Active side shows its real fingering and score, or "Couldn\'t analyse"', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C7: the Active side is a zero stub: no fingering on its grid and SCORE 0.0 (flips in S1b.3)');
     await activeThenCandidates(page, pf);
     await openActiveVsFirst(page);
     const { text, score } = await activeCardScore(page);
@@ -66,7 +65,6 @@ test.describe('C7 · Compare with the Active Layout', () => {
   });
 
   test('Escape closes Compare', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C7: Compare has no Escape handling (flips in S1b.3)');
     await activeThenCandidates(page, pf);
     await openActiveVsFirst(page);
     await page.keyboard.press('Escape');
@@ -74,7 +72,6 @@ test.describe('C7 · Compare with the Active Layout', () => {
   });
 
   test('after promoting a compared candidate, Compare is disabled rather than comparing a layout with itself', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C7: the compare set is never pruned, so Active vs the promoted candidate is a self-compare (flips in S1b.3)');
     await activeThenCandidates(page, pf);
     await page.getByTestId('compare-toggle-active').click();
     const first = page.getByTestId('candidate-row').first();
@@ -88,7 +85,6 @@ test.describe('C7 · Compare with the Active Layout', () => {
   });
 
   test('after deleting a compared candidate, Compare is disabled rather than opening a screen with no Close', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C7: the deleted id stays in the compare set; Compare opens "Not enough candidates" with no Close (flips in S1b.3)');
     await activeThenCandidates(page, pf);
     const rows = page.getByTestId('candidate-row');
     await rows.nth(0).getByTitle('Select for comparison').click();
@@ -100,7 +96,6 @@ test.describe('C7 · Compare with the Active Layout', () => {
   });
 
   test('with a differing draft, Active\'s score in Compare equals its standalone analysis', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C7: Compare shows the zero stub instead of the cached Active analysis (flips in S3.3)');
     const standalone = await activeThenCandidates(page, pf);
     await openActiveVsFirst(page);
     const { score } = await activeCardScore(page);

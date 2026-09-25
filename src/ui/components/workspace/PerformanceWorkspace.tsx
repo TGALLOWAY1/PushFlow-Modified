@@ -24,6 +24,7 @@ import { exportProjectToFile } from '../../persistence/projectStorage';
 import { useToast } from '../shared/Toast';
 import { useViewSettings, ViewSettingsProvider } from '../../state/viewSettings';
 import { getDisplayedCandidate, getSelectedCandidate, isPadLocked, placementDisturbsLock } from '../../state/projectState';
+import { liveCompareIds, canCompare } from '../../state/compareSet';
 
 import { WorkspaceToolbar } from './WorkspaceToolbar';
 import { VoicePalette } from '../VoicePalette';
@@ -546,11 +547,24 @@ function PerformanceWorkspaceInner() {
     });
   }, []);
 
+  // The compare set is derived from current ids (T08): deleted, promoted or
+  // regenerated candidates drop out, and Compare needs two distinct layouts.
+  const compareIds = useMemo(
+    () => liveCompareIds(selectedForCompare, state),
+    [selectedForCompare, state.candidates, state.activeLayout], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const compareEnabled = canCompare(compareIds, state);
+  const liveCompareSet = useMemo(() => new Set(compareIds), [compareIds]);
+  useEffect(() => {
+    if (compareIds.length !== selectedForCompare.size) setSelectedForCompare(new Set(compareIds));
+  }, [compareIds, selectedForCompare.size]);
+  useEffect(() => {
+    if (compareModalOpen && !compareEnabled) setCompareModalOpen(false);
+  }, [compareModalOpen, compareEnabled]);
+
   const handleOpenCompare = useCallback(() => {
-    if (selectedForCompare.size >= 2) {
-      setCompareModalOpen(true);
-    }
-  }, [selectedForCompare]);
+    if (compareEnabled) setCompareModalOpen(true);
+  }, [compareEnabled]);
 
   return (
     <div className="h-full flex flex-col bg-[var(--bg-app)] overflow-hidden">
@@ -562,7 +576,7 @@ function PerformanceWorkspaceInner() {
         analysisPhase={analysisPhase}
         canGenerate={canGenerate}
         generateDisabledReason={generateDisabledReason ?? null}
-        compareCount={selectedForCompare.size}
+        compareCount={compareEnabled ? compareIds.length : 0}
         onCompare={handleOpenCompare}
         onCalculateCost={() => calculateCost(state.costToggles)}
         hasAssignment={!!assignments?.length}
@@ -802,7 +816,8 @@ function PerformanceWorkspaceInner() {
                   <div className="flex flex-col gap-2.5">
                     <ActiveLayoutSummary />
                     <LayoutOptionsPanel
-                      selectedForCompare={selectedForCompare}
+                      selectedForCompare={liveCompareSet}
+                      compareEnabled={compareEnabled}
                       onToggleCompare={handleToggleCompare}
                       onCompare={handleOpenCompare}
                       onRetryGenerate={handleGenerate}
@@ -827,7 +842,7 @@ function PerformanceWorkspaceInner() {
       {/* ─── Compare Modal ────────────────────────────────────── */}
       {compareModalOpen && (
         <CompareModal
-          candidateIds={Array.from(selectedForCompare)}
+          candidateIds={compareIds}
           onClose={() => setCompareModalOpen(false)}
         />
       )}

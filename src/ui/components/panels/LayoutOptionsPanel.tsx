@@ -17,6 +17,8 @@ import { MiniGridPreview } from './MiniGridPreview';
 
 interface LayoutOptionsPanelProps {
   selectedForCompare: Set<string>;
+  /** Two or more distinct layouts are selected (T08). */
+  compareEnabled?: boolean;
   onToggleCompare: (id: string) => void;
   onCompare: () => void;
   /** Re-runs candidate generation after a failure. */
@@ -25,6 +27,7 @@ interface LayoutOptionsPanelProps {
 
 export function LayoutOptionsPanel({
   selectedForCompare,
+  compareEnabled = selectedForCompare.size >= 2,
   onToggleCompare,
   onCompare,
   onRetryGenerate,
@@ -53,7 +56,7 @@ export function LayoutOptionsPanel({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {compareCount >= 2 && (
+          {compareEnabled && (
             <button
               className="px-2 py-0.5 text-pf-xs rounded-pf-sm bg-purple-600 hover:bg-purple-500 text-white transition-colors"
               onClick={onCompare}

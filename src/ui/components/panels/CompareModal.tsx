@@ -8,7 +8,9 @@
 import { useState, type ReactNode } from 'react';
 import { useProject } from '../../state/ProjectContext';
 import { useDraftReplacement } from '../../hooks/useDraftReplacement';
-import { getAnalysisForLayout } from '../../state/projectState';
+import { useLayoutAnalysis, type LayoutAnalysisState } from '../../analysis/layoutAnalysis';
+import { useToast } from '../shared/Toast';
+import { ACTIVE_COMPARE_ID } from '../../state/compareSet';
 import { CompareGridView } from '../CompareGridView';
 import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { CandidateCompare } from '../CandidateCompare';
@@ -19,58 +21,84 @@ interface CompareModalProps {
   onClose: () => void;
 }
 
-/**
- * Build a synthetic CandidateSolution from the active layout for comparison.
- * Uses the latest analysis result if available, otherwise builds a minimal stub.
- */
-function buildActiveCandidate(state: ReturnType<typeof useProject>['state']): CandidateSolution {
-  const activeAnalysis = getAnalysisForLayout(state, state.activeLayout);
-  const plan = activeAnalysis?.executionPlan ?? {
-    score: 0, unplayableCount: 0, hardCount: 0,
-    fingerAssignments: [], fingerUsageStats: {}, fatigueMap: {},
-    averageDrift: 0, averageMetrics: {
-      fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0,
-      handBalance: 0, constraintPenalty: 0, total: 0,
-    },
-  };
-  const diffAnalysis = activeAnalysis?.difficultyAnalysis ?? {
-    overallScore: 0, passages: [], bindingConstraints: [],
-  };
-  const tradeoff = activeAnalysis?.tradeoffProfile ?? {
-    playability: 0, compactness: 0, handBalance: 0, transitionEfficiency: 0, structuralCoherence: 0.5,
-  };
-  return {
-    id: '__active__',
-    layout: state.activeLayout,
-    executionPlan: plan,
-    difficultyAnalysis: diffAnalysis,
-    tradeoffProfile: tradeoff,
-    metadata: { strategy: 'Active Layout', seed: 0 },
-  };
-}
 
 export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
   const { state } = useProject();
   const replaceDraft = useDraftReplacement();
+  const toast = useToast();
   const titleId = useOverlayTitleId();
 
-  // Find candidates from IDs — handle special '__active__' ID
-  const allCandidates = state.candidates;
-  const activeSynthetic = buildActiveCandidate(state);
+  // The Active side is analysed for real: its own fresh plan, the per-layout
+  // cache, or a solve through the cache ('Analysing Active…'). Never a zero
+  // stub (T08); a failed solve reads "Couldn't analyse".
+  const wantsActive = candidateIds.includes(ACTIVE_COMPARE_ID);
+  const activeAnalysis = useLayoutAnalysis(wantsActive ? state.activeLayout : null);
+  const activeCandidate: CandidateSolution | null = activeAnalysis.status === 'ready'
+    ? {
+      ...activeAnalysis.analysis,
+      id: ACTIVE_COMPARE_ID,
+      layout: state.activeLayout,
+      metadata: { strategy: 'Active Layout', seed: 0 },
+    }
+    : null;
 
-  const comparableCandidates = candidateIds
-    .map(id => {
-      if (id === '__active__') return activeSynthetic;
-      return allCandidates.find(c => c.id === id);
-    })
-    .filter((c): c is CandidateSolution => c !== undefined);
+  // Find candidates from IDs; the Active side is a placeholder until analysed.
+  const allCandidates = state.candidates;
+  const comparable = candidateIds
+    .map(id => (id === ACTIVE_COMPARE_ID ? (activeCandidate ?? ACTIVE_COMPARE_ID) : allCandidates.find(c => c.id === id)))
+    .filter((c): c is CandidateSolution | typeof ACTIVE_COMPARE_ID => c !== undefined);
+
+  function handlePromote(candidate: CandidateSolution) {
+    if (candidate.id === ACTIVE_COMPARE_ID) return; // Can't promote active to active
+    if (confirm('Promote this candidate to become the Active Layout? The current active layout will be auto-saved as a variant.')) {
+      const label = labelFor(candidate);
+      replaceDraft({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
+      // The promoted layout is now Active, so this pair would compare a layout
+      // with itself: close, and say what happened (T08).
+      onClose();
+      toast.show({ message: `Promoted ${label} to Active Layout` });
+    }
+  }
+
+  function labelFor(c: CandidateSolution | typeof ACTIVE_COMPARE_ID) {
+    if (typeof c === 'string' || c.id === ACTIVE_COMPARE_ID) return 'Active Layout';
+    const idx = allCandidates.indexOf(c) + 1;
+    return `#${idx} ${c.metadata.strategy ?? 'Candidate'}`;
+  }
 
   // Allow picking which two to compare if more than 2 selected
   const [leftIdx, setLeftIdx] = useState(0);
-  const [rightIdx, setRightIdx] = useState(Math.min(1, comparableCandidates.length - 1));
+  const [rightIdx, setRightIdx] = useState(Math.min(1, comparable.length - 1));
 
-  const candidateA = comparableCandidates[leftIdx] ?? null;
-  const candidateB = comparableCandidates[rightIdx] ?? null;
+  const sideA = comparable[leftIdx] ?? null;
+  const sideB = comparable[rightIdx] ?? null;
+
+  if (sideA && sideB && (typeof sideA === 'string' || typeof sideB === 'string')) {
+    // One side is the Active Layout, still analysing or failed.
+    const other = typeof sideA === 'string' ? sideB : sideA;
+    return (
+      <Dialog
+        onClose={onClose}
+        labelledBy={titleId}
+        testId="compare-dialog"
+        backdropClassName="fixed inset-0 z-[70] bg-black/60"
+        className="fixed inset-6 z-[71] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex flex-col overflow-hidden"
+      >
+        <CompareHeader titleId={titleId} onClose={onClose} />
+        <div className="flex-1 overflow-y-auto p-5">
+          <div className="grid grid-cols-2 gap-4">
+            <ActivePendingCard state={activeAnalysis} />
+            {typeof other === 'string'
+              ? <ActivePendingCard state={activeAnalysis} />
+              : <ComparisonCard candidate={other} label={labelFor(other)} onPromote={() => handlePromote(other)} />}
+          </div>
+        </div>
+      </Dialog>
+    );
+  }
+
+  const candidateA = typeof sideA === 'string' ? null : sideA;
+  const candidateB = typeof sideB === 'string' ? null : sideB;
 
   if (!candidateA || !candidateB) {
     // Every Compare state has a heading, a Close button and Escape (T06, T08).
@@ -90,20 +118,6 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
     );
   }
 
-  const handlePromote = (candidate: CandidateSolution) => {
-    if (candidate.id === '__active__') return; // Can't promote active to active
-    if (confirm('Promote this candidate to become the Active Layout? The current active layout will be auto-saved as a variant.')) {
-      replaceDraft({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
-      // Don't close — remaining candidates are preserved so the user can keep comparing
-    }
-  };
-
-  const getLabelForCandidate = (c: CandidateSolution) => {
-    if (c.id === '__active__') return 'Active Layout';
-    const idx = allCandidates.indexOf(c) + 1;
-    return `#${idx} ${c.metadata.strategy ?? 'Candidate'}`;
-  };
-
   return (
     <Dialog
       onClose={onClose}
@@ -113,7 +127,7 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
       className="fixed inset-6 z-[71] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex flex-col overflow-hidden"
     >
         <CompareHeader titleId={titleId} onClose={onClose}>
-            {comparableCandidates.length > 2 && (
+            {comparable.length > 2 && (
               <div className="flex items-center gap-2 text-pf-sm text-[var(--text-secondary)]">
                 <span>Left:</span>
                 <select
@@ -122,9 +136,9 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
                   onChange={e => setLeftIdx(Number(e.target.value))}
                   aria-label="Left layout"
                 >
-                  {comparableCandidates.map((c, i) => (
-                    <option key={c.id} value={i} disabled={i === rightIdx}>
-                      {getLabelForCandidate(c)}
+                  {comparable.map((c, i) => (
+                    <option key={typeof c === 'string' ? c : c.id} value={i} disabled={i === rightIdx}>
+                      {labelFor(c)}
                     </option>
                   ))}
                 </select>
@@ -135,9 +149,9 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
                   onChange={e => setRightIdx(Number(e.target.value))}
                   aria-label="Right layout"
                 >
-                  {comparableCandidates.map((c, i) => (
-                    <option key={c.id} value={i} disabled={i === leftIdx}>
-                      {getLabelForCandidate(c)}
+                  {comparable.map((c, i) => (
+                    <option key={typeof c === 'string' ? c : c.id} value={i} disabled={i === leftIdx}>
+                      {labelFor(c)}
                     </option>
                   ))}
                 </select>
@@ -152,8 +166,8 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
             candidateA={candidateA}
             candidateB={candidateB}
             voices={state.soundStreams}
-            candidateALabel={getLabelForCandidate(candidateA)}
-            candidateBLabel={getLabelForCandidate(candidateB)}
+            candidateALabel={labelFor(candidateA)}
+            candidateBLabel={labelFor(candidateB)}
           />
 
           {/* Tradeoff comparison */}
@@ -163,15 +177,15 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
           <div className="grid grid-cols-2 gap-4">
             <ComparisonCard
               candidate={candidateA}
-              label={getLabelForCandidate(candidateA)}
+              label={labelFor(candidateA)}
               onPromote={() => handlePromote(candidateA)}
-              isActive={candidateA.id === '__active__'}
+              isActive={candidateA.id === ACTIVE_COMPARE_ID}
             />
             <ComparisonCard
               candidate={candidateB}
-              label={getLabelForCandidate(candidateB)}
+              label={labelFor(candidateB)}
               onPromote={() => handlePromote(candidateB)}
-              isActive={candidateB.id === '__active__'}
+              isActive={candidateB.id === ACTIVE_COMPARE_ID}
             />
           </div>
         </div>
@@ -195,6 +209,28 @@ function CompareHeader({ titleId, onClose, children }: { titleId: string; onClos
           &times;
         </button>
       </div>
+    </div>
+  );
+}
+
+/** The Active side before its analysis is ready: analysing, failed, or nothing placed. */
+function ActivePendingCard({ state }: { state: LayoutAnalysisState }) {
+  const text = state.status === 'error'
+    ? "Couldn't analyse the Active Layout"
+    : state.status === 'empty'
+      ? 'Active Layout · nothing to analyse'
+      : 'Analysing Active\u2026';
+  return (
+    <div
+      data-testid="compare-card"
+      data-candidate-id={ACTIVE_COMPARE_ID}
+      data-status={state.status}
+      role={state.status === 'error' ? 'alert' : 'status'}
+      className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 space-y-2"
+    >
+      <div className="text-pf-sm font-medium text-[var(--text-primary)]">Active Layout</div>
+      <div className={`text-pf-sm ${state.status === 'error' ? 'text-red-400' : 'text-[var(--text-secondary)]'}`}>{text}</div>
+      {state.status === 'error' && <div className="text-pf-xs text-[var(--text-tertiary)] break-words">{state.message}</div>}
     </div>
   );
 }

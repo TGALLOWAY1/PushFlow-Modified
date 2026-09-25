@@ -102,4 +102,19 @@ test.describe('Overlays (Dialog primitive)', () => {
     await page.getByTestId('compare-close').click();
     await expect(dialog).toHaveCount(0);
   });
+
+  test('Promote inside Compare closes it with a toast (S1b.3)', async ({ page, pf }) => {
+    await injectCandidates(pf);
+    page.on('dialog', d => d.accept());
+    const rows = page.getByTestId('candidate-row');
+    await rows.nth(0).getByTitle('Select for comparison').click();
+    await rows.nth(1).getByTitle('Select for comparison').click();
+    await page.getByTitle(/^Compare \d+ selected layouts$/).click();
+    const dialog = page.getByTestId('compare-dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Promote to Active' }).first().click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByText(/Promoted #1 .* to Active Layout/)).toBeVisible();
+    await expect(page.getByTitle(/^Select 2\+ candidates to compare$/)).toBeDisabled();
+  });
 });

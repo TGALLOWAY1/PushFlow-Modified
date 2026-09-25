@@ -24,124 +24,29 @@ import {
   getDisplayedLayout,
   getActiveStreams,
 } from '../state/projectState';
-import { createBeamSolver } from '../../engine/solvers/beamSolver';
-import { type SolverConstraints } from '../../engine/solvers/types';
-import { analyzeDifficulty, computeTradeoffProfile, classifyOptimizationDifficulty } from '../../engine/evaluation/difficultyScoring';
+import { classifyOptimizationDifficulty } from '../../engine/evaluation/difficultyScoring';
 import { evaluatePerformance } from '../../engine/evaluation/canonicalEvaluator';
 import { generateCandidates } from '../../engine/optimization/multiCandidateGenerator';
 import { generateGreedyCandidates } from '../../engine/optimization/greedyCandidatePipeline';
 import { pinnedPlacements } from '../../engine/mapping/placementLocks';
+import { analyzeLayout, buildSolverConstraints, constraintsToManualAssignments } from '../analysis/analyzeLayout';
+import { rememberAnalysis } from '../analysis/analysisCache';
+import { analysisKeyFor } from '../analysis/layoutAnalysis';
 // Import adapters to ensure they self-register
 import '../../engine/optimization/beamOptimizerAdapter';
 import '../../engine/optimization/annealingOptimizerAdapter';
 import '../../engine/optimization/greedyOptimizer';
 import { buildPerformanceMoments, extractPadOwnership } from '../../engine/structure/momentBuilder';
 import { getNeutralHandCenters } from '../../engine/prior/handPose';
-import { generateId } from '../../utils/idGenerator';
-import { type SolverConfig, type OptimizationMode } from '../../types/engineConfig';
-import { type Performance } from '../../types/performance';
-import { type FingerType } from '../../types/fingerModel';
-import { type Layout } from '../../types/layout';
+import { type OptimizationMode } from '../../types/engineConfig';
 import { type CostToggles } from '../../types/costToggles';
 import { type PadFingerAssignment } from '../../types/executionPlan';
-import { createDefaultPose0, getPose0PadsWithOffset, fingerIdToHandAndFingerType } from '../../engine/prior/naturalHandPose';
-import { type FingerId, type NaturalHandPose } from '../../types/ergonomicPrior';
-import { parseFingerConstraint } from '../../utils/fingerConstraints';
-
-/**
- * Compute initial pad ownership from pose0 + layout.
- * For pads in the layout that match a pose0 finger position,
- * pre-assign the natural finger so the solver maintains consistent assignments.
- */
-function computeInitialOwnership(
-  pose0: NaturalHandPose,
-  layout: Layout,
-): Record<string, { hand: 'left' | 'right'; finger: FingerType }> | undefined {
-  const posePads = getPose0PadsWithOffset(pose0, 0, true);
-  const padToFinger = new Map<string, string>();
-  for (const entry of posePads) {
-    padToFinger.set(`${entry.row},${entry.col}`, entry.fingerId);
-  }
-  const ownership: Record<string, { hand: 'left' | 'right'; finger: FingerType }> = {};
-  let count = 0;
-  for (const padKey of Object.keys(layout.padToVoice)) {
-    const fingerId = padToFinger.get(padKey);
-    if (fingerId) {
-      const { hand, finger } = fingerIdToHandAndFingerType(fingerId as FingerId);
-      ownership[padKey] = { hand, finger };
-      count++;
-    }
-  }
-  return count > 0 ? ownership : undefined;
-}
+import { createDefaultPose0 } from '../../engine/prior/naturalHandPose';
 
 /** User-facing mode selection: 'auto' delegates to classifyOptimizationDifficulty. */
 export type GenerationMode = OptimizationMode | 'auto';
 
 const AUTO_ANALYSIS_DEBOUNCE_MS = 1000;
-
-/**
- * Build separated solver constraints from layout finger constraints.
- *
- * A finger constraint names the finger that owns a Sound. The beam solver keeps
- * it under the one-finger-per-sound rule — never trading it for a cheaper
- * fingering — and departs from it only at strikes where no plan can keep it,
- * flagging each one.
- *
- * The legacy `manualAssignments` parameter is preserved for backward
- * compatibility but new code should use the SolverConstraints structure.
- *
- * Matches events to preferences by Sound identity (voiceId) only, never by
- * pitch (invariant 5); an event with no Sound gets no preference.
- */
-function buildSolverConstraints(
-  performance: Performance,
-  layout: Layout,
-): SolverConstraints {
-  const constraints = layout.fingerConstraints;
-  if (!constraints || Object.keys(constraints).length === 0) return {};
-
-  // Build voiceId → {hand, finger} from pad constraints: a preference belongs
-  // to the Sound on the pad.
-  const voiceIdConstraints = new Map<string, { hand: 'left' | 'right'; finger: FingerType }>();
-  for (const [padKey, constraintStr] of Object.entries(constraints)) {
-    const voice = layout.padToVoice[padKey];
-    if (!voice?.id) continue;
-    const parsed = parseFingerConstraint(constraintStr);
-    if (!parsed) continue;
-    voiceIdConstraints.set(voice.id, parsed);
-  }
-  if (voiceIdConstraints.size === 0) return {};
-
-  // Map each event to its soft preference by eventKey, through its Sound.
-  const softPreferences: Record<string, { hand: 'left' | 'right'; finger: FingerType }> = {};
-  for (const event of performance.events) {
-    const constraint = event.voiceId ? voiceIdConstraints.get(event.voiceId) : undefined;
-    if (constraint && event.eventKey) {
-      softPreferences[event.eventKey] = constraint;
-    }
-  }
-
-  return Object.keys(softPreferences).length > 0
-    ? { softPreferences }
-    : {};
-}
-
-/**
- * Build legacy manualAssignments from constraints for backward compatibility.
- * Converts soft preferences to hard assignments for the legacy solver path.
- * TODO: Remove once the solver natively handles SolverConstraints.
- */
-function constraintsToManualAssignments(
-  constraints: SolverConstraints,
-): Record<string, { hand: 'left' | 'right'; finger: FingerType }> | undefined {
-  // The beam solver reads each preference as the finger that owns that Sound:
-  // the one-finger-per-sound rule keeps it unless no plan can, and any strike
-  // that has to depart from it is flagged as a relaxation.
-  const prefs = constraints.softPreferences;
-  if (!prefs || Object.keys(prefs).length === 0) return undefined;
-  return prefs;
-}
 
 export function useAutoAnalysis() {
   const { state, dispatch } = useProject();
@@ -189,26 +94,13 @@ export function useAutoAnalysis() {
         setAnalysisPhase('analyzing');
         dispatch({ type: 'SET_PROCESSING', payload: true });
 
-        // If the layout has no pad assignments, the solver will handle initial placement.
-        const effectiveLayout = layout;
-
-        const defaultPose = createDefaultPose0();
-        const solverConfig: SolverConfig = {
-          instrumentConfig: state.instrumentConfig,
-          layout: effectiveLayout,
-          sourceLayoutRole: effectiveLayout.role,
-          initialPadOwnership: computeInitialOwnership(defaultPose, effectiveLayout),
-        };
-        const solver = createBeamSolver(solverConfig);
-
-        // Build solver constraints — finger constraints are soft preferences
-        const solverConstraints = buildSolverConstraints(performance, effectiveLayout);
-        const manualAssignments = constraintsToManualAssignments(solverConstraints);
-        const executionPlan = await solver.solve(
+        const candidate = await analyzeLayout({
           performance,
-          { ...state.engineConfig, beamWidth: 15 }, // Fast mode
-          manualAssignments,
-        );
+          layout,
+          instrumentConfig: state.instrumentConfig,
+          engineConfig: state.engineConfig,
+          sections: state.sections,
+        });
 
         if (abortRef.current) {
           // The effect cleanup aborted this run mid-solve. The re-run effect is
@@ -219,18 +111,8 @@ export function useAutoAnalysis() {
           return;
         }
 
-        const difficultyAnalysis = analyzeDifficulty(executionPlan, state.sections);
-        const tradeoffProfile = computeTradeoffProfile(executionPlan, difficultyAnalysis);
-
-        const candidate = {
-          id: generateId('auto'),
-          layout: effectiveLayout,
-          executionPlan,
-          difficultyAnalysis,
-          tradeoffProfile,
-          metadata: { strategy: 'auto-analysis', seed: 0 },
-        };
-
+        // Also serves Compare and later inspection of this exact layout (T08).
+        rememberAnalysis(analysisKeyFor(state, layout), candidate);
         dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidate });
         dispatch({ type: 'SET_PROCESSING', payload: false });
         setAnalysisPhase('idle');
