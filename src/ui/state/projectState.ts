@@ -20,7 +20,7 @@
 import { type Performance, type InstrumentConfig } from '../../types/performance';
 import { type EngineConfiguration } from '../../types/engineConfig';
 import { type CandidateSolution, type CandidateGenerationSummary } from '../../types/candidateSolution';
-import { type Layout, type LayoutRole, cloneLayout, createEmptyLayout, reconcileLayoutVoices } from '../../types/layout';
+import { type Layout, type LayoutProvenance, type LayoutRole, cloneLayout, createEmptyLayout, reconcileLayoutVoices } from '../../types/layout';
 import { type ExecutionPlanResult } from '../../types/executionPlan';
 import { type Section, type VoiceProfile } from '../../types/performanceStructure';
 import { type PerformanceLane, type LaneGroup, type SourceFile } from '../../types/performanceLane';
@@ -37,6 +37,7 @@ import { formatFingerConstraint, parseFingerConstraint } from '../../utils/finge
 import { type RehearsalAudioOptions, DEFAULT_REHEARSAL_AUDIO } from '../audio/rehearsalAudio';
 import { gmDrumRenames } from '../../utils/gmDrumMap';
 import { uniqueName } from '../../utils/uniqueName';
+import { suggestVariantName } from './variantNames';
 
 // ============================================================================
 // Sound Stream Model
@@ -486,18 +487,41 @@ function generateId(): string {
 /**
  * Ensure a working layout exists. If not, clone the active layout as a working draft.
  * Returns the state with a guaranteed non-null workingLayout.
+ *
+ * The draft keeps the Active Layout's base name: names never carry a role
+ * (T32), and the UI labels it "Draft of Default" (layoutLabels.ts).
  */
 function ensureWorkingLayout(state: ProjectState): ProjectState & { workingLayout: Layout } {
   if (state.workingLayout) {
     return state as ProjectState & { workingLayout: Layout };
   }
-  const working = cloneLayout(
-    state.activeLayout,
-    generateId(),
-    `${state.activeLayout.name} (draft)`,
-    'working',
-  );
+  const working: Layout = {
+    ...cloneLayout(state.activeLayout, generateId(), state.activeLayout.name, 'working'),
+    provenance: 'manual',
+  };
   return { ...state, workingLayout: working } as ProjectState & { workingLayout: Layout };
+}
+
+/** The provenance of a layout taken from a candidate (T32); a candidate with no metadata has no strategy to name. */
+function candidateProvenance(candidate: CandidateSolution): LayoutProvenance {
+  return `candidate:${candidate.metadata?.strategy ?? ''}`;
+}
+
+/**
+ * The saved variants after a Promote replaces the Active Layout: the replaced
+ * Active is auto-saved (CLAUDE.md default) when it has pads, under a clean
+ * dated name, "Default – 25 Sep 14:02" (numbered when taken), with provenance
+ * 'replaced-active'. It used to be "Default (replaced 9/25/2026)" (T32).
+ */
+function withReplacedActiveSaved(state: ProjectState, variants: Layout[], now: string): Layout[] {
+  if (Object.keys(state.activeLayout.padToVoice).length === 0) return variants;
+  const name = suggestVariantName(state.activeLayout.name, variants.map(v => v.name), new Date(now));
+  const replaced: Layout = {
+    ...cloneLayout(state.activeLayout, generateId(), name, 'variant'),
+    provenance: 'replaced-active',
+    savedAt: now,
+  };
+  return [...variants, replaced];
 }
 
 /**
@@ -1168,18 +1192,9 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       const now = new Date().toISOString();
 
       // Auto-save the replaced active layout as a variant (if it has any assignments)
-      const autoSavedVariants = [...state.savedVariants];
-      if (Object.keys(state.activeLayout.padToVoice).length > 0) {
-        const replaced = cloneLayout(
-          state.activeLayout,
-          generateId(),
-          `${state.activeLayout.name} (replaced ${new Date().toLocaleDateString()})`,
-          'variant',
-        );
-        autoSavedVariants.push(replaced);
-      }
+      const autoSavedVariants = withReplacedActiveSaved(state, state.savedVariants, now);
 
-      // Promote: working becomes active
+      // Promote: working becomes active, keeping its base name and provenance.
       const promoted: Layout = withDerivedLayoutState({
         ...state.workingLayout,
         role: 'active',
@@ -1206,16 +1221,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       const now = new Date().toISOString();
 
       // Auto-save the replaced active layout as a variant
-      const autoSavedVariants = [...state.savedVariants];
-      if (Object.keys(state.activeLayout.padToVoice).length > 0) {
-        const replaced = cloneLayout(
-          state.activeLayout,
-          generateId(),
-          `${state.activeLayout.name} (replaced ${new Date().toLocaleDateString()})`,
-          'variant',
-        );
-        autoSavedVariants.push(replaced);
-      }
+      const autoSavedVariants = withReplacedActiveSaved(state, state.savedVariants, now);
 
       // Promote: candidate's layout becomes active, reconciling voice metadata
       // and re-deriving its pad constraints from the user's preferences.
@@ -1226,6 +1232,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         baselineId: undefined,
         placementLocks: { ...candidate.layout.placementLocks },
         savedAt: now,
+        provenance: candidateProvenance(candidate),
       }, state.soundStreams), state.voiceConstraints);
 
       // Keep non-promoted candidates so the user can still compare or promote others
@@ -1263,23 +1270,30 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'SAVE_AS_VARIANT': {
       const { name, source, candidateId } = action.payload;
       let sourceLayout: Layout | undefined;
+      // A variant keeps its source's provenance (T32); a candidate's is its strategy.
+      let provenance: LayoutProvenance | undefined;
 
       if (source === 'working' && state.workingLayout) {
         sourceLayout = state.workingLayout;
+        provenance = state.workingLayout.provenance;
       } else if (source === 'candidate' && candidateId) {
         const candidate = state.candidates.find(c => c.id === candidateId);
         sourceLayout = candidate?.layout;
+        provenance = candidate ? candidateProvenance(candidate) : undefined;
       }
 
       if (!sourceLayout) return state;
 
       // No two variants share a name (T29): a taken name gets " (2)".
-      const variant = cloneLayout(
-        sourceLayout,
-        action.payload.variantId ?? generateId(),
-        uniqueName(name, state.savedVariants.map(v => v.name)),
-        'variant',
-      );
+      const variant: Layout = {
+        ...cloneLayout(
+          sourceLayout,
+          action.payload.variantId ?? generateId(),
+          uniqueName(name, state.savedVariants.map(v => v.name)),
+          'variant',
+        ),
+        ...(provenance ? { provenance } : {}),
+      };
 
       return {
         ...state,
@@ -1298,7 +1312,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         updatedAt: now,
         recoveredDrafts: keepReplacedDraft(state, reconciledVariant, now),
         workingLayout: withDerivedLayoutState(
-          cloneLayout(reconciledVariant, generateId(), reconciledVariant.name, 'working'),
+          { ...cloneLayout(reconciledVariant, generateId(), reconciledVariant.name, 'working'), provenance: `variant:${variant.id}` },
           state.voiceConstraints,
         ),
         selectedCandidateId: null,
@@ -1315,22 +1329,15 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       const now = new Date().toISOString();
 
       // Auto-save the replaced active layout as a variant
-      const autoSavedVariants = [...state.savedVariants.filter(v => v.id !== action.payload.variantId)];
-      if (Object.keys(state.activeLayout.padToVoice).length > 0) {
-        const replaced = cloneLayout(
-          state.activeLayout,
-          generateId(),
-          `${state.activeLayout.name} (replaced ${new Date().toLocaleDateString()})`,
-          'variant',
-        );
-        autoSavedVariants.push(replaced);
-      }
+      const autoSavedVariants = withReplacedActiveSaved(
+        state, state.savedVariants.filter(v => v.id !== action.payload.variantId), now);
 
       const promoted: Layout = withDerivedLayoutState(reconcileLayoutVoices({
         ...variant,
         role: 'active',
         baselineId: undefined,
         savedAt: now,
+        provenance: `variant:${variant.id}`,
       }, state.soundStreams), state.voiceConstraints);
 
       return {
@@ -1462,7 +1469,8 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       if (streams.length === 0) return state;
 
       const base = getDisplayedLayout(state) ?? state.activeLayout;
-      const working = cloneLayout(base, generateId(), `${base.name} (suggested)`, 'working');
+      // The base name stays; "suggested" is where it came from, not its name (T32).
+      const working: Layout = { ...cloneLayout(base, generateId(), base.name, 'working'), provenance: 'suggested' };
 
       const takenPads = new Set(Object.keys(working.padToVoice));
       const placedVoiceIds = new Set(
@@ -1522,14 +1530,14 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       if (!candidate) return state;
       const now = new Date().toISOString();
 
-      // Apply the candidate's layout as the working layout, reconciling voice metadata
+      // Apply the candidate's layout as the working layout, reconciling voice
+      // metadata. It keeps the candidate's base name; the strategy goes into
+      // provenance, never "(draft)" into the name (T32).
       const reconciledCandidateLayout = reconcileLayoutVoices(candidate.layout, state.soundStreams);
-      const working = cloneLayout(
-        reconciledCandidateLayout,
-        generateId(),
-        `${reconciledCandidateLayout.name ?? 'Generated'} (draft)`,
-        'working',
-      );
+      const working: Layout = {
+        ...cloneLayout(reconciledCandidateLayout, generateId(), reconciledCandidateLayout.name || 'Generated', 'working'),
+        provenance: candidateProvenance(candidate),
+      };
 
       // The solver's fingering is NOT a user preference and must not be written
       // into voiceConstraints. Doing so meant one click of Generate stamped a

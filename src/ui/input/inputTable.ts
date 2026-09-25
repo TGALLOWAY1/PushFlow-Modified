@@ -131,13 +131,13 @@ export const INPUT_TABLE: readonly InputRow[] = [
   {
     id: 'space', group: 'Playback and events',
     input: ['Space'], when: 'Anywhere except a text field',
-    does: 'Plays or stops, even with a button focused (Enter presses buttons). With the Composer tab open, plays or stops the pattern.',
+    does: 'Plays or stops, even with a button focused (Enter presses buttons); a focused checkbox is ticked instead. With the Composer tab open, plays or stops the pattern.',
     keys: e => plain(e) && e.key === ' ',
   },
   {
     id: 'step-events', group: 'Playback and events',
     input: ['←', '→'], when: 'Stopped',
-    does: 'Selects the previous or next event, stopping at the first and last.',
+    does: 'Selects the previous or next event, stopping at the first and last. In a row of tabs they move between the tabs instead.',
     keys: e => plain(e) && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'),
   },
   {

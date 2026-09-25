@@ -135,8 +135,19 @@ describe('persistence round trip', () => {
     expect(saved.schemaVersion).toBe(1);
     const { updatedAt: _a, ...savedFields } = saved;
     const { updatedAt: _b, ...resavedFields } = resaved;
-    // S2.3's migration starts lastOpenedAt at the saved updatedAt.
-    expect(resavedFields).toEqual({ ...savedFields, schemaVersion: 4, recoveredDrafts: [], lastOpenedAt: saved.updatedAt });
+    // S2.3's migration starts lastOpenedAt at the saved updatedAt. S3.2's takes
+    // the role words out of the layout names: "Default (suggested)" is a
+    // suggestion called Default, and "Default (suggested) (draft)" a draft of it.
+    expect(saved.activeLayout.name).toBe('Default (suggested)');
+    expect(saved.workingLayout.name).toBe('Default (suggested) (draft)');
+    expect(resavedFields).toEqual({
+      ...savedFields,
+      schemaVersion: 5,
+      recoveredDrafts: [],
+      lastOpenedAt: saved.updatedAt,
+      activeLayout: { ...saved.activeLayout, name: 'Default', provenance: 'suggested' },
+      workingLayout: { ...saved.workingLayout, name: 'Default' },
+    });
 
     // And the document slice survives a second load unchanged.
     const reloaded = deserializeProject(validateAndMigrateRaw(JSON.parse(JSON.stringify(resaved))));

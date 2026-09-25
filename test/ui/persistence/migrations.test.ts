@@ -18,6 +18,7 @@ import {
 } from '../../../src/ui/persistence/migrations';
 import { PERSISTED_SCHEMA_VERSION } from '../../../src/ui/persistence/persistedProject';
 import { validateAndMigrateRaw } from '../../../src/ui/persistence/projectSerializer';
+import { variantStamp } from '../../../src/ui/state/variantNames';
 
 const FIXTURE = path.resolve(__dirname, '../../fixtures/projects/saved-by-main.json');
 const savedByMain = (): StoredRecord => JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
@@ -113,7 +114,7 @@ describe('recovered-drafts-store (schema 1 → 2)', () => {
 
   it('a schema-1 project runs every later step too and lands on the current schema', () => {
     const { record, applied } = runMigrations(savedByMain());
-    expect(applied).toEqual(['recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at']);
+    expect(applied).toEqual(['recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names']);
     expect(record.schemaVersion).toBe(PERSISTED_SCHEMA_VERSION);
   });
 
@@ -205,6 +206,87 @@ describe('last-opened-at (schema 3 → 4)', () => {
   });
 });
 
+// S3.2 (T32; roadmap P3-10a): layout names carry no role words.
+const ROLE_FIXTURE = path.resolve(__dirname, '../../fixtures/projects/role-suffixes.json');
+const withRoleSuffixes = (): StoredRecord => JSON.parse(fs.readFileSync(ROLE_FIXTURE, 'utf8'));
+type NamedLayout = { id: string; name: string; provenance?: string };
+const allLayouts = (record: StoredRecord) => [
+  record.activeLayout, record.workingLayout, ...(record.savedVariants as unknown[]), ...(record.recoveredDrafts as unknown[]),
+] as NamedLayout[];
+const ROLE_WORD = /\((draft|suggested)\)|\(replaced/;
+
+describe('clean-layout-names (schema 4 → 5)', () => {
+  it('the fixture has "(draft) (draft)", "(suggested)" and "(replaced …)" names', () => {
+    const saved = withRoleSuffixes();
+    expect(saved.schemaVersion).toBe(4);
+    const names = allLayouts(saved).map(l => l.name);
+    expect(names).toContain('Default (draft) (suggested) (draft)');
+    expect(names).toContain('Default (replaced 9/24/2026)');
+    expect(names.filter(n => ROLE_WORD.test(n))).toHaveLength(7);
+  });
+
+  it('P3-10a: afterwards no stored layout name contains "(draft)" or "(suggested)", and none is empty', () => {
+    const { record, applied } = runMigrations(withRoleSuffixes());
+    expect(applied).toEqual(['clean-layout-names']);
+    expect(record.schemaVersion).toBe(5);
+    const names = allLayouts(record).map(l => l.name);
+    expect(names).toHaveLength(9);
+    expect(names.filter(n => ROLE_WORD.test(n) || !n.trim())).toEqual([]);
+  });
+
+  it('moves what the names said into provenance, dates replaced Actives, and numbers a taken name', () => {
+    const { record } = runMigrations(withRoleSuffixes());
+    const byId = new Map(allLayouts(record).map(l => [l.id, l]));
+    const pick = (id: string) => ({ name: byId.get(id)!.name, provenance: byId.get(id)!.provenance });
+    // The last role word says where it came from; "(draft)" alone says nothing
+    // reliable (a manual edit and an applied candidate both wrote it).
+    expect(pick('active-1')).toEqual({ name: 'Default', provenance: 'suggested' });
+    expect(pick('working-1')).toEqual({ name: 'Default', provenance: undefined });
+    // A replaced Active gets the dated name new ones get, from its savedAt; the
+    // second replaced in that minute is numbered.
+    const stamp = variantStamp(new Date('2026-09-24T14:02:05.000Z'));
+    expect(pick('v-replaced-1')).toEqual({ name: `Default – ${stamp}`, provenance: 'replaced-active' });
+    expect(pick('v-replaced-2')).toEqual({ name: `Default – ${stamp} (2)`, provenance: 'replaced-active' });
+    // "(draft)" mid-name goes too; the name it leaves is taken, so it gets a number.
+    expect(pick('v-plain')).toEqual({ name: 'Default variant', provenance: undefined });
+    expect(pick('v-old-default')).toEqual({ name: 'Default variant (2)', provenance: undefined });
+    expect(pick('v-user')).toEqual({ name: 'Wide hands', provenance: undefined });
+    // A recovered draft keeps its provenance; a name that was only a role word gets one.
+    expect(pick('r-candidate')).toEqual({ name: 'Coordination-Optimized', provenance: 'recovered' });
+    expect(pick('r-empty')).toEqual({ name: 'Layout', provenance: 'recovered' });
+  });
+
+  it('changes nothing but layout names and provenance', () => {
+    const saved = withRoleSuffixes();
+    const { record } = runMigrations(saved);
+    const layoutsWithout = (r: StoredRecord) =>
+      allLayouts(r).map(({ name: _n, provenance: _p, ...rest }) => rest);
+    expect(layoutsWithout(record)).toEqual(layoutsWithout(saved));
+    const rest = ({ activeLayout: _a, workingLayout: _w, savedVariants: _v, recoveredDrafts: _r, schemaVersion: _s, ...others }: StoredRecord) => others;
+    expect(rest(record)).toEqual(rest(saved));
+  });
+
+  it('running it again changes nothing', () => {
+    const once = runMigrations(withRoleSuffixes()).record;
+    const twice = runMigrations(structuredClone(once));
+    expect(twice.applied).toEqual([]);
+    expect(twice.record).toEqual(once);
+    expect(onlyStep('clean-layout-names')[0].up(structuredClone(once))).toEqual(once);
+  });
+
+  it('leaves clean names, a missing draft and odd values as they are', () => {
+    const clean = { id: 'p', schemaVersion: 4, activeLayout: { id: 'a', name: 'Default', padToVoice: {} }, workingLayout: null, savedVariants: 'not-a-list' };
+    const { record } = runMigrations(clean, onlyStep('clean-layout-names'));
+    expect(record).toEqual({ ...clean, schemaVersion: 5 });
+  });
+
+  it('a project saved by main comes out with clean names too', () => {
+    const { record } = runMigrations(savedByMain());
+    expect(record.activeLayout).toMatchObject({ name: 'Default', provenance: 'suggested' });
+    expect((record.workingLayout as NamedLayout).name).toBe('Default');
+  });
+});
+
 describe('migrateWithBackup', () => {
   it('writes the backup, with the untouched record, before any migration step runs', async () => {
     const log: string[] = [];
@@ -220,7 +302,7 @@ describe('migrateWithBackup', () => {
       },
       record => runMigrations(record, [...MIGRATIONS.map(m => ({ ...m, up: (r: StoredRecord) => { log.push(m.name); return m.up(r); } }))]),
     );
-    expect(log).toEqual(['backup v1', 'recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at']);
+    expect(log).toEqual(['backup v1', 'recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names']);
     expect(backedUp).toEqual(untouched);
     expect(result.record.schemaVersion).toBe(PERSISTED_SCHEMA_VERSION);
   });

@@ -16,6 +16,7 @@ import { describeDroppedForLocks, describePinnedPlacements } from '@/engine';
 import { CandidatePreviewCard } from './CandidatePreviewCard';
 import { MiniGridPreview } from './MiniGridPreview';
 import { LayoutScoreLine } from './LayoutScoreLine';
+import { layoutLabel } from '../../state/layoutLabels';
 
 interface LayoutOptionsPanelProps {
   selectedForCompare: Set<string>;
@@ -172,6 +173,7 @@ export function LayoutOptionsPanel({
                   />
                 ) : (
                   <span
+                    data-testid="active-layout-name"
                     className="text-pf-xs text-[var(--text-secondary)] truncate ml-2 hover:text-[var(--text-primary)] cursor-pointer transition-colors"
                     onDoubleClick={e => {
                       e.stopPropagation();
@@ -180,7 +182,7 @@ export function LayoutOptionsPanel({
                     }}
                     title="Double-click to rename"
                   >
-                    {state.activeLayout.name}
+                    {layoutLabel(state.activeLayout, { role: 'active' })}
                   </span>
                 )}
               </div>
@@ -546,7 +548,7 @@ function RecoveredDraftCard({
     >
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="min-w-0">
-          <div className="text-pf-sm text-[var(--text-primary)] font-medium truncate">{draft.name}</div>
+          <div data-testid="recovered-name" className="text-pf-sm text-[var(--text-primary)] font-medium truncate">{layoutLabel(draft)}</div>
           <div className="text-pf-xs text-[var(--text-tertiary)]">
             {Object.keys(draft.padToVoice).length} pads assigned
           </div>

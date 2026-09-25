@@ -11,8 +11,10 @@
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
-import { type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ToastProvider } from '../../../src/ui/components/shared/Toast';
+import { Checkbox } from '../../../src/ui/components/shared/Checkbox';
+import { Tabs } from '../../../src/ui/components/shared/Tabs';
 import { ProjectProvider, useProject } from '../../../src/ui/state/ProjectContext';
 import {
   getActivePerformance,
@@ -36,7 +38,7 @@ import {
   padClickMeaning,
   type InputRowId,
 } from '../../../src/ui/input/inputTable';
-import { InputRegistry, inputRegistry, keysBelongToTarget } from '../../../src/ui/input/inputRegistry';
+import { InputRegistry, inputRegistry, keysBelongToTarget, widgetOwnsKey } from '../../../src/ui/input/inputRegistry';
 import { importTestMidi1, suggestedTestMidi1 } from '../../helpers/testMidi1';
 
 afterEach(cleanup);
@@ -102,6 +104,24 @@ const emptyPad = () => ['7,7', '7,6', '6,7', '6,6'].find(k => !shownPads()[k])!;
 const eventTimes = () => [...new Set(getDisplayedExecutionPlan(api.state)!.fingerAssignments.map(a => a.startTime))].sort((a, b) => a - b);
 const selectedTime = () => getDisplayedExecutionPlan(api.state)!.fingerAssignments
   .find(a => a.eventIndex === api.state.selectedEventIndex)?.startTime ?? null;
+
+/** Widgets with keys of their own (T63): a checkbox and a row of tabs, from the shared primitives. */
+function WidgetControls() {
+  const [ticked, setTicked] = useState(false);
+  const [tab, setTab] = useState<'sounds' | 'events'>('sounds');
+  return (
+    <>
+      <Checkbox label="Show finger assignment" checked={ticked} onChange={setTicked} />
+      <Tabs
+        label="Sidebar"
+        tabs={[{ id: 'sounds', label: 'Sounds' }, { id: 'events', label: 'Events' }]}
+        selected={tab}
+        onSelect={setTab}
+        renderPanel={() => null}
+      />
+    </>
+  );
+}
 
 /** A drag payload as the palette or a pad sets it. */
 function dataTransfer(data: Record<string, string>) {
@@ -236,7 +256,7 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
   },
 
   'space': async () => {
-    mount(await suggestedTestMidi1());
+    mount(await suggestedTestMidi1(), <WidgetControls />);
     const button = screen.getByTestId('plain-button');
     button.focus();
     // On a focused button Space plays, and neither its keydown nor its keyup
@@ -251,10 +271,26 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     expect(press(' ', {}, screen.getByTestId('plain-input'))).toBe(true);
     expect(press(' ', {}, screen.getByTestId('plain-select'))).toBe(true);
     expect(api.state.isPlaying).toBe(false);
+    // A focused checkbox takes Space to tick itself (T63): both keys are left to
+    // it, so the browser's click on keyup goes ahead. (The page's last Space
+    // had no keyup; a keyup belongs to the latest keydown, so it isn't
+    // swallowed for that one.)
+    const box = screen.getByRole('checkbox', { name: 'Show finger assignment' }) as HTMLInputElement;
+    box.focus();
+    expect(press(' ', {}, box)).toBe(true);
+    expect(fireEvent.keyUp(box, { key: ' ' })).toBe(true);
+    fireEvent.click(box);
+    expect(box.checked).toBe(true);
+    expect(api.state.isPlaying).toBe(false);
+    // A tab is a button: Space plays there too (its tab is already selected).
+    const tab = screen.getByRole('tab', { name: 'Sounds' });
+    tab.focus();
+    expect(press(' ', {}, tab)).toBe(false);
+    expect(api.state.isPlaying).toBe(true);
   },
 
   'step-events': async () => {
-    mount(await analysedProject());
+    mount(await analysedProject(), <WidgetControls />);
     const times = eventTimes();
     press('ArrowRight');
     expect(selectedTime()).toBe(times[0]);
@@ -267,6 +303,25 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     const select = screen.getByTestId('plain-select');
     expect(press('ArrowLeft', {}, select)).toBe(true);
     expect(press('ArrowLeft', {}, screen.getByTestId('plain-input'))).toBe(true);
+    expect(selectedTime()).toBe(times[times.length - 1]);
+    // In a row of tabs, ←/→, Home and End move between the tabs, not events (T63).
+    const sounds = screen.getByRole('tab', { name: 'Sounds' });
+    const events = screen.getByRole('tab', { name: 'Events' });
+    sounds.focus();
+    press('ArrowRight', {}, sounds);
+    expect(events.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(events);
+    press('Home', {}, events);
+    expect(sounds.getAttribute('aria-selected')).toBe('true');
+    press('ArrowLeft', {}, sounds);
+    expect(document.activeElement).toBe(events);
+    expect(selectedTime()).toBe(times[times.length - 1]);
+    // A checkbox uses only Space: ← on a focused one still steps events.
+    const box = screen.getByRole('checkbox', { name: 'Show finger assignment' });
+    box.focus();
+    expect(press('ArrowLeft', {}, box)).toBe(false);
+    expect(selectedTime()).toBe(times[times.length - 2]);
+    press('ArrowRight', {}, box);
     expect(selectedTime()).toBe(times[times.length - 1]);
     // While playing, nothing.
     act(() => api.dispatch({ type: 'SET_IS_PLAYING', payload: true }));
@@ -426,7 +481,8 @@ describe('the registry', () => {
       return host.querySelector<HTMLElement>('[data-t]')!;
     };
     expect(keysBelongToTarget(el('<input data-t />'))).toBe(true);
-    expect(keysBelongToTarget(el('<input type="checkbox" data-t />'))).toBe(true);
+    // A checkbox takes no typing: it owns only Space (widgetOwnsKey, next test).
+    expect(keysBelongToTarget(el('<input type="checkbox" data-t />'))).toBe(false);
     expect(keysBelongToTarget(el('<textarea data-t></textarea>'))).toBe(true);
     expect(keysBelongToTarget(el('<select data-t><option>1</option></select>'))).toBe(true);
     expect(keysBelongToTarget(el('<div role="menu"><button data-t>x</button></div>'))).toBe(true);
@@ -437,6 +493,47 @@ describe('the registry', () => {
     // happy-dom may not compute isContentEditable; the check reads it.
     Object.defineProperty(editable, 'isContentEditable', { value: true });
     expect(keysBelongToTarget(editable)).toBe(true);
+    document.body.innerHTML = '';
+  });
+
+  it('leaves a focused widget its own keys by role, and only those (T63)', () => {
+    const el = (html: string) => {
+      const host = document.createElement('div');
+      host.innerHTML = html;
+      document.body.appendChild(host);
+      return host.querySelector<HTMLElement>('[data-t]')!;
+    };
+    // A checkbox (native or by role) and a switch own Space, and nothing else.
+    for (const html of ['<input type="checkbox" data-t />', '<div role="checkbox" tabindex="0" data-t></div>', '<button role="switch" data-t>x</button>']) {
+      const widget = el(html);
+      expect(widgetOwnsKey(widget, ' ')).toBe(true);
+      expect(['ArrowLeft', 'ArrowRight', 'Delete', 'Escape'].some(k => widgetOwnsKey(widget, k))).toBe(false);
+    }
+    // A tab list owns ←/→/Home/End; Space on a tab still plays (it is a button).
+    const tab = el('<div role="tablist"><button role="tab" data-t>x</button></div>');
+    expect(['ArrowLeft', 'ArrowRight', 'Home', 'End'].every(k => widgetOwnsKey(tab, k))).toBe(true);
+    expect(widgetOwnsKey(tab, ' ')).toBe(false);
+    expect(widgetOwnsKey(tab, 'ArrowDown')).toBe(false);
+    // A plain button owns nothing.
+    expect(widgetOwnsKey(el('<button data-t>x</button>'), ' ')).toBe(false);
+
+    // Through the listener, with raw events no widget handler has seen.
+    const registry = new InputRegistry();
+    const space = vi.fn();
+    const step = vi.fn();
+    const offs = [registry.register('space', space), registry.register('step-events', step)];
+    const key = (target: Element, k: string) =>
+      target.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    const box = el('<input type="checkbox" data-t />');
+    expect(key(box, ' ')).toBe(true);
+    expect(space).not.toHaveBeenCalled();
+    expect(key(box, 'ArrowLeft')).toBe(false);
+    expect(step).toHaveBeenCalledTimes(1);
+    expect(key(tab, 'ArrowRight')).toBe(true);
+    expect(step).toHaveBeenCalledTimes(1);
+    expect(key(tab, ' ')).toBe(false);
+    expect(space).toHaveBeenCalledTimes(1);
+    offs.forEach(off => off());
     document.body.innerHTML = '';
   });
 
