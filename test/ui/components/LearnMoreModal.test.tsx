@@ -15,15 +15,26 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import { HARD_CONSTRAINTS, LOCK_ENFORCING_METHODS, SOLVER_CONSTRAINT_RULES, LearnMoreModal } from '../../../src/ui/components/panels/LearnMoreModal';
+import {
+  HARD_CONSTRAINTS,
+  LOCK_ENFORCING_METHODS,
+  SOLVER_CONSTRAINT_RULES,
+  LearnMoreModal,
+  describeThoroughTimeLimit,
+} from '../../../src/ui/components/panels/LearnMoreModal';
 import {
   CONSTRAINT_RULE_NAMES,
   OPTIMIZER_METHOD_KEYS,
   OPTIMIZER_METHOD_LABELS,
   PLAN_SCORE_WEIGHTS,
+  STOP_REASONS_EXPLAINED,
   getAvailableMethodKeys,
+  planAnnealingRun,
 } from '../../../src/engine';
 import { PLAYABILITY_TOOLTIP } from '../../../src/ui/analysis/planScore';
+import { DEEP_ANNEALING_CONFIG } from '../../../src/types/engineConfig';
+import { stopReasonText } from '../../../src/ui/analysis/stopReason';
+import { formatDuration } from '../../../src/ui/hooks/generationProgress';
 import { VERDICT_TIERS } from '../../../src/ui/analysis/verdictTiers';
 import { FACTOR_KEYS, FACTOR_META } from '../../../src/ui/analysis/factorMeta';
 import { FeasibilityBadge } from '../../../src/ui/components/panels/CostBreakdownBars';
@@ -135,6 +146,32 @@ describe('Learn More sync (P1b-8)', () => {
     expect(text).toContain('whichever optimizer proposed it');
     // The tooltip on every displayed Score names the same yardstick.
     expect(PLAYABILITY_TOOLTIP).toBe('Playability · canonical evaluator · higher = easier');
+  });
+
+  // S3.4 (T35): Thorough's time limit, read from the settings Generate runs.
+  it('explains Thorough’s time limit from DEEP_ANNEALING_CONFIG, and that the best layout so far is kept', () => {
+    openTab('Optimizers');
+    const text = screen.getByTestId('learn-generation-time').textContent ?? '';
+    const plan = planAnnealingRun(DEEP_ANNEALING_CONFIG);
+    expect(DEEP_ANNEALING_CONFIG.timeBudgetMs).toBeDefined();
+    expect(text).toContain(describeThoroughTimeLimit());
+    expect(text).toContain(`up to ${plan.total.toLocaleString('en-US')} iterations in ${plan.iterationsPerRestart.length} runs`);
+    expect(text).toContain(`at most ${formatDuration(DEEP_ANNEALING_CONFIG.timeBudgetMs!)} per candidate, shared equally so every run starts`);
+    expect(text).toContain('the candidate is the best layout the search has found so far');
+    expect(text).toContain('“Stopped: time limit reached”');
+    expect(text).toContain('Cancel stops the run: nothing from it is kept, and the candidates you already had stay as they were');
+  });
+
+  it('lists every reason a run stops, in the trace panel’s words', () => {
+    openTab('Optimizers');
+    const rows = screen.getAllByTestId('learn-stop-reason');
+    expect(rows.map(row => row.getAttribute('data-reason'))).toEqual(STOP_REASONS_EXPLAINED.map(r => r.reason));
+    rows.forEach((row, i) => {
+      const { reason, meaning } = STOP_REASONS_EXPLAINED[i]!;
+      expect(row.textContent).toContain(stopReasonText(reason));
+      expect(row.textContent).toContain(meaning);
+    });
+    expect(rows.map(row => row.getAttribute('data-reason'))).toEqual(expect.arrayContaining(['time_budget', 'cancelled']));
   });
 
   it('explains per-event cost with the Selected event card’s factor labels', () => {

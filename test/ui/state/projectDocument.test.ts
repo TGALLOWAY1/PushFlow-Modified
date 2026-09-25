@@ -36,7 +36,7 @@ const SESSION_FIELDS = [
   'engineConfig', 'optimizerMethod', 'greedyStrategy', 'costToggles',
   'selectedEventIndex', 'selectedMomentIndex', 'selectedStreamId', 'armedStreamId', 'selectedPadKey', 'compareCandidateId',
   'isProcessing', 'error', 'analysisStale', 'manualCostResult',
-  'moveHistory', 'iterationTrace', 'moveHistoryStopReason', 'moveHistoryIndex',
+  'moveHistory', 'iterationTrace', 'moveHistoryStopReason', 'moveHistoryIndex', 'lastGenerationRun',
   'currentTime', 'isPlaying', 'playbackRate', 'loopEnabled', 'loopStart', 'loopEnd',
   'countInBars', 'rehearsalAudio',
 ];

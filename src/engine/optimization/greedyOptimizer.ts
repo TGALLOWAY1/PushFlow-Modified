@@ -77,6 +77,7 @@ import {
   type UpdateContext,
   strictGreedy,
 } from './updatePolicies';
+import { type AbortFlag, Yielder, throwIfCancelled } from './runControl';
 
 // ============================================================================
 // Constants
@@ -98,6 +99,10 @@ export interface GreedyRunOptions {
   seedLayout?: Layout;
   /** Update policy for hill-climb move selection (defaults to strictGreedy). */
   updatePolicy?: UpdatePolicy;
+  /** Cancel: checked every iteration and at every yield (throws GenerationCancelledError). */
+  signal?: AbortFlag;
+  /** Called just before each yield, so a caller can report progress. */
+  onYield?: () => void;
 }
 
 class GreedyOptimizer implements OptimizerMethod {
@@ -130,9 +135,11 @@ class GreedyOptimizer implements OptimizerMethod {
         },
       };
       // Only use seedLayout for the first attempt; restarts use greedy init with different seeds
-      const restartOptions: GreedyRunOptions | undefined = options?.updatePolicy
-        ? { updatePolicy: options.updatePolicy }
-        : undefined;
+      const restartOptions: GreedyRunOptions = {
+        updatePolicy: options?.updatePolicy,
+        signal: options?.signal,
+        onYield: options?.onYield,
+      };
       const result = await this.runSingleAttempt(restartInput, moments, attempt, restartOptions);
 
       if (result.diagnostics.total < bestResult.diagnostics.total) {
@@ -185,6 +192,13 @@ class GreedyOptimizer implements OptimizerMethod {
     const moveHistory: OptimizerMove[] = [];
     const iterationTrace: OptimizationIteration[] = [];
     let movesEvaluated = 0;
+    // Yields about every 50 ms of work (one iteration can evaluate hundreds of
+    // moves), so the page stays responsive and Cancel is taken promptly.
+    const yielder = new Yielder(options?.signal);
+    const pause = async () => {
+      options?.onYield?.();
+      await yielder.yield();
+    };
 
     // The user's per-Sound finger preferences, resolved from the layout they set
     // them on. Keyed by voice so they survive the optimizer relocating a sound.
@@ -220,7 +234,7 @@ class GreedyOptimizer implements OptimizerMethod {
     }
 
     // Yield to prevent UI freeze
-    await yieldControl();
+    await pause();
 
     // ── Phase B: Initial Finger Assignment ─────────────────────
     // Moments are supplied so pads that sound together are guaranteed distinct
@@ -256,6 +270,7 @@ class GreedyOptimizer implements OptimizerMethod {
     let currentPeerCost = computeRhythmPeerCost(layout, rhythmPeers);
 
     for (let iter = 0; iter < maxIterations; iter++) {
+      throwIfCancelled(options?.signal);
       // Hand separation is a hard rule: a move may not add a strike outside its
       // hand's zone unless it fixes a moment that is unplayable or needs an
       // impossible grip. Cost alone must never buy a crossing, however much
@@ -279,6 +294,7 @@ class GreedyOptimizer implements OptimizerMethod {
 
       for (const move of candidateMoves) {
         if (movesChecked >= MAX_MOVES_PER_ITERATION) break;
+        if (yielder.due()) await pause();
         movesChecked++;
         movesEvaluated++;
 
@@ -408,8 +424,7 @@ class GreedyOptimizer implements OptimizerMethod {
       currentCost = bestMove.costResult!;
       currentPeerCost = computeRhythmPeerCost(layout, rhythmPeers);
 
-      // Yield every 10 iterations
-      if (iter % 10 === 0) await yieldControl();
+      if (yielder.due()) await pause();
     }
 
     // ── Final Evaluation ───────────────────────────────────────

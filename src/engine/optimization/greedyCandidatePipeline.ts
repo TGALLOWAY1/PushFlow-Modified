@@ -30,6 +30,7 @@ import { type SoundFeatureMap, extractSoundFeatures } from '../structure/soundFe
 import { type SeedContext, SEED_GENERATORS } from './seedGenerators';
 import { UPDATE_POLICIES } from './updatePolicies';
 import { type GreedyRunOptions, GreedyOptimizer } from './greedyOptimizer';
+import { type RunControl, isGenerationCancelled, throwIfCancelled, estimateRemainingMs } from './runControl';
 import { countRelaxedStrikes } from '../evaluation/constraintRelaxation';
 import { COMFORTABLE_PLAN_SCORE } from '../evaluation/planScore';
 import { analyzeDifficulty, computeTradeoffProfile } from '../evaluation/difficultyScoring';
@@ -104,6 +105,8 @@ export interface GreedyCandidateInput {
    * hill-climbing, then removed from each candidate's placementLocks again.
    */
   pinnedPlacements?: Record<string, string>;
+  /** Progress, Cancel and the clock (T35); a cancelled run throws GenerationCancelledError. */
+  runControl?: RunControl;
 }
 
 /**
@@ -230,6 +233,31 @@ export async function generateGreedyCandidates(
     ? CANDIDATE_FAMILIES
     : CANDIDATE_FAMILIES.filter(f => f.seedKey === strategy);
 
+  // Progress, Cancel and the clock (T35). Greedy counts the layouts it tries;
+  // the best `count` of them become the candidates.
+  const control = input.runControl ?? {};
+  const now = control.now ?? Date.now;
+  const runStart = now();
+  const plannedRuns = activeFamilies.reduce((n, family) => n + family.seedCount, 0);
+  let runsStarted = 0;
+  let currentRunStart = runStart;
+  const report = () => {
+    const t = now();
+    // Time left: the average finished run times the runs still to go, less
+    // the time already spent in this one.
+    const perRun = estimateRemainingMs(runsStarted - 1, currentRunStart - runStart, 1);
+    control.onProgress?.({
+      method: 'greedy',
+      current: runsStarted,
+      total: plannedRuns,
+      counts: 'layouts',
+      elapsedMs: t - runStart,
+      etaMs: perRun === null
+        ? null
+        : Math.max(0, perRun - (t - currentRunStart)) + perRun * Math.max(0, plannedRuns - runsStarted),
+    });
+  };
+
   for (const family of activeFamilies) {
     const seedGen = SEED_GENERATORS[family.seedKey];
     const updatePolicy = UPDATE_POLICIES[family.updateKey];
@@ -237,6 +265,10 @@ export async function generateGreedyCandidates(
     if (!seedGen || !updatePolicy) continue;
 
     for (let seedIdx = 0; seedIdx < family.seedCount; seedIdx++) {
+      throwIfCancelled(control.signal);
+      runsStarted++;
+      currentRunStart = now();
+      report();
       const seed = 42 + seedIdx * 7919; // Prime-offset seeds for diversity
       const rng = createSeededRng(seed);
 
@@ -278,6 +310,8 @@ export async function generateGreedyCandidates(
       const runOptions: GreedyRunOptions = {
         seedLayout,
         updatePolicy,
+        signal: control.signal,
+        onYield: report,
       };
 
       try {
@@ -316,6 +350,10 @@ export async function generateGreedyCandidates(
           tradeoffProfile,
           metadata,
           iterationTrace: result.iterationTrace,
+          // How this candidate was found (T33), with the run's stop reason.
+          moveHistory: result.moveHistory,
+          stopReason: result.stopReason,
+          telemetry: result.telemetry,
         };
 
         const qualityScore = compositeScore(tradeoffProfile);
@@ -326,12 +364,14 @@ export async function generateGreedyCandidates(
           qualityScore,
           seedIndex: seedIdx,
         });
-      } catch {
-        // Skip failed candidates silently
+      } catch (error) {
+        // Cancel stops the whole run; any other failure skips this candidate.
+        if (isGenerationCancelled(error)) throw error;
         continue;
       }
     }
   }
+  throwIfCancelled(control.signal);
 
   if (allScored.length === 0) {
     // Nothing survived; if candidates were dropped for breaking a lock, say so.

@@ -67,8 +67,8 @@ test.describe('C4 · undo', () => {
     const candidateIds = after.candidates.map(c => c.id);
     // Generate only proposes (S1a.2): the draft is untouched.
     expect(await shownPads(pf)).toEqual(draft);
-    // Today generateFull clears the trace and never sets it (see Follow-ups in
-    // UI_ROADMAP_PROGRESS.md), so this compares an empty trace until S3.4.
+    // Generate leaves the top candidate's trace for the trace panel (S3.4).
+    expect(after.moveHistory?.length ?? 0).toBeGreaterThan(0);
     await clickUndo(page);
     const undone = await pf.call('state');
     const { ['7,3']: _lastPlaced, ...draftBeforeLastEdit } = draft;

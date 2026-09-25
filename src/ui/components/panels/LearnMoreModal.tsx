@@ -9,11 +9,21 @@
 import { useState } from 'react';
 import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { InputTableSections } from '../shared/ShortcutSheet';
-import { CONSTRAINT_RULE_NAMES, OPTIMIZER_METHOD_KEYS, OPTIMIZER_METHOD_LABELS, PLAN_SCORE_WEIGHTS } from '@/engine';
+import {
+  CONSTRAINT_RULE_NAMES,
+  OPTIMIZER_METHOD_KEYS,
+  OPTIMIZER_METHOD_LABELS,
+  PLAN_SCORE_WEIGHTS,
+  STOP_REASONS_EXPLAINED,
+  planAnnealingRun,
+} from '@/engine';
+import { DEEP_ANNEALING_CONFIG } from '@/types';
 import { VERDICT_TIERS } from '../../analysis/verdictTiers';
 import { FACTOR_KEYS, FACTOR_META, type FactorKey } from '../../analysis/factorMeta';
 import { ROLE_META, ROLE_ORDER } from '../../state/layoutSubject';
 import { RoleChip } from '../shared/SubjectChip';
+import { stopReasonText } from '../../analysis/stopReason';
+import { formatDuration } from '../../hooks/generationProgress';
 
 interface LearnMoreModalProps {
   open: boolean;
@@ -577,6 +587,20 @@ function VerdictsSection() {
  * Optimizers Section — available optimization methods
  * ═══════════════════════════════════════════════════════════════════════ */
 
+/**
+ * Thorough's budgets in words, from DEEP_ANNEALING_CONFIG itself (the settings
+ * Generate runs), so this text can't drift from the solver.
+ */
+export function describeThoroughTimeLimit(): string {
+  const plan = planAnnealingRun(DEEP_ANNEALING_CONFIG);
+  const runs = plan.iterationsPerRestart.length;
+  const limit = DEEP_ANNEALING_CONFIG.timeBudgetMs;
+  const iterations = `up to ${plan.total.toLocaleString('en-US')} iterations in ${runs} runs (a first run and ${runs - 1} restarts, each cooling from hot to cold)`;
+  return limit === undefined
+    ? `Thorough (Annealing’s deep intensity) anneals each candidate: ${iterations}.`
+    : `Thorough (Annealing’s deep intensity) anneals each candidate: ${iterations}, and for at most ${formatDuration(limit)} per candidate, shared equally so every run starts. When a run’s share of the time is used up it stops there, and the candidate is the best layout the search has found so far, marked “${stopReasonText('time_budget')}”.`;
+}
+
 function OptimizersSection() {
   return (
     <div className="space-y-4">
@@ -600,7 +624,31 @@ function OptimizersSection() {
         </div>
       ))}
 
-      <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 mt-4">
+      <div data-testid="learn-generation-time" className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 mt-4">
+        <h4 className="text-pf-sm font-medium text-[var(--text-primary)] mb-2">How long Generate takes</h4>
+        <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
+          While Generate runs, the toolbar shows which candidate it is working on and an estimate of the time left, measured from how fast the run is going. The other Generate controls stay where they are, disabled, until it finishes. Cancel stops the run: nothing from it is kept, and the candidates you already had stay as they were.
+        </p>
+        <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed mt-2">
+          {describeThoroughTimeLimit()}
+        </p>
+      </div>
+
+      <div data-testid="learn-stop-reasons" className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
+        <h4 className="text-pf-sm font-medium text-[var(--text-primary)] mb-2">Why a run stopped</h4>
+        <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed mb-2">
+          Every candidate keeps the trace of the run that found it, with the reason that run stopped:
+        </p>
+        <ul className="space-y-1">
+          {STOP_REASONS_EXPLAINED.map(({ reason, meaning }) => (
+            <li key={reason} data-testid="learn-stop-reason" data-reason={reason} className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
+              <span className="text-[var(--text-secondary)] font-medium">{stopReasonText(reason)}</span> {'—'} {meaning}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
         <h4 className="text-pf-sm font-medium text-[var(--text-primary)] mb-2">Cost Toggles</h4>
         <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
           All cost factors can be individually toggled on/off in the Cost Evaluation section of the analysis panel.

@@ -8,7 +8,7 @@
  * layout-state bar above the grid (S3.2).
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useProject } from '../../state/ProjectContext';
 import { type GenerationMode } from '../../hooks/useAutoAnalysis';
 import { type SaveStatus } from '../../hooks/useAutoSave';
@@ -19,12 +19,24 @@ import { SaveStatusControl } from './SaveStatusControl';
 import { useViewSettings } from '../../state/viewSettings';
 import { DisabledReason, useDisabledReason } from '../shared/DisabledReason';
 import { Popover } from '../shared/Overlay';
-import { MoreHorizontal } from 'lucide-react';
+import { useToast } from '../shared/Toast';
+import { Loader2, MoreHorizontal } from 'lucide-react';
+import { type GenerationRunRecord } from '../../state/projectState';
+import {
+  type GenerationProgressStore,
+  useGenerationActivity,
+  generationProgressParts,
+  stoppedRunMessage,
+  announceRun,
+} from '../../hooks/generationProgress';
 
 interface WorkspaceToolbarProps {
   onNavigateLibrary: () => void;
-  generateFull: (mode?: GenerationMode) => Promise<void>;
-  generationProgress: string | null;
+  generateFull: (mode?: GenerationMode) => Promise<unknown>;
+  /** Cancels the Generate in flight (T35). */
+  cancelGeneration?: () => void;
+  /** The Generate in flight, for the progress pill (see generationProgress.ts). */
+  generationProgress: GenerationProgressStore;
   analysisPhase: 'idle' | 'analyzing' | 'generating';
   canGenerate: boolean;
   generateDisabledReason: string | null;
@@ -45,6 +57,7 @@ interface WorkspaceToolbarProps {
 export function WorkspaceToolbar({
   onNavigateLibrary,
   generateFull,
+  cancelGeneration,
   generationProgress,
   analysisPhase,
   canGenerate,
@@ -60,9 +73,21 @@ export function WorkspaceToolbar({
   onExport,
 }: WorkspaceToolbarProps) {
   const { state, dispatch, undo, redo, canUndo, canRedo, undoLabel, redoLabel } = useProject();
+  const toast = useToast();
   const { settings: viewSettings, toggleGridLabel } = useViewSettings();
   const generateReason = useDisabledReason(canGenerate ? null : generateDisabledReason);
   const compareReason = useDisabledReason(compareCount >= 2 ? null : compareDisabledReason);
+
+  // A Generate that stopped early (Cancel, or Thorough's time limit) says why
+  // in a toast, which is visible and announced (T35). Each run's record is new.
+  const lastRun = state.lastGenerationRun;
+  const toastedRunRef = useRef<GenerationRunRecord | null>(null);
+  useEffect(() => {
+    if (!lastRun || lastRun === toastedRunRef.current) return;
+    toastedRunRef.current = lastRun;
+    const message = stoppedRunMessage(lastRun);
+    if (message) toast.show({ message });
+  }, [lastRun, toast]);
 
   // Editable project name
   const [editingName, setEditingName] = useState(false);
@@ -112,8 +137,9 @@ export function WorkspaceToolbar({
       {/* Divider */}
       <div className="pf-divider-v" />
 
-      {/* Project name */}
-      <div className="min-w-0">
+      {/* Project name: gives way, with the run's progress detail, before the
+          Compare hint when the bar is crowded (T35). */}
+      <div className="min-w-0 shrink-[150000]">
         {editingName ? (
           <input
             ref={nameInputRef}
@@ -255,72 +281,80 @@ export function WorkspaceToolbar({
 
       <div className="pf-divider-v" />
 
-      {/* Analyze / Generate phase indicator */}
-      {state.isProcessing ? (
-        <span className={`text-pf-sm animate-pulse px-2.5 py-1 rounded-pf-md border ${
-          analysisPhase === 'generating'
-            ? 'text-accent-primary-soft bg-[var(--accent-muted)] border-accent-primary/15'
-            : 'text-cyan-400 bg-cyan-500/8 border-cyan-500/15'
-        }`}>
-          {analysisPhase === 'generating'
-            ? (generationProgress || 'Generating...')
-            : 'Analyzing\u2026'}
-        </span>
+      {/* Analyze / Generate status. While Generate runs: progress with an ETA,
+          and Cancel (T35). A run that stopped early says so in a toast. */}
+      {state.isProcessing && (analysisPhase === 'generating' ? (
+        <GenerationProgressPill store={generationProgress} onCancel={cancelGeneration} />
       ) : (
-        <div className="flex items-center gap-1.5">
+        <span className="text-pf-sm animate-pulse px-2.5 py-1 rounded-pf-md border text-cyan-400 bg-cyan-500/8 border-cyan-500/15">
+          Analyzing{'\u2026'}
+        </span>
+      ))}
+      {/* Start and finish of a Generate, for screen readers (a run that stopped
+          early is announced by its toast, which sits in a live region too). */}
+      <span role="status" aria-live="polite" aria-atomic="true" className="sr-only" data-testid="generation-announcer">
+        {state.isProcessing && analysisPhase === 'generating'
+          ? 'Generating candidates'
+          : state.lastGenerationRun ? announceRun(state.lastGenerationRun) : ''}
+      </span>
+
+      {/* The controls stay in place during a run, disabled (T35). */}
+      <div className="flex items-center gap-1.5">
+        <select
+          className="pf-select"
+          value={state.optimizerMethod}
+          onChange={(e) => dispatch({ type: 'SET_OPTIMIZER_METHOD', payload: e.target.value as OptimizerMethodKey })}
+          disabled={state.isProcessing}
+          title="Optimizer method"
+        >
+          <option value="greedy">Greedy</option>
+          <option value="beam">Beam</option>
+          <option value="annealing">Annealing</option>
+        </select>
+
+        {state.optimizerMethod === 'greedy' && (
           <select
             className="pf-select"
-            value={state.optimizerMethod}
-            onChange={(e) => dispatch({ type: 'SET_OPTIMIZER_METHOD', payload: e.target.value as OptimizerMethodKey })}
-            title="Optimizer method"
+            value={state.greedyStrategy}
+            onChange={(e) => dispatch({ type: 'SET_GREEDY_STRATEGY', payload: e.target.value as GreedyLayoutStrategy })}
+            disabled={state.isProcessing}
+            title="Layout seeding strategy"
           >
-            <option value="greedy">Greedy</option>
-            <option value="beam">Beam</option>
-            <option value="annealing">Annealing</option>
+            {Object.entries(GREEDY_STRATEGY_LABELS).map(([key, label]) => (
+              <option key={key} value={key}>{label}</option>
+            ))}
           </select>
+        )}
 
-          {state.optimizerMethod === 'greedy' && (
-            <select
-              className="pf-select"
-              value={state.greedyStrategy}
-              onChange={(e) => dispatch({ type: 'SET_GREEDY_STRATEGY', payload: e.target.value as GreedyLayoutStrategy })}
-              title="Layout seeding strategy"
-            >
-              {Object.entries(GREEDY_STRATEGY_LABELS).map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
-          )}
-
-          {state.optimizerMethod === 'annealing' && (
-            <select
-              className="pf-select"
-              value={generationMode}
-              onChange={(e) => setGenerationMode(e.target.value as GenerationMode)}
-              title="Intensity"
-            >
-              <option value="fast">Quick</option>
-              <option value="deep">Thorough</option>
-              <option value="auto">Auto</option>
-            </select>
-          )}
-
-          <button
-            className={`pf-btn text-pf-sm font-medium ${
-              canGenerate
-                ? 'pf-btn-primary'
-                : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border border-[var(--border-subtle)] cursor-not-allowed'
-            }`}
-            onClick={() => canGenerate && generateFull(generationMode)}
-            disabled={!canGenerate}
-            aria-describedby={generateReason.describedBy}
-            title={canGenerate ? 'Generate optimized layouts' : generateDisabledReason ?? undefined}
+        {state.optimizerMethod === 'annealing' && (
+          <select
+            className="pf-select"
+            value={generationMode}
+            onChange={(e) => setGenerationMode(e.target.value as GenerationMode)}
+            disabled={state.isProcessing}
+            title="Intensity"
           >
-            Generate
-          </button>
-          <DisabledReason id={generateReason.id} reason={canGenerate ? null : generateDisabledReason} className="whitespace-nowrap" />
-        </div>
-      )}
+            <option value="fast">Quick</option>
+            <option value="deep">Thorough</option>
+            <option value="auto">Auto</option>
+          </select>
+        )}
+
+        <button
+          className={`pf-btn text-pf-sm font-medium ${
+            canGenerate && !state.isProcessing
+              ? 'pf-btn-primary'
+              : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border border-[var(--border-subtle)] cursor-not-allowed'
+          }`}
+          onClick={() => canGenerate && !state.isProcessing && generateFull(generationMode)}
+          disabled={!canGenerate || state.isProcessing}
+          aria-describedby={generateReason.describedBy}
+          title={canGenerate ? 'Generate optimized layouts' : generateDisabledReason ?? undefined}
+        >
+          Generate
+        </button>
+        <DisabledReason id={generateReason.id} reason={canGenerate ? null : generateDisabledReason} className="whitespace-nowrap" />
+      </div>
 
       {/* Compare */}
       <button
@@ -337,7 +371,10 @@ export function WorkspaceToolbar({
       >
         Compare{compareCount >= 2 ? ` (${compareCount})` : ''}
       </button>
-      <DisabledReason id={compareReason.id} reason={compareCount >= 2 ? null : compareDisabledReason} className="whitespace-nowrap" />
+      {/* Gives way last (after the project name and the run's progress
+          detail, whose shrink factors dwarf its 1), only when a run's progress
+          needs the room; the Compare button's title says it in full. */}
+      <DisabledReason id={compareReason.id} reason={compareCount >= 2 ? null : compareDisabledReason} className="whitespace-nowrap min-w-0 truncate" />
 
       {/* Settings gear */}
       <SettingsGear
@@ -352,3 +389,51 @@ export function WorkspaceToolbar({
     </div>
   );
 }
+
+/**
+ * "Candidate 2 of 3 · ~8 s left · iteration 1,200 of 3,200" and Cancel.
+ * Subscribes to the progress store itself, so a progress report re-renders
+ * only this pill. When the bar is crowded the iteration count truncates first,
+ * then the candidate count; the time left is never cut.
+ */
+function GenerationProgressPill({ store, onCancel }: { store: GenerationProgressStore; onCancel?: () => void }) {
+  const activity = useGenerationActivity(store);
+  const { step, eta, iterations } = activity
+    ? generationProgressParts(activity)
+    : { step: 'Generating…', eta: null, iterations: null };
+  const text = [step, eta, iterations].filter(Boolean).join(' · ');
+  // Explicit minimums let the parts truncate (a flex item's automatic minimum
+  // is its whole text) while keeping the spinner, the time left and Cancel.
+  return (
+    <div data-testid="generation-status" className="flex items-center gap-1 min-w-[14.5rem] shrink-[100000]">
+      <span
+        data-testid="generation-progress"
+        className="flex items-center gap-1.5 min-w-[10.25rem] max-w-full overflow-hidden whitespace-nowrap text-pf-sm px-2.5 py-1 rounded-pf-md border text-accent-primary-soft bg-[var(--accent-muted)] border-accent-primary/15 tabular-nums"
+        title={text}
+      >
+        <Loader2 size={13} className="animate-spin flex-shrink-0" aria-hidden="true" />
+        {/* The leading space starts each part's line, so it isn't drawn (the
+            gap spaces them), but it keeps the text readable as one sentence.
+            Shrink factors: the iteration count gives way first (its huge
+            factor leaves the step a sub-pixel share), then the step; factors
+            stay >= 1, since flexbox hands out only part of the needed shrink
+            when the remaining factors sum to less than one. */}
+        <span className="min-w-0 truncate">{step}</span>
+        {eta && <span className="flex-shrink-0">{' · '}{eta}</span>}
+        {iterations && <span className="min-w-0 truncate shrink-[100000]">{' · '}{iterations}</span>}
+      </span>
+      {onCancel && (
+        <button
+          type="button"
+          data-testid="generation-cancel"
+          className="pf-btn pf-btn-subtle text-pf-sm min-h-[24px] px-2.5 flex-shrink-0"
+          onClick={onCancel}
+          title="Stop this run; your current candidates stay"
+        >
+          Cancel
+        </button>
+      )}
+    </div>
+  );
+}
+

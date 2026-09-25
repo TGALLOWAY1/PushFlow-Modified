@@ -24,7 +24,7 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { exportProjectToFile } from '../../persistence/projectStorage';
 import { useToast } from '../shared/Toast';
 import { useViewSettings, ViewSettingsProvider } from '../../state/viewSettings';
-import { getActiveTrace, getDisplayedCandidate, isPadLocked, resolveInspectedLayout, type SoundStream } from '../../state/projectState';
+import { getActiveTrace, getDisplayedCandidate, getInspectedCandidate, isPadLocked, resolveInspectedLayout, type SoundStream } from '../../state/projectState';
 import { liveCompareIds, canCompare } from '../../state/compareSet';
 import { resolvePresetDrop, soundForPresetLane, FOREIGN_PRESET_MESSAGE } from '../../state/presetDrop';
 
@@ -131,7 +131,9 @@ export function PerformanceWorkspace() {
 function PerformanceWorkspaceInner() {
   const { state, dispatch, transact } = useProject();
   const navigate = useNavigate();
-  const { generateFull, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason } = useAutoAnalysis();
+  const {
+    generateFull, cancelGeneration, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason,
+  } = useAutoAnalysis();
   useIdentityMatchingNotice(state);
   const { saveStatus, saveNow } = useAutoSave(state);
   // The '?' sheet, generated from the input table (T61).
@@ -582,8 +584,16 @@ function PerformanceWorkspaceInner() {
 
   // The trace for the Visual Debugger follows the inspected candidate (the
   // top-ranked one when none is inspected); its step-through replay shows on
-  // the grid, read-only too.
+  // the grid, read-only too. Every candidate carries its own moves and stop
+  // reason (T33): the inspected one's win; with none inspected the panel reads
+  // state.moveHistory, which Generate sets to the top-ranked candidate's.
   const activeTrace = getActiveTrace(state);
+  const inspectedCandidate = getInspectedCandidate(state);
+  const traceCandidate = inspectedCandidate?.moveHistory || inspectedCandidate?.iterationTrace
+    ? inspectedCandidate
+    : null;
+  const activeMoves = traceCandidate ? traceCandidate.moveHistory ?? null : state.moveHistory;
+  const activeStopReason = traceCandidate ? traceCandidate.stopReason ?? null : state.moveHistoryStopReason;
   const debuggerIteration = (activeTrace && state.moveHistoryIndex !== null)
     ? activeTrace[state.moveHistoryIndex]
     : undefined;
@@ -664,6 +674,7 @@ function PerformanceWorkspaceInner() {
       <WorkspaceToolbar
         onNavigateLibrary={() => { saveNow(); navigate('/'); }}
         generateFull={handleGenerate}
+        cancelGeneration={cancelGeneration}
         generationProgress={generationProgress}
         analysisPhase={analysisPhase}
         canGenerate={canGenerate}
@@ -964,12 +975,12 @@ function PerformanceWorkspaceInner() {
                       onCompare={handleOpenCompare}
                       onRetryGenerate={handleGenerate}
                     />
-                    {((state.moveHistory && state.moveHistory.length > 0) || (activeTrace && activeTrace.length > 0)) && (
+                    {((activeMoves && activeMoves.length > 0) || (activeTrace && activeTrace.length > 0)) && (
                       <div className="p-2.5">
                         <MoveTracePanel
-                          moves={state.moveHistory}
+                          moves={activeMoves}
                           trace={activeTrace}
-                          stopReason={state.moveHistoryStopReason as any}
+                          stopReason={activeStopReason}
                         />
                       </div>
                     )}

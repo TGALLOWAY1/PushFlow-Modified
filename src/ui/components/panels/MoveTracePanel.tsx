@@ -14,6 +14,7 @@
 import { useState } from 'react';
 import { useProject } from '../../state/ProjectContext';
 import { type OptimizerMove, type OptimizationIteration, type StopReason } from '../../../engine/optimization/optimizerInterface';
+import { stopReasonText } from '../../analysis/stopReason';
 
 /** Safe number formatter to handle NaN/Infinity from the optimizer. */
 const formatNum = (val: number, decimals: number = 2): string => {
@@ -31,17 +32,9 @@ const formatDelta = (val: number, decimals: number = 2): string => {
 interface MoveTracePanelProps {
   moves?: OptimizerMove[] | null;
   trace?: OptimizationIteration[] | null;
-  stopReason?: StopReason;
+  /** Why the run stopped ("Stopped: time limit reached"); unknown strings are shown as they are. */
+  stopReason?: StopReason | string | null;
 }
-
-const STOP_REASON_LABELS: Record<StopReason, string> = {
-  no_improving_move: 'Reached local minimum (no improving move found)',
-  iteration_cap: 'Hit maximum iteration limit',
-  local_minimum: 'Reached local minimum',
-  infeasible_neighborhood: 'All neighboring moves violate constraints',
-  completed: 'Optimization completed normally',
-  aborted: 'Optimization was cancelled',
-};
 
 const PHASE_LABELS: Record<string, string> = {
   'init-layout': 'Layout Init',
@@ -123,9 +116,9 @@ export function MoveTracePanel({ moves, trace, stopReason }: MoveTracePanelProps
 
       {/* Stop reason */}
       {stopReason && (
-        <div className="text-pf-xs text-[var(--text-tertiary)] flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-tertiary)]" />
-          {STOP_REASON_LABELS[stopReason] ?? stopReason}
+        <div data-testid="trace-stop-reason" className="text-pf-xs text-[var(--text-tertiary)] flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-tertiary)]" aria-hidden="true" />
+          {stopReasonText(stopReason)}
         </div>
       )}
 

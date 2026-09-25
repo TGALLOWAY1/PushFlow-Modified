@@ -30,6 +30,7 @@ import { type EngineConfiguration } from '../../types/engineConfig';
 import {
   type SolverConfig,
   type OptimizationMode,
+  type AnnealingConfig,
   FAST_ANNEALING_CONFIG,
   DEEP_ANNEALING_CONFIG,
 } from '../../types/engineConfig';
@@ -39,7 +40,9 @@ import { seedLayoutFromPose0 } from '../mapping/seedFromPose';
 import { buildVoiceMap, type VoiceHint } from '../mapping/voiceMap';
 import { applicableLocks, findLockViolations, pinsToHonour, fixedPlacements, withoutPins } from '../mapping/placementLocks';
 import { getMaxSafeOffset, poseHasAssignments, fingerIdToHandAndFingerType, getPose0PadsWithOffset } from '../prior/naturalHandPose';
-import { createAnnealingSolver } from './annealingSolver';
+import { createAnnealingSolver, planAnnealingRun, annealingRunSummary } from './annealingSolver';
+import { type RunControl, type GenerationProgress, Yielder, throwIfCancelled, estimateRemainingMs } from './runControl';
+import { STOP_REASON_LABELS } from './optimizerInterface';
 import { createBeamSolver } from '../solvers/beamSolver';
 import { countRelaxedStrikes } from '../evaluation/constraintRelaxation';
 import { analyzeDifficulty, computeTradeoffProfile } from '../evaluation/difficultyScoring';
@@ -85,6 +88,18 @@ function computeInitialPadOwnership(
   }
 
   return ownership;
+}
+
+/**
+ * An annealed candidate's summary line: "Deep optimization (3,200 iterations
+ * over 4 runs)", or, when the time budget stopped it, "Stopped: time limit
+ * reached · Deep optimization (2,412 of 3,200 iterations over 4 runs)".
+ */
+function describeAnnealingRun(run: ReturnType<typeof annealingRunSummary>, runs: number): string {
+  const done = run.telemetry.iterationsCompleted.toLocaleString('en-US');
+  if (run.stopReason !== 'time_budget') return `Deep optimization (${done} iterations over ${runs} runs)`;
+  const planned = (run.telemetry.iterationsPlanned ?? run.telemetry.iterationsCompleted).toLocaleString('en-US');
+  return `Stopped: ${STOP_REASON_LABELS.time_budget} · Deep optimization (${done} of ${planned} iterations over ${runs} runs)`;
 }
 
 // ============================================================================
@@ -156,6 +171,13 @@ export interface CandidateGenerationConfig {
    * then removed from each candidate's placementLocks again.
    */
   pinnedPlacements?: Record<string, string>;
+  /** Progress, Cancel and the clock (T35); a cancelled run throws GenerationCancelledError. */
+  runControl?: RunControl;
+  /**
+   * The annealing settings to run instead of the mode's defaults
+   * (DEEP_ANNEALING_CONFIG for 'deep'). Tests use it for small budgets.
+   */
+  annealingConfig?: AnnealingConfig;
 }
 
 // ============================================================================
@@ -381,12 +403,47 @@ export async function generateCandidates(
       count: config.count ?? 4,
       // Pins (muted placed Sounds) must reach greedy through this entry too.
       pinnedPlacements: config.pinnedPlacements,
+      runControl: config.runControl,
     });
   }
 
   const count = config.count ?? 3;
   const strategies = generateStrategies(pose0, count);
   const candidates: CandidateSolution[] = [];
+
+  // Only 'deep' mode uses annealing (thousands of iterations); 'fast' mode is
+  // beam search only, for near-instant results.
+  const shouldAnneal = config.optimizationMode === 'deep'
+    || (config.optimizationMode === undefined && (config.useAnnealing ?? false));
+  const annealingConfig = config.annealingConfig
+    ?? (config.optimizationMode === 'deep' ? DEEP_ANNEALING_CONFIG : FAST_ANNEALING_CONFIG);
+  const annealingPlan = planAnnealingRun(annealingConfig);
+
+  // Progress, Cancel and the clock (T35).
+  const control = config.runControl ?? {};
+  const now = control.now ?? Date.now;
+  const yielder = new Yielder(control.signal);
+  const runStart = now();
+  let iterationsInFinishedCandidates = 0;
+  const report = (progress: Omit<GenerationProgress, 'method' | 'total' | 'counts'>) => control.onProgress?.({
+    method: shouldAnneal ? 'annealing' : 'beam',
+    total: strategies.length,
+    counts: 'candidates',
+    ...progress,
+  });
+  /**
+   * Time left from the measured rate: annealing iterations per ms, capped by
+   * each candidate's time budget; beam, whole candidates.
+   */
+  const etaFor = (index: number, iteration: number, candidateElapsedMs: number, runElapsedMs: number): number | null => {
+    const later = strategies.length - index - 1;
+    if (!shouldAnneal) return estimateRemainingMs(index, runElapsedMs, strategies.length - index);
+    const perIteration = estimateRemainingMs(iterationsInFinishedCandidates + iteration, runElapsedMs, 1);
+    if (perIteration === null) return null;
+    const budget = annealingConfig.timeBudgetMs ?? Number.POSITIVE_INFINITY;
+    const current = Math.min((annealingPlan.total - iteration) * perIteration, Math.max(0, budget - candidateElapsedMs));
+    return current + later * Math.min(annealingPlan.total * perIteration, budget);
+  };
 
   // Every Sound by identity (layout voices first, then the project's Sounds),
   // and the locks a candidate must honour: those whose Sound exists.
@@ -403,8 +460,17 @@ export async function generateCandidates(
     : config.baseLayout;
   let droppedForLocks = 0;
 
-  for (const strategy of strategies) {
+  for (const [index, strategy] of strategies.entries()) {
+    // Between candidates: let the page paint, and stop here on Cancel.
+    await yielder.yield();
     const startTime = Date.now();
+    const candidateStart = now();
+    report({
+      current: index + 1,
+      ...(shouldAnneal ? { iteration: 0, iterationsPlanned: annealingPlan.total } : {}),
+      elapsedMs: candidateStart - runStart,
+      etaMs: etaFor(index, 0, 0, candidateStart - runStart),
+    });
 
     // Build the layout for this candidate
     let layout: Layout;
@@ -460,16 +526,7 @@ export async function generateCandidates(
 
     let executionPlan;
     let finalLayout = layout;
-
-    // Determine whether to use annealing and which config.
-    // Only 'deep' mode uses annealing (thousands of iterations).
-    // 'fast' mode uses beam search only for near-instant results.
-    const shouldAnneal = config.optimizationMode === 'deep'
-      || (config.optimizationMode === undefined && (config.useAnnealing ?? false));
-
-    const annealingConfig = config.optimizationMode === 'deep'
-      ? DEEP_ANNEALING_CONFIG
-      : FAST_ANNEALING_CONFIG;
+    let annealed = false;
 
     const hasLayout = Object.keys(layout.padToVoice).length > 0;
 
@@ -493,10 +550,26 @@ export async function generateCandidates(
         seed: strategy.seed,
         annealingConfig,
         initialPadOwnership,
+        runControl: {
+          signal: control.signal,
+          now,
+          onProgress: p => {
+            const runElapsedMs = candidateStart - runStart + p.elapsedMs;
+            report({
+              current: index + 1,
+              iteration: p.iteration,
+              iterationsPlanned: p.iterationsPlanned,
+              elapsedMs: runElapsedMs,
+              etaMs: etaFor(index, p.iteration, p.elapsedMs, runElapsedMs),
+            });
+          },
+        },
       };
       const solver = createAnnealingSolver(solverConfig);
       executionPlan = await solver.solve(performance, candidateEngineConfig, config.manualAssignments);
       finalLayout = solver.getBestLayout() ?? layout;
+      annealed = true;
+      iterationsInFinishedCandidates += executionPlan.metadata?.solverTelemetry?.iterationsCompleted ?? 0;
     } else {
       // Run beam search only (no annealing requested or empty layout)
       const solverConfig: SolverConfig = {
@@ -526,15 +599,46 @@ export async function generateCandidates(
     const sections = config.sections ?? [];
     const difficultyAnalysis = analyzeDifficulty(executionPlan, sections);
     const tradeoffProfile = computeTradeoffProfile(executionPlan, difficultyAnalysis);
+    const generationTimeMs = Date.now() - startTime;
+
+    // How this candidate was found (T33): the annealing trace, or a beam summary.
+    const annealingRun = annealed ? annealingRunSummary(executionPlan, generationTimeMs) : null;
+    const trace: Pick<CandidateSolution, 'stopReason' | 'telemetry' | 'annealingTrace' | 'beamSummary'> = annealingRun
+      ? {
+          stopReason: annealingRun.stopReason,
+          telemetry: { ...annealingRun.telemetry, seed: strategy.seed },
+          annealingTrace: executionPlan.annealingTrace,
+        }
+      : {
+          stopReason: 'completed',
+          telemetry: {
+            wallClockMs: generationTimeMs,
+            iterationsCompleted: 0,
+            initialCost: executionPlan.averageMetrics.total,
+            finalCost: executionPlan.averageMetrics.total,
+            improvement: 0,
+            seed: strategy.seed,
+          },
+          beamSummary: {
+            beamWidth: candidateEngineConfig.beamWidth,
+            noteCount: executionPlan.fingerAssignments.length,
+            layoutStrategy: strategy.name,
+            wallClockMs: generationTimeMs,
+          },
+        };
 
     const metadata: CandidateMetadata = {
       strategy: strategy.name,
       seed: strategy.seed,
-      generationTimeMs: Date.now() - startTime,
+      generationTimeMs,
       optimizationMode: config.optimizationMode,
-      optimizationSummary: config.optimizationMode
-        ? `${config.optimizationMode === 'deep' ? 'Deep' : 'Quick'} optimization (${annealingConfig.iterations} iterations, ${annealingConfig.restartCount} restarts)`
-        : undefined,
+      // Says what ran: a budget can stop annealing before its planned iterations,
+      // and then the card's (truncated) line leads with why.
+      optimizationSummary: !config.optimizationMode
+        ? undefined
+        : annealingRun
+          ? describeAnnealingRun(annealingRun, annealingConfig.restartCount + 1)
+          : `${config.optimizationMode === 'deep' ? 'Deep' : 'Quick'} optimization (${annealingConfig.iterations} iterations, ${annealingConfig.restartCount} restarts)`,
     };
 
     candidates.push({
@@ -544,8 +648,10 @@ export async function generateCandidates(
       difficultyAnalysis,
       tradeoffProfile,
       metadata,
+      ...trace,
     });
   }
+  throwIfCancelled(control.signal);
 
   // Phase 4: Baseline-aware diversity processing
   const activeLayout = config.activeLayout;
