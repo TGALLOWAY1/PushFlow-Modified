@@ -16,6 +16,7 @@ import { useProject } from '../state/ProjectContext';
 import { getDisplayedLayout, getDisplayedLayoutRole, isPadLocked } from '../state/projectState';
 import { LOCKED_SOUND_DRAG_TYPE } from './dragTypes';
 import { PadContextMenu } from './PadContextMenu';
+import { useRemovePadWithUndo } from '../hooks/useRemovePadWithUndo';
 import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { type GridLabelSettings } from '../state/viewSettings';
@@ -542,9 +543,8 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     }
   }, [livePadToVoice, assignments, onEventClick]);
 
-  const handleRemovePad = useCallback((padKey: string) => {
-    dispatch({ type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey } });
-  }, [dispatch]);
+  // The pad's ×: removes with an Undo toast (T28).
+  const handleRemovePad = useRemovePadWithUndo();
 
   // The selection overlay is suspended while playing and comes back on Stop
   // (T10 slice): struck pads then look exactly as they do with nothing selected.

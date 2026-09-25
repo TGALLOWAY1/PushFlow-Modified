@@ -102,3 +102,25 @@ describe('Delete scoping (T28)', () => {
     expect(api!.state.selectedEventIndex).toBe(firstPlayed.eventIndex);
   });
 });
+
+describe('Remove from pad says so, with Undo (T28)', () => {
+  it('toasts "Removed … from [r,c]" and its Undo puts the Sound back', async () => {
+    const { ToastProvider } = await import('../../../src/ui/components/shared/Toast');
+    const { useRemovePadWithUndo } = await import('../../../src/ui/hooks/useRemovePadWithUndo');
+    const state = await suggestedTestMidi1();
+    const [padKey, voice] = Object.entries(getDisplayedLayout(state)!.padToVoice)[0]!;
+    let api: ReturnType<typeof useProject> | null = null;
+    let remove: ((k: string) => void) | null = null;
+    function Probe() {
+      api = useProject();
+      remove = useRemovePadWithUndo();
+      return null;
+    }
+    render(<ToastProvider><ProjectProvider initialState={state}><Probe /></ProjectProvider></ToastProvider>);
+    act(() => remove!(padKey));
+    expect(getDisplayedLayout(api!.state)!.padToVoice[padKey]).toBeUndefined();
+    expect(screen.getByText(`Removed ${voice.name} from [${padKey}]`)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(getDisplayedLayout(api!.state)!.padToVoice[padKey]?.id).toBe(voice.id);
+  });
+});

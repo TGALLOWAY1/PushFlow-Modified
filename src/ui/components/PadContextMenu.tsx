@@ -8,6 +8,7 @@
 import { useProject } from '../state/ProjectContext';
 import { getDisplayedLayout } from '../state/projectState';
 import { Popover, useOverlayTitleId } from './shared/Overlay';
+import { useRemovePadWithUndo } from '../hooks/useRemovePadWithUndo';
 
 interface PadContextMenuProps {
   padKey: string;
@@ -35,6 +36,7 @@ export function PadContextMenu({ padKey, x, y, onClose, returnFocusTo }: PadCont
   const { state, dispatch } = useProject();
   const layout = getDisplayedLayout(state);
   const titleId = useOverlayTitleId();
+  const removePad = useRemovePadWithUndo();
 
   const voice = layout?.padToVoice[padKey];
   const currentConstraint = layout?.fingerConstraints[padKey];
@@ -64,7 +66,7 @@ export function PadContextMenu({ padKey, x, y, onClose, returnFocusTo }: PadCont
           role="menuitem"
           className="w-full px-3 py-1.5 text-left text-pf-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           onClick={() => {
-            dispatch({ type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey } });
+            removePad(padKey);
             onClose();
           }}
           disabled={isLocked}

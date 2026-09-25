@@ -40,7 +40,8 @@ async function buildPreset(page: Page, pf: PfHandle): Promise<[string, string]> 
   await expect.poll(() => page.evaluate(k => localStorage.getItem(k) ?? '', PRESETS_KEY)).toContain(PRESET);
   await pf.call('dispatch', { type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey: '0,0' } });
   await pf.call('dispatch', { type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey: '0,1' } });
-  expect(await shownPads(pf)).toEqual({});
+  // Dispatches land on the next render; poll rather than read once.
+  await expect.poll(() => shownPads(pf)).toEqual({});
   return [a.id, b.id];
 }
 
@@ -60,8 +61,7 @@ test.describe('C9 · Composer presets on the grid', () => {
     const [a, b] = await buildPreset(page, pf);
     await openPresets(page);
     await dropPresetOn(page, '4,4');
-    const pads = await shownPads(pf);
-    expect(Object.values(pads).sort()).toEqual([a, b].sort());
+    await expect.poll(async () => Object.values(await shownPads(pf)).sort()).toEqual([a, b].sort());
   });
 
   test('a drop overlapping an occupied pad is refused with a reason', async ({ page, pf }) => {
@@ -69,6 +69,7 @@ test.describe('C9 · Composer presets on the grid', () => {
     const [a] = await buildPreset(page, pf);
     const stream = (await pf.call('state')).soundStreams.find(s => s.id === a)!;
     await pf.call('dispatch', { type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey: '4,5', stream } });
+    await expect.poll(async () => (await shownPads(pf))['4,5']).toBe(a);
     const before = await shownPads(pf);
     await openPresets(page);
     await dropPresetOn(page, '4,4');
@@ -81,15 +82,16 @@ test.describe('C9 · Composer presets on the grid', () => {
     const [a, b] = await buildPreset(page, pf);
     await openPresets(page);
     await dropPresetOn(page, '4,4');
+    await expect.poll(async () => Object.values(await shownPads(pf)).sort()).toEqual([a, b].sort());
     const plain = await shownPads(pf);
-    expect(Object.values(plain).sort()).toEqual([a, b].sort());
     for (const key of Object.keys(plain)) {
       await pf.call('dispatch', { type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey: key } });
     }
+    await expect.poll(() => shownPads(pf)).toEqual({});
     await presetCard(page).getByTitle('Mirror (flip hand)').click();
     await dropPresetOn(page, '4,4');
+    await expect.poll(async () => Object.values(await shownPads(pf)).sort()).toEqual([a, b].sort());
     const mirrored = await shownPads(pf);
-    expect(Object.values(mirrored).sort()).toEqual([a, b].sort());
     expect(mirrored).not.toEqual(plain);
   });
 
