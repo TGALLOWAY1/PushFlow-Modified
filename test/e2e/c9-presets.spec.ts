@@ -95,6 +95,20 @@ test.describe('C9 · Composer presets on the grid', () => {
     expect(mirrored).not.toEqual(plain);
   });
 
+  test('mirroring a placed preset keeps its pads on the project Sounds (S1b.4)', async ({ page, pf }) => {
+    await newProject(page, pf);
+    const [a, b] = await buildPreset(page, pf);
+    await openPresets(page);
+    await dropPresetOn(page, '4,4');
+    await expect.poll(async () => Object.values(await shownPads(pf)).sort()).toEqual([a, b].sort());
+    const plain = await shownPads(pf);
+    await page.locator('button.pf-tab', { hasText: 'Costs' }).first().click();
+    // Placing selects the placed instance, so the Costs tab shows its inspector.
+    await page.getByRole('button', { name: /^Mirror \(flip hand\)/ }).click();
+    await expect.poll(async () => await shownPads(pf)).not.toEqual(plain);
+    expect(Object.values(await shownPads(pf)).sort()).toEqual([a, b].sort());
+  });
+
   test('a preset whose Sounds are not in this project is refused and places nothing', async ({ page, pf }) => {
     await newProject(page, pf);
     await buildPreset(page, pf);

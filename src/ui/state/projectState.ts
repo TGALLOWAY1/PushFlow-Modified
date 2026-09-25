@@ -1491,13 +1491,18 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'SELECT_EVENT':
       // Clearing an already-empty selection changes nothing (T06: an Escape
       // that closes an overlay must not also re-render the whole editor).
-      if (action.payload === state.selectedEventIndex) return state;
+      if (action.payload === null && state.selectedEventIndex === null) return state;
       // Selecting an event while stopped moves the playhead to it, so Play
-      // starts there (T10 slice). While playing, the playhead is left alone.
+      // starts there (T10 slice); selecting it again seeks back to it. While
+      // playing, the playhead is left alone.
       if (action.payload !== null && !state.isPlaying) {
         const hit = getDisplayedExecutionPlan(state)?.fingerAssignments.find(a => a.eventIndex === action.payload);
-        if (hit) return { ...state, selectedEventIndex: action.payload, currentTime: hit.startTime };
+        if (hit) {
+          if (action.payload === state.selectedEventIndex && state.currentTime === hit.startTime) return state;
+          return { ...state, selectedEventIndex: action.payload, currentTime: hit.startTime };
+        }
       }
+      if (action.payload === state.selectedEventIndex) return state;
       return { ...state, selectedEventIndex: action.payload };
 
     case 'SELECT_MOMENT':

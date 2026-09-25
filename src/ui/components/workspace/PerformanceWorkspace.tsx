@@ -23,9 +23,9 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { exportProjectToFile } from '../../persistence/projectStorage';
 import { useToast } from '../shared/Toast';
 import { useViewSettings, ViewSettingsProvider } from '../../state/viewSettings';
-import { getDisplayedCandidate, getSelectedCandidate, isPadLocked } from '../../state/projectState';
+import { getDisplayedCandidate, getSelectedCandidate, isPadLocked, type SoundStream } from '../../state/projectState';
 import { liveCompareIds, canCompare } from '../../state/compareSet';
-import { resolvePresetDrop } from '../../state/presetDrop';
+import { resolvePresetDrop, soundForPresetLane, FOREIGN_PRESET_MESSAGE } from '../../state/presetDrop';
 
 import { WorkspaceToolbar } from './WorkspaceToolbar';
 import { VoicePalette } from '../VoicePalette';
@@ -431,6 +431,18 @@ function PerformanceWorkspaceInner() {
       return;
     }
 
+    // Each lane's pad is its project Sound, resolved by id as at drop time
+    // (never the raw lane id, which the performance's events don't carry).
+    const soundByLane = new Map<string, SoundStream>();
+    for (const pad of mirroredPads) {
+      const sound = soundForPresetLane(pad.laneId, state.soundStreams);
+      if (!sound) {
+        toast.show({ message: FOREIGN_PRESET_MESSAGE, durationMs: 8000 });
+        return;
+      }
+      soundByLane.set(pad.laneId, sound);
+    }
+
     // Remove old pad assignments and finger constraints
     for (const pad of instance.pads) {
       const absRow = instance.anchorRow + pad.position.rowOffset;
@@ -446,15 +458,14 @@ function PerformanceWorkspaceInner() {
       const absRow = instance.anchorRow + pad.position.rowOffset;
       const absCol = instance.anchorCol + pad.position.colOffset;
       const key = padKey(absRow, absCol);
-      const lane = instance.lanes.find(l => l.id === pad.laneId);
+      const sound = soundByLane.get(pad.laneId)!;
       newPadToVoice[key] = {
-        id: pad.laneId,
-        name: lane?.name ?? 'Preset Pad',
+        id: sound.id,
+        name: sound.name,
         sourceType: 'midi_track' as const,
         sourceFile: `preset:${instance.presetName}`,
-        // Provenance only; a preset lane without a pitch has none (invariant 5).
-        originalMidiNote: lane?.midiNote ?? null,
-        color: lane?.color ?? '#888',
+        originalMidiNote: sound.originalMidiNote,
+        color: sound.color,
       };
     }
     dispatch({ type: 'MERGE_ASSIGN_PADS', payload: newPadToVoice });
@@ -474,7 +485,7 @@ function PerformanceWorkspaceInner() {
       mirroredPads,
       boundingBox: instance.boundingBox,
     });
-  }, [composerWorkspace.placedInstances, dispatch, occupiedPads, state.workingLayout, state.activeLayout]);
+  }, [composerWorkspace.placedInstances, dispatch, occupiedPads, state.workingLayout, state.activeLayout, state.soundStreams, toast]);
 
   // Compute highlighted stream IDs for the selected instance (for timeline sync)
   const highlightedStreamIds = useMemo(() => {

@@ -15,6 +15,7 @@
 import { useEffect } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { getDisplayedExecutionPlan } from '../state/projectState';
+import { isOverlayOpen } from '../components/shared/Overlay';
 
 export interface KeyboardShortcutOptions {
   /** Cmd/Ctrl+S: save now (T57). Without it the browser offers to save the page as HTML. */
@@ -66,7 +67,7 @@ export function useKeyboardShortcuts({ onSave }: KeyboardShortcutOptions = {}) {
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         // While playing, the arrows do nothing for now (T10/T61 slice; P4 makes
         // them seek by event). They used to jump the selection back to t=0.
-        if (state.isPlaying) return;
+        if (state.isPlaying || isOverlayOpen()) return;
         const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
         if (!assignments || assignments.length === 0) return;
         e.preventDefault();

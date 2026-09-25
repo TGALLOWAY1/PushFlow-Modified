@@ -26,6 +26,15 @@ describe('SELECT_EVENT and the playhead', () => {
     expect(next.currentTime).toBe(later.startTime);
   });
 
+  it('selecting the selected event again, stopped elsewhere, seeks back to it (Codex review)', async () => {
+    const { state, analysis } = await analysed();
+    const later = analysis.executionPlan.fingerAssignments.find(a => a.startTime > 1)!;
+    const selected = projectReducer(state, { type: 'SELECT_EVENT', payload: later.eventIndex! });
+    const movedOn = { ...selected, currentTime: later.startTime + 2 };
+    expect(projectReducer(movedOn, { type: 'SELECT_EVENT', payload: later.eventIndex! }).currentTime).toBe(later.startTime);
+    expect(projectReducer(selected, { type: 'SELECT_EVENT', payload: later.eventIndex! })).toBe(selected);
+  });
+
   it('while playing, leaves the playhead alone', async () => {
     const { state, analysis } = await analysed();
     const playing = { ...state, isPlaying: true, currentTime: 3.5 };

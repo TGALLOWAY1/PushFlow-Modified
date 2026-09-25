@@ -124,3 +124,26 @@ describe('Remove from pad says so, with Undo (T28)', () => {
     expect(getDisplayedLayout(api!.state)!.padToVoice[padKey]?.id).toBe(voice.id);
   });
 });
+
+describe('Arrow keys under an open overlay (Codex review)', () => {
+  it('ArrowRight with a menu open changes neither the selection nor the playhead', async () => {
+    const { Popover } = await import('../../../src/ui/components/shared/Overlay');
+    let state: ProjectState = await suggestedTestMidi1();
+    const layout = getDisplayedLayout(state)!;
+    const analysis = await analyzeLayout({
+      performance: getActivePerformance(state), layout,
+      instrumentConfig: state.instrumentConfig, engineConfig: state.engineConfig, sections: state.sections,
+    });
+    state = { ...state, analysisResult: analysis, analysisStale: false };
+    let api: ReturnType<typeof useProject> | null = null;
+    function Probe() {
+      api = useProject();
+      useKeyboardShortcuts();
+      return <Popover x={0} y={0} onClose={() => {}} ariaLabel="menu"><button role="menuitem">item</button></Popover>;
+    }
+    render(<ProjectProvider initialState={state}><Probe /></ProjectProvider>);
+    fireEvent.keyDown(screen.getByRole('menuitem'), { key: 'ArrowRight' });
+    expect(api!.state.selectedEventIndex).toBeNull();
+    expect(api!.state.currentTime).toBe(0);
+  });
+});

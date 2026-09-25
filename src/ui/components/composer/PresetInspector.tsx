@@ -9,7 +9,7 @@
  */
 
 import { useMemo, useState, useCallback } from 'react';
-import { type ComposerPreset, type PresetPad, type PlacedPresetInstance, computeHandedness, isMirrorEligible, isPresetFingerVerified } from '../../../types/composerPreset';
+import { type ComposerPreset, type PresetPad, type PlacedPresetInstance, canMirrorPreset, isPresetFingerVerified } from '../../../types/composerPreset';
 import { type FingerType } from '../../../types/fingerModel';
 import { GRID_ROWS, GRID_COLS } from '../../../types/padGrid';
 import { totalSteps } from '../../../types/loopEditor';
@@ -156,7 +156,7 @@ export function PresetInspector({ preset, instance, onRemoveInstance, onMirrorIn
       {/* Instance actions */}
       {instance && (
         <div className="space-y-1.5">
-          {onMirrorInstance && isMirrorEligible(computeHandedness(instance.pads)) && (
+          {onMirrorInstance && canMirrorPreset(instance.pads) && (
             <button
               className="w-full px-3 py-1.5 text-xs rounded bg-violet-500/10 text-violet-400 border border-violet-500/20 hover:bg-violet-500/20 transition-colors"
               onClick={() => onMirrorInstance(instance.id)}
