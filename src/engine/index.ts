@@ -27,6 +27,7 @@ export {
   type HandModel,
   type GripRejection,
   type ConstraintRuleName,
+  CONSTRAINT_RULE_NAMES,
 } from './prior/biomechanicalModel';
 
 // Prior (ergonomic model)
@@ -107,6 +108,15 @@ export {
 // Structure analysis
 export { groupEventsByTime, getPolyphonyTimeline, getMaxPolyphony } from './structure/eventGrouping';
 export { buildPerformanceMoments, extractPadOwnership, validatePadOwnershipConsistency } from './structure/momentBuilder';
+export { computePlanScore, COMFORTABLE_PLAN_SCORE } from './evaluation/planScore';
+export {
+  groupIntoMoments,
+  momentKey,
+  summarizeMomentCost,
+  type Moment,
+  type MomentItem,
+  type MomentCost,
+} from './structure/momentGrouping';
 export { computeDensityProfile, classifyDensity } from './structure/densityAnalysis';
 export { detectSections } from './structure/sectionDetection';
 export { buildCooccurrenceGraph } from './structure/cooccurrence';
@@ -146,6 +156,8 @@ export { rankCandidates, filterPareto, compositeScore, compareDimensions } from 
 export {
   type OptimizerMethod,
   type OptimizerMethodKey,
+  OPTIMIZER_METHOD_KEYS,
+  OPTIMIZER_METHOD_LABELS,
   type OptimizerInput,
   type OptimizerOutput,
   type OptimizerMove,

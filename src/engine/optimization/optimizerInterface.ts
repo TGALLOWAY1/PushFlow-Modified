@@ -34,7 +34,16 @@ import { type Section } from '../../types/performanceStructure';
 // ============================================================================
 
 /** Supported optimizer algorithms. Extensible as new methods are added. */
-export type OptimizerMethodKey = 'beam' | 'annealing' | 'greedy';
+export const OPTIMIZER_METHOD_KEYS = ['greedy', 'beam', 'annealing'] as const;
+
+export type OptimizerMethodKey = typeof OPTIMIZER_METHOD_KEYS[number];
+
+/** User-facing method names, in OPTIMIZER_METHOD_KEYS order. */
+export const OPTIMIZER_METHOD_LABELS: Record<OptimizerMethodKey, string> = {
+  greedy: 'Greedy',
+  beam: 'Beam',
+  annealing: 'Annealing',
+};
 
 // ============================================================================
 // Optimizer Input

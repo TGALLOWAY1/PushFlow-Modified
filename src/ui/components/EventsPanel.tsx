@@ -17,7 +17,7 @@
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { getActiveStreams, getDisplayedExecutionPlan, type SoundStream } from '../state/projectState';
-import { type V1CostBreakdown } from '../../types/diagnostics';
+import { groupIntoMoments, summarizeMomentCost, type MomentCost } from '@/engine';
 import { MOMENT_EPSILON } from '../../types/performanceEvent';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -30,6 +30,8 @@ import { MOMENT_EPSILON } from '../../types/performanceEvent';
 /** A grouped moment in the performance timeline (polyphonic event). */
 export interface PerformanceMomentSummary {
   momentIndex: number;
+  /** Stable moment identity (momentKey). */
+  momentKey: string;
   startTime: number;
   beatPosition: string;
   sounds: Array<{ name: string; color: string; streamId: string }>;
@@ -38,7 +40,7 @@ export interface PerformanceMomentSummary {
 
 // ─── Moment Derivation ──────────────────────────────────────────────────────
 
-function formatBeatPosition(time: number, tempo: number): string {
+export function formatBeatPosition(time: number, tempo: number): string {
   const beatDuration = 60 / (tempo || 120);
   const totalBeats = time / beatDuration;
   const bar = Math.floor(totalBeats / 4) + 1;
@@ -48,71 +50,38 @@ function formatBeatPosition(time: number, tempo: number): string {
   return `${bar}.${beat}`;
 }
 
-function groupCurrentMoment(
-  group: Array<{ startTime: number; streamId: string; name: string; color: string }>,
-  momentIndex: number,
-  tempo: number,
-): PerformanceMomentSummary {
-  const time = group[0].startTime;
-  const soundMap = new Map<string, { name: string; color: string; streamId: string }>();
-  for (const e of group) {
-    if (!soundMap.has(e.streamId)) {
-      soundMap.set(e.streamId, { name: e.name, color: e.color, streamId: e.streamId });
-    }
-  }
-  return {
-    momentIndex,
-    startTime: time,
-    beatPosition: formatBeatPosition(time, tempo),
-    sounds: Array.from(soundMap.values()),
-    noteCount: group.length,
-  };
-}
-
 /**
- * Derive PerformanceMoments from active SoundStreams.
- * Groups events across all streams by startTime within MOMENT_EPSILON.
- * Adapted from V1 groupDebugEventsIntoMoments pattern.
+ * Derive PerformanceMoments from active SoundStreams, using the shared moment
+ * grouping (groupIntoMoments), so this list, the chart and the inspector agree
+ * on what one moment is.
  */
 export function derivePerformanceMoments(
   streams: SoundStream[],
   tempo: number,
 ): PerformanceMomentSummary[] {
-  const allEvents: Array<{ startTime: number; streamId: string; name: string; color: string }> = [];
+  const notes: Array<{ startTime: number; voiceId: string; stream: SoundStream }> = [];
   for (const stream of streams) {
     for (const event of stream.events) {
-      allEvents.push({
-        startTime: event.startTime,
-        streamId: stream.id,
-        name: stream.name,
-        color: stream.color,
-      });
+      notes.push({ startTime: event.startTime, voiceId: stream.id, stream });
     }
   }
 
-  allEvents.sort((a, b) => a.startTime - b.startTime);
-
-  const moments: PerformanceMomentSummary[] = [];
-  let currentGroup: typeof allEvents = [];
-  let currentTime = -Infinity;
-
-  for (const event of allEvents) {
-    if (event.startTime - currentTime > MOMENT_EPSILON) {
-      if (currentGroup.length > 0) {
-        moments.push(groupCurrentMoment(currentGroup, moments.length, tempo));
+  return groupIntoMoments(notes).map(moment => {
+    const soundMap = new Map<string, { name: string; color: string; streamId: string }>();
+    for (const { stream } of moment.items) {
+      if (!soundMap.has(stream.id)) {
+        soundMap.set(stream.id, { name: stream.name, color: stream.color, streamId: stream.id });
       }
-      currentGroup = [event];
-      currentTime = event.startTime;
-    } else {
-      currentGroup.push(event);
     }
-  }
-
-  if (currentGroup.length > 0) {
-    moments.push(groupCurrentMoment(currentGroup, moments.length, tempo));
-  }
-
-  return moments;
+    return {
+      momentIndex: moment.index,
+      momentKey: moment.key,
+      startTime: moment.startTime,
+      beatPosition: formatBeatPosition(moment.startTime, tempo),
+      sounds: Array.from(soundMap.values()),
+      noteCount: moment.items.length,
+    };
+  });
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -189,31 +158,19 @@ export function EventsPanel({
     row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [selectedMomentIdx]);
 
-  // Build per-moment cost from finger assignments
+  // Per-moment cost, read once per moment: every note of a moment carries the
+  // whole moment's cost, so summing them made a chord cost more per note it had.
   const momentCosts = useMemo(() => {
-    const map = new Map<number, V1CostBreakdown>();
+    const map = new Map<number, MomentCost>();
     const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
     if (!assignments || moments.length === 0) return map;
 
+    const planMoments = groupIntoMoments(assignments);
+    const byKey = new Map(planMoments.map(m => [m.key, m]));
     for (const moment of moments) {
-      const matching = assignments.filter(
-        a => Math.abs(a.startTime - moment.startTime) < MOMENT_EPSILON && a.costBreakdown
-      );
-      if (matching.length === 0) continue;
-      const avg: V1CostBreakdown = {
-        fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0,
-        handBalance: 0, constraintPenalty: 0, total: 0,
-      };
-      for (const a of matching) {
-        const cb = a.costBreakdown!;
-        avg.fingerPreference += cb.fingerPreference;
-        avg.handShapeDeviation += cb.handShapeDeviation;
-        avg.transitionCost += cb.transitionCost;
-        avg.handBalance += cb.handBalance;
-        avg.constraintPenalty += cb.constraintPenalty;
-        avg.total += cb.total;
-      }
-      map.set(moment.momentIndex, avg);
+      const match = byKey.get(moment.momentKey)
+        ?? planMoments.find(m => Math.abs(m.startTime - moment.startTime) <= MOMENT_EPSILON);
+      if (match) map.set(moment.momentIndex, summarizeMomentCost(match.items));
     }
     return map;
   }, [state, moments]);
@@ -271,7 +228,7 @@ export function EventsPanel({
             key={moment.momentIndex}
             moment={moment}
             isSelected={selectedMomentIdx === moment.momentIndex}
-            costBreakdown={momentCosts.get(moment.momentIndex) ?? null}
+            momentCost={momentCosts.get(moment.momentIndex) ?? null}
             onClick={() => handleMomentClick(moment)}
           />
         ))}
@@ -285,20 +242,25 @@ export function EventsPanel({
 function MomentRow({
   moment,
   isSelected,
-  costBreakdown,
+  momentCost,
   onClick,
 }: {
   moment: PerformanceMomentSummary;
   isSelected: boolean;
-  costBreakdown: V1CostBreakdown | null;
+  momentCost: MomentCost | null;
   onClick: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
-  // Cost severity color
-  const costColor = costBreakdown
-    ? costBreakdown.total > 10 ? 'text-red-400' : costBreakdown.total > 5 ? 'text-amber-400' : 'text-green-400'
-    : 'text-[var(--text-tertiary)]';
+  const costBreakdown = momentCost?.breakdown ?? null;
+  const unplayable = momentCost?.difficulty === 'Unplayable';
+
+  // Cost severity colour, from the moment's own difficulty level.
+  const costColor = !momentCost
+    ? 'text-[var(--text-tertiary)]'
+    : momentCost.difficulty === 'Unplayable' || momentCost.difficulty === 'Hard'
+      ? 'text-red-400'
+      : momentCost.difficulty === 'Medium' ? 'text-amber-400' : 'text-green-400';
 
   return (
     <button
@@ -325,11 +287,13 @@ function MomentRow({
 
         {/* Cost badge */}
         <span
-          className={`text-pf-xs font-mono flex-shrink-0 w-10 text-right ${costBreakdown ? `cursor-pointer ${costColor}` : 'text-[var(--text-tertiary)]'}`}
+          className={`text-pf-xs font-mono flex-shrink-0 w-10 text-right ${costBreakdown ? `cursor-pointer ${costColor}` : costColor}`}
           onClick={costBreakdown ? (e => { e.stopPropagation(); setExpanded(!expanded); }) : undefined}
-          title={costBreakdown ? 'Click for cost breakdown' : 'No cost data'}
+          title={unplayable
+            ? `${momentCost!.unplayableNoteCount} of ${momentCost!.noteCount} notes can't be played`
+            : costBreakdown ? 'Cost of this event (once per event, not per note). Click for the breakdown' : 'No cost data'}
         >
-          {costBreakdown ? costBreakdown.total.toFixed(1) : '—'}
+          {unplayable ? '\u2717' : costBreakdown ? costBreakdown.total.toFixed(1) : '\u2014'}
         </span>
 
         {/* Note count badge */}
@@ -349,6 +313,8 @@ function MomentRow({
           <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.handShapeDeviation.toFixed(2)}</span>
           <span className="text-[var(--text-tertiary)]">Finger Pref</span>
           <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.fingerPreference.toFixed(2)}</span>
+          <span className="text-[var(--text-tertiary)]">Alternation</span>
+          <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.alternation.toFixed(2)}</span>
           <span className="text-[var(--text-tertiary)]">Hand Balance</span>
           <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.handBalance.toFixed(2)}</span>
           {costBreakdown.constraintPenalty > 0 && (

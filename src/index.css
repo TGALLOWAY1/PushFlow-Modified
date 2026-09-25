@@ -98,6 +98,24 @@
   --radius-md: 8px;
   --radius-lg: 12px;
 
+  /* --- Verdict status (FeasibilityBadge, moment verdicts) --- */
+  --status-ok: #4ade80;
+  --status-ok-bg: rgba(34, 197, 94, 0.10);
+  --status-ok-border: rgba(34, 197, 94, 0.30);
+  --status-warn: #fbbf24;
+  --status-warn-bg: rgba(245, 158, 11, 0.10);
+  --status-warn-border: rgba(245, 158, 11, 0.30);
+  --status-bad: #f87171;
+  --status-bad-bg: rgba(239, 68, 68, 0.10);
+  --status-bad-border: rgba(239, 68, 68, 0.30);
+
+  /* --- Cost factors (FACTOR_META, src/ui/analysis/factorMeta.ts) --- */
+  --factor-transition: #f97316;
+  --factor-grip: #a855f7;
+  --factor-alternation: #22c55e;
+  --factor-balance: #3b82f6;
+  --factor-constraint: #ef4444;
+
   /* --- Legacy aliases (backward compat) --- */
   --background: var(--bg-app);
   --foreground: var(--text-primary);

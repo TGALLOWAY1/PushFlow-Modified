@@ -6,10 +6,11 @@
  * none. The no-analysis "Unknown" case is covered by the FeasibilityBadge
  * component test (test/ui/components/FeasibilityBadge.test.tsx).
  *
- * Flips in S1b.1 (honest verdict).
+ * Flipped in S1b.1 (honest verdict): the whole-layout verdict stays pinned and
+ * the selected event gets its own card.
  */
 
-import { test, expect, EXPECTED_FAIL } from './fixtures';
+import { test, expect } from './fixtures';
 import { openTestMidi1, placeSounds, waitForAnalysis, selectMoment, SPREAD_PADS } from './project';
 import type { Page } from '@playwright/test';
 import type { PfHandle } from './fixtures';
@@ -21,6 +22,8 @@ async function badgeLevelsWhileSelecting(page: Page, pf: PfHandle, n: number): P
     await selectMoment(page, i);
     await page.getByRole('button', { name: 'Costs', exact: true }).click();
     await expect.poll(async () => { const s = await pf.call('status'); return s.selectedMomentIndex ?? s.selectedEventIndex; }).not.toBeNull();
+    // The selected event gets its own card, beside the pinned layout verdict.
+    await expect(page.getByTestId('selected-event-card')).toBeVisible();
     for (const badge of await page.getByTestId('verdict-badge').all()) {
       seen.add(`${await badge.getAttribute('data-level')}: ${(await badge.innerText()).replace(/\s+/g, ' ')}`);
     }
@@ -30,7 +33,6 @@ async function badgeLevelsWhileSelecting(page: Page, pf: PfHandle, n: number): P
 
 test.describe('C6 · verdict with an event selected', () => {
   test('an Infeasible layout never shows "Feasible" while an event is selected', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C6: the selected-event badge gets no verdict and defaults to feasible (flips in S1b.1)');
     await openTestMidi1(page, pf);
     // Four of seven Sounds placed: the unplaced Sounds' events are unplayable.
     await placeSounds(pf, ['3,3', '3,4', '4,2', '4,5']);
@@ -42,7 +44,6 @@ test.describe('C6 · verdict with an event selected', () => {
   });
 
   test('a Degraded layout never shows "Feasible" while an event is selected', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C6: the selected-event badge gets no verdict and defaults to feasible (flips in S1b.1)');
     await openTestMidi1(page, pf);
     await placeSounds(pf, SPREAD_PADS);
     await waitForAnalysis(pf);

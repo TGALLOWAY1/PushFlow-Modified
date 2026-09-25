@@ -25,6 +25,7 @@ import { type SolverConfig } from '../../../src/types/engineConfig';
 import { type FingerType } from '../../../src/types/fingerModel';
 import { type CandidateSolution } from '../../../src/types/candidateSolution';
 import { countHandUsage } from '../../helpers/testHelpers';
+import { groupIntoMoments, summarizeMomentCost, COMFORTABLE_PLAN_SCORE } from '../../../src/engine';
 import {
   LOCK_PAD,
   importTestMidi1,
@@ -150,6 +151,41 @@ describe('TEST MIDI 1.mid end-to-end', () => {
       for (const candidate of candidates) {
         expect(candidate.metadata.strategy).toBeTruthy();
         expect(typeof candidate.metadata.seed).toBe('number');
+      }
+    });
+
+    // S1b.1 (T22): one moment grouping, keyed by the performance itself.
+    it('P1b-2c: every plan groups into the performance’s own moments (same momentKeys)', () => {
+      const performanceKeys = groupIntoMoments(getActivePerformance(suggested).events).map(m => m.key);
+      expect(performanceKeys.length).toBeGreaterThan(0);
+      for (const candidate of candidates) {
+        expect(groupIntoMoments(candidate.executionPlan.fingerAssignments).map(m => m.key)).toEqual(performanceKeys);
+      }
+    });
+
+    it('P1b-2b: every playable note of a moment carries the same moment cost, read once per moment', () => {
+      for (const candidate of candidates) {
+        for (const moment of groupIntoMoments(candidate.executionPlan.fingerAssignments)) {
+          const totals = new Set(moment.items
+            .filter(a => a.assignedHand !== 'Unplayable')
+            .map(a => a.costBreakdown?.total ?? a.cost));
+          expect(totals.size).toBeLessThanOrEqual(1);
+          if (totals.size === 1) expect(summarizeMomentCost(moment.items).cost).toBe([...totals][0]);
+        }
+      }
+    });
+
+    // S1b.1 "False claim fix".
+    it.runIf(method === 'greedy')('P1b-7: the lowest-scoring candidate never carries "low overall difficulty"', () => {
+      const claims = (c: CandidateSolution) => c.metadata.explanation?.wonBecause.includes('low overall difficulty') ?? false;
+      const scores = candidates.map(c => c.executionPlan.score);
+      expect(candidates.length).toBeGreaterThan(1);
+      for (const candidate of candidates) {
+        if (candidate.executionPlan.score === Math.min(...scores)) expect(claims(candidate)).toBe(false);
+        if (claims(candidate)) {
+          expect(candidate.executionPlan.score).toBe(Math.max(...scores));
+          expect(candidate.executionPlan.score).toBeGreaterThanOrEqual(COMFORTABLE_PLAN_SCORE);
+        }
       }
     });
 
