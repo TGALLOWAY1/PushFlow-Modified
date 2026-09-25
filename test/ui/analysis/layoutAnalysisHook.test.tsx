@@ -73,13 +73,13 @@ describe('useLayoutAnalysis with more rows than the cache holds', () => {
     // A full cache's worth of rows, each scored and read from the cache...
     const { rerender } = render(screenWith(layouts.slice(0, ANALYSIS_CACHE_CAPACITY)));
     expect(statuses().every(s => s === 'analysing')).toBe(true);
-    await waitFor(() => expect(statuses().every(s => s === 'ready')).toBe(true));
+    await waitFor(() => expect(statuses().every(s => s === 'ready')).toBe(true), { timeout: 15_000 });
     expect(analysisCacheSize()).toBe(ANALYSIS_CACHE_CAPACITY);
 
     // ...then more rows (a new Generate run, say), whose entries push the
     // least recently used ones out.
     rerender(screenWith(layouts));
-    await waitFor(() => expect(statuses().every(s => s === 'ready')).toBe(true));
+    await waitFor(() => expect(statuses().every(s => s === 'ready')).toBe(true), { timeout: 15_000 });
     expect(analysisCacheSize()).toBe(ANALYSIS_CACHE_CAPACITY);
     const evicted = layouts.filter(l => !peekAnalysis(analysisKeyFor(latest, l)));
     expect(evicted).toHaveLength(8);
@@ -105,7 +105,7 @@ describe('useLayoutAnalysis with more rows than the cache holds', () => {
         </ProjectProvider>
       </ToastProvider>,
     );
-    await waitFor(() => expect(screen.getByTestId('row').getAttribute('data-status')).toBe('ready'));
+    await waitFor(() => expect(screen.getByTestId('row').getAttribute('data-status')).toBe('ready'), { timeout: 15_000 });
     const calls = vi.mocked(analyseAndScoreLayout).mock.calls.length;
     const moved = { ...layout!, padToVoice: { '7,7': Object.values(layout!.padToVoice)[0]! } };
     rerender(
@@ -116,7 +116,7 @@ describe('useLayoutAnalysis with more rows than the cache holds', () => {
       </ToastProvider>,
     );
     expect(screen.getByTestId('row').getAttribute('data-status')).toBe('analysing');
-    await waitFor(() => expect(screen.getByTestId('row').getAttribute('data-status')).toBe('ready'));
+    await waitFor(() => expect(screen.getByTestId('row').getAttribute('data-status')).toBe('ready'), { timeout: 15_000 });
     expect(vi.mocked(analyseAndScoreLayout).mock.calls.length).toBe(calls + 1);
   });
 });

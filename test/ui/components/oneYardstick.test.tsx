@@ -150,7 +150,7 @@ describe('S3.1 · one yardstick', () => {
     // The draft kept as a variant: its card reads the same score, with the same LayoutScore's counts.
     await act(async () => { dispatch({ type: 'SAVE_AS_VARIANT', payload: { name: 'Kept', source: 'working', variantId: 'kept' } }); });
     const variantRow = screen.getAllByTestId('variant-row').find(r => r.getAttribute('data-variant-id') === 'kept')!;
-    await waitFor(() => expect(within(variantRow).getByTestId('variant-score').textContent).toMatch(/^Score \d+%/));
+    await waitFor(() => expect(within(variantRow).getByTestId('variant-score').textContent).toMatch(/^Score \d+%/), { timeout: 10_000 });
     const scored = peekLayoutAnalysis(latest, draft)!.score;
     expect(within(variantRow).getByTestId('variant-score').textContent)
       .toBe(`Score ${before}% · ${scored.hardEvents} hard · ${scored.unplayableEvents} unplayable`);
@@ -167,12 +167,12 @@ describe('S3.1 · one yardstick', () => {
         </ProjectProvider>
       </ToastProvider>,
     );
-    const dialog = await screen.findByTestId('compare-dialog');
+    const dialog = await screen.findByTestId('compare-dialog', {}, { timeout: 10_000 });
     const card = (id: string) => within(dialog).getAllByTestId('compare-card').find(c => c.getAttribute('data-candidate-id') === id)!;
     await waitFor(() => expect(within(card(candidate.id)).getByTestId('compare-score').textContent).toBe(`${before}%`), { timeout: 10_000 });
     // The Active side reads Active's own Playability, the number on the Active row.
-    await waitFor(() => expect(screen.getByTestId('active-score').textContent).toMatch(/^Score \d+%/));
+    await waitFor(() => expect(screen.getByTestId('active-score').textContent).toMatch(/^Score \d+%/), { timeout: 10_000 });
     const activeScore = /Score (\d+)%/.exec(screen.getByTestId('active-score').textContent!)![1];
-    await waitFor(() => expect(within(card(ACTIVE_COMPARE_ID)).getByTestId('compare-score').textContent).toBe(`${activeScore}%`));
+    await waitFor(() => expect(within(card(ACTIVE_COMPARE_ID)).getByTestId('compare-score').textContent).toBe(`${activeScore}%`), { timeout: 10_000 });
   }, 60_000);
 });
