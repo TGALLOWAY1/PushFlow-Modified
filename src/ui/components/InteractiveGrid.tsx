@@ -22,6 +22,7 @@ import { type FingerAssignment } from '../../types/executionPlan';
 import { type GridLabelSettings } from '../state/viewSettings';
 import { buildSelectedTransitionModel } from '../analysis/selectionModel';
 import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
+import { padLabel, padLabelLines, sharedNamePrefix } from '../analysis/padLabels';
 import { midiNoteToName } from '../../utils/midiNotes';
 import { COMPOSER_PRESET_DRAG_TYPE } from './composer/PresetCard';
 import { type PresetDragPreview } from '../../types/composerPreset';
@@ -129,6 +130,12 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     () => buildSoundStreamLookup(state.soundStreams),
     [state.soundStreams],
   );
+  // Pads drop the words every Sound's name starts with (T17).
+  const namePrefix = useMemo(
+    () => sharedNamePrefix(state.soundStreams.map(s => s.name)),
+    [state.soundStreams],
+  );
+  const nameLines = padLabelLines(padSize);
 
   // Build a live padToVoice that reflects current stream names/colors
   // (safety net: reducer should already sync, but this ensures display is always fresh)
@@ -778,8 +785,12 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
               <>
                 {/* Voice name (togglable) */}
                 {(gridLabels?.showSoundNames ?? true) && (
-                  <span className="block truncate w-full px-0.5 text-center text-[11px] font-semibold text-white/95 leading-tight">
-                    {voice.name}
+                  <span
+                    data-testid="pad-label"
+                    className="block w-full px-0.5 text-center text-[11px] font-semibold text-white/95 leading-[13px] overflow-hidden [overflow-wrap:anywhere]"
+                    style={{ display: '-webkit-box', WebkitLineClamp: nameLines, WebkitBoxOrient: 'vertical' }}
+                  >
+                    {padLabel(voice.name, namePrefix, padSize)}
                   </span>
                 )}
                 {/* Note label — the pad's Ableton Drum Rack note, by position (e.g. C1, C#1) */}

@@ -116,6 +116,24 @@
   --factor-balance: #3b82f6;
   --factor-constraint: #ef4444;
 
+  /* --- Sound colours (SOUND_PALETTE, src/utils/soundPalette.ts): new imports only --- */
+  --sound-1: #E69F00;
+  --sound-2: #56B4E9;
+  --sound-3: #009E73;
+  --sound-4: #F0E442;
+  --sound-5: #0072B2;
+  --sound-6: #D55E00;
+  --sound-7: #CC79A7;
+  --sound-8: #787522;
+  --sound-9: #48F4ED;
+  --sound-10: #FBB6A2;
+  --sound-11: #6FF885;
+  --sound-12: #DC2343;
+  --sound-13: #C3C1F9;
+  --sound-14: #7E5ADA;
+  --sound-15: #A7B780;
+  --sound-16: #22949F;
+
   /* --- Legacy aliases (backward compat) --- */
   --background: var(--bg-app);
   --foreground: var(--text-primary);

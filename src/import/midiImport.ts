@@ -15,6 +15,8 @@ import { type Voice } from '../types/voice';
 import { type Layout } from '../types/layout';
 import { generateId } from '../utils/idGenerator';
 import { buildPerformanceMoments } from '../engine/structure/momentBuilder';
+import { nextSoundColors } from '../utils/soundPalette';
+import { defaultSoundNames, type ImportedTrack } from './soundNaming';
 
 // ============================================================================
 // Result Types
@@ -39,31 +41,19 @@ export interface MidiProjectData {
   minNoteNumber: number | null;
   /** Count of notes that were out of bounds before root note adjustment. */
   unmappedNoteCount: number;
+  /** Each track's name and note count per pitch: default Sound names come from these (Q3). */
+  tracks: ImportedTrack[];
 }
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-
-function getNoteName(midiNote: number): string {
-  const note = NOTE_NAMES[midiNote % 12];
-  const octave = Math.floor(midiNote / 12) - 2;
-  return `${note}${octave}`;
-}
-
 /** Checks whether a MIDI note fits within the 8x8 grid window. */
 function noteInGrid(noteNumber: number, config: InstrumentConfig): boolean {
   const offset = noteNumber - config.bottomLeftNote;
   return offset >= 0 && offset < 64;
 }
-
-const VOICE_COLORS = [
-  '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e',
-  '#10b981', '#14b8a6', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6',
-  '#a855f7', '#d946ef', '#ec4899', '#f43f5e',
-];
 
 // ============================================================================
 // Core Parser
@@ -84,13 +74,17 @@ export async function parseMidiProject(
 ): Promise<MidiProjectData> {
   const midiData = new Midi(arrayBuffer);
   const events: PerformanceEvent[] = [];
+  const tracks: ImportedTrack[] = [];
 
   // Extract all note events
   midiData.tracks.forEach((track) => {
     const timeTally = new Map<string, number>();
+    const noteCounts = new Map<number, number>();
+    tracks.push({ name: (track.name ?? '').trim(), noteCounts });
 
     track.notes.forEach((note) => {
       const noteNumber = note.midi;
+      noteCounts.set(noteNumber, (noteCounts.get(noteNumber) ?? 0) + 1);
       const channelLabel = track.channel + 1;
 
       // Deterministic event key for stable identification
@@ -161,14 +155,17 @@ export async function parseMidiProject(
     uniqueNotes.add(event.noteNumber);
   }
 
+  // Named and coloured as the import names new Sounds (Q3): never from pitch.
   const sortedUniqueNotes = Array.from(uniqueNotes).sort((a, b) => a - b);
+  const names = defaultSoundNames(fileName || 'imported.mid', tracks, sortedUniqueNotes);
+  const colors = nextSoundColors([], sortedUniqueNotes.length);
   const voices: Voice[] = sortedUniqueNotes.map((noteNumber, index) => ({
     id: generateId('sound'),
-    name: `${getNoteName(noteNumber)} (${noteNumber})`,
+    name: names[index]!,
     sourceType: 'midi_track' as const,
     sourceFile: fileName || 'imported.mid',
     originalMidiNote: noteNumber,
-    color: VOICE_COLORS[index % VOICE_COLORS.length],
+    color: colors[index]!,
   }));
 
   // Create empty layout (no auto-mapping on import)
@@ -194,6 +191,7 @@ export async function parseMidiProject(
     layout,
     minNoteNumber: minNote,
     unmappedNoteCount,
+    tracks,
   };
 }
 

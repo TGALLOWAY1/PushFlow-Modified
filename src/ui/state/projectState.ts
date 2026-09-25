@@ -35,6 +35,7 @@ import { padKey } from '../../types/padGrid';
 import { createDefaultPose0, getPose0PadsWithOffset } from '../../engine/prior/naturalHandPose';
 import { formatFingerConstraint, parseFingerConstraint } from '../../utils/fingerConstraints';
 import { type RehearsalAudioOptions, DEFAULT_REHEARSAL_AUDIO } from '../audio/rehearsalAudio';
+import { gmDrumRenames } from '../../utils/gmDrumMap';
 
 // ============================================================================
 // Sound Stream Model
@@ -359,6 +360,8 @@ export type ProjectAction =
 
   // Sound streams
   | { type: 'RENAME_SOUND'; payload: { streamId: string; name: string } }
+  /** "Name from GM drum map" (T17): every Sound with a GM drum pitch takes its drum's name, as one step. */
+  | { type: 'APPLY_GM_DRUM_NAMES' }
   | { type: 'TOGGLE_MUTE'; payload: string }
   | { type: 'SOLO_STREAM'; payload: string }
   | { type: 'SET_SOUND_COLOR'; payload: { streamId: string; color: string } }
@@ -741,6 +744,17 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
           layout: { ...state.analysisResult.layout, padToVoice: renamePadVoices(state.analysisResult.layout.padToVoice) },
         } : null,
       };
+    }
+
+    case 'APPLY_GM_DRUM_NAMES': {
+      // Opt-in naming from pitch (canon §10, Q3). Read at dispatch time, so a
+      // toast's action renames the Sounds as they are then. Nothing to rename
+      // returns the same state (no undo step).
+      const renames = gmDrumRenames(state.soundStreams);
+      return Object.entries(renames).reduce(
+        (s, [streamId, name]) => projectReducer(s, { type: 'RENAME_SOUND', payload: { streamId, name } }),
+        state,
+      );
     }
 
     case 'TOGGLE_MUTE': {

@@ -12,6 +12,7 @@ const ACTION_LABELS: Partial<Record<ProjectAction['type'], string>> = {
   RENAME_PROJECT: 'Rename project',
   SET_TEMPO: 'Tempo change',
   RENAME_SOUND: 'Rename Sound',
+  APPLY_GM_DRUM_NAMES: 'Name from GM drum map',
   TOGGLE_MUTE: 'Mute',
   SOLO_STREAM: 'Solo',
   SET_SOUND_COLOR: 'Sound color',

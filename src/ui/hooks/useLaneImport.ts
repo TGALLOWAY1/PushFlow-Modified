@@ -10,16 +10,13 @@ import { DEFAULT_PROJECT_TEMPO } from '../state/projectState';
 import { useCallback } from 'react';
 import { parseMidiFileToProject } from '../../import/midiImport';
 import { buildLanesFromMidiProject } from '../../import/midiToLanes';
+import { gmDrumName } from '../../utils/gmDrumMap';
 import { useProject } from '../state/ProjectContext';
-
-/** Color palette for auto-assigned group colors. */
-const GROUP_COLORS = [
-  '#f59e0b', '#3b82f6', '#a855f7', '#22c55e', '#ec4899', '#06b6d4',
-  '#ef4444', '#84cc16', '#f97316', '#14b8a6', '#6366f1', '#d946ef',
-];
+import { useToast } from '../components/shared/Toast';
 
 export function useLaneImport() {
   const { state, dispatch, transact } = useProject();
+  const toast = useToast();
 
   const importFiles = useCallback(async (files: File[]) => {
     // Parse everything first, so the whole import lands as one undo step.
@@ -34,21 +31,32 @@ export function useLaneImport() {
     }
     if (parsed.length === 0) return;
 
+    // Names, colours and order carry over from one file to the next, so every
+    // new Sound gets its own palette colour and name (T17), even when several
+    // files are imported at once.
+    let currentMaxOrder = state.performanceLanes.length > 0
+      ? Math.max(...state.performanceLanes.map(l => l.orderIndex))
+      : -1;
+    const existingNames = state.soundStreams.map(s => s.name);
+    const existingColors = state.soundStreams.map(s => s.color);
+    let importedCount = 0;
+    let gmPitches = 0;
+
     transact('Import', () => {
       for (const { file, projectData } of parsed) {
-        const currentMaxOrder = state.performanceLanes.length > 0
-          ? Math.max(...state.performanceLanes.map(l => l.orderIndex))
-          : -1;
-
-        // Pick a group color based on number of existing groups
-        const groupColorIndex = state.laneGroups.length % GROUP_COLORS.length;
-        const groupColor = GROUP_COLORS[groupColorIndex];
-
         // One lane per unique pitch (no group by default)
         const { lanes, sourceFile } = buildLanesFromMidiProject(projectData, file.name, {
           currentMaxOrder,
-          color: groupColor,
+          existingNames,
+          existingColors,
         });
+        for (const lane of lanes) {
+          existingNames.push(lane.name);
+          existingColors.push(lane.color);
+          currentMaxOrder = Math.max(currentMaxOrder, lane.orderIndex);
+          if (gmDrumName(lane.events[0]?.rawPitch)) gmPitches++;
+        }
+        importedCount += lanes.length;
 
         dispatch({
           type: 'IMPORT_LANES',
@@ -76,7 +84,16 @@ export function useLaneImport() {
         // only and must not affect grid placement.
       }
     });
-  }, [state.performanceLanes, state.laneGroups, state.instrumentConfig, state.sourceFiles, state.tempo, dispatch, transact]);
+
+    // Say what arrived, and offer the opt-in pitch naming when it can help (Q3).
+    const from = parsed.length === 1 ? ` from ${parsed[0]!.file.name.replace(/\.(mid|midi)$/i, '')}` : ` from ${parsed.length} files`;
+    toast.show({
+      message: `Imported ${importedCount} ${importedCount === 1 ? 'Sound' : 'Sounds'}${from}`,
+      action: gmPitches > 0
+        ? { label: 'Name from GM drum map', onClick: () => dispatch({ type: 'APPLY_GM_DRUM_NAMES' }) }
+        : undefined,
+    });
+  }, [state.performanceLanes, state.soundStreams, state.instrumentConfig, state.sourceFiles, state.tempo, dispatch, transact, toast]);
 
   return { importFiles };
 }

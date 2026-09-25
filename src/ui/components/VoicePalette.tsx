@@ -7,7 +7,9 @@
  */
 
 import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
+import { Pencil } from 'lucide-react';
 import { useProject } from '../state/ProjectContext';
+import { gmDrumRenames } from '../../utils/gmDrumMap';
 import { getDisplayedCandidate, getDisplayedLayout, type SoundStream } from '../state/projectState';
 import type { LaneGroup } from '../../types/performanceLane';
 import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
@@ -83,6 +85,9 @@ export function VoicePalette() {
 
   // Drag-to-reorder state
   const [reorderTarget, setReorderTarget] = useState<string | null>(null);
+
+  // Rename (T17): one Sound at a time; Enter or Tab moves on to the next one.
+  const [renamingId, setRenamingId] = useState<string | null>(null);
 
   const handleStreamSelect = useCallback((streamId: string, e: React.MouseEvent) => {
     // Always dispatch global selection for cross-panel highlighting
@@ -176,6 +181,29 @@ export function VoicePalette() {
     [state.laneGroups]
   );
 
+  // Sounds in the order the rows are shown, for moving from one rename to the next.
+  const visibleOrder = useMemo(() => {
+    if (sortedGroups.length === 0) return state.soundStreams.map(s => s.id);
+    const ids: string[] = [];
+    for (const group of sortedGroups) {
+      if (group.isCollapsed) continue;
+      for (const s of groupedStreams.get(group.groupId) ?? []) ids.push(s.id);
+    }
+    for (const s of ungroupedUnassigned) ids.push(s.id);
+    for (const s of ungroupedAssigned) ids.push(s.id);
+    return ids;
+  }, [sortedGroups, groupedStreams, ungroupedUnassigned, ungroupedAssigned, state.soundStreams]);
+
+  const handleRenameDone = useCallback((streamId: string, name: string | null, move: 'next' | 'prev' | null) => {
+    if (name) dispatch({ type: 'RENAME_SOUND', payload: { streamId, name } });
+    const i = visibleOrder.indexOf(streamId);
+    const neighbour = move === 'next' ? visibleOrder[i + 1] : move === 'prev' ? visibleOrder[i - 1] : undefined;
+    setRenamingId(neighbour ?? null);
+  }, [dispatch, visibleOrder]);
+
+  // "Name from GM drum map" is offered only when it would rename something.
+  const gmRenameCount = useMemo(() => Object.keys(gmDrumRenames(state.soundStreams)).length, [state.soundStreams]);
+
   const handleDragStart = (e: React.DragEvent, stream: SoundStream) => {
     e.dataTransfer.setData('application/pushflow-stream', JSON.stringify({
       id: stream.id,
@@ -228,10 +256,9 @@ export function VoicePalette() {
         type: 'SET_LANE_GROUP',
         payload: { laneId: stream.id, groupId },
       })}
-      onRename={(name) => dispatch({
-        type: 'RENAME_SOUND',
-        payload: { streamId: stream.id, name },
-      })}
+      isRenaming={renamingId === stream.id}
+      onStartRename={() => setRenamingId(stream.id)}
+      onRenameDone={(name, move) => handleRenameDone(stream.id, name, move)}
       onReorderDragStart={() => setReorderTarget(stream.id)}
       onReorderDrop={() => handleReorderDrop(stream.id)}
       isReorderTarget={reorderTarget !== null && reorderTarget !== stream.id}
@@ -242,6 +269,25 @@ export function VoicePalette() {
 
   return (
     <div className="space-y-0.5">
+      {state.soundStreams.length > 0 && (
+        <div data-testid="sounds-header" className="flex items-center justify-between gap-2 px-2 pb-1.5">
+          <span className="text-pf-xs text-[var(--text-tertiary)]">
+            {state.soundStreams.length} {state.soundStreams.length === 1 ? 'Sound' : 'Sounds'}
+          </span>
+          <button
+            type="button"
+            data-testid="name-from-gm"
+            className="pf-btn pf-btn-ghost text-pf-xs px-2 py-1"
+            disabled={gmRenameCount === 0}
+            onClick={() => dispatch({ type: 'APPLY_GM_DRUM_NAMES' })}
+            title={gmRenameCount > 0
+              ? `Rename ${gmRenameCount} ${gmRenameCount === 1 ? 'Sound' : 'Sounds'} from the General MIDI drum map (36 → Kick, 38 → Snare …) · one undo step`
+              : 'No Sound has a General MIDI drum pitch (35–81) left to name'}
+          >
+            Name from GM drum map
+          </button>
+        </div>
+      )}
 
       {hasGroups ? (
         <>
@@ -434,7 +480,9 @@ function StreamRow({
   onSetConstraint,
   onChangeColor,
   onSetGroup,
-  onRename,
+  isRenaming,
+  onStartRename,
+  onRenameDone,
   onReorderDragStart,
   onReorderDrop,
   isReorderTarget,
@@ -456,20 +504,37 @@ function StreamRow({
   onSetConstraint: (hand?: 'left' | 'right' | null, finger?: string | null) => void;
   onChangeColor: (color: string) => void;
   onSetGroup: (groupId: string | null) => void;
-  onRename: (name: string) => void;
+  isRenaming: boolean;
+  onStartRename: () => void;
+  /** The rename ended: `name` to apply (null for none), and whether to move on to the next or previous Sound. */
+  onRenameDone: (name: string | null, move: 'next' | 'prev' | null) => void;
   onReorderDragStart: () => void;
   onReorderDrop: () => void;
   isReorderTarget: boolean;
 }) {
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(stream.name);
   const colorRef = useRef<HTMLDivElement>(null);
+  const nameRef = useRef<HTMLSpanElement>(null);
+  // One ending per rename: Enter, Tab or Escape end it before the input's blur does.
+  const renameDone = useRef(false);
 
-  const commitName = () => {
+  useEffect(() => {
+    if (isRenaming) {
+      setNameDraft(stream.name);
+      renameDone.current = false;
+    }
+    // Only when a rename starts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRenaming]);
+
+  const finishRename = (move: 'next' | 'prev' | null, apply: boolean, refocus: boolean) => {
+    if (renameDone.current) return;
+    renameDone.current = true;
     const trimmed = nameDraft.trim();
-    if (trimmed && trimmed !== stream.name) onRename(trimmed);
-    setEditingName(false);
+    onRenameDone(apply && trimmed && trimmed !== stream.name ? trimmed : null, move);
+    // Ended from the keyboard without moving on: keep focus on this Sound.
+    if (refocus && !move) requestAnimationFrame(() => nameRef.current?.focus());
   };
 
   useEffect(() => {
@@ -485,8 +550,10 @@ function StreamRow({
 
   return (
     <div
+      data-testid="sound-row"
+      data-sound-id={stream.id}
       className={`
-        flex items-center gap-1.5 py-1.5 rounded-pf-sm text-pf-sm
+        group flex items-center gap-1.5 py-1.5 rounded-pf-sm text-pf-sm
         border transition-all duration-fast
         cursor-grab active:cursor-grabbing active:scale-[0.98]
         ${isGrouped ? 'pl-6 pr-2' : 'px-2'}
@@ -560,26 +627,52 @@ function StreamRow({
         )}
       </div>
 
-      {/* Name (double-click to edit) */}
-      {editingName ? (
+      {/* Name: double-click, F2, Enter or the pencil renames it (T17) */}
+      {isRenaming ? (
         <input
+          data-testid="sound-rename-input"
+          aria-label={`Rename ${stream.name}`}
           className="pf-input flex-1 text-pf-sm font-medium min-w-0"
           value={nameDraft}
           onChange={e => setNameDraft(e.target.value)}
-          onBlur={commitName}
-          onKeyDown={e => { if (e.key === 'Enter') commitName(); if (e.key === 'Escape') setEditingName(false); }}
+          onBlur={() => finishRename(null, true, false)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); finishRename('next', true, true); }
+            else if (e.key === 'Tab') { e.preventDefault(); finishRename(e.shiftKey ? 'prev' : 'next', true, true); }
+            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finishRename(null, false, true); }
+          }}
           onClick={e => e.stopPropagation()}
           onMouseDown={e => e.stopPropagation()}
           autoFocus
+          onFocus={e => e.currentTarget.select()}
         />
       ) : (
-        <span
-          className="flex-1 truncate text-[var(--text-primary)] font-medium cursor-text text-pf-sm"
-          onDoubleClick={e => { e.stopPropagation(); setNameDraft(stream.name); setEditingName(true); }}
-          title={stream.name}
-        >
-          {stream.name}
-        </span>
+        <>
+          <span
+            ref={nameRef}
+            data-testid="sound-name"
+            tabIndex={0}
+            className="flex-1 min-w-0 truncate text-[var(--text-primary)] font-medium cursor-text text-pf-sm rounded-sm outline-none focus-visible:ring-1 focus-visible:ring-sky-400"
+            onDoubleClick={e => { e.stopPropagation(); onStartRename(); }}
+            onKeyDown={e => {
+              if (e.key === 'F2' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); onStartRename(); }
+            }}
+            title={`${stream.name} · double-click, F2 or Enter to rename`}
+          >
+            {stream.name}
+          </span>
+          <button
+            type="button"
+            data-testid="sound-rename"
+            className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-pf-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+            onClick={e => { e.stopPropagation(); onStartRename(); }}
+            onMouseDown={e => e.stopPropagation()}
+            aria-label={`Rename ${stream.name}`}
+            title="Rename"
+          >
+            <Pencil size={11} aria-hidden="true" />
+          </button>
+        </>
       )}
 
       {/* Pad location(s) + lock indicator */}
