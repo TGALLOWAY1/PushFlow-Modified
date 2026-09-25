@@ -9,6 +9,9 @@
  * around the card, while the card's own controls (a checkbox, a menu, Promote)
  * stay separate controls above it rather than being nested in a button.
  * `action.current` marks the card being shown (aria-current).
+ * An interactive card's plain content lets pointer events through to the
+ * action, so a title tooltip on it won't show: put what matters in the
+ * action's label, or on one of the card's controls.
  */
 
 import { type HTMLAttributes, type MouseEvent, type ReactNode } from 'react';
