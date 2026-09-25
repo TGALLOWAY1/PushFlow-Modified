@@ -475,7 +475,7 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
 
 #### S3.2 — Look without overwriting: inspected layout, role actions, state bar
 
-- **Status:** In progress (branch `claude/amazing-mayer-n3xp33`; one PR for the phase)
+- **Status:** Not started
 - **Prerequisites:** S3.1, S2.1, S2.4, S1a.2, S1b.4; Q4 (recorded above).
 - **Flips:** the S3.2 C2 case.
 - **Decisions:** Q4 (candidate A is auto-inspected read-only after Generate, even on an empty grid).
@@ -494,7 +494,7 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
 
 #### S3.3 — One Promote; Unfinished not failed; fill-in, Compare and Keep
 
-- **Status:** In progress (branch `claude/amazing-mayer-n3xp33`; one PR for the phase)
+- **Status:** Not started
 - **Prerequisites:** S3.2; Q4 (recorded above).
 - **Flips:** the S3.3 C7 cache case.
 - **Decisions:** Q4 ("Place remaining N" proposes a candidate and never places Sounds); Q5 (Compare reads the same Playability as every other surface).
@@ -517,7 +517,7 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
 
 #### S3.4 — Generation progress, Cancel and time budget; trace per candidate
 
-- **Status:** In progress (branch `claude/amazing-mayer-n3xp33`; one PR for the phase)
+- **Status:** Not started
 - **Prerequisites:** S3.3.
 
 **Deliverables**
