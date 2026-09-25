@@ -21,6 +21,7 @@ export type InputRowId =
   | 'drag-pad'
   | 'pad-menu'
   | 'pad-enter'
+  | 'read-only-edit'
   | 'space'
   | 'step-events'
   | 'events-list-keys'
@@ -126,6 +127,11 @@ export const INPUT_TABLE: readonly InputRow[] = [
     input: ['Delete', 'Backspace'], when: 'A pad is selected',
     does: 'Takes its Sound off the pad, with Undo in the toast. With no pad selected, nothing.',
     keys: e => plain(e) && (e.key === 'Delete' || e.key === 'Backspace'),
+  },
+  {
+    id: 'read-only-edit', group: 'Pads',
+    input: ['Any edit on the grid'], when: 'A candidate, a saved variant, or Active over your draft is shown',
+    does: 'Changes nothing and says "Use as my draft to edit": drops, pad drags, click-to-place, the pad menu and Delete are all refused. Looking never changes your draft.',
   },
   // Playback and events
   {

@@ -95,7 +95,7 @@ function makeTestProject(): ProjectState {
         metadata: { generationMethod: 'beam', timestamp: '2025-01-01T00:00:00.000Z' },
       },
     ],
-    selectedCandidateId: 'candidate-1',
+    inspectedLayout: { kind: 'candidate', id: 'candidate-1' },
     // Ephemeral state
     selectedEventIndex: 5,
     selectedMomentIndex: 3,
@@ -126,7 +126,8 @@ describe('serializeProject', () => {
     // The persisted shape should not contain analysis/cost fields
     expect(serialized).not.toContain('"analysisResult"');
     expect(serialized).not.toContain('"candidates"');
-    expect(serialized).not.toContain('"selectedCandidateId"');
+    expect(serialized).not.toContain('"inspectedLayout"');
+    expect(serialized).not.toContain('"inspectedAnalysis"');
     expect(serialized).not.toContain('"manualCostResult"');
     expect(serialized).not.toContain('"isProcessing"');
     expect(serialized).not.toContain('"selectedEventIndex"');
@@ -172,7 +173,8 @@ describe('deserializeProject', () => {
 
     expect(restored.analysisResult).toBeNull();
     expect(restored.candidates).toEqual([]);
-    expect(restored.selectedCandidateId).toBeNull();
+    expect(restored.inspectedLayout).toBeNull();
+    expect(restored.inspectedAnalysis).toBeNull();
     expect(restored.manualCostResult).toBeNull();
   });
 

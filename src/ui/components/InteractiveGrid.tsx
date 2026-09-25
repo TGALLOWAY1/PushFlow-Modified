@@ -7,19 +7,23 @@
  * - otherwise a click selects the pad and its Sound, keeping any selected event;
  * - drag a Sound from VoicePalette onto a pad, or a pad onto another to swap;
  * - right-click opens the pad menu.
+ * While the grid shows a layout edits don't go to (an inspected candidate,
+ * variant or recovered draft, Active over a differing draft, or a trace
+ * replay), every one of those edits is refused with a hint (S3.2).
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import chroma from 'chroma-js';
 import { Lock } from 'lucide-react';
 import { useProject } from '../state/ProjectContext';
-import { getDisplayedLayout, getDisplayedLayoutRole, isPadLocked, type SoundStream } from '../state/projectState';
+import { getDisplayedLayout, isPadLocked, type SoundStream } from '../state/projectState';
 import { padClickMeaning, PAD_TAKEN_MESSAGE } from '../input/inputTable';
 import { useToast } from './shared/Toast';
 import { type Layout } from '../../types/layout';
 import { LOCKED_SOUND_DRAG_TYPE } from './dragTypes';
 import { PadContextMenu } from './PadContextMenu';
 import { useRemovePadWithUndo } from '../hooks/useRemovePadWithUndo';
+import { useReadOnlyHint } from '../hooks/useReadOnlyHint';
 import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { type GridLabelSettings } from '../state/viewSettings';
@@ -28,7 +32,6 @@ import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
 import { padLabel, padLabelLines, sharedNamePrefix } from '../analysis/padLabels';
 import { midiNoteToName } from '../../utils/midiNotes';
 import { formatPadPosition, spokenPadPosition } from '../../utils/padPosition';
-import { formatMilliseconds } from '../../utils/musicalTime';
 import { COMPOSER_PRESET_DRAG_TYPE } from './composer/PresetCard';
 import { type PresetDragPreview } from '../../types/composerPreset';
 import {
@@ -45,8 +48,8 @@ import {
 interface InteractiveGridProps {
   assignments?: FingerAssignment[];
   selectedEventIndex?: number | null;
-  /** When provided, display this layout instead of the global active layout.
-   *  Used when viewing a candidate solution whose layout differs from the user's. */
+  /** When provided, display this layout instead of the one edits go to: an
+   *  inspected read-only layout (S3.2) or a replayed trace step. */
   layoutOverride?: import('../../types/layout').Layout;
   /** Show onion skin overlay: previous/current/next event layers. */
   onionSkin?: boolean;
@@ -68,8 +71,8 @@ interface InteractiveGridProps {
   debuggerIteration?: import('../../engine/optimization/optimizerInterface').OptimizationIteration;
   /** Pad edge in px, measured by the workspace (T04); labels keep their sizes. */
   padSize?: number;
-  /** Guidance shown in the state bar (the "nothing placed yet" hint, T44). */
-  stateBarHint?: React.ReactNode;
+  /** The layout-state bar (S3.2), in the fixed slot above the frame. */
+  stateBar?: React.ReactNode;
 }
 
 /** Abbreviated finger names for display (numbered: thumb=1 through pinky=5) */
@@ -110,9 +113,12 @@ function safeColorAlpha(color: string | null | undefined, alpha: number, fallbac
 /** Physical reach threshold: pads farther apart than this are flagged as impossible. */
 const IMPOSSIBLE_REACH_THRESHOLD = 5;
 
-export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave, debuggerIteration, padSize = 56, stateBarHint }: InteractiveGridProps) {
+export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave, debuggerIteration, padSize = 56, stateBar }: InteractiveGridProps) {
   const { state, dispatch } = useProject();
   const toast = useToast();
+  // Looking never writes (S3.2): `refuse()` says how to edit and blocks the gesture.
+  const { hint: readOnlyHint, refuse: refuseEdit } = useReadOnlyHint();
+  const readOnly = readOnlyHint !== null;
   // Overlay geometry follows the measured pad size (T04).
   const gridStep = padSize + PAD_GAP;
   const toGridX = (col: number) => col * gridStep + padSize / 2;
@@ -131,7 +137,8 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
   const [dragSourcePad, setDragSourcePad] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ padKey: string; x: number; y: number; pad: HTMLElement } | null>(null);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
-  const [showTransitionArrows, setShowTransitionArrows] = useState(true);
+  // The arrows are a grid overlay like the finger labels: on by default, in the gear (S3.2).
+  const showTransitionArrows = gridLabels?.showTransitionArrows ?? true;
 
   const soundStreamLookup = useMemo(
     () => buildSoundStreamLookup(state.soundStreams),
@@ -453,6 +460,11 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
   const handleDrop = useCallback((e: React.DragEvent, padKey: string) => {
     e.preventDefault();
     setDragOverPad(null);
+    // Refused at dragover already; a drop that gets here anyway changes nothing.
+    if (refuseEdit()) {
+      setDragSourcePad(null);
+      return;
+    }
 
     // A locked pad takes no drop, and a locked Sound goes nowhere else (canon
     // section 11). The reducer refuses these too; this keeps the gesture from
@@ -514,9 +526,16 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
     }
 
     setDragSourcePad(null);
-  }, [state.soundStreams, dispatch, layout]);
+  }, [state.soundStreams, dispatch, layout, refuseEdit]);
 
   const handleDragOver = useCallback((e: React.DragEvent, padKey: string) => {
+    // Nothing drops onto a read-only layout (a Sound, a pad or a preset): the
+    // pointer says so, and the hint says how to edit it.
+    if (refuseEdit()) {
+      e.dataTransfer.dropEffect = 'none';
+      setDragOverPad(null);
+      return;
+    }
     // No drop onto a locked pad, and none of a locked Sound: without
     // preventDefault the browser refuses the drop and the pointer says so.
     const lockedTarget = layout && isPadLocked(layout, padKey) && !e.dataTransfer.types.includes(COMPOSER_PRESET_DRAG_TYPE);
@@ -537,7 +556,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
       const [rowStr, colStr] = padKey.split(',');
       onGridDragOver(parseInt(rowStr, 10), parseInt(colStr, 10));
     }
-  }, [onGridDragOver, layout]);
+  }, [onGridDragOver, layout, refuseEdit]);
 
   const handleDragLeave = useCallback(() => {
     setDragOverPad(null);
@@ -546,6 +565,11 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
 
   // Drag from a pad (for swapping)
   const handlePadDragStart = useCallback((e: React.DragEvent, padKey: string, voice: Voice) => {
+    // A read-only layout's pads don't move (S3.2).
+    if (refuseEdit()) {
+      e.preventDefault();
+      return;
+    }
     e.dataTransfer.setData('application/pushflow-pad', padKey);
     e.dataTransfer.setData('application/pushflow-stream', JSON.stringify({
       id: voice.id,
@@ -556,7 +580,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
     }));
     e.dataTransfer.effectAllowed = 'move';
     setDragSourcePad(padKey);
-  }, []);
+  }, [refuseEdit]);
 
   // The armed Sound (click-to-place, T62), if it still exists.
   const armedStream = useMemo(
@@ -587,9 +611,12 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
         dispatch({ type: 'ARM_SOUND', payload: null });
         return;
       case 'taken':
+        // Nothing can be placed on a read-only layout, taken pad or not.
+        if (refuseEdit()) return;
         toast.show({ message: PAD_TAKEN_MESSAGE, durationMs: 3000 });
         return;
       case 'place': {
+        if (refuseEdit()) return;
         const stream = armedStream!;
         const lockedAt = editable.placementLocks[stream.id];
         if (lockedAt && lockedAt !== padKey) {
@@ -611,7 +638,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
         dispatch({ type: 'SELECT_PAD', payload: { padKey: null, streamId: null } });
         return;
     }
-  }, [livePadToVoice, state.workingLayout, state.activeLayout, state.soundStreams, soundStreamLookup, armedStream, selectedEventIndex, dispatch, toast]);
+  }, [livePadToVoice, state.workingLayout, state.activeLayout, state.soundStreams, soundStreamLookup, armedStream, selectedEventIndex, dispatch, toast, refuseEdit]);
 
   // The pad's ×: removes with an Undo toast (T28).
   const handleRemovePad = useRemovePadWithUndo();
@@ -642,8 +669,9 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
       const isInstanceHighlighted = highlightedInstancePads?.has(padKey) ?? false;
       // The pad selection (T28 slice): an outline, kept while an event is shown.
       const isPadSelected = !!voice && state.selectedPadKey === padKey;
-      // While a Sound is armed, an empty pad previews it on hover (T62).
-      const previewsArmed = !!armedStream && !voice;
+      // While a Sound is armed, an empty pad previews it on hover (T62);
+      // not on a read-only layout, where nothing can be placed.
+      const previewsArmed = !!armedStream && !voice && !readOnly;
       const ghostInfo = ghostPads?.get(padKey);
       const constraint = layout?.fingerConstraints[padKey];
       const isLocked = !!voice && layout?.placementLocks[voice.id] === padKey;
@@ -758,7 +786,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
             ${isGreyedOut ? 'opacity-[0.45]' : ''}
             ${isDragSource ? 'opacity-40' : ''}
             ${!voice ? 'hover:brightness-110' : 'hover:scale-[1.02]'}
-            ${isMuted ? 'cursor-default' : voice ? 'cursor-grab active:cursor-grabbing' : previewsArmed ? 'cursor-copy' : 'cursor-pointer'}
+            ${isMuted ? 'cursor-default' : voice && !readOnly ? 'cursor-grab active:cursor-grabbing' : previewsArmed ? 'cursor-copy' : 'cursor-pointer'}
           `}
           style={{
             width: padSize,
@@ -791,7 +819,9 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
           data-selected={isPadSelected ? 'true' : undefined}
           onContextMenu={e => {
             e.preventDefault();
-            if (!isMuted) setContextMenu({ padKey, x: e.clientX, y: e.clientY, pad: e.currentTarget });
+            // The pad menu edits (lock, finger, remove): not on a read-only layout (S3.2).
+            if (isMuted || refuseEdit()) return;
+            setContextMenu({ padKey, x: e.clientX, y: e.clientY, pad: e.currentTarget });
           }}
           onDragOver={e => !isMuted && handleDragOver(e, padKey)}
           onDragLeave={handleDragLeave}
@@ -800,8 +830,10 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
           onDragStart={e => voice && !isMuted && !isLocked && handlePadDragStart(e, padKey, voice)}
           onDragEnd={() => { setDragSourcePad(null); setDragOverPad(null); }}
           title={voice
-            ? `${formatPadPosition(padKey)} · ${voice.name}${summary ? ` · ${summary.hitCount} hits` : ''}${constraint ? ` · Finger preference ${constraint}` : ''}${isLocked ? ' · Locked · Unlock to move' : ''}`
-            : armedStream
+            ? `${formatPadPosition(padKey)} · ${voice.name}${summary ? ` · ${summary.hitCount} hits` : ''}${constraint ? ` · Finger preference ${constraint}` : ''}${isLocked ? ' · Locked · Unlock to move' : ''}${readOnly ? ` · ${readOnlyHint}` : ''}`
+            : readOnly
+              ? `${formatPadPosition(padKey)} · empty · ${readOnlyHint}`
+              : armedStream
               ? `${formatPadPosition(padKey)} · empty · click to place ${armedStream.name}`
               : `${formatPadPosition(padKey)} · empty · drop a Sound here`}
         >
@@ -884,8 +916,8 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
                   </span>
                 )}
 
-                {/* Remove button (visible on hover via parent group); a locked Sound has none until unlocked. */}
-                {!isLocked && (
+                {/* Remove button (visible on hover via parent group); a locked Sound has none until unlocked, and a read-only layout none at all. */}
+                {!isLocked && !readOnly && (
                   <button
                     className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center
                                text-[11px] text-red-300 bg-red-500/30 rounded-bl opacity-0
@@ -917,9 +949,6 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
     );
   }
 
-  const moveCount = selectedTransition
-    ? selectedTransition.fingerMoves.filter(move => !move.isHold && move.fromPad && move.toPad).length
-    : 0;
   const matrixWidth = GRID_OFFSET_X + 8 * padSize + 7 * PAD_GAP;
   const zoneWidth = 4 * padSize + 3 * PAD_GAP;
 
@@ -927,55 +956,15 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
     // The state-bar slot and the frame, centred as one group in the measured
     // region ("safe" keeps the top visible if the pads are at their minimum).
     <div className="h-full w-full flex flex-col items-center" style={{ justifyContent: 'safe center' }}>
-      {/* State-bar slot: fixed height, never scaled (P3's layout-state bar fills
-          it). Holds the role badge, freshness and the transition preview, so
-          selecting an event no longer changes the grid's size. */}
+      {/* State-bar slot: fixed height, never scaled. Holds the layout-state bar
+          (S3.2): the transition preview moved to the selected-event card, so
+          selecting an event never changes the grid's size. */}
       <div
         data-testid="state-bar-slot"
-        className="w-full flex items-center gap-2 flex-shrink-0 min-w-0 overflow-hidden"
+        className="w-full flex items-center flex-shrink-0 min-w-0 overflow-hidden"
         style={{ height: STATE_BAR_HEIGHT, marginBottom: STATE_BAR_GAP }}
       >
-        {layout && (
-          <span className={`pf-badge flex-shrink-0 ${
-            getDisplayedLayoutRole(state) === 'working'
-              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/15'
-              : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/15'
-          }`}>
-            {getDisplayedLayoutRole(state) === 'working' ? 'Working Draft' : 'Active'}
-          </span>
-        )}
-        {state.analysisStale && state.analysisResult && (
-          <span className="text-pf-xs text-amber-400/80 flex-shrink-0">
-            Analysis outdated
-          </span>
-        )}
-        {stateBarHint}
-        <span className="flex-1" />
-        {selectedTransition?.next && (
-          <>
-            <span
-              className="text-pf-xs text-sky-300/70 truncate min-w-0"
-              title="Transition preview: the time to the next event, pads it shares with this one, and the fingers that move"
-            >
-              Transition preview: {selectedTransition.timeDelta != null ? formatMilliseconds(selectedTransition.timeDelta) : '—'} to the next event
-              {' · '}
-              {selectedTransition.sharedPadKeys.size} shared pad{selectedTransition.sharedPadKeys.size === 1 ? '' : 's'}
-              {' · '}
-              {moveCount} finger move{moveCount === 1 ? '' : 's'}
-            </span>
-            <button
-              className={`flex-shrink-0 text-pf-xs px-1.5 py-0.5 rounded-pf-sm transition-colors ${
-                showTransitionArrows
-                  ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30'
-                  : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border border-[var(--border-subtle)]'
-              }`}
-              onClick={() => setShowTransitionArrows(prev => !prev)}
-              title={showTransitionArrows ? 'Hide transition arrows' : 'Show transition arrows'}
-            >
-              {showTransitionArrows ? 'Arrows On' : 'Arrows Off'}
-            </button>
-          </>
-        )}
+        {stateBar}
       </div>
 
       {/* Hardware frame, fitted to the matrix (no invisible blur layers). */}

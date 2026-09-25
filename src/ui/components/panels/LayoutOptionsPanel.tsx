@@ -3,6 +3,9 @@
  *
  * Right-column bottom section showing candidate solutions as selectable
  * cards with mini grid previews. Supports multi-select for comparison.
+ * Every row can be inspected (S3.2): Inspect shows the Active Layout, a
+ * candidate, a saved variant or a recovered draft on the grid, read-only, and
+ * writes nothing. "Edit as draft" is a variant's "Use as my draft".
  */
 
 import { useState } from 'react';
@@ -11,12 +14,34 @@ import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { useProject } from '../../state/ProjectContext';
 import { useDraftReplacement } from '../../hooks/useDraftReplacement';
 import { type Layout } from '../../../types/layout';
-import { type SoundStream, RECOVERED_DRAFTS_CAP } from '../../state/projectState';
+import { type SoundStream, type InspectedLayoutRef, RECOVERED_DRAFTS_CAP, resolveInspectedLayout } from '../../state/projectState';
 import { describeDroppedForLocks, describePinnedPlacements } from '@/engine';
 import { CandidatePreviewCard } from './CandidatePreviewCard';
 import { MiniGridPreview } from './MiniGridPreview';
 import { LayoutScoreLine } from './LayoutScoreLine';
 import { layoutLabel } from '../../state/layoutLabels';
+import { candidateLetter } from '../../state/layoutSubject';
+import { UseAsDraftButton } from '../workspace/UseAsDraftButton';
+
+/** The small "Inspect" button every layout row has (S3.2). */
+function InspectButton({ current, onClick, testId, what }: { current: boolean; onClick: () => void; testId: string; what: string }) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      aria-current={current ? 'true' : undefined}
+      className={`px-2 py-1 text-pf-xs rounded-pf-sm transition-colors border ${
+        current
+          ? 'bg-[var(--bg-active)] border-[var(--border-strong)] text-[var(--text-primary)]'
+          : 'bg-[var(--bg-card)] border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
+      }`}
+      title={current ? `${what} is on the grid` : `Show ${what} on the grid, read-only: your draft stays as it is`}
+      onClick={e => { e.stopPropagation(); onClick(); }}
+    >
+      Inspect
+    </button>
+  );
+}
 
 interface LayoutOptionsPanelProps {
   selectedForCompare: Set<string>;
@@ -40,6 +65,10 @@ export function LayoutOptionsPanel({
   const [viewAllOpen, setViewAllOpen] = useState(false);
   const [editingLayoutName, setEditingLayoutName] = useState(false);
   const [layoutNameDraft, setLayoutNameDraft] = useState('');
+  // The layout on screen (S3.2), so its row is marked.
+  const shown = resolveInspectedLayout(state);
+  const inspect = (ref: InspectedLayoutRef | null) => dispatch({ type: 'INSPECT_LAYOUT', payload: ref });
+  const activeShown = shown.role === 'active';
 
   const hasCandidates = state.candidates.length > 0;
   const droppedForLocks = state.generationSummary?.droppedForLockViolations ?? 0;
@@ -109,7 +138,7 @@ export function LayoutOptionsPanel({
         {/* Empty state */}
         {!hasCandidates && !state.isProcessing && !state.error && (
           <div className="text-pf-xs text-[var(--text-tertiary)] py-6 text-center">
-            <strong className="text-[var(--text-secondary)]">Generate</strong> proposes alternative layouts to preview, compare and keep.
+            <strong className="text-[var(--text-secondary)]">Generate</strong> proposes alternative layouts to inspect, compare and keep.
           </div>
         )}
 
@@ -120,15 +149,15 @@ export function LayoutOptionsPanel({
           </div>
         )}
 
-        {/* Active Layout card */}
+        {/* Active Layout card: a click shows Active (read-only while your draft differs from it) */}
         {Object.keys(state.activeLayout.padToVoice).length > 0 && (
           <div
+            data-testid="active-row"
+            data-inspected={activeShown ? 'true' : undefined}
             className={`rounded-pf-lg border-2 border-emerald-500 bg-emerald-500/5 ring-1 ring-emerald-500/20 cursor-pointer mb-2 ${
-              !state.selectedCandidateId ? 'ring-2 ring-emerald-400/30' : ''
+              activeShown ? 'ring-2 ring-emerald-400/30' : ''
             }`}
-            onClick={() => {
-              dispatch({ type: 'SELECT_CANDIDATE', payload: null });
-            }}
+            onClick={() => inspect({ kind: 'active', id: state.activeLayout.id })}
           >
             <div className="p-2.5">
               <div className="flex items-center justify-between mb-2">
@@ -190,14 +219,22 @@ export function LayoutOptionsPanel({
                 <MiniGridPreview
                   layout={state.activeLayout}
                   soundStreams={state.soundStreams}
-                  highlighted={!state.selectedCandidateId}
+                  highlighted={activeShown}
                 />
               </div>
-              <div className="px-0.5 space-y-0.5">
-                <LayoutScoreLine layout={state.activeLayout} testId="active-score" />
-                <div className="text-pf-xs text-[var(--text-tertiary)]">
-                  {Object.keys(state.activeLayout.padToVoice).length} pads assigned
+              <div className="flex items-end justify-between gap-2 px-0.5">
+                <div className="space-y-0.5 min-w-0">
+                  <LayoutScoreLine layout={state.activeLayout} testId="active-score" />
+                  <div className="text-pf-xs text-[var(--text-tertiary)]">
+                    {Object.keys(state.activeLayout.padToVoice).length} pads assigned
+                  </div>
                 </div>
+                <InspectButton
+                  testId="active-inspect"
+                  what="the Active Layout"
+                  current={activeShown}
+                  onClick={() => inspect({ kind: 'active', id: state.activeLayout.id })}
+                />
               </div>
             </div>
           </div>
@@ -218,29 +255,19 @@ export function LayoutOptionsPanel({
         {/* Candidate list */}
         {hasCandidates && (
           <div className="flex flex-col gap-2">
-            {/* Generate only proposes; the grid and the draft are untouched. */}
+            {/* Generate only proposes (Q4): candidate A is shown read-only, and the draft is untouched. */}
             <p data-testid="candidates-hint" className="text-pf-xs text-[var(--text-tertiary)] px-0.5">
-              Preview #1 to try it on the grid. Your draft stays as it is until you do.
+              Inspect a candidate to see it on the grid, read-only. Use as my draft to edit it; your draft stays as it is until you do.
             </p>
             {state.candidates.map((candidate, idx) => (
               <CandidatePreviewCard
                 key={candidate.id}
                 candidate={candidate}
                 soundStreams={state.soundStreams}
-                rank={idx + 1}
-                isSelected={candidate.id === state.selectedCandidateId}
+                letter={candidateLetter(idx)}
+                isInspected={shown.candidate?.id === candidate.id}
                 isCheckedForCompare={selectedForCompare.has(candidate.id)}
-                onSelect={() => {
-                  // Preview: selecting a candidate drives display via the selector
-                  // layer (getDisplayedCandidate reads selectedCandidateId first), so
-                  // analysisResult is not overwritten. APPLY_GENERATION makes the
-                  // candidate the editable working layout, keeping a differing draft
-                  // in Recovered drafts.
-                  replaceDraft(
-                    { type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: candidate.id } },
-                    { label: 'Use candidate', alsoDispatch: [{ type: 'SELECT_CANDIDATE', payload: candidate.id }] },
-                  );
-                }}
+                onInspect={() => inspect({ kind: 'candidate', id: candidate.id })}
                 onPromote={() => {
                   replaceDraft({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
                 }}
@@ -267,7 +294,8 @@ export function LayoutOptionsPanel({
                   key={variant.id}
                   variant={variant}
                   soundStreams={state.soundStreams}
-                  onLoad={() => replaceDraft({ type: 'LOAD_SAVED_VARIANT', payload: { variantId: variant.id } })}
+                  isInspected={shown.role === 'variant' && shown.layout.id === variant.id}
+                  onInspect={() => inspect({ kind: 'variant', id: variant.id })}
                   onPromote={() => replaceDraft({ type: 'PROMOTE_VARIANT', payload: { variantId: variant.id } })}
                   onDelete={() => dispatch({ type: 'DELETE_VARIANT', payload: { variantId: variant.id } })}
                   onRename={name => dispatch({ type: 'RENAME_LAYOUT', payload: { target: 'variant', variantId: variant.id, name } })}
@@ -286,7 +314,7 @@ export function LayoutOptionsPanel({
               </span>
             </div>
             <p className="text-pf-xs text-[var(--text-tertiary)] px-0.5">
-              Kept when Preview, Load Draft or Promote replaced your draft. The newest {RECOVERED_DRAFTS_CAP} are kept.
+              Kept when Use as my draft, Edit as draft or Promote replaced your draft. The newest {RECOVERED_DRAFTS_CAP} are kept.
             </p>
             <div className="flex flex-col gap-2">
               {[...state.recoveredDrafts].reverse().map((draft) => (
@@ -294,6 +322,8 @@ export function LayoutOptionsPanel({
                   key={draft.id}
                   draft={draft}
                   soundStreams={state.soundStreams}
+                  isInspected={shown.role === 'recovered' && shown.layout.id === draft.id}
+                  onInspect={() => inspect({ kind: 'recovered', id: draft.id })}
                   onRestore={() => replaceDraft({ type: 'RESTORE_RECOVERED_DRAFT', payload: { layoutId: draft.id } })}
                   onDelete={() => dispatch({ type: 'DELETE_RECOVERED_DRAFT', payload: { layoutId: draft.id } })}
                 />
@@ -316,6 +346,7 @@ export function LayoutOptionsPanel({
 function ViewAllOverlay({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useProject();
   const replaceDraft = useDraftReplacement();
+  const shown = resolveInspectedLayout(state);
 
   const titleId = useOverlayTitleId();
 
@@ -342,15 +373,12 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
                     key={c.id}
                     candidate={c}
                     soundStreams={state.soundStreams}
-                    rank={idx + 1}
-                    isSelected={c.id === state.selectedCandidateId}
+                    letter={candidateLetter(idx)}
+                    isInspected={shown.candidate?.id === c.id}
                     isCheckedForCompare={false}
-                    onSelect={() => {
-                      // Display flows through the selector layer; no analysisResult overwrite.
-                      replaceDraft(
-                        { type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: c.id } },
-                        { label: 'Use candidate', alsoDispatch: [{ type: 'SELECT_CANDIDATE', payload: c.id }] },
-                      );
+                    onInspect={() => {
+                      dispatch({ type: 'INSPECT_LAYOUT', payload: { kind: 'candidate', id: c.id } });
+                      onClose();
                     }}
                     onPromote={() => {
                       if (confirm('Promote this candidate to become the Active Layout?')) {
@@ -378,8 +406,9 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
                     key={variant.id}
                     variant={variant}
                     soundStreams={state.soundStreams}
-                    onLoad={() => {
-                      replaceDraft({ type: 'LOAD_SAVED_VARIANT', payload: { variantId: variant.id } });
+                    isInspected={shown.role === 'variant' && shown.layout.id === variant.id}
+                    onInspect={() => {
+                      dispatch({ type: 'INSPECT_LAYOUT', payload: { kind: 'variant', id: variant.id } });
                       onClose();
                     }}
                     onPromote={() => replaceDraft({ type: 'PROMOTE_VARIANT', payload: { variantId: variant.id } })}
@@ -398,14 +427,17 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
 function SavedVariantCard({
   variant,
   soundStreams,
-  onLoad,
+  isInspected,
+  onInspect,
   onPromote,
   onDelete,
   onRename,
 }: {
   variant: Layout;
   soundStreams: SoundStream[];
-  onLoad: () => void;
+  /** It is the layout on screen. */
+  isInspected: boolean;
+  onInspect: () => void;
   onPromote: () => void;
   onDelete: () => void;
   onRename: (name: string) => void;
@@ -417,7 +449,8 @@ function SavedVariantCard({
     <div
       data-testid="variant-row"
       data-variant-id={variant.id}
-      className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3"
+      data-inspected={isInspected ? 'true' : undefined}
+      className={`rounded-pf-lg border bg-[var(--bg-card)] p-3 ${isInspected ? 'border-role-variant ring-1 ring-role-variant/30' : 'border-[var(--border-subtle)]'}`}
     >
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="min-w-0 space-y-0.5">
@@ -461,12 +494,15 @@ function SavedVariantCard({
         </div>
       </div>
       <div className="flex items-center justify-end gap-1.5">
-        <button
+        <InspectButton testId="variant-inspect" what={`"${variant.name}"`} current={isInspected} onClick={onInspect} />
+        {/* "Load draft" became "Edit as draft": it asks before replacing a differing draft (S3.2). */}
+        <UseAsDraftButton
+          source={{ kind: 'variant', id: variant.id }}
+          label="Edit as draft"
+          testId="variant-edit"
+          title="Make this variant your Working/Test Layout, to edit it"
           className="px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-blue-600/15 border border-blue-500/30 text-blue-400 hover:bg-blue-600/25"
-          onClick={onLoad}
-        >
-          Load draft
-        </button>
+        />
         <VariantPromoteButton onPromote={onPromote} />
         {confirmDelete ? (
           <>
@@ -531,11 +567,16 @@ function VariantNameField({ name, onDone }: { name: string; onDone: (name: strin
 function RecoveredDraftCard({
   draft,
   soundStreams,
+  isInspected,
+  onInspect,
   onRestore,
   onDelete,
 }: {
   draft: Layout;
   soundStreams: SoundStream[];
+  /** It is the layout on screen. */
+  isInspected: boolean;
+  onInspect: () => void;
   onRestore: () => void;
   onDelete: () => void;
 }) {
@@ -544,7 +585,8 @@ function RecoveredDraftCard({
     <div
       data-testid="recovered-row"
       data-layout-id={draft.id}
-      className="rounded-pf-lg border border-dashed border-[var(--border-default)] bg-[var(--bg-card)] p-3"
+      data-inspected={isInspected ? 'true' : undefined}
+      className={`rounded-pf-lg border border-dashed bg-[var(--bg-card)] p-3 ${isInspected ? 'border-role-working' : 'border-[var(--border-default)]'}`}
     >
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="min-w-0">
@@ -563,6 +605,7 @@ function RecoveredDraftCard({
         </div>
       </div>
       <div className="flex items-center justify-end gap-1.5">
+        <InspectButton testId="recovered-inspect" what={`"${layoutLabel(draft)}"`} current={isInspected} onClick={onInspect} />
         <button
           className="px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-blue-600/15 border border-blue-500/30 text-blue-400 hover:bg-blue-600/25"
           onClick={onRestore}

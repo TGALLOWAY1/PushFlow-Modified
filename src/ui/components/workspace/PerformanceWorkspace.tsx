@@ -24,7 +24,7 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { exportProjectToFile } from '../../persistence/projectStorage';
 import { useToast } from '../shared/Toast';
 import { useViewSettings, ViewSettingsProvider } from '../../state/viewSettings';
-import { getDisplayedCandidate, getSelectedCandidate, isPadLocked, type SoundStream } from '../../state/projectState';
+import { getActiveTrace, getDisplayedCandidate, isPadLocked, resolveInspectedLayout, type SoundStream } from '../../state/projectState';
 import { liveCompareIds, canCompare } from '../../state/compareSet';
 import { resolvePresetDrop, soundForPresetLane, FOREIGN_PRESET_MESSAGE } from '../../state/presetDrop';
 
@@ -63,6 +63,9 @@ import { useMeasuredPadSize } from './gridSizing';
 import { DrawerSplitter } from './DrawerSplitter';
 import { CENTER_MIN_WIDTH, fitSidePanels, maxPanelWidth } from './panelSizing';
 import { ArmedSoundHint, GridStartCard, NothingPlacedHint } from './GridEmptyState';
+import { LayoutStateBar } from './LayoutStateBar';
+import { useInspectedAnalysis } from '../../hooks/useInspectedAnalysis';
+import { useReadOnlyHint } from '../../hooks/useReadOnlyHint';
 import { ShortcutSheet } from '../shared/ShortcutSheet';
 import { useLaneImport } from '../../hooks/useLaneImport';
 import {
@@ -136,6 +139,10 @@ function PerformanceWorkspaceInner() {
   const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
   useKeyboardShortcuts({ onSave: saveNow, onOpenShortcuts: openShortcuts });
   const toast = useToast();
+  // The inspected layout's own plan, from the cache (S3.2); and the hint that
+  // refuses edits while a read-only layout is on screen.
+  const inspectedScoring = useInspectedAnalysis();
+  const { refuse: refuseEdit } = useReadOnlyHint();
   // "Export a copy": the way out when saving keeps failing. Until P8 moves the
   // Composer's pattern into the project it lives in localStorage, and the file
   // carries it too, so the toast says so (T57).
@@ -258,7 +265,8 @@ function PerformanceWorkspaceInner() {
     const preset = loadComposerPresets().find(p => p.id === presetId);
     setDraggingPreset(null);
     setDragPreview(null);
-    if (!preset) return;
+    // Nothing is placed on a read-only layout (S3.2).
+    if (!preset || refuseEdit()) return;
 
     // The workspace-level mirror state wins while a drag is active.
     const isMirrored = dragging ? dragging.isMirrored : isMirroredFromDrag;
@@ -298,7 +306,7 @@ function PerformanceWorkspaceInner() {
       boundingBox: placed.boundingBox,
     };
     composerDispatch({ type: 'PLACE_PRESET', instance });
-  }, [dispatch, transact, toast]);
+  }, [dispatch, transact, toast, refuseEdit]);
 
   // Resizable panel state
   const [leftWidth, setLeftWidth] = useState(LEFT_DEFAULT);
@@ -451,7 +459,7 @@ function PerformanceWorkspaceInner() {
 
   const handleRemoveInstance = useCallback((instanceId: string) => {
     const instance = composerWorkspace.placedInstances.find(i => i.id === instanceId);
-    if (!instance) return;
+    if (!instance || refuseEdit()) return;
 
     // Remove pads and finger constraints from grid
     for (const pad of instance.pads) {
@@ -463,12 +471,12 @@ function PerformanceWorkspaceInner() {
     }
 
     composerDispatch({ type: 'REMOVE_INSTANCE', instanceId });
-  }, [composerWorkspace.placedInstances, dispatch]);
+  }, [composerWorkspace.placedInstances, dispatch, refuseEdit]);
 
   // Handle in-place mirror of a placed instance
   const handleMirrorInstance = useCallback((instanceId: string) => {
     const instance = composerWorkspace.placedInstances.find(i => i.id === instanceId);
-    if (!instance) return;
+    if (!instance || refuseEdit()) return;
 
     // Mirror the pads
     const mirroredPads = mirrorPads(instance.pads, instance.boundingBox);
@@ -550,7 +558,7 @@ function PerformanceWorkspaceInner() {
       mirroredPads,
       boundingBox: instance.boundingBox,
     });
-  }, [composerWorkspace.placedInstances, dispatch, occupiedPads, state.workingLayout, state.activeLayout, state.soundStreams, toast]);
+  }, [composerWorkspace.placedInstances, dispatch, occupiedPads, state.workingLayout, state.activeLayout, state.soundStreams, toast, refuseEdit]);
 
   // Compute highlighted stream IDs for the selected instance (for timeline sync)
   const highlightedStreamIds = useMemo(() => {
@@ -566,21 +574,23 @@ function PerformanceWorkspaceInner() {
     return ids;
   }, [composerWorkspace.selectedInstanceId, composerWorkspace.placedInstances]);
 
+  // The layout on screen and its own plan (S3.2): a read-only inspected layout
+  // shows through layoutOverride with its plan from the cache.
+  const shown = resolveInspectedLayout(state);
   const displayedCandidate = getDisplayedCandidate(state);
   const assignments = displayedCandidate?.executionPlan.fingerAssignments;
-  const selectedCandidate = getSelectedCandidate(state);
 
-  // Active trace for Visual Debugger. Generate no longer selects a candidate,
-  // so with none previewed the trace shown is the top-ranked candidate's.
-  const activeTrace = state.iterationTrace
-    ?? (selectedCandidate ?? state.candidates[0])?.iterationTrace;
+  // The trace for the Visual Debugger follows the inspected candidate (the
+  // top-ranked one when none is inspected); its step-through replay shows on
+  // the grid, read-only too.
+  const activeTrace = getActiveTrace(state);
   const debuggerIteration = (activeTrace && state.moveHistoryIndex !== null)
     ? activeTrace[state.moveHistoryIndex]
     : undefined;
 
   const currentLayoutOverride = debuggerIteration
     ? debuggerIteration.stateBefore.layout
-    : selectedCandidate?.layout;
+    : shown.readOnly ? shown.layout : undefined;
 
   // Sounds but nothing on the grid: the state bar says how to place them (T44).
   const { importFiles } = useLaneImport();
@@ -666,7 +676,6 @@ function PerformanceWorkspaceInner() {
         saveStatus={saveStatus}
         onSave={saveNow}
         onExport={handleExport}
-        onVariantSaved={handleVariantSaved}
         onOpenShortcuts={openShortcuts}
       />
 
@@ -777,18 +786,24 @@ function PerformanceWorkspaceInner() {
           <div ref={gridRegionRef} data-testid="grid-region" className="relative flex-1 min-h-0 overflow-hidden">
             <InteractiveGrid
               padSize={padSize}
-              stateBarHint={armedStream
-                ? (
-                  <ArmedSoundHint
-                    name={armedStream.name}
-                    color={armedStream.color}
-                    placed={armedStreamPlaced}
-                    onStop={() => dispatch({ type: 'ARM_SOUND', payload: null })}
-                  />
-                )
-                : nothingPlaced
-                ? <NothingPlacedHint soundCount={state.soundStreams.length} onSuggest={() => dispatch({ type: 'SUGGEST_STARTING_LAYOUT' })} />
-                : undefined}
+              stateBar={(
+                <LayoutStateBar
+                  scoring={inspectedScoring}
+                  onVariantSaved={handleVariantSaved}
+                  hint={armedStream
+                    ? (
+                      <ArmedSoundHint
+                        name={armedStream.name}
+                        color={armedStream.color}
+                        placed={armedStreamPlaced}
+                        onStop={() => dispatch({ type: 'ARM_SOUND', payload: null })}
+                      />
+                    )
+                    : nothingPlaced
+                    ? <NothingPlacedHint soundCount={state.soundStreams.length} onSuggest={() => dispatch({ type: 'SUGGEST_STARTING_LAYOUT' })} />
+                    : undefined}
+                />
+              )}
               assignments={assignments}
               layoutOverride={currentLayoutOverride}
               selectedEventIndex={state.selectedEventIndex}

@@ -3,9 +3,11 @@
  *
  * Every displayed Score is the layout's Playability from the canonical
  * evaluator, served by getAnalysisForLayout and computed in the scoring worker,
- * so a greedy candidate reads the same number on its row before Preview and on
- * the Analysis panel after it. Before S3.1 the row showed the greedy
- * optimizer's own plan score and the draft the beam analysis's.
+ * so a greedy candidate reads the same number on its row, on the Analysis panel
+ * while it is inspected (S3.2: shown read-only after Generate, with its own
+ * plan from the cache) and as the draft after "Use as my draft". Before S3.1
+ * the row showed the greedy optimizer's own plan score and the draft the beam
+ * analysis's.
  *
  * Greedy runs one strategy (Natural Pose), as C3 does: "All strategies" blocks
  * the page for minutes.
@@ -15,7 +17,7 @@ import { test, expect } from './fixtures';
 import { openTestMidi1, suggestStartingLayout, waitForAnalysis, chooseMethod, generateAndWait } from './project';
 
 test.describe('S3.1 · one yardstick', () => {
-  test('a greedy candidate scores the same on its row and, after Preview, on the Analysis panel; scoring ran in the worker', async ({ page, pf }) => {
+  test('a greedy candidate scores the same on its row, inspected, and as the draft after "Use as my draft"; scoring ran in the worker', async ({ page, pf }) => {
     test.setTimeout(240_000);
     await openTestMidi1(page, pf);
     await suggestStartingLayout(page, pf);
@@ -32,17 +34,20 @@ test.describe('S3.1 · one yardstick', () => {
     await expect(candidateScore).toHaveAttribute('title', /^Playability · canonical evaluator · higher = easier/);
     const before = /(\d+)%/.exec(await candidateScore.innerText())![1]!;
 
-    // Preview (APPLY_GENERATION_TO_LAYOUT): the draft becomes the candidate's pads.
-    await row.getByRole('button', { name: 'Preview' }).click();
-    await expect.poll(async () => (await pf.call('status')).hasWorkingLayout).toBe(true);
-    await waitForAnalysis(pf);
+    // Candidate A (this row) is inspected after Generate: the Analysis tile reads its Score.
     const tile = page.getByTestId('analysis-score');
-    await expect(tile).toHaveText(`Score${before}%`);
+    await expect(page.getByTestId('state-bar')).toHaveAttribute('data-chip', 'Candidate A');
+    await expect(tile).toHaveText(`Score${before}%`, { timeout: 30_000 });
     await expect(tile).toHaveAttribute('title', /^Playability · canonical evaluator · higher = easier/);
+    const draftHash = await pf.call('layoutHash', 'working');
 
-    // The draft itself, with no candidate selected, reads the same number.
-    await pf.call('dispatch', { type: 'SELECT_CANDIDATE', payload: null });
-    await expect.poll(async () => (await pf.call('status')).analysisStale).toBe(false);
+    // Use as my draft (APPLY_GENERATION_TO_LAYOUT): the suggested draft differs
+    // from Active, so it asks; Replace. The draft is the candidate's pads now.
+    await page.getByTestId('state-bar-use').click();
+    await page.getByTestId('use-as-draft-replace').click();
+    await expect.poll(() => pf.call('layoutHash', 'working')).not.toBe(draftHash);
+    await expect(page.getByTestId('state-bar')).toHaveAttribute('data-role', 'working');
+    await waitForAnalysis(pf);
     await expect(tile).toHaveText(`Score${before}%`);
     await expect(candidateScore).toHaveText(`Score: ${before}%`);
 

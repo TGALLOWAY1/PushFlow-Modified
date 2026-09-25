@@ -9,7 +9,8 @@
  * - Escape steps back one layer: the armed Sound, then the pad selection, then
  *   the event (an open overlay closes itself first);
  * - Delete/Backspace take the selected pad's Sound off the grid, with Undo;
- *   with no pad selected they do nothing (T28);
+ *   with no pad selected they do nothing (T28), and on a read-only layout
+ *   they say how to edit it (S3.2);
  * - '?' opens the shortcut sheet.
  */
 
@@ -18,6 +19,7 @@ import { useProject } from '../state/ProjectContext';
 import { getDisplayedExecutionPlan, getDisplayedLayout, isPadLocked } from '../state/projectState';
 import { useInputHandler } from '../input/inputRegistry';
 import { useRemovePadWithUndo } from './useRemovePadWithUndo';
+import { useReadOnlyHint } from './useReadOnlyHint';
 import { useToast } from '../components/shared/Toast';
 
 export interface KeyboardShortcutOptions {
@@ -30,6 +32,7 @@ export interface KeyboardShortcutOptions {
 export function useKeyboardShortcuts({ onSave, onOpenShortcuts }: KeyboardShortcutOptions = {}) {
   const { state, dispatch, undo, redo } = useProject();
   const removePad = useRemovePadWithUndo();
+  const { refuse: refuseEdit } = useReadOnlyHint();
   const toast = useToast();
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -88,6 +91,7 @@ export function useKeyboardShortcuts({ onSave, onOpenShortcuts }: KeyboardShortc
 
   useInputHandler('delete', () => {
     const s = stateRef.current;
+    if (s.selectedPadKey !== null && refuseEdit()) return;
     const padKey = s.selectedPadKey;
     const layout = getDisplayedLayout(s);
     const voice = padKey ? layout?.padToVoice[padKey] : undefined;

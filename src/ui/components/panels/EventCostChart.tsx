@@ -17,11 +17,13 @@ import { type FingerAssignment } from '../../../types/executionPlan';
 import { groupIntoMoments, summarizeMomentCost } from '@/engine';
 import { FACTOR_KEYS, FACTOR_META, factorsFromBreakdown, type FactorKey } from '../../analysis/factorMeta';
 import { formatBarBeat, formatSeconds } from '../../../utils/musicalTime';
+import { type LayoutSubject } from '../../state/layoutSubject';
+import { SubjectChip } from '../shared/SubjectChip';
 
 interface EventCostChartProps {
   fingerAssignments: FingerAssignment[];
-  /** Which candidate is being shown (for display context) */
-  candidateLabel?: string;
+  /** The layout whose plan this is (S3.2), named in the header and the enlarged dialog. */
+  subject?: LayoutSubject;
   /** Currently selected event index (highlights the corresponding bar) */
   selectedEventIndex?: number | null;
   /** Callback when a bar is clicked */
@@ -43,7 +45,7 @@ interface EventBar {
   total: number;
 }
 
-export function EventCostChart({ fingerAssignments, candidateLabel, selectedEventIndex, onEventClick, tempo = 120 }: EventCostChartProps) {
+export function EventCostChart({ fingerAssignments, subject, selectedEventIndex, onEventClick, tempo = 120 }: EventCostChartProps) {
   const [enabledLayers, setEnabledLayers] = useState<Set<FactorKey>>(
     new Set(COST_LAYERS.map(l => l.key))
   );
@@ -199,11 +201,7 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
           </button>
         </div>
 
-        {candidateLabel && (
-          <div className="text-pf-xs text-[var(--text-tertiary)]">
-            Showing: {candidateLabel}
-          </div>
-        )}
+        {subject && <SubjectChip subject={subject} prefix="Showing" testId="chart-subject" />}
 
         {/* Filter toggles */}
         <div className="flex flex-wrap gap-1.5">
@@ -252,10 +250,12 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
           className="fixed inset-8 z-[61] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-2xl flex flex-col overflow-hidden"
         >
             <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)]">
-              <h3 id={enlargedTitleId} className="text-pf-md font-medium text-[var(--text-primary)]">
-                Event difficulty chart
-                {candidateLabel && <span className="text-[var(--text-secondary)] ml-2">({candidateLabel})</span>}
-              </h3>
+              <div className="flex items-center gap-3 min-w-0">
+                <h3 id={enlargedTitleId} className="text-pf-md font-medium text-[var(--text-primary)] whitespace-nowrap">
+                  Event difficulty chart
+                </h3>
+                {subject && <SubjectChip subject={subject} testId="chart-dialog-subject" />}
+              </div>
               <button
                 className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-lg"
                 onClick={closeEnlarged}

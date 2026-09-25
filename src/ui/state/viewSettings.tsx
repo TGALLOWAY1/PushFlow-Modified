@@ -28,6 +28,12 @@ export interface GridLabelSettings {
   showSoundNames: boolean;
   /** Color pads by assigned hand (left/right) instead of voice color */
   showHandColors: boolean;
+  /**
+   * Arrows from the selected event's pads to the next event's. Its toggle
+   * lived beside the transition preview above the grid until S3.2 gave that
+   * slot to the layout-state bar.
+   */
+  showTransitionArrows: boolean;
 }
 
 /**
@@ -45,6 +51,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
     showFingerAssignment: true,
     showSoundNames: true,
     showHandColors: false,
+    showTransitionArrows: true,
   },
 };
 

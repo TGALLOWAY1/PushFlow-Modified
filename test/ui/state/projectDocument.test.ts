@@ -26,12 +26,13 @@ import {
   validateAndMigrateRaw,
 } from '../../../src/ui/persistence/projectSerializer';
 import { deepEqual } from '../../../src/utils/deepEqual';
+import { type CandidateSolution } from '../../../src/types/candidateSolution';
 import { importTestMidi1 } from '../../helpers/testMidi1';
 
 /** Session fields, as listed in the tracker's S1a.1 field table. */
 const SESSION_FIELDS = [
   'updatedAt', 'lastOpenedAt',
-  'analysisResult', 'candidates', 'selectedCandidateId', 'generationSummary',
+  'analysisResult', 'candidates', 'inspectedLayout', 'inspectedAnalysis', 'generationSummary',
   'engineConfig', 'optimizerMethod', 'greedyStrategy', 'costToggles',
   'selectedEventIndex', 'selectedMomentIndex', 'selectedStreamId', 'armedStreamId', 'selectedPadKey', 'compareCandidateId',
   'isProcessing', 'error', 'analysisStale', 'manualCostResult',
@@ -106,13 +107,16 @@ describe('restoreDocument', () => {
     expect(restored.updatedAt >= s.updatedAt).toBe(true);
   });
 
-  it('clears a candidate selection when the layouts change, and the event selection when the Sounds change', async () => {
+  it('ends an inspection when the layouts change (S3.2), and the event selection when the Sounds change', async () => {
     const before = await importTestMidi1();
     const placed = projectReducer(before, { type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey: '3,3', stream: before.soundStreams[0] } });
-    const selected: ProjectState = { ...placed, selectedCandidateId: 'cand-a', selectedEventIndex: 4, selectedMomentIndex: 2 };
+    const candidate = { id: 'cand-a', layout: { ...placed.workingLayout!, id: 'cand-a-layout', padToVoice: {} } } as unknown as CandidateSolution;
+    const inspected = { kind: 'candidate' as const, id: 'cand-a' };
+    const selected: ProjectState = { ...placed, candidates: [candidate], inspectedLayout: inspected, selectedEventIndex: 4, selectedMomentIndex: 2 };
 
+    // Undo shows what it undid: the layout edits go to.
     const layoutOnly = restoreDocument(selected, pickDocument(before));
-    expect({ c: layoutOnly.selectedCandidateId, e: layoutOnly.selectedEventIndex, m: layoutOnly.selectedMomentIndex })
+    expect({ c: layoutOnly.inspectedLayout, e: layoutOnly.selectedEventIndex, m: layoutOnly.selectedMomentIndex })
       .toEqual({ c: null, e: 4, m: 2 });
 
     const empty = projectReducer(before, { type: 'RESET' });
@@ -120,7 +124,13 @@ describe('restoreDocument', () => {
     expect({ e: soundsToo.selectedEventIndex, m: soundsToo.selectedMomentIndex }).toEqual({ e: null, m: null });
 
     const unchanged = restoreDocument(selected, pickDocument(selected));
-    expect({ c: unchanged.selectedCandidateId, e: unchanged.selectedEventIndex }).toEqual({ c: 'cand-a', e: 4 });
+    expect({ c: unchanged.inspectedLayout, e: unchanged.selectedEventIndex }).toEqual({ c: inspected, e: 4 });
+
+    // An inspected variant the restored document no longer has is not inspected either.
+    const saved = projectReducer(placed, { type: 'SAVE_AS_VARIANT', payload: { name: 'Kept', source: 'working' } });
+    const onVariant = projectReducer(saved, { type: 'INSPECT_LAYOUT', payload: { kind: 'variant', id: saved.savedVariants[0]!.id } });
+    expect(onVariant.inspectedLayout?.kind).toBe('variant');
+    expect(restoreDocument(onVariant, pickDocument(placed)).inspectedLayout).toBeNull();
   });
 });
 

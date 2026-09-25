@@ -38,7 +38,8 @@ describe('token colours take opacity modifiers (T38)', () => {
   });
 
   it('compiles Save Variant\'s fill and border', async () => {
-    const css = await compile([path.join(ROOT, 'src/ui/components/workspace/WorkspaceToolbar.tsx')]);
+    // Save variant moved from the toolbar to the layout-state bar in S3.2.
+    const css = await compile([path.join(ROOT, 'src/ui/components/workspace/LayoutStateBar.tsx')]);
     expect(css).toContain('.bg-accent-primary\\/80');
     expect(css).toContain('color-mix(in srgb, var(--accent-primary) calc(0.8 * 100%), transparent)');
     expect(css).toContain('.border-accent-primary\\/30');

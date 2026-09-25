@@ -12,6 +12,8 @@ import { InputTableSections } from '../shared/ShortcutSheet';
 import { CONSTRAINT_RULE_NAMES, OPTIMIZER_METHOD_KEYS, OPTIMIZER_METHOD_LABELS, PLAN_SCORE_WEIGHTS } from '@/engine';
 import { VERDICT_TIERS } from '../../analysis/verdictTiers';
 import { FACTOR_KEYS, FACTOR_META, type FactorKey } from '../../analysis/factorMeta';
+import { ROLE_META, ROLE_ORDER } from '../../state/layoutSubject';
+import { RoleChip } from '../shared/SubjectChip';
 
 interface LearnMoreModalProps {
   open: boolean;
@@ -56,8 +58,8 @@ const WORKFLOW_STEPS = [
   { step: '1', title: 'Import', description: 'Import a MIDI file (the Library starts a project from one) or build a pattern in the Composer' },
   { step: '2', title: 'Place', description: 'Click a Sound, then a pad (or drag it), or Suggest a starting layout' },
   { step: '3', title: 'Analyze', description: 'Analysis updates automatically as you place Sounds: costs and difficulty per event' },
-  { step: '4', title: 'Generate', description: 'Generate proposes alternative layouts; your draft stays as it is' },
-  { step: '5', title: 'Compare', description: 'Compare candidates side by side' },
+  { step: '4', title: 'Generate', description: 'Generate proposes alternative layouts and shows candidate A read-only; your draft stays as it is' },
+  { step: '5', title: 'Inspect and compare', description: 'Inspect any layout on the grid without changing your draft, or Compare two side by side. Use as my draft to edit one' },
   { step: '6', title: 'Keep', description: 'Save variant keeps a layout under a name, without changing the Active Layout' },
   { step: '7', title: 'Promote', description: 'Promote makes the layout you choose the new Active Layout' },
 ];
@@ -315,7 +317,8 @@ function OverviewInfographic() {
           <p>
             <strong className="text-[var(--text-primary)]">What are candidates?</strong> Each candidate is a complete layout + execution plan proposal.
             PushFlow generates multiple alternatives so you can compare tradeoffs. Generating never changes your layout:
-            Preview a candidate to try it. If that replaces a draft you made, the draft is kept under Recovered drafts.
+            candidate A is shown read-only under a violet bar, and Inspect shows any other one. Looking never writes your draft;
+            Use as my draft makes a candidate your draft (asking first when you have one), and Back to my draft returns to it.
           </p>
           <p>
             <strong className="text-[var(--text-primary)]">What is the Greedy optimizer?</strong> It builds a layout step by step, then improves it
@@ -428,6 +431,32 @@ function WorkflowSection() {
           </div>
         ))}
       </div>
+      <LayoutRolesSection />
+    </div>
+  );
+}
+
+/**
+ * The bar above the grid (S3.2): which layout is on screen, from ROLE_META,
+ * the list its chips are drawn from, so this text can't drift from them.
+ */
+function LayoutRolesSection() {
+  return (
+    <div data-testid="learn-more-roles" className="pt-4 space-y-2">
+      <h3 className="text-pf-base font-semibold text-[var(--text-primary)]">Which layout is on screen</h3>
+      <p className="text-pf-sm text-[var(--text-tertiary)]">
+        The bar above the grid names the layout the grid, the timeline and the Analysis and Events panels describe, how many
+        pads it differs from the Active Layout by, and whether its analysis is up to date. Only your draft can be edited:
+        anything else is shown read-only, and an edit on it says &ldquo;Use as my draft to edit&rdquo;.
+      </p>
+      <ul className="space-y-1.5">
+        {ROLE_ORDER.map(role => (
+          <li key={role} className="flex items-start gap-2 text-pf-sm text-[var(--text-secondary)]">
+            <RoleChip role={role} text={ROLE_META[role].label} className="mt-0.5" />
+            <span>{ROLE_META[role].description}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

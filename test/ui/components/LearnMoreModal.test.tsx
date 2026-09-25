@@ -8,7 +8,9 @@
  * (CONSTRAINT_RULE_NAMES) and every optimization method (OPTIMIZER_METHOD_KEYS,
  * which must all be registered). It renders the verdict tiers from the same list
  * FeasibilityBadge uses (VERDICT_TIERS), and the per-event cost with the same
- * factor labels as the Selected event card (FACTOR_META).
+ * factor labels as the Selected event card (FACTOR_META). The App Flow tab
+ * names the layout roles from the list the layout-state bar's chips use
+ * (ROLE_META, S3.2), and says looking never writes your draft.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -25,6 +27,8 @@ import { PLAYABILITY_TOOLTIP } from '../../../src/ui/analysis/planScore';
 import { VERDICT_TIERS } from '../../../src/ui/analysis/verdictTiers';
 import { FACTOR_KEYS, FACTOR_META } from '../../../src/ui/analysis/factorMeta';
 import { FeasibilityBadge } from '../../../src/ui/components/panels/CostBreakdownBars';
+import { ROLE_META, ROLE_ORDER } from '../../../src/ui/state/layoutSubject';
+import { USE_AS_DRAFT_HINT } from '../../../src/ui/hooks/useReadOnlyHint';
 
 afterEach(cleanup);
 
@@ -139,5 +143,34 @@ describe('Learn More sync (P1b-8)', () => {
     expect(text).toContain('counted once for the event, never once per note');
     for (const key of FACTOR_KEYS) expect(text).toContain(FACTOR_META[key].label);
     expect(text).toContain('Unplayable');
+  });
+});
+
+describe('Learn More · which layout is on screen (S3.2)', () => {
+  it('lists every role the layout-state bar can show, from the list its chips use, in order', () => {
+    openTab('App Flow');
+    const section = screen.getByTestId('learn-more-roles');
+    const chips = [...section.querySelectorAll('[data-testid="role-chip"]')];
+    expect(chips.map(chip => chip.getAttribute('data-role'))).toEqual([...ROLE_ORDER]);
+    chips.forEach((chip, i) => {
+      const meta = ROLE_META[ROLE_ORDER[i]!];
+      expect(chip.textContent).toBe(meta.label);
+      expect(chip.parentElement?.textContent).toContain(meta.description);
+    });
+    const text = section.textContent ?? '';
+    expect(text).toContain('Only your draft can be edited');
+    expect(text).toContain(`an edit on it says “${USE_AS_DRAFT_HINT}”`);
+  });
+
+  it('says Generate shows candidate A read-only and Inspect never changes your draft', () => {
+    const flow = openTab('App Flow');
+    expect(flow).toContain('Generate proposes alternative layouts and shows candidate A read-only; your draft stays as it is');
+    expect(flow).toContain('Inspect any layout on the grid without changing your draft');
+    expect(flow).toContain('Use as my draft to edit one');
+    cleanup();
+    const overview = openTab('Overview');
+    expect(overview).toContain('Generating never changes your layout');
+    expect(overview).toContain('Looking never writes your draft');
+    expect(overview).toContain('Back to my draft returns to it');
   });
 });

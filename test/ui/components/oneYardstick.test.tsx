@@ -4,8 +4,10 @@
  * on TEST MIDI 1:
  *  1. getAnalysisForLayout returns the same Playability for a layout on the
  *     working-layout path (the draft's auto-analysis) and on the candidate path.
- *  2. A greedy candidate applied as the draft through today's Preview scores the
- *     same before and after, and the variant cards and Compare read that value.
+ *  2. A greedy candidate scores the same on its row, inspected (S3.2: read-only,
+ *     with its own plan from the cache) and applied as the draft through "Use as
+ *     my draft" (which replaced Preview in S3.2), and the variant cards and
+ *     Compare read that value.
  *
  * The busiest Sound has a finger preference and the candidate moves it, so the
  * candidate's own layout carries a preference keyed to the pad it left: the
@@ -20,7 +22,9 @@ import { ProjectProvider, useProject } from '../../../src/ui/state/ProjectContex
 import { LayoutOptionsPanel } from '../../../src/ui/components/panels/LayoutOptionsPanel';
 import { ActiveLayoutSummary } from '../../../src/ui/components/panels/ActiveLayoutSummary';
 import { CompareModal } from '../../../src/ui/components/panels/CompareModal';
+import { LayoutStateBar } from '../../../src/ui/components/workspace/LayoutStateBar';
 import { useAutoAnalysis } from '../../../src/ui/hooks/useAutoAnalysis';
+import { useInspectedAnalysis } from '../../../src/ui/hooks/useInspectedAnalysis';
 import { analyseLayoutCached, analysisKeyFor, peekLayoutAnalysis } from '../../../src/ui/analysis/layoutAnalysis';
 import { analysisCacheKey, clearAnalysisCache } from '../../../src/ui/analysis/analysisCache';
 import * as analyze from '../../../src/ui/analysis/analyzeLayout';
@@ -41,6 +45,11 @@ function Spy() {
 }
 function AutoAnalysis() {
   useAutoAnalysis();
+  return null;
+}
+/** The workspace's mirror of the inspected layout's plan (S3.2). */
+function InspectedAnalysis() {
+  useInspectedAnalysis();
   return null;
 }
 
@@ -112,13 +121,18 @@ describe('S3.1 · one yardstick', () => {
     solves.mockRestore();
   }, 60_000);
 
-  it('check 2: Preview keeps the candidate’s score, and the variant card and Compare read it', async () => {
-    const { state, candidate } = await projectWithGreedyCandidate();
+  it('check 2: inspecting and "Use as my draft" keep the candidate’s score, and the variant card and Compare read it', async () => {
+    const { state: generated, candidate } = await projectWithGreedyCandidate();
+    // Back to the draft first (Generate shows candidate A read-only), so Inspect is the row's own doing.
+    const state = projectReducer(generated, { type: 'INSPECT_LAYOUT', payload: null });
+    const draftBefore = hashLayout(state.workingLayout!);
     const { rerender } = render(
       <ToastProvider>
         <ProjectProvider initialState={state}>
           <Spy />
           <AutoAnalysis />
+          <InspectedAnalysis />
+          <LayoutStateBar scoring={{ status: 'empty' }} />
           <ActiveLayoutSummary />
           <LayoutOptionsPanel selectedForCompare={new Set()} onToggleCompare={() => {}} onCompare={() => {}} />
         </ProjectProvider>
@@ -131,19 +145,25 @@ describe('S3.1 · one yardstick', () => {
     const before = /(\d+)%/.exec(within(row).getByTestId('candidate-score').textContent!)![1]!;
     expect(within(row).getByTestId('candidate-score').getAttribute('title')).toContain('Playability · canonical evaluator · higher = easier');
 
-    // Preview: APPLY_GENERATION_TO_LAYOUT, as the row's button does today.
-    fireEvent.click(within(row).getByRole('button', { name: 'Preview' }));
-    expect(latest.selectedCandidateId).toBe(candidate.id);
+    // Inspect: the candidate on screen, read-only, with its own plan; nothing written.
+    fireEvent.click(within(row).getByRole('button', { name: 'Inspect' }));
+    expect(latest.inspectedLayout).toEqual({ kind: 'candidate', id: candidate.id });
+    expect(hashLayout(latest.workingLayout!)).toBe(draftBefore);
+    await waitFor(() => expect(screen.getByTestId('analysis-score').textContent).toBe(`Score${before}%`), { timeout: 10_000 });
+
+    // Use as my draft: the draft differs from Active (the finger preference made it), so it asks; Replace.
+    fireEvent.click(screen.getByRole('button', { name: 'Use as my draft' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Replace (undoable)' }));
+    expect(latest.inspectedLayout).toBeNull();
     const draft = latest.workingLayout!;
+    expect(hashLayout(draft)).not.toBe(draftBefore);
     await waitFor(() => {
       expect(latest.analysisStale).toBe(false);
       expect(latest.analysisResult && checkPlanFreshness(latest.analysisResult.executionPlan, latest.workingLayout!).isFresh).toBe(true);
     }, { timeout: 10_000 });
     expect(latest.workingLayout).toBe(draft);
 
-    // After: the Analysis Score tile, for the previewed candidate and then for the draft itself.
-    expect(screen.getByTestId('analysis-score').textContent).toBe(`Score${before}%`);
-    await act(async () => { dispatch({ type: 'SELECT_CANDIDATE', payload: null }); });
+    // After: the Analysis Score tile for the draft reads the row's number.
     expect(screen.getByTestId('analysis-score').textContent).toBe(`Score${before}%`);
     expect(screen.getByTestId('analysis-score').getAttribute('title')).toContain('Playability · canonical evaluator');
 
@@ -161,6 +181,8 @@ describe('S3.1 · one yardstick', () => {
         <ProjectProvider initialState={state}>
           <Spy />
           <AutoAnalysis />
+          <InspectedAnalysis />
+          <LayoutStateBar scoring={{ status: 'empty' }} />
           <ActiveLayoutSummary />
           <LayoutOptionsPanel selectedForCompare={new Set()} onToggleCompare={() => {}} onCompare={() => {}} />
           <CompareModal candidateIds={[ACTIVE_COMPARE_ID, candidate.id]} onClose={() => {}} />

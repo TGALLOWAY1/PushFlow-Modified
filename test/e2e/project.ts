@@ -95,6 +95,15 @@ export async function generateAndWait(page: Page, pf: PfHandle, timeout = 120_00
   }, { timeout }).toBe(true);
 }
 
+/**
+ * After Generate the grid shows candidate A read-only (S3.2, decision Q4):
+ * "Back to my draft" in the state bar shows the layout edits go to again.
+ */
+export async function backToMyDraft(page: Page): Promise<void> {
+  await page.getByTestId('state-bar-back').click();
+  await expect(page.getByTestId('state-bar')).not.toHaveAttribute('data-read-only', 'true');
+}
+
 /** The layouts and Sounds of a project, reduced to what a save must carry. */
 type SavedShape = { sounds: number; active: string[]; working: string[] | null; variants: number; recovered: number };
 

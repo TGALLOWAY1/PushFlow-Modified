@@ -177,7 +177,8 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
     // and mark stale so it is recomputed against the restored layout.
     analysisResult: null,
     candidates: [],
-    selectedCandidateId: null,
+    inspectedLayout: null,
+    inspectedAnalysis: null,
 
     // Ephemeral — always reset
     selectedEventIndex: null,

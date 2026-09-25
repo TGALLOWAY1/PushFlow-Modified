@@ -21,8 +21,10 @@ import type { PfHandle } from './fixtures';
 const compareButton = (page: Page) => page.getByTestId('toolbar-compare');
 
 /**
- * Suggest → Promote (so Active is analysed) → Generate with Beam → Preview #1,
- * which leaves a differing draft (Generate itself only proposes, from S1a.2).
+ * Suggest → Promote (so Active is analysed) → Generate with Beam, which shows
+ * candidate A read-only (S3.2) → "Use as my draft", which leaves a differing
+ * draft (Generate itself only proposes, from S1a.2; there is no draft yet, so
+ * it applies at once).
  * Returns Active's standalone score: its Playability on the Analysis panel
  * (S3.1: every displayed score is the layout's Playability, not a plan's own).
  */
@@ -39,8 +41,9 @@ async function activeThenCandidates(page: Page, pf: PfHandle): Promise<number> {
   const standalone = Number(/(\d+)%/.exec(await tile.innerText())![1]);
   await chooseMethod(page, 'Beam');
   await generateAndWait(page, pf);
-  await page.getByTestId('candidate-row').first().getByRole('button', { name: 'Preview' }).click();
-  expect((await pf.call('state')).workingLayout, 'Preview left a draft that differs from Active').not.toBeNull();
+  await expect(page.getByTestId('state-bar')).toHaveAttribute('data-chip', 'Candidate A');
+  await page.getByTestId('state-bar-use').click();
+  await expect.poll(async () => (await pf.call('status')).hasWorkingLayout, 'Use as my draft left a draft that differs from Active').toBe(true);
   // Let the draft's own analysis land, as it would before a user opens Compare.
   await waitForAnalysis(pf);
   return standalone;

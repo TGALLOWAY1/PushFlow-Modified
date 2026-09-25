@@ -109,6 +109,13 @@
   --status-bad-bg: rgba(239, 68, 68, 0.10);
   --status-bad-border: rgba(239, 68, 68, 0.30);
 
+  /* --- Layout roles (ROLE_META, src/ui/state/layoutSubject.ts): the state bar
+         and every SubjectChip; always paired with the role's icon --- */
+  --role-active: #34d399;
+  --role-working: #fbbf24;
+  --role-candidate: #a78bfa;
+  --role-variant: #38bdf8;
+
   /* --- Cost factors (FACTOR_META, src/ui/analysis/factorMeta.ts) --- */
   --factor-transition: #f97316;
   --factor-grip: #a855f7;

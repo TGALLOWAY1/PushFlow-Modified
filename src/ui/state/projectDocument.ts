@@ -8,7 +8,7 @@
  * ProjectDocument and ProjectSession types in projectState.ts are the other half.
  */
 
-import { type ProjectDocument, type ProjectState } from './projectState';
+import { type ProjectDocument, type ProjectState, resolveInspectedLayout } from './projectState';
 import { type CandidateSolution } from '../../types/candidateSolution';
 import { deepEqual } from '../../utils/deepEqual';
 
@@ -73,10 +73,11 @@ export function documentChanged(a: ProjectDocument, b: ProjectDocument): boolean
  * into the list.
  *
  * Selections that would now describe something else are cleared, as the
- * edit reducers do: a selected candidate and the selected pad when the layouts
- * change (the grid shows the restored layout, so the panels must too), the
- * event selection when the Sounds change (its index may point at a different
- * event), and the armed Sound when it is gone.
+ * edit reducers do: the inspected layout and the selected pad when the layouts
+ * change (the grid shows the restored layout, so Undo is seen to act and the
+ * panels follow; S3.2), an inspected variant or recovered draft the step
+ * removed, the event selection when the Sounds change (its index may point at
+ * a different event), and the armed Sound when it is gone.
  */
 export function restoreDocument(
   state: ProjectState,
@@ -94,12 +95,14 @@ export function restoreDocument(
   const soundsChanged = restored.soundStreams !== state.soundStreams;
   const returnedCandidates = (returned as CandidateSolution[] | undefined)
     ?.filter(c => !restored.candidates.some(existing => existing.id === c.id)) ?? [];
+  const inspectionGone = !!state.inspectedLayout && !resolveInspectedLayout(restored).readOnly;
   return {
     ...restored,
     ...(returnedCandidates.length > 0 ? { candidates: [...restored.candidates, ...returnedCandidates] } : {}),
     updatedAt: new Date().toISOString(),
     analysisStale: true,
-    ...(layoutsChanged ? { selectedCandidateId: null, selectedPadKey: null } : {}),
+    ...(layoutsChanged || inspectionGone ? { inspectedLayout: null } : {}),
+    ...(layoutsChanged ? { selectedPadKey: null } : {}),
     ...(soundsChanged ? { selectedEventIndex: null, selectedMomentIndex: null } : {}),
     ...(soundsChanged && !restored.soundStreams.some(s => s.id === state.armedStreamId) ? { armedStreamId: null } : {}),
   };

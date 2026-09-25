@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useProject } from '../../state/ProjectContext';
-import { getDisplayedExecutionPlan, getDisplayedLayout, getSelectedCandidate } from '../../state/projectState';
+import { getDisplayedExecutionPlan, resolveInspectedLayout } from '../../state/projectState';
+import { inspectedSubject } from '../../state/layoutSubject';
+import { buildSelectedTransitionModel } from '../../analysis/selectionModel';
+import { SubjectChip } from '../shared/SubjectChip';
 import { CostBreakdownBars, FeasibilityBadge } from './CostBreakdownBars';
 import { SelectedEventCard } from './SelectedEventCard';
 import { findSelectedMoment } from '../../analysis/selectedMoment';
@@ -15,9 +18,16 @@ import { type CostToggles } from '../../../types/costToggles';
 export function PerformanceCostsPanel() {
   const { state, dispatch } = useProject();
   const [chartOpen, setChartOpen] = useState(false);
+  // The layout on screen (S3.2), its own plan, and the subject every panel names.
+  const shown = resolveInspectedLayout(state);
+  const subject = inspectedSubject(state);
   const currentPlan = getDisplayedExecutionPlan(state);
   // The Score is the Playability of the layout the grid shows (S3.1).
-  const layoutScore = useLayoutAnalysis(getSelectedCandidate(state)?.layout ?? getDisplayedLayout(state));
+  const layoutScore = useLayoutAnalysis(shown.layout);
+  const transition = useMemo(
+    () => buildSelectedTransitionModel(currentPlan?.fingerAssignments ?? null, state.selectedEventIndex),
+    [currentPlan, state.selectedEventIndex],
+  );
 
   // The selected event's whole moment, costed once (never summed per note).
   const selectedMoment = useMemo(
@@ -28,19 +38,20 @@ export function PerformanceCostsPanel() {
   // computed never relabels an old verdict; the live scope when there is no plan.
   const scope = analysisScopeLine(
     state.soundStreams,
-    getDisplayedLayout(state),
+    shown.layout,
     currentPlan ? planSoundIds(currentPlan.fingerAssignments) : undefined,
   );
-  const liveScope = analysisScopeLine(state.soundStreams, getDisplayedLayout(state));
+  const liveScope = analysisScopeLine(state.soundStreams, shown.layout);
   // Events are moments for both solvers (T23).
   const counts = useMemo(() => momentDifficultyCounts(currentPlan?.fingerAssignments), [currentPlan]);
 
   if (!currentPlan && !state.isProcessing) {
     return (
       <div className="px-3 py-4 space-y-2">
+        <SubjectChip subject={subject} testId="costs-subject" />
         {state.soundStreams.length > 0 && <FeasibilityBadge scope={scope} />}
         <div className="text-pf-xs text-[var(--text-tertiary)] text-center">
-          No cost analysis yet. Generate or preview a layout to inspect playability.
+          No cost analysis yet. Place Sounds to analyse them, or Generate and inspect a candidate.
         </div>
       </div>
     );
@@ -48,13 +59,15 @@ export function PerformanceCostsPanel() {
 
   return (
     <div className="flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-subtle)]">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-[var(--border-subtle)]">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <h3 className="section-header">Cost Analysis</h3>
-          {state.analysisStale && currentPlan && (
+          {state.analysisStale && !shown.readOnly && currentPlan && (
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" title="Analysis outdated" />
           )}
         </div>
+        {/* What these costs describe (S3.2). */}
+        <SubjectChip subject={subject} testId="costs-subject" className="justify-end" />
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
@@ -160,7 +173,7 @@ export function PerformanceCostsPanel() {
             />
 
             {selectedMoment && (
-              <SelectedEventCard selected={selectedMoment} tempo={state.tempo} scope={scope} />
+              <SelectedEventCard selected={selectedMoment} tempo={state.tempo} scope={scope} subject={subject} transition={transition} />
             )}
 
             {currentPlan.fingerAssignments.length > 0 && (
@@ -175,6 +188,7 @@ export function PerformanceCostsPanel() {
                 {chartOpen && (
                   <EventCostChart
                     fingerAssignments={currentPlan.fingerAssignments}
+                    subject={subject}
                     tempo={state.tempo}
                     selectedEventIndex={state.selectedEventIndex}
                     onEventClick={(idx) => dispatch({ type: 'SELECT_EVENT', payload: idx })}

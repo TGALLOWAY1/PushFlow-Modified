@@ -68,9 +68,10 @@ test.describe('S2.2b · readability floor', () => {
     expect(s.soundStreams).toHaveLength(7);
     expect(await gridAndTimelineAudit(page), 'every grid label on').toEqual([]);
 
-    // A selected moment: its fingers on the pads and the transition preview.
+    // A selected moment: its fingers on the pads (the transition preview is in
+    // the selected-event card since S3.2).
     await selectMoment(page, 3);
-    await expect(page.getByTestId('state-bar-slot')).toContainText('Transition preview');
+    await expect(page.getByTestId('transition-preview').first()).toContainText('Transition preview');
     expect(await gridAndTimelineAudit(page), 'moment selected').toEqual([]);
   });
 

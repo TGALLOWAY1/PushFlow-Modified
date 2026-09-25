@@ -22,6 +22,7 @@ import {
   getAnalysisForLayout,
   getDisplayedCandidate,
   getDisplayedLayout,
+  getInspectedLayout,
   getActiveStreams,
 } from '../state/projectState';
 import { classifyOptimizationDifficulty } from '../../engine/evaluation/difficultyScoring';
@@ -238,7 +239,8 @@ export function useAutoAnalysis() {
 
   // Calculate Cost: evaluate current layout + assignment with given toggles
   const calculateCost = useCallback(async (costToggles: CostToggles) => {
-    const layout = getDisplayedLayout(state);
+    // The layout on screen (S3.2), so its plan and pads belong together.
+    const layout = getInspectedLayout(state);
     const displayedCandidate = getDisplayedCandidate(state)
       ?? getAnalysisForLayout(state, layout);
     if (!layout || Object.keys(layout.padToVoice).length === 0) {

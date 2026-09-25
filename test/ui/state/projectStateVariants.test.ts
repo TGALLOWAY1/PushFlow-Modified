@@ -54,7 +54,7 @@ describe('projectReducer saved variant loading', () => {
   it('clears candidate-driven inspection state when loading a saved variant', () => {
     const state = createEmptyProjectState();
     state.savedVariants = [makeVariant()];
-    state.selectedCandidateId = 'candidate-1';
+    state.inspectedLayout = { kind: 'candidate', id: 'candidate-1' };
     state.compareCandidateId = 'candidate-2';
     state.selectedEventIndex = 4;
     state.selectedMomentIndex = 2;
@@ -65,7 +65,7 @@ describe('projectReducer saved variant loading', () => {
       payload: { variantId: 'variant-1' },
     });
 
-    expect(next.selectedCandidateId).toBeNull();
+    expect(next.inspectedLayout).toBeNull();
     expect(next.compareCandidateId).toBeNull();
     expect(next.selectedEventIndex).toBeNull();
     expect(next.selectedMomentIndex).toBeNull();

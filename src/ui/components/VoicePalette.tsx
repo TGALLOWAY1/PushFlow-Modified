@@ -12,7 +12,7 @@ import { useProject } from '../state/ProjectContext';
 import { useInputHandler } from '../input/inputRegistry';
 import { gmDrumName, gmDrumRenames } from '../../utils/gmDrumMap';
 import { DisabledReason, useDisabledReason } from './shared/DisabledReason';
-import { getDisplayedCandidate, getDisplayedLayout, type SoundStream } from '../state/projectState';
+import { getDisplayedCandidate, getInspectedLayout, type SoundStream } from '../state/projectState';
 import type { LaneGroup } from '../../types/performanceLane';
 import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
 import { LOCKED_SOUND_DRAG_TYPE } from './dragTypes';
@@ -34,7 +34,9 @@ const COLOR_PALETTE = [
 
 export function VoicePalette() {
   const { state, dispatch, transact } = useProject();
-  const layout = getDisplayedLayout(state);
+  // Where each Sound is, and its suggested finger, on the layout on screen
+  // (S3.2): an inspected candidate's pads, not the draft's behind it.
+  const layout = getInspectedLayout(state);
   const displayedCandidate = getDisplayedCandidate(state);
   const [selectedStreamIds, setSelectedStreamIds] = useState<Set<string>>(new Set());
   const soundStreamLookup = useMemo(

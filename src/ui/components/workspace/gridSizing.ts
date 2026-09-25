@@ -22,7 +22,12 @@ export const COLUMN_LABELS_HEIGHT = 16;
 export const ZONE_LABELS_HEIGHT = 20;
 /** The hardware frame around the matrix: 12 px padding + 1 px border, per side. */
 export const FRAME_INSET = 13;
-/** The fixed, unscaled slot above the frame that P3's layout-state bar fills. */
+/**
+ * The fixed, unscaled slot above the frame that the layout-state bar fills
+ * (S3.2: a role chip, a two-line name and status, and the role's actions; the
+ * two lines take 30 px). Kept at 36: 40 would shrink the pads at 1366x768 from
+ * 34 to 33 px, where an occupied pad's × would cover its centre.
+ */
 export const STATE_BAR_HEIGHT = 36;
 export const STATE_BAR_GAP = 6;
 /** Below this pad size, secondary labels (note, position, empty-pad coordinates) hide. */

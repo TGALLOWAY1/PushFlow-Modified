@@ -2,7 +2,9 @@
  * CompareModal.
  *
  * Full overlay for comparing two candidate solutions side-by-side.
- * Shows grids, tradeoff metrics, scores, and allows promoting.
+ * Shows grids, tradeoff metrics, scores, and allows promoting. Each side names
+ * its own subject with a SubjectChip (S3.2): "Active · Default" or
+ * "Candidate B · Natural hand pose".
  */
 
 import { useState, type ReactNode } from 'react';
@@ -15,7 +17,8 @@ import { CompareGridView } from '../CompareGridView';
 import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { CandidateCompare } from '../CandidateCompare';
 import { type CandidateSolution } from '../../../types/candidateSolution';
-import { strategyLabel } from '../../analysis/strategyLabels';
+import { candidateSubject, layoutSubject, type LayoutSubject } from '../../state/layoutSubject';
+import { SubjectChip } from '../shared/SubjectChip';
 import { momentDifficultyCounts } from '../../analysis/momentCounts';
 import { TRADEOFF_DIMENSIONS } from '../../analysis/factorMeta';
 import { formatPlanScore, playabilityTooltip, PLAYABILITY_TOOLTIP, SCORE_FAILED_TEXT, SCORING_TEXT } from '../../analysis/planScore';
@@ -55,7 +58,7 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
   function handlePromote(candidate: CandidateSolution) {
     if (candidate.id === ACTIVE_COMPARE_ID) return; // Can't promote active to active
     if (confirm('Promote this candidate to become the Active Layout? The current active layout will be auto-saved as a variant.')) {
-      const label = labelFor(candidate);
+      const label = subjectFor(candidate).chip;
       replaceDraft({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
       // The promoted layout is now Active, so this pair would compare a layout
       // with itself: close, and say what happened (T08).
@@ -64,10 +67,16 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
     }
   }
 
+  /** Each side's own subject: the Active Layout, or a candidate by its letter. */
+  function subjectFor(c: CandidateSolution | typeof ACTIVE_COMPARE_ID): LayoutSubject {
+    if (typeof c === 'string' || c.id === ACTIVE_COMPARE_ID) return layoutSubject(state.activeLayout, 'active');
+    return candidateSubject(allCandidates, c);
+  }
+
   function labelFor(c: CandidateSolution | typeof ACTIVE_COMPARE_ID) {
     if (typeof c === 'string' || c.id === ACTIVE_COMPARE_ID) return 'Active Layout';
-    const idx = allCandidates.indexOf(c) + 1;
-    return `#${idx} ${strategyLabel(c.metadata.strategy)}`;
+    const subject = subjectFor(c);
+    return `${subject.chip} \u00b7 ${subject.name}`;
   }
 
   // Allow picking which two to compare if more than 2 selected
@@ -91,10 +100,10 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
         <CompareHeader titleId={titleId} onClose={onClose} />
         <div className="flex-1 overflow-y-auto p-5">
           <div className="grid grid-cols-2 gap-4">
-            <ActivePendingCard state={activeAnalysis} />
+            <ActivePendingCard state={activeAnalysis} subject={subjectFor(ACTIVE_COMPARE_ID)} />
             {typeof other === 'string'
-              ? <ActivePendingCard state={activeAnalysis} />
-              : <ComparisonCard candidate={other} label={labelFor(other)} onPromote={() => handlePromote(other)} />}
+              ? <ActivePendingCard state={activeAnalysis} subject={subjectFor(ACTIVE_COMPARE_ID)} />
+              : <ComparisonCard candidate={other} subject={subjectFor(other)} onPromote={() => handlePromote(other)} />}
           </div>
         </div>
       </Dialog>
@@ -181,13 +190,13 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
           <div className="grid grid-cols-2 gap-4">
             <ComparisonCard
               candidate={candidateA}
-              label={labelFor(candidateA)}
+              subject={subjectFor(candidateA)}
               onPromote={() => handlePromote(candidateA)}
               isActive={candidateA.id === ACTIVE_COMPARE_ID}
             />
             <ComparisonCard
               candidate={candidateB}
-              label={labelFor(candidateB)}
+              subject={subjectFor(candidateB)}
               onPromote={() => handlePromote(candidateB)}
               isActive={candidateB.id === ACTIVE_COMPARE_ID}
             />
@@ -218,7 +227,7 @@ function CompareHeader({ titleId, onClose, children }: { titleId: string; onClos
 }
 
 /** The Active side before its analysis is ready: analysing, failed, or nothing placed. */
-function ActivePendingCard({ state }: { state: LayoutAnalysisState }) {
+function ActivePendingCard({ state, subject }: { state: LayoutAnalysisState; subject: LayoutSubject }) {
   const text = state.status === 'error'
     ? "Couldn't analyse the Active Layout"
     : state.status === 'empty'
@@ -232,7 +241,7 @@ function ActivePendingCard({ state }: { state: LayoutAnalysisState }) {
       role={state.status === 'error' ? 'alert' : 'status'}
       className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 space-y-2"
     >
-      <div className="text-pf-sm font-medium text-[var(--text-primary)]">Active Layout</div>
+      <SubjectChip subject={subject} testId="compare-subject" />
       <div className={`text-pf-sm ${state.status === 'error' ? 'text-red-400' : 'text-[var(--text-secondary)]'}`}>{text}</div>
       {state.status === 'error' && <div className="text-pf-xs text-[var(--text-tertiary)] break-words">{state.message}</div>}
     </div>
@@ -241,12 +250,13 @@ function ActivePendingCard({ state }: { state: LayoutAnalysisState }) {
 
 function ComparisonCard({
   candidate,
-  label,
+  subject,
   onPromote,
   isActive = false,
 }: {
   candidate: CandidateSolution;
-  label: string;
+  /** This side's own subject (S3.2). */
+  subject: LayoutSubject;
   onPromote: () => void;
   isActive?: boolean;
 }) {
@@ -264,9 +274,9 @@ function ComparisonCard({
       data-candidate-id={candidate.id}
       className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 space-y-3"
     >
-      <div className="flex items-center justify-between">
-        <span className="text-pf-sm font-medium text-[var(--text-primary)]">{label}</span>
-        <span className={`text-pf-sm font-mono font-medium ${
+      <div className="flex items-center justify-between gap-2">
+        <SubjectChip subject={subject} testId="compare-subject" />
+        <span className={`text-pf-sm font-mono font-medium flex-shrink-0 ${
           diff.overallScore <= 0.2 ? 'text-green-400' :
           diff.overallScore <= 0.45 ? 'text-yellow-400' :
           diff.overallScore <= 0.7 ? 'text-orange-400' : 'text-red-400'

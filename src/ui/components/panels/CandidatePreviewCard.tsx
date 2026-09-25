@@ -3,6 +3,8 @@
  *
  * Compact preview of a candidate solution with mini grid,
  * summary metadata, selection checkbox for compare, and action buttons.
+ * Inspect shows it on the grid read-only and writes nothing (S3.2); the
+ * state bar then offers "Use as my draft".
  */
 
 import { useState } from 'react';
@@ -18,10 +20,13 @@ import { type V1CostBreakdown } from '../../../types/diagnostics';
 interface CandidatePreviewCardProps {
   candidate: CandidateSolution;
   soundStreams: SoundStream[];
-  rank: number;
-  isSelected: boolean;
+  /** Its letter in the list (candidateLetter): the state bar calls it "Candidate B". */
+  letter: string;
+  /** It is the layout on screen. */
+  isInspected: boolean;
   isCheckedForCompare: boolean;
-  onSelect: () => void;
+  /** Shows it on the grid, read-only. */
+  onInspect: () => void;
   onPromote: () => void;
   onDelete: () => void;
   onToggleCompare: () => void;
@@ -69,10 +74,10 @@ function topCostDriver(metrics: V1CostBreakdown): string {
 export function CandidatePreviewCard({
   candidate,
   soundStreams,
-  rank,
-  isSelected,
+  letter,
+  isInspected,
   isCheckedForCompare,
-  onSelect,
+  onInspect,
   onPromote,
   onDelete,
   onToggleCompare,
@@ -86,14 +91,16 @@ export function CandidatePreviewCard({
     <div
       data-testid="candidate-row"
       data-candidate-id={candidate.id}
+      data-letter={letter}
+      data-inspected={isInspected ? 'true' : undefined}
       className={`rounded-pf-lg border transition-all relative ${
-        isSelected
-          ? 'border-blue-500 bg-blue-500/5 ring-1 ring-blue-500/20'
+        isInspected
+          ? 'border-role-candidate bg-role-candidate/5 ring-1 ring-role-candidate/30'
           : 'border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--border-default)]'
       }`}
     >
-      {/* Only the Preview button previews: a click on the card body changes
-          nothing, so a stray click can't replace the Working/Test Layout. */}
+      {/* Only the Inspect button shows it: a click on the card body changes
+          nothing, and Inspect itself writes nothing (S3.2). */}
       {/* Compare checkbox */}
       <button
         className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded-pf-sm border flex items-center justify-center transition-all ${
@@ -147,8 +154,12 @@ export function CandidatePreviewCard({
         {/* Top row: rank + difficulty */}
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-1.5 ml-5">
-            <span className="text-pf-xs bg-[var(--bg-hover)] text-[var(--text-secondary)] px-1.5 py-0.5 rounded-pf-sm font-mono">
-              #{rank}
+            <span
+              data-testid="candidate-letter"
+              className="text-pf-xs bg-[var(--bg-hover)] text-[var(--text-secondary)] px-1.5 py-0.5 rounded-pf-sm font-mono"
+              title={`Candidate ${letter}`}
+            >
+              {letter}
             </span>
             <span className="text-pf-xs text-[var(--text-secondary)] truncate max-w-[80px]">
               {strategyLabel(candidate.metadata.strategy)}
@@ -174,7 +185,7 @@ export function CandidatePreviewCard({
           <MiniGridPreview
             layout={candidate.layout}
             soundStreams={soundStreams}
-            highlighted={isSelected}
+            highlighted={isInspected}
           />
         </div>
 
@@ -255,10 +266,18 @@ export function CandidatePreviewCard({
         {/* Action buttons */}
         <div className="flex gap-1.5">
           <button
-            className="flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-blue-600/15 border border-blue-500/30 text-blue-400 hover:bg-blue-600/25"
-            onClick={e => { e.stopPropagation(); onSelect(); }}
+            type="button"
+            data-testid="candidate-inspect"
+            aria-current={isInspected ? 'true' : undefined}
+            className={`flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-colors border ${
+              isInspected
+                ? 'bg-role-candidate/25 border-role-candidate/60 text-[var(--text-primary)]'
+                : 'bg-role-candidate/10 border-role-candidate/30 text-role-candidate hover:bg-role-candidate/20'
+            }`}
+            title={isInspected ? `Candidate ${letter} is on the grid, read-only` : `Show Candidate ${letter} on the grid, read-only: your draft stays as it is`}
+            onClick={e => { e.stopPropagation(); onInspect(); }}
           >
-            Preview
+            Inspect
           </button>
           <button
             className={`flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-all ${

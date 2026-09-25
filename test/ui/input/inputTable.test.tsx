@@ -39,6 +39,9 @@ import {
   type InputRowId,
 } from '../../../src/ui/input/inputTable';
 import { InputRegistry, inputRegistry, keysBelongToTarget, widgetOwnsKey } from '../../../src/ui/input/inputRegistry';
+import { hashLayout } from '../../../src/engine/mapping/mappingResolver';
+import { type Layout } from '../../../src/types/layout';
+import { type CandidateSolution } from '../../../src/types/candidateSolution';
 import { importTestMidi1, suggestedTestMidi1 } from '../../helpers/testMidi1';
 
 afterEach(cleanup);
@@ -126,6 +129,25 @@ function WidgetControls() {
 /** A drag payload as the palette or a pad sets it. */
 function dataTransfer(data: Record<string, string>) {
   return { types: Object.keys(data), getData: (type: string) => data[type] ?? '', setData: () => {}, dropEffect: 'move', effectAllowed: 'move' };
+}
+
+/** A candidate with the draft's first Sound moved to [4,4], for the read-only row. */
+function readOnlyCandidate(state: ProjectState): CandidateSolution {
+  const draft = getDisplayedLayout(state)!;
+  const [firstPad, firstVoice] = Object.entries(draft.padToVoice)[0]!;
+  const { [firstPad]: _moved, ...rest } = draft.padToVoice;
+  const layout: Layout = { ...draft, id: 'cand-a-layout', padToVoice: { ...rest, '4,4': firstVoice }, role: 'working' };
+  return {
+    id: 'cand-a',
+    layout,
+    executionPlan: {
+      layoutBinding: { layoutId: layout.id, layoutHash: hashLayout(layout), layoutRole: 'working' },
+      score: 50, unplayableCount: 0, hardCount: 0, fingerAssignments: [],
+      averageMetrics: { fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0, handBalance: 0, constraintPenalty: 0 },
+    },
+    difficultyAnalysis: { overallScore: 0.1 },
+    metadata: { strategy: 'test', seed: 0 },
+  } as unknown as CandidateSolution;
 }
 
 const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
@@ -231,6 +253,25 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     expect(JSON.stringify(shownPads())).toBe(before);
     expect(api.state.selectedPadKey).toBeNull();
     expect(boundRows().map(r => r.id)).not.toContain('pad-enter');
+  },
+
+  'read-only-edit': async () => {
+    // A candidate shown read-only (S3.2): each edit gesture changes nothing and says how to edit it.
+    let state = await suggestedTestMidi1();
+    state = projectReducer(state, { type: 'SET_CANDIDATES', payload: [readOnlyCandidate(state)] });
+    mount(state);
+    expect(api.state.inspectedLayout?.kind).toBe('candidate');
+    const before = JSON.stringify(api.state.workingLayout);
+    const stream = api.state.soundStreams[0]!;
+    fireEvent.drop(pad(emptyPad()), { dataTransfer: dataTransfer({ 'application/pushflow-stream': JSON.stringify({ id: stream.id }) }) });
+    fireEvent.contextMenu(pad(occupiedPad()), { clientX: 100, clientY: 100 });
+    expect(screen.queryByRole('menu')).toBeNull();
+    fireEvent.click(soundRow(0));
+    fireEvent.click(pad(emptyPad()));
+    fireEvent.click(pad(occupiedPad()));
+    press('Delete');
+    expect(JSON.stringify(api.state.workingLayout)).toBe(before);
+    expect(screen.getByText('Use as my draft to edit')).toBeTruthy();
   },
 
   'delete': async () => {

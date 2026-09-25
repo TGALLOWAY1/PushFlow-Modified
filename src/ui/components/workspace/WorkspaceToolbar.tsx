@@ -2,14 +2,14 @@
  * WorkspaceToolbar.
  *
  * Unified top toolbar merging the old header + EditorToolbar into one
- * concise, professional bar. Contains project identity, workflow actions,
- * editing controls, generation, compare trigger, and settings.
+ * concise, professional bar. Contains project identity, editing controls,
+ * generation, compare trigger, and settings. The layout's own actions
+ * (Promote, Save variant, Discard) and its freshness live in the
+ * layout-state bar above the grid (S3.2).
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useProject } from '../../state/ProjectContext';
-import { hasWorkingChanges } from '../../state/projectState';
-import { useToast } from '../shared/Toast';
 import { type GenerationMode } from '../../hooks/useAutoAnalysis';
 import { type SaveStatus } from '../../hooks/useAutoSave';
 import { type OptimizerMethodKey } from '../../../engine/optimization/optimizerInterface';
@@ -18,12 +18,8 @@ import { SettingsGear } from '../panels/SettingsGear';
 import { SaveStatusControl } from './SaveStatusControl';
 import { useViewSettings } from '../../state/viewSettings';
 import { DisabledReason, useDisabledReason } from '../shared/DisabledReason';
-import { SaveVariantPopover } from './SaveVariantPopover';
 import { Popover } from '../shared/Overlay';
 import { MoreHorizontal } from 'lucide-react';
-import { suggestVariantName } from '../../state/variantNames';
-import { generateId } from '../../../utils/idGenerator';
-import { uniqueName } from '../../../utils/uniqueName';
 
 interface WorkspaceToolbarProps {
   onNavigateLibrary: () => void;
@@ -44,8 +40,6 @@ interface WorkspaceToolbarProps {
   onSave?: () => void;
   /** Downloads a copy of the project (offered when saving fails). */
   onExport?: () => void;
-  /** A variant was saved: show it (the Layouts tab, scrolled to its card). */
-  onVariantSaved?: (variantId: string) => void;
 }
 
 export function WorkspaceToolbar({
@@ -64,35 +58,11 @@ export function WorkspaceToolbar({
   saveStatus = 'saved',
   onSave,
   onExport,
-  onVariantSaved,
 }: WorkspaceToolbarProps) {
   const { state, dispatch, undo, redo, canUndo, canRedo, undoLabel, redoLabel } = useProject();
   const { settings: viewSettings, toggleGridLabel } = useViewSettings();
-  const toast = useToast();
-  const hasChanges = hasWorkingChanges(state);
   const generateReason = useDisabledReason(canGenerate ? null : generateDisabledReason);
   const compareReason = useDisabledReason(compareCount >= 2 ? null : compareDisabledReason);
-
-  // Discard is confirmed by a toast with Undo. Finger preferences live in
-  // voiceConstraints and survive Discard (decision Q2), and the toast says so.
-  // The toast's Undo is only offered while Discard is still the step Undo would
-  // revert, so it can never undo a later edit instead.
-  const discardToastRef = useRef<number | null>(null);
-  const handleDiscard = () => {
-    const keepsPreferences = Object.values(state.voiceConstraints).some(c => c.hand || c.finger);
-    dispatch({ type: 'DISCARD_WORKING_LAYOUT' });
-    if (discardToastRef.current !== null) toast.dismiss(discardToastRef.current);
-    discardToastRef.current = toast.show({
-      message: keepsPreferences ? 'Draft discarded \u00b7 Finger preferences kept' : 'Draft discarded',
-      action: { label: 'Undo', onClick: undo },
-    });
-  };
-  useEffect(() => {
-    if (discardToastRef.current !== null && undoLabel !== 'Discard') {
-      toast.dismiss(discardToastRef.current);
-      discardToastRef.current = null;
-    }
-  }, [undoLabel, toast]);
 
   // Editable project name
   const [editingName, setEditingName] = useState(false);
@@ -111,19 +81,6 @@ export function WorkspaceToolbar({
 
   // Generation mode
   const [generationMode, setGenerationMode] = useState<GenerationMode>('fast');
-
-  // Save as variant asks for a name first (T29).
-  const saveVariantRef = useRef<HTMLButtonElement>(null);
-  const [saveVariantAt, setSaveVariantAt] = useState<{ x: number; y: number } | null>(null);
-  const saveVariant = (requested: string) => {
-    const variantId = generateId('variant');
-    // The name the reducer will keep: a taken one is numbered.
-    const name = uniqueName(requested, state.savedVariants.map(v => v.name));
-    dispatch({ type: 'SAVE_AS_VARIANT', payload: { name, source: 'working', variantId } });
-    setSaveVariantAt(null);
-    toast.show({ message: `Saved variant "${name}"` });
-    onVariantSaved?.(variantId);
-  };
 
   const commitName = () => {
     const trimmed = nameDraft.trim();
@@ -262,62 +219,8 @@ export function WorkspaceToolbar({
         </span>
       )}
 
-      {/* Workflow actions */}
-      {hasChanges && (
-        <>
-          <div className="pf-divider-v" />
-          <div className="flex gap-1">
-            <button
-              className="pf-btn text-pf-sm bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/30"
-              onClick={() => dispatch({ type: 'PROMOTE_WORKING_LAYOUT' })}
-              title="Make this layout the new Active Layout"
-            >
-              Promote
-            </button>
-            <button
-              ref={saveVariantRef}
-              data-testid="save-variant"
-              className="pf-btn text-pf-sm bg-accent-primary/80 hover:bg-accent-primary text-white border border-accent-primary/30"
-              aria-haspopup="dialog"
-              aria-expanded={saveVariantAt !== null}
-              onClick={e => {
-                const r = e.currentTarget.getBoundingClientRect();
-                setSaveVariantAt(prev => (prev ? null : { x: r.left, y: r.bottom + 6 }));
-              }}
-              title="Keep this layout as a named variant, without changing the Active Layout"
-            >
-              Save variant
-            </button>
-            {saveVariantAt && (
-              <SaveVariantPopover
-                x={saveVariantAt.x}
-                y={saveVariantAt.y}
-                defaultName={suggestVariantName(state.workingLayout?.name ?? state.activeLayout.name, state.savedVariants.map(v => v.name))}
-                returnFocusTo={saveVariantRef.current}
-                onSave={saveVariant}
-                onClose={() => setSaveVariantAt(null)}
-              />
-            )}
-            <button
-              className="pf-btn pf-btn-subtle text-pf-sm hover:bg-red-900/30 hover:text-red-300 hover:border-red-500/30"
-              onClick={handleDiscard}
-              title="Discard working changes"
-            >
-              Discard
-            </button>
-          </div>
-        </>
-      )}
-
       {/* Spacer */}
       <div className="flex-1" />
-
-      {/* Analysis stale indicator */}
-      {state.analysisStale && state.analysisResult && (
-        <span className="pf-badge text-amber-400 bg-amber-500/8 border border-amber-500/15">
-          Analysis outdated
-        </span>
-      )}
 
       {/* Undo / Redo */}
       <div className="flex gap-1">

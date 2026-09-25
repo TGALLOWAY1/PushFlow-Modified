@@ -4,6 +4,8 @@
  * Single unified timeline combining lane editing + execution visualization.
  * Shows per-voice swim lanes with event blocks, finger assignment pills (when
  * analysis exists), beat grid, playhead, transport controls, and MIDI import.
+ * The pills show the plan of the layout on screen (S3.2), named in the
+ * header ("Timeline shows: Candidate B · …"), always as hand+finger ("L2").
  *
  * Replaces the separate LaneToolbar + LaneSidebar + LaneTimeline + TimelinePanel
  * components with one cohesive view rendered in the bottom drawer.
@@ -13,6 +15,8 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import chroma from 'chroma-js';
 import { useProject } from '../state/ProjectContext';
 import { getDisplayedExecutionPlan, type SoundStream } from '../state/projectState';
+import { inspectedSubject } from '../state/layoutSubject';
+import { SubjectChip } from './shared/SubjectChip';
 import { useLaneImport } from '../hooks/useLaneImport';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { RehearsalAudio, type RehearsalHit } from '../audio/rehearsalAudio';
@@ -619,8 +623,15 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
           className="flex-shrink-0 overflow-y-auto border-r border-[var(--border-subtle)]"
           style={{ width: SIDEBAR_WIDTH }}
         >
-          {/* Header spacer to align with beat header */}
-          <div className="sticky top-0 z-40 bg-[var(--bg-panel)] border-b border-[var(--border-subtle)]" style={{ height: TOTAL_HEADER_HEIGHT }} />
+          {/* The header's corner names the layout whose plan the pills show (S3.2). */}
+          <div
+            data-testid="timeline-header"
+            className="sticky top-0 z-40 bg-[var(--bg-panel)] border-b border-[var(--border-subtle)] flex flex-col justify-center gap-1 px-2"
+            style={{ height: TOTAL_HEADER_HEIGHT }}
+          >
+            <span className="text-pf-micro text-[var(--text-tertiary)]">Timeline shows</span>
+            <SubjectChip subject={inspectedSubject(state)} testId="timeline-subject" />
+          </div>
           {visibleStreams.map((stream, i) => (
             <VoiceRow
               key={stream.id}
@@ -843,6 +854,11 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                     return (
                       <button
                         key={`pill-${stream.id}-${ai}`}
+                        data-testid="timeline-pill"
+                        data-sound-id={stream.id}
+                        data-event-key={a.eventKey}
+                        data-start={a.startTime}
+                        data-finger={fingerLabel ? `${handPrefix}${fingerLabel}` : ''}
                         className={`absolute flex items-center justify-center rounded-sm transition-all cursor-pointer
                           ${isSelected ? 'z-20 ring-2 ring-yellow-400 scale-110' : 'z-10 hover:z-20 hover:scale-105'}`}
                         style={{
