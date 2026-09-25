@@ -4,7 +4,7 @@ import { getDisplayedExecutionPlan, getDisplayedLayout } from '../../state/proje
 import { CostBreakdownBars, FeasibilityBadge } from './CostBreakdownBars';
 import { SelectedEventCard } from './SelectedEventCard';
 import { findSelectedMoment } from '../../analysis/selectedMoment';
-import { analysisScopeLine } from '../../analysis/analysisScope';
+import { analysisScopeLine, planSoundIds } from '../../analysis/analysisScope';
 import { EventCostChart } from './EventCostChart';
 import { formatPlanScore, getPlanScoreQuality, getPlanScoreSummary } from '../../analysis/planScore';
 
@@ -18,7 +18,14 @@ export function PerformanceCostsPanel() {
     () => findSelectedMoment(currentPlan?.fingerAssignments, state.selectedEventIndex),
     [currentPlan, state.selectedEventIndex],
   );
-  const scope = analysisScopeLine(state.soundStreams, getDisplayedLayout(state));
+  // The plan's own scope (the Sounds it analysed), so a mute made since it was
+  // computed never relabels an old verdict; the live scope when there is no plan.
+  const scope = analysisScopeLine(
+    state.soundStreams,
+    getDisplayedLayout(state),
+    currentPlan ? planSoundIds(currentPlan.fingerAssignments) : undefined,
+  );
+  const liveScope = analysisScopeLine(state.soundStreams, getDisplayedLayout(state));
 
   if (!currentPlan && !state.isProcessing) {
     return (
@@ -59,6 +66,11 @@ export function PerformanceCostsPanel() {
               >
                 ✕
               </button>
+            </div>
+            {/* The manual result keeps no record of its Sounds, so its scope is
+                the live one, and only while nothing has changed since. */}
+            <div data-testid="verdict-scope" className="text-pf-micro text-[var(--text-tertiary)]">
+              {state.analysisStale ? 'Out of date: the Sounds or layout changed since. Calculate again.' : liveScope}
             </div>
             <div className="grid grid-cols-2 gap-1.5 text-pf-xs">
               <div>

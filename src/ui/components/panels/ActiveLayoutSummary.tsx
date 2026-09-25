@@ -19,7 +19,7 @@ import { type ConstraintRelaxationSummary } from '../../../types/executionPlan';
 import { CostBreakdownBars, FeasibilityBadge } from './CostBreakdownBars';
 import { SelectedEventCard } from './SelectedEventCard';
 import { findSelectedMoment } from '../../analysis/selectedMoment';
-import { analysisScopeLine } from '../../analysis/analysisScope';
+import { analysisScopeLine, planSoundIds } from '../../analysis/analysisScope';
 import { EventCostChart } from './EventCostChart';
 import { LearnMoreModal } from './LearnMoreModal';
 import { buildSelectedTransitionModel } from '../../analysis/selectionModel';
@@ -51,7 +51,12 @@ export function ActiveLayoutSummary() {
     () => findSelectedMoment(assignments, state.selectedEventIndex),
     [assignments, state.selectedEventIndex],
   );
-  const scope = analysisScopeLine(state.soundStreams, displayedLayout);
+  // The plan's own scope (see analysisScope.ts); the live scope when there is no plan.
+  const scope = analysisScopeLine(
+    state.soundStreams,
+    displayedLayout,
+    currentPlan ? planSoundIds(currentPlan.fingerAssignments) : undefined,
+  );
 
   // Transition data
   const transition = useMemo(

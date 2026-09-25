@@ -3,7 +3,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { analysisScopeLine } from '../../../src/ui/analysis/analysisScope';
+import { analysisScopeLine, planSoundIds } from '../../../src/ui/analysis/analysisScope';
+import { type FingerAssignment } from '../../../src/types/executionPlan';
 import { type Layout } from '../../../src/types/layout';
 
 function layoutWith(ids: string[]): Layout {
@@ -28,5 +29,18 @@ describe('analysisScopeLine', () => {
 
   it('counts every analysed Sound as not on the grid when there is no layout', () => {
     expect(analysisScopeLine(streams([false]), null)).toBe('Analysing 1 of 1 Sound · 1 not on the grid');
+  });
+
+  // Codex review on PR #104: a verdict's scope is the scope of the plan behind it.
+  it('with the plan’s Sounds, ignores mutes made since the plan was computed', () => {
+    const plan = [{ voiceId: 's0' }, { voiceId: 's1' }, { voiceId: 's1' }] as FingerAssignment[];
+    const ids = planSoundIds(plan);
+    expect([...ids].sort()).toEqual(['s0', 's1']);
+    // s1 muted after the analysis; s2 unmuted after it (it was left out).
+    const now = [{ id: 's0', muted: false }, { id: 's1', muted: true }, { id: 's2', muted: false }];
+    expect(analysisScopeLine(now, layoutWith(['s0', 's1', 's2']), ids))
+      .toBe('Analysing 2 of 3 Sounds · 1 not in this analysis');
+    expect(analysisScopeLine(now, layoutWith(['s0', 's1', 's2'])))
+      .toBe('Analysing 2 of 3 Sounds · 1 muted');
   });
 });

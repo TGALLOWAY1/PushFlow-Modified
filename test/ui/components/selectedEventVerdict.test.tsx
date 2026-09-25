@@ -115,4 +115,15 @@ describe('verdict with an event selected', () => {
     expect(screen.queryByTestId('selected-event-card')).toBeNull();
     expect(screen.getAllByTestId('verdict-badge').map(b => b.getAttribute('data-level'))).toEqual(['infeasible', 'infeasible']);
   });
+
+  // Codex review on PR #104: a mute marks the analysis stale but the old plan
+  // stays on screen until re-analysis; its verdict keeps the plan's scope.
+  it('keeps the verdict’s scope tied to the displayed plan after a mute', () => {
+    renderPanels();
+    act(() => dispatch({ type: 'TOGGLE_MUTE', payload: analysed.soundStreams[0].id }));
+    for (const badge of screen.getAllByTestId('verdict-badge')) {
+      expect(badge.getAttribute('data-level')).toBe('infeasible');
+      expect(within(badge).getByTestId('verdict-scope').textContent).toBe('Analysing 7 of 7 Sounds · 3 not on the grid');
+    }
+  });
 });
