@@ -53,7 +53,7 @@ export function PadContextMenu({ padKey, x, y, onClose, returnFocusTo }: PadCont
       labelledBy={titleId}
       returnFocusTo={returnFocusTo}
       testId="pad-menu"
-      className="bg-[var(--bg-panel)] border border-[var(--border-default)] rounded-pf-lg shadow-pf-xl py-1 min-w-[160px]"
+      className="flex flex-col bg-[var(--bg-panel)] border border-[var(--border-default)] rounded-pf-lg shadow-pf-xl py-1 min-w-[160px]"
     >
       {/* Header */}
       <div id={titleId} className="px-3 py-1.5 text-pf-xs text-[var(--text-tertiary)] border-b border-[var(--border-subtle)]">
