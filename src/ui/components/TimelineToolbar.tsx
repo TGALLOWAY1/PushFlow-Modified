@@ -191,7 +191,7 @@ export function TimelineToolbar({
     <div
       ref={setToolbarEl}
       data-testid="timeline-toolbar"
-      className="flex items-center flex-nowrap overflow-hidden border-b border-[var(--border-subtle)] bg-bg-panel/40 flex-shrink-0"
+      className="flex items-center flex-nowrap overflow-x-auto overflow-y-hidden border-b border-[var(--border-subtle)] bg-bg-panel/40 flex-shrink-0"
       style={{ height: TIMELINE_TOOLBAR_HEIGHT, gap: TOOLBAR_GAP, paddingLeft: TOOLBAR_PADDING / 2, paddingRight: TOOLBAR_PADDING / 2 }}
     >
       {/* Transport cluster: always visible, fixed widths. */}

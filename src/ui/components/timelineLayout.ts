@@ -49,6 +49,9 @@ export const TRANSPORT_WIDTHS = {
 export const TRANSPORT_CLUSTER_WIDTH = Object.values(TRANSPORT_WIDTHS).reduce((a, b) => a + b, 0)
   + (Object.keys(TRANSPORT_WIDTHS).length - 1) * TOOLBAR_GAP;
 
+/** The narrowest toolbar that shows the whole transport cluster and the "⋯" button. */
+export const TIMELINE_TOOLBAR_MIN_WIDTH = TOOLBAR_PADDING + TRANSPORT_CLUSTER_WIDTH + TOOLBAR_GAP + TOOLBAR_MORE_WIDTH;
+
 export type SecondaryControl = 'import' | 'count' | 'zoom' | 'clearLoop';
 
 /** Secondary controls in priority order, with their fixed widths. */

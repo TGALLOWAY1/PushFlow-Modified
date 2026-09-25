@@ -61,11 +61,13 @@ import { generateId } from '../../../utils/idGenerator';
 import { padKey } from '../../../types/padGrid';
 import { useMeasuredPadSize } from './gridSizing';
 import { DrawerSplitter } from './DrawerSplitter';
+import { CENTER_MIN_WIDTH, fitSidePanels, maxPanelWidth } from './panelSizing';
 import {
   DRAWER_TAB_BAR_HEIGHT,
   drawerHeightFor,
   loadDrawerPrefs,
   maxDrawerHeight,
+  minDrawerHeight,
   saveDrawerPrefs,
   type DrawerPrefs,
 } from './drawerSizing';
@@ -82,6 +84,9 @@ const LEFT_DEFAULT = 320;
 const RIGHT_MIN = 280;
 const RIGHT_MAX = 600;
 const RIGHT_DEFAULT = 340;
+/** A collapsed side panel, and the drag handle beside an open one. */
+const COLLAPSED_PANEL_WIDTH = 36;
+const RESIZE_HANDLE_WIDTH = 8;
 
 /**
  * One bottom-drawer tab's content. The inactive panel stays mounted but is not
@@ -311,6 +316,38 @@ function PerformanceWorkspaceInner() {
   const startX = useRef(0);
   const startWidth = useRef(0);
 
+  // The side panels give way so the centre keeps room for the timeline's
+  // transport cluster and its "⋯" button (T05): the widths the viewer dragged
+  // to are kept, and shown only as wide as the measured body allows.
+  const [bodyEl, setBodyEl] = useState<HTMLDivElement | null>(null);
+  const [bodyWidth, setBodyWidth] = useState(0);
+  useLayoutEffect(() => {
+    if (!bodyEl) return;
+    const measure = () => {
+      const style = getComputedStyle(bodyEl);
+      const w = bodyEl.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      if (w > 0) setBodyWidth(prev => (prev === w ? prev : w));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(bodyEl);
+    return () => observer.disconnect();
+  }, [bodyEl]);
+  const fixedWidth = (leftCollapsed ? COLLAPSED_PANEL_WIDTH : RESIZE_HANDLE_WIDTH)
+    + (rightCollapsed ? COLLAPSED_PANEL_WIDTH : 0) + RESIZE_HANDLE_WIDTH;
+  // What the open panels may take together; unknown until the body is measured.
+  const panelRoom = bodyWidth > 0 ? bodyWidth - fixedWidth - CENTER_MIN_WIDTH : Infinity;
+  const shownPanels = fitSidePanels(
+    panelRoom,
+    { left: leftCollapsed ? 0 : leftWidth, right: rightCollapsed ? 0 : rightWidth },
+    { left: leftCollapsed ? 0 : LEFT_MIN, right: rightCollapsed ? 0 : RIGHT_MIN },
+  );
+  const shownLeftWidth = leftCollapsed ? COLLAPSED_PANEL_WIDTH : shownPanels.left;
+  const shownRightWidth = rightCollapsed ? COLLAPSED_PANEL_WIDTH : shownPanels.right;
+  // Read by the drag handlers, which are bound once.
+  const panelLayout = useRef({ room: panelRoom, left: shownPanels.left, right: shownPanels.right });
+  panelLayout.current = { room: panelRoom, left: shownPanels.left, right: shownPanels.right };
+
   // Measured grid (T04): the pads are sized to the grid region, never scaled.
   const [gridRegionRef, padSize] = useMeasuredPadSize();
 
@@ -354,18 +391,20 @@ function PerformanceWorkspaceInner() {
   const handleResizeStart = useCallback((side: 'left' | 'right', e: React.MouseEvent) => {
     isResizing.current = side;
     startX.current = e.clientX;
-    startWidth.current = side === 'left' ? leftWidth : rightWidth;
+    // Start from the width on screen, which may be less than the one remembered.
+    startWidth.current = side === 'left' ? panelLayout.current.left : panelLayout.current.right;
     e.preventDefault();
-  }, [leftWidth, rightWidth]);
+  }, []);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing.current) return;
       const dx = e.clientX - startX.current;
+      const { room, left, right } = panelLayout.current;
       if (isResizing.current === 'left') {
-        setLeftWidth(Math.max(LEFT_MIN, Math.min(LEFT_MAX, startWidth.current + dx)));
+        setLeftWidth(Math.max(LEFT_MIN, Math.min(maxPanelWidth(room, right, LEFT_MIN, LEFT_MAX), startWidth.current + dx)));
       } else {
-        setRightWidth(Math.max(RIGHT_MIN, Math.min(RIGHT_MAX, startWidth.current - dx)));
+        setRightWidth(Math.max(RIGHT_MIN, Math.min(maxPanelWidth(room, left, RIGHT_MIN, RIGHT_MAX), startWidth.current - dx)));
       }
     };
     const handleMouseUp = () => { isResizing.current = null; };
@@ -619,9 +658,9 @@ function PerformanceWorkspaceInner() {
       )}
 
       {/* ─── Main Body: 3-column ──────────────────────────────── */}
-      <div className="flex-1 flex overflow-hidden p-2.5 gap-0 min-h-0">
+      <div ref={setBodyEl} className="flex-1 flex overflow-hidden p-2.5 gap-0 min-h-0">
         {/* Left Column: Tabbed Sounds / Events */}
-        <div className="flex-shrink-0 flex flex-col transition-all" style={{ width: leftCollapsed ? 36 : leftWidth }}>
+        <div data-testid="left-panel" className="flex-shrink-0 flex flex-col transition-all" style={{ width: shownLeftWidth }}>
           {leftCollapsed ? (
             <button
               className="flex flex-col items-center gap-3 py-4 w-full cursor-pointer hover:bg-[var(--bg-hover)] rounded-pf-lg transition-colors h-full"
@@ -697,7 +736,9 @@ function PerformanceWorkspaceInner() {
         {/* Left resize handle */}
         {!leftCollapsed && (
           <div
-            className="w-2 flex-shrink-0 cursor-col-resize group flex items-center justify-center hover:bg-[var(--accent-muted)] transition-colors rounded-sm"
+            data-testid="left-panel-handle"
+            className="flex-shrink-0 cursor-col-resize group flex items-center justify-center hover:bg-[var(--accent-muted)] transition-colors rounded-sm"
+            style={{ width: RESIZE_HANDLE_WIDTH }}
             onMouseDown={e => handleResizeStart('left', e)}
           >
             <div className="w-px h-8 bg-[var(--border-subtle)] group-hover:bg-[var(--accent-primary)] transition-colors rounded-full" />
@@ -729,6 +770,7 @@ function PerformanceWorkspaceInner() {
           <DrawerSplitter
             height={drawerHeight ?? DRAWER_TAB_BAR_HEIGHT}
             maxHeight={maxDrawerHeight(centerHeight)}
+            minHeight={minDrawerHeight(centerHeight)}
             collapsed={drawerCollapsed}
             onResize={(height, commit) => {
               const next = { height, collapsed: false };
@@ -793,14 +835,16 @@ function PerformanceWorkspaceInner() {
 
         {/* Right resize handle */}
         <div
-          className="w-2 flex-shrink-0 cursor-col-resize group flex items-center justify-center hover:bg-[var(--accent-muted)] transition-colors rounded-sm"
+          data-testid="right-panel-handle"
+          className="flex-shrink-0 cursor-col-resize group flex items-center justify-center hover:bg-[var(--accent-muted)] transition-colors rounded-sm"
+          style={{ width: RESIZE_HANDLE_WIDTH }}
           onMouseDown={e => handleResizeStart('right', e)}
         >
           <div className="w-px h-8 bg-[var(--border-subtle)] group-hover:bg-[var(--accent-primary)] transition-colors rounded-full" />
         </div>
 
         {/* Right Column: Tabbed Costs / Layouts */}
-        <div className="flex-shrink-0 flex flex-col min-h-0 transition-all" style={{ width: rightCollapsed ? 36 : rightWidth }}>
+        <div data-testid="right-panel" className="flex-shrink-0 flex flex-col min-h-0 transition-all" style={{ width: shownRightWidth }}>
           {rightCollapsed ? (
             <button
               className="flex flex-col items-center gap-3 py-4 w-full cursor-pointer hover:bg-[var(--bg-hover)] rounded-pf-lg transition-colors h-full"

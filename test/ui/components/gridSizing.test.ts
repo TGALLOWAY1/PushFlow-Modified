@@ -22,8 +22,10 @@ import {
   drawerHeightFor,
   loadDrawerPrefs,
   maxDrawerHeight,
+  minDrawerHeight,
   saveDrawerPrefs,
 } from '../../../src/ui/components/workspace/drawerSizing';
+import { CENTER_MIN_WIDTH, fitSidePanels, maxPanelWidth } from '../../../src/ui/components/workspace/panelSizing';
 import {
   TOOLBAR_GAP,
   TOOLBAR_MORE_WIDTH,
@@ -81,6 +83,20 @@ describe('drawerHeightFor', () => {
     expect(drawerHeightFor(900, 100, { height: 10, collapsed: false })).toBe(DRAWER_MIN_HEIGHT);
   });
 
+  it('in a short centre column, gives up its open minimum so the grid keeps its own (review on #107)', () => {
+    // 500 px leaves 98 px under the grid's minimum: less than an open drawer's 120.
+    const center = 500;
+    const drawer = drawerHeightFor(center, timelineContentHeight(7), DEFAULT_DRAWER_PREFS);
+    expect(drawer).toBeLessThan(DRAWER_MIN_HEIGHT);
+    expect(center - SPLITTER_HEIGHT - drawer).toBe(GRID_REGION_MIN_HEIGHT);
+    // A remembered height can't take the room either, and the splitter's range follows.
+    expect(drawerHeightFor(center, 100, { height: 300, collapsed: false })).toBe(drawer);
+    expect(minDrawerHeight(center)).toBe(drawer);
+    expect(minDrawerHeight(900)).toBe(DRAWER_MIN_HEIGHT);
+    // Shorter still, the drawer is down to its tab bar.
+    expect(drawerHeightFor(400, 100, DEFAULT_DRAWER_PREFS)).toBe(DRAWER_TAB_BAR_HEIGHT);
+  });
+
   it('collapsed, it is just the tab bar', () => {
     expect(drawerHeightFor(900, 400, { height: 300, collapsed: true })).toBe(DRAWER_TAB_BAR_HEIGHT);
   });
@@ -120,5 +136,35 @@ describe('fitSecondaryControls', () => {
 
   it('leaves out controls with nothing to show', () => {
     expect(fitSecondaryControls(2000, new Set(['import', 'count', 'zoom']))).toEqual({ inline: ['import', 'count', 'zoom'], overflow: [] });
+  });
+});
+
+describe('fitSidePanels (review on #107)', () => {
+  const MIN = { left: 200, right: 280 };
+
+  it('keeps the viewer\'s widths when the centre has room', () => {
+    expect(fitSidePanels(1000, { left: 320, right: 340 }, MIN)).toEqual({ left: 320, right: 340 });
+  });
+
+  it('gives back only what the centre needs, from each panel in proportion to its spare width', () => {
+    // 1280 px wide: the body keeps 1260, the handles 16, the centre CENTER_MIN_WIDTH.
+    const room = 1260 - 16 - CENTER_MIN_WIDTH;
+    const fitted = fitSidePanels(room, { left: 320, right: 340 }, MIN);
+    expect(fitted.left + fitted.right).toBe(room);
+    expect(320 - fitted.left).toBeGreaterThan(340 - fitted.right); // 120 spare vs 60
+  });
+
+  it('never goes below a panel\'s minimum, even when the window is too narrow', () => {
+    expect(fitSidePanels(100, { left: 320, right: 340 }, MIN)).toEqual(MIN);
+  });
+
+  it('leaves a collapsed panel alone', () => {
+    expect(fitSidePanels(300, { left: 0, right: 500 }, { left: 0, right: 280 })).toEqual({ left: 0, right: 300 });
+  });
+
+  it('stops a drag where the centre would get too narrow', () => {
+    expect(maxPanelWidth(700, 340, 200, 500)).toBe(360);
+    expect(maxPanelWidth(2000, 340, 200, 500)).toBe(500);
+    expect(maxPanelWidth(300, 340, 200, 500)).toBe(200);
   });
 });

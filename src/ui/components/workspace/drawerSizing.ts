@@ -27,21 +27,31 @@ export interface DrawerPrefs {
 
 export const DEFAULT_DRAWER_PREFS: DrawerPrefs = { height: null, collapsed: false };
 
-/** The largest drawer that still leaves the grid room for its smallest pads. */
+/**
+ * The largest drawer that still leaves the grid room for its smallest pads.
+ * In a short centre column that is less than an open drawer's minimum, down
+ * to the tab bar alone: the grid's minimum wins.
+ */
 export function maxDrawerHeight(centerHeight: number): number {
-  return Math.max(DRAWER_MIN_HEIGHT, centerHeight - SPLITTER_HEIGHT - GRID_REGION_MIN_HEIGHT);
+  return Math.max(DRAWER_TAB_BAR_HEIGHT, centerHeight - SPLITTER_HEIGHT - GRID_REGION_MIN_HEIGHT);
+}
+
+/** The smallest the viewer can drag the drawer to: its open minimum, or less when the grid needs the room. */
+export function minDrawerHeight(centerHeight: number): number {
+  return Math.min(DRAWER_MIN_HEIGHT, maxDrawerHeight(centerHeight));
 }
 
 /**
  * The drawer's height in px: the tab bar alone when collapsed; otherwise the
  * viewer's height, or the content's (at most 40% of the centre column), kept
- * between DRAWER_MIN_HEIGHT and what leaves the grid its minimum.
+ * between DRAWER_MIN_HEIGHT and what leaves the grid its minimum. When both
+ * can't hold, the grid's minimum wins.
  */
 export function drawerHeightFor(centerHeight: number, contentHeight: number, prefs: DrawerPrefs): number {
   if (prefs.collapsed) return DRAWER_TAB_BAR_HEIGHT;
   const fit = DRAWER_TAB_BAR_HEIGHT + contentHeight;
   const wanted = prefs.height ?? Math.min(fit, Math.round(centerHeight * DRAWER_CAP_RATIO));
-  return Math.round(Math.max(DRAWER_MIN_HEIGHT, Math.min(maxDrawerHeight(centerHeight), wanted)));
+  return Math.round(Math.min(maxDrawerHeight(centerHeight), Math.max(DRAWER_MIN_HEIGHT, wanted)));
 }
 
 const STORAGE_KEY = 'pushflow:drawer';

@@ -199,3 +199,45 @@ test.describe('S2.1 · the drawer splitter', () => {
     await expect(page.getByTestId('drawer-panel-composer')).toBeVisible();
   });
 });
+
+test.describe('S2.1 · short windows, narrow windows and wide panels (review on #107)', () => {
+  const TRANSPORT_AND_MORE = [
+    'transport-play', 'transport-return', 'transport-position', 'transport-speed',
+    'transport-loop', 'transport-metronome', 'transport-hits', 'timeline-more',
+  ];
+
+  async function dragBy(page: Page, testId: string, dx: number) {
+    const box = (await page.getByTestId(testId).boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2, { steps: 8 });
+    await page.mouse.up();
+  }
+
+  test('in a short window the drawer gives way, so every pad stays fully visible', async ({ page, pf }) => {
+    await page.setViewportSize({ width: 1366, height: 540 });
+    await openTestMidi1(page, pf);
+    await suggestStartingLayout(page, pf);
+    expect(await clippedOf(page, [...PAD_IDS, 'zone-label-left', 'zone-label-right'])).toEqual([]);
+    // The drawer is shorter than its usual open minimum, and its tabs stay reachable (invariant 3).
+    expect((await page.getByTestId('bottom-drawer').boundingBox())!.height).toBeLessThan(120);
+    await expect(page.getByTestId('drawer-tab-composer')).toBeVisible();
+  });
+
+  test('widening both side panels never clips the transport or its "⋯" button', async ({ page, pf }) => {
+    await openTestMidi1(page, pf);
+    await dragBy(page, 'left-panel-handle', 400);
+    await dragBy(page, 'right-panel-handle', -400);
+    expect(await clippedOf(page, TRANSPORT_AND_MORE)).toEqual([]);
+    for (const id of TRANSPORT_AND_MORE) expect(await hitsItself(page, id), id).toBe(true);
+    await page.getByTestId('timeline-more').click();
+    await expect(page.getByTestId('timeline-more-menu')).toBeVisible();
+  });
+
+  test('in a narrow window the side panels give way to the transport', async ({ page, pf }) => {
+    await page.setViewportSize({ width: 1200, height: 768 });
+    await openTestMidi1(page, pf);
+    expect(await clippedOf(page, TRANSPORT_AND_MORE)).toEqual([]);
+    for (const id of TRANSPORT_AND_MORE) expect(await hitsItself(page, id), id).toBe(true);
+  });
+});
