@@ -90,6 +90,18 @@ function computeInitialPadOwnership(
   return ownership;
 }
 
+/**
+ * An annealed candidate's summary line: "Deep optimization (3,200 iterations
+ * over 4 runs)", or, when the time budget stopped it, "Stopped: time limit
+ * reached · Deep optimization (2,412 of 3,200 iterations over 4 runs)".
+ */
+function describeAnnealingRun(run: ReturnType<typeof annealingRunSummary>, runs: number): string {
+  const done = run.telemetry.iterationsCompleted.toLocaleString('en-US');
+  if (run.stopReason !== 'time_budget') return `Deep optimization (${done} iterations over ${runs} runs)`;
+  const planned = (run.telemetry.iterationsPlanned ?? run.telemetry.iterationsCompleted).toLocaleString('en-US');
+  return `Stopped: ${STOP_REASON_LABELS.time_budget} · Deep optimization (${done} of ${planned} iterations over ${runs} runs)`;
+}
+
 // ============================================================================
 // Configuration
 // ============================================================================
@@ -620,11 +632,12 @@ export async function generateCandidates(
       seed: strategy.seed,
       generationTimeMs,
       optimizationMode: config.optimizationMode,
-      // Says what ran: a budget can stop annealing before its planned iterations.
+      // Says what ran: a budget can stop annealing before its planned iterations,
+      // and then the card's (truncated) line leads with why.
       optimizationSummary: !config.optimizationMode
         ? undefined
         : annealingRun
-          ? `Deep optimization (${annealingRun.telemetry.iterationsCompleted.toLocaleString('en-US')} iterations over ${annealingConfig.restartCount + 1} runs)${annealingRun.stopReason === 'time_budget' ? ` · Stopped: ${STOP_REASON_LABELS.time_budget}` : ''}`
+          ? describeAnnealingRun(annealingRun, annealingConfig.restartCount + 1)
           : `${config.optimizationMode === 'deep' ? 'Deep' : 'Quick'} optimization (${annealingConfig.iterations} iterations, ${annealingConfig.restartCount} restarts)`,
     };
 

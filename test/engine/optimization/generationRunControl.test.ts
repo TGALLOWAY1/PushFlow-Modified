@@ -400,4 +400,23 @@ describe('Every candidate carries its stop reason, telemetry and trace (T33)', (
       expect(c.metadata.optimizationSummary).toBe('Deep optimization (9 iterations over 3 runs)');
     }
   });
+
+  it('annealing stopped by its time budget says so first on its card line', async () => {
+    const { candidates } = await generateCandidates(fourSounds(), createDefaultPose0(), {
+      count: 1,
+      optimizationMode: 'deep',
+      annealingConfig: { ...TINY, timeBudgetMs: 300 },
+      engineConfig: DEFAULT_ENGINE_CONFIG,
+      instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG,
+      baseLayout: baseLayout(),
+      activeLayout: baseLayout(),
+      runControl: { now: steppingClock(10).now },
+    });
+    const [c] = candidates;
+    expect(c.stopReason).toBe('time_budget');
+    expect(c.telemetry!.restartsStoppedByTime).toEqual([0, 1, 2]);
+    expect(c.metadata.optimizationSummary).toBe(
+      `Stopped: time limit reached · Deep optimization (${c.telemetry!.iterationsCompleted} of 60 iterations over 3 runs)`,
+    );
+  });
 });
