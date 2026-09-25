@@ -5,11 +5,12 @@
  * Shows grids, tradeoff metrics, scores, and allows promoting.
  */
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useProject } from '../../state/ProjectContext';
 import { useDraftReplacement } from '../../hooks/useDraftReplacement';
 import { getAnalysisForLayout } from '../../state/projectState';
 import { CompareGridView } from '../CompareGridView';
+import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { CandidateCompare } from '../CandidateCompare';
 import { type CandidateSolution } from '../../../types/candidateSolution';
 
@@ -51,6 +52,7 @@ function buildActiveCandidate(state: ReturnType<typeof useProject>['state']): Ca
 export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
   const { state } = useProject();
   const replaceDraft = useDraftReplacement();
+  const titleId = useOverlayTitleId();
 
   // Find candidates from IDs — handle special '__active__' ID
   const allCandidates = state.candidates;
@@ -71,13 +73,20 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
   const candidateB = comparableCandidates[rightIdx] ?? null;
 
   if (!candidateA || !candidateB) {
+    // Every Compare state has a heading, a Close button and Escape (T06, T08).
     return (
-      <>
-        <div className="fixed inset-0 z-[70] bg-black/60" onClick={onClose} />
-        <div data-testid="compare-dialog" className="fixed inset-8 z-[71] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex items-center justify-center">
-          <div className="text-[var(--text-tertiary)] text-pf-lg">Not enough candidates to compare.</div>
+      <Dialog
+        onClose={onClose}
+        labelledBy={titleId}
+        testId="compare-dialog"
+        backdropClassName="fixed inset-0 z-[70] bg-black/60"
+        className="fixed inset-8 z-[71] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex flex-col overflow-hidden"
+      >
+        <CompareHeader titleId={titleId} onClose={onClose} />
+        <div className="flex-1 flex items-center justify-center text-[var(--text-tertiary)] text-pf-lg">
+          Not enough layouts to compare.
         </div>
-      </>
+      </Dialog>
     );
   }
 
@@ -96,13 +105,14 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
   };
 
   return (
-    <>
-      <div className="fixed inset-0 z-[70] bg-black/60" onClick={onClose} />
-      <div data-testid="compare-dialog" className="fixed inset-6 z-[71] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)] flex-shrink-0">
-          <h3 className="text-pf-lg font-semibold text-[var(--text-primary)]">Compare Layouts</h3>
-          <div className="flex items-center gap-3">
+    <Dialog
+      onClose={onClose}
+      labelledBy={titleId}
+      testId="compare-dialog"
+      backdropClassName="fixed inset-0 z-[70] bg-black/60"
+      className="fixed inset-6 z-[71] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex flex-col overflow-hidden"
+    >
+        <CompareHeader titleId={titleId} onClose={onClose}>
             {comparableCandidates.length > 2 && (
               <div className="flex items-center gap-2 text-pf-sm text-[var(--text-secondary)]">
                 <span>Left:</span>
@@ -110,6 +120,7 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
                   className="pf-select text-pf-sm px-1 py-0.5"
                   value={leftIdx}
                   onChange={e => setLeftIdx(Number(e.target.value))}
+                  aria-label="Left layout"
                 >
                   {comparableCandidates.map((c, i) => (
                     <option key={c.id} value={i} disabled={i === rightIdx}>
@@ -122,6 +133,7 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
                   className="pf-select text-pf-sm px-1 py-0.5"
                   value={rightIdx}
                   onChange={e => setRightIdx(Number(e.target.value))}
+                  aria-label="Right layout"
                 >
                   {comparableCandidates.map((c, i) => (
                     <option key={c.id} value={i} disabled={i === leftIdx}>
@@ -131,9 +143,7 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
                 </select>
               </div>
             )}
-            <button className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-lg transition-colors" onClick={onClose}>&times;</button>
-          </div>
-        </div>
+        </CompareHeader>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
@@ -165,8 +175,27 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
             />
           </div>
         </div>
+    </Dialog>
+  );
+}
+
+function CompareHeader({ titleId, onClose, children }: { titleId: string; onClose: () => void; children?: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)] flex-shrink-0">
+      <h3 id={titleId} className="text-pf-lg font-semibold text-[var(--text-primary)]">Compare Layouts</h3>
+      <div className="flex items-center gap-3">
+        {children}
+        <button
+          className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-lg transition-colors"
+          onClick={onClose}
+          aria-label="Close"
+          title="Close"
+          data-testid="compare-close"
+        >
+          &times;
+        </button>
       </div>
-    </>
+    </div>
   );
 }
 

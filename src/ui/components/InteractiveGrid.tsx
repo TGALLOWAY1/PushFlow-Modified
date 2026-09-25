@@ -102,7 +102,8 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
   const padDrumRackNote = (row: number, col: number) => bottomLeftNote + row * 8 + col;
   const [dragOverPad, setDragOverPad] = useState<string | null>(null);
   const [dragSourcePad, setDragSourcePad] = useState<string | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ padKey: string; x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ padKey: string; x: number; y: number; pad: HTMLElement } | null>(null);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
   const [showTransitionArrows, setShowTransitionArrows] = useState(true);
 
   const soundStreamLookup = useMemo(
@@ -648,10 +649,13 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
         <div
           key={padKey}
           data-testid={`pad-${row}-${col}`}
+          // Focusable by script only, so the pad menu can hand focus back (T06).
+          tabIndex={-1}
+          aria-label={`Row ${row}, column ${col}, ${voice ? voice.name : 'empty'}`}
           className={`
             group relative flex flex-col items-center justify-center
             w-14 h-14 rounded-lg text-[10px] font-mono leading-tight
-            border transition-all duration-100 select-none
+            border transition-all duration-100 select-none outline-none focus-visible:ring-2 focus-visible:ring-sky-400
             ${isSelected ? 'z-10 scale-105 brightness-125 bg-[var(--bg-card)]' : ''}
             ${isBlinking && !isSelected ? 'z-10 scale-110 brightness-200 bg-[var(--bg-card)]' : ''}
             ${isActivePlaying && !isSelected && !isBlinking ? 'z-10 scale-105 brightness-150 bg-[var(--bg-card)]' : ''}
@@ -692,7 +696,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           onClick={() => !isMuted && handlePadClick(row, col)}
           onContextMenu={e => {
             e.preventDefault();
-            if (!isMuted) setContextMenu({ padKey, x: e.clientX, y: e.clientY });
+            if (!isMuted) setContextMenu({ padKey, x: e.clientX, y: e.clientY, pad: e.currentTarget });
           }}
           onDragOver={e => !isMuted && handleDragOver(e, padKey)}
           onDragLeave={handleDragLeave}
@@ -948,7 +952,8 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           padKey={contextMenu.padKey}
           x={contextMenu.x}
           y={contextMenu.y}
-          onClose={() => setContextMenu(null)}
+          returnFocusTo={contextMenu.pad}
+          onClose={closeContextMenu}
         />
       )}
     </div>

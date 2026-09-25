@@ -1484,6 +1484,9 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     // -- Ephemeral UI --
 
     case 'SELECT_EVENT':
+      // Clearing an already-empty selection changes nothing (T06: an Escape
+      // that closes an overlay must not also re-render the whole editor).
+      if (action.payload === state.selectedEventIndex) return state;
       return { ...state, selectedEventIndex: action.payload };
 
     case 'SELECT_MOMENT':

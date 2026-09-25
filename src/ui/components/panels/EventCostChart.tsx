@@ -11,7 +11,8 @@
  * - Enlarge to modal view
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { type FingerAssignment } from '../../../types/executionPlan';
 import { type V1CostBreakdown } from '../../../types/diagnostics';
 import { groupIntoMoments, summarizeMomentCost } from '@/engine';
@@ -61,6 +62,8 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
   );
   const [hoveredEvent, setHoveredEvent] = useState<number | null>(null);
   const [enlarged, setEnlarged] = useState(false);
+  const closeEnlarged = useCallback(() => setEnlarged(false), []);
+  const enlargedTitleId = useOverlayTitleId();
 
   const toggleLayer = (key: string) => {
     setEnabledLayers(prev => {
@@ -253,17 +256,22 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
 
       {/* Enlarged modal */}
       {enlarged && (
-        <>
-          <div className="fixed inset-0 z-[60] bg-black/60" onClick={() => setEnlarged(false)} />
-          <div className="fixed inset-8 z-[61] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-2xl flex flex-col overflow-hidden">
+        <Dialog
+          onClose={closeEnlarged}
+          labelledBy={enlargedTitleId}
+          testId="chart-dialog"
+          backdropClassName="fixed inset-0 z-[60] bg-black/60"
+          className="fixed inset-8 z-[61] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-2xl flex flex-col overflow-hidden"
+        >
             <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)]">
-              <h3 className="text-pf-md font-medium text-[var(--text-primary)]">
+              <h3 id={enlargedTitleId} className="text-pf-md font-medium text-[var(--text-primary)]">
                 Per-Event Difficulty Breakdown
                 {candidateLabel && <span className="text-[var(--text-secondary)] ml-2">({candidateLabel})</span>}
               </h3>
               <button
                 className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-lg"
-                onClick={() => setEnlarged(false)}
+                onClick={closeEnlarged}
+                aria-label="Close"
               >
                 &times;
               </button>
@@ -301,8 +309,7 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
                 </div>
               )}
             </div>
-          </div>
-        </>
+        </Dialog>
       )}
     </>
   );

@@ -7,7 +7,7 @@
  */
 
 import { useState } from 'react';
-import { createPortal } from 'react-dom';
+import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { CONSTRAINT_RULE_NAMES, OPTIMIZER_METHOD_KEYS, OPTIMIZER_METHOD_LABELS } from '@/engine';
 import { VERDICT_TIERS } from '../../analysis/verdictTiers';
 import { FACTOR_KEYS, FACTOR_META } from '../../analysis/factorMeta';
@@ -77,22 +77,26 @@ const WORKFLOW_STEPS = [
 
 export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
   const [tab, setTab] = useState<LearnMoreTab>('overview');
+  const titleId = useOverlayTitleId();
 
   if (!open) return null;
 
-  // Rendered into <body>: opened from a side panel whose styling makes it the
-  // containing block for fixed-position children, the modal was otherwise
-  // squeezed into that ~300px panel and most of its text was cut off.
-  return createPortal(
-    <>
-      <div className="fixed inset-0 z-[60] bg-black/50" onClick={onClose} />
-      <div className="fixed inset-6 z-[61] max-w-3xl mx-auto rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-app)] shadow-pf-xl flex flex-col overflow-hidden">
+  // A Dialog (T06): rendered into <body>, so the side panel it is opened from
+  // can't squeeze it; Escape, outside press, focus trap and focus return.
+  return (
+    <Dialog
+      onClose={onClose}
+      labelledBy={titleId}
+      testId="learn-more-dialog"
+      className="fixed inset-6 z-[61] max-w-3xl mx-auto rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-app)] shadow-pf-xl flex flex-col overflow-hidden"
+    >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)]">
-          <h2 className="text-pf-lg font-semibold text-[var(--text-primary)]">Learn More</h2>
+          <h2 id={titleId} className="text-pf-lg font-semibold text-[var(--text-primary)]">Learn More</h2>
           <button
             className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors text-lg"
             onClick={onClose}
+            aria-label="Close"
           >
             &times;
           </button>
@@ -129,9 +133,7 @@ export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
           {tab === 'optimizers' && <OptimizersSection />}
           {tab === 'constraints' && <ConstraintsSection />}
         </div>
-      </div>
-    </>,
-    document.body,
+    </Dialog>
   );
 }
 

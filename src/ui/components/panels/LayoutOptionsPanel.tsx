@@ -6,6 +6,7 @@
  */
 
 import { useState } from 'react';
+import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { useProject } from '../../state/ProjectContext';
 import { useDraftReplacement } from '../../hooks/useDraftReplacement';
 import { type Layout } from '../../../types/layout';
@@ -305,13 +306,18 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useProject();
   const replaceDraft = useDraftReplacement();
 
+  const titleId = useOverlayTitleId();
+
   return (
-    <>
-      <div className="fixed inset-0 z-[60] bg-black/50" onClick={onClose} />
-      <div className="fixed inset-8 z-[61] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex flex-col overflow-hidden max-w-3xl mx-auto">
+    <Dialog
+      onClose={onClose}
+      labelledBy={titleId}
+      testId="view-all-dialog"
+      className="fixed inset-8 z-[61] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex flex-col overflow-hidden max-w-3xl mx-auto"
+    >
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)]">
-          <h3 className="text-pf-lg font-semibold text-[var(--text-primary)]">All Candidates & Variants</h3>
-          <button className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-lg" onClick={onClose}>&times;</button>
+          <h3 id={titleId} className="text-pf-lg font-semibold text-[var(--text-primary)]">All Candidates & Variants</h3>
+          <button className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-lg" onClick={onClose} aria-label="Close">&times;</button>
         </div>
         <div className="flex-1 overflow-y-auto p-5">
           {state.candidates.length > 0 && (
@@ -373,8 +379,7 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
             </div>
           )}
         </div>
-      </div>
-    </>
+    </Dialog>
   );
 }
 

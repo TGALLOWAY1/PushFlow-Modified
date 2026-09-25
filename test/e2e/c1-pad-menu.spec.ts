@@ -9,7 +9,7 @@
  * All cases flip in S1b.2 (Dialog/Popover primitive).
  */
 
-import { test, expect, EXPECTED_FAIL } from './fixtures';
+import { test, expect } from './fixtures';
 import { openTestMidi1, placeSounds, visiblePadPoint, SPREAD_PADS } from './project';
 import type { Page } from '@playwright/test';
 
@@ -58,7 +58,6 @@ test.describe('C1 · pad context menu', () => {
   });
 
   test('opens at the cursor, or clamped fully inside the viewport, for all 64 pads', async ({ page }) => {
-    test.fail(EXPECTED_FAIL, 'C1: menu is positioned inside a transformed ancestor, so it lands away from the cursor (flips in S1b.2)');
     test.setTimeout(120_000);
     const viewport = page.viewportSize()!;
     const misplaced: string[] = [];
@@ -81,7 +80,6 @@ test.describe('C1 · pad context menu', () => {
   });
 
   test('all 12 items of an occupied pad\'s menu are clickable', async ({ page }) => {
-    test.fail(EXPECTED_FAIL, 'C1: the menu is clipped by the grid wrapper, so some items are covered (flips in S1b.2)');
     const results: string[] = [];
     for (const padKey of SPREAD_PADS) {
       await openMenuAt(page, padKey);
@@ -93,7 +91,6 @@ test.describe('C1 · pad context menu', () => {
   });
 
   test('the first Escape closes the menu and focus returns to the pad', async ({ page }) => {
-    test.fail(EXPECTED_FAIL, 'C1: pads are not focusable and focus is never returned (flips in S1b.2)');
     await openMenuAt(page, '4,3');
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('pad-menu')).toHaveCount(0);
