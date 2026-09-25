@@ -15,6 +15,7 @@
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useReducer, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useProject } from '../../state/ProjectContext';
 import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
 import { useIdentityMatchingNotice } from '../../hooks/useIdentityMatchingNotice';
@@ -58,6 +59,17 @@ import {
 } from '../../../engine/mapping/presetTransform';
 import { generateId } from '../../../utils/idGenerator';
 import { padKey } from '../../../types/padGrid';
+import { useMeasuredPadSize } from './gridSizing';
+import { DrawerSplitter } from './DrawerSplitter';
+import {
+  DRAWER_TAB_BAR_HEIGHT,
+  drawerHeightFor,
+  loadDrawerPrefs,
+  maxDrawerHeight,
+  saveDrawerPrefs,
+  type DrawerPrefs,
+} from './drawerSizing';
+import { timelineContentHeight } from '../timelineLayout';
 
 type LeftPanelTab = 'sounds' | 'events' | 'presets';
 type RightPanelTab = 'costs' | 'layouts';
@@ -299,25 +311,40 @@ function PerformanceWorkspaceInner() {
   const startX = useRef(0);
   const startWidth = useRef(0);
 
-  // Grid scaling — ResizeObserver measures container, scale grid to fit
-  const gridContainerRef = useRef<HTMLDivElement>(null);
-  const [gridScale, setGridScale] = useState(1);
-  const GRID_NATURAL_SIZE = 8 * (56 + 4) + 40; // 8 cells * (cell + gap) + padding/labels
+  // Measured grid (T04): the pads are sized to the grid region, never scaled.
+  const [gridRegionRef, padSize] = useMeasuredPadSize();
 
-  useEffect(() => {
-    const el = gridContainerRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        const available = Math.min(width, height);
-        const scale = Math.min(1.2, available / GRID_NATURAL_SIZE);
-        setGridScale(Math.max(0.5, scale));
-      }
-    });
-    observer.observe(el);
+  // Bottom drawer: fits the timeline's content (at most ~40% of the centre
+  // column) unless the viewer dragged the splitter; remembered per viewer.
+  const [centerEl, setCenterEl] = useState<HTMLDivElement | null>(null);
+  const [centerHeight, setCenterHeight] = useState(0);
+  useLayoutEffect(() => {
+    if (!centerEl) return;
+    const measure = () => {
+      const h = centerEl.clientHeight;
+      if (h > 0) setCenterHeight(prev => (prev === h ? prev : h));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(centerEl);
     return () => observer.disconnect();
+  }, [centerEl]);
+  const [drawerPrefs, setDrawerPrefs] = useState<DrawerPrefs>(loadDrawerPrefs);
+  const commitDrawerPrefs = useCallback((next: DrawerPrefs) => {
+    setDrawerPrefs(next);
+    saveDrawerPrefs(next);
   }, []);
+  const drawerHeight = centerHeight > 0
+    ? drawerHeightFor(centerHeight, timelineContentHeight(state.soundStreams.length), drawerPrefs)
+    : undefined;
+  const drawerCollapsed = drawerPrefs.collapsed;
+  const setDrawerCollapsed = useCallback((collapsed: boolean) => {
+    commitDrawerPrefs({ ...drawerPrefs, collapsed });
+  }, [drawerPrefs, commitDrawerPrefs]);
+  const openDrawerTab = useCallback((tab: TimelineTab) => {
+    setTimelineTab(tab);
+    if (drawerPrefs.collapsed) commitDrawerPrefs({ ...drawerPrefs, collapsed: false });
+  }, [drawerPrefs, commitDrawerPrefs]);
 
   // Compare state
   const [selectedForCompare, setSelectedForCompare] = useState<Set<string>>(new Set());
@@ -671,70 +698,88 @@ function PerformanceWorkspaceInner() {
           </div>
         )}
 
-        {/* Center Column: Grid + Timeline stacked */}
-        <div className="flex-1 flex flex-col gap-2.5 min-w-0 min-h-0 px-0.5 overflow-hidden">
-          {/* Push Grid — takes available space, scales to fill */}
-          <div className="flex-1 min-h-0 relative flex flex-col overflow-hidden">
-            {/* Ambient background glows */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full pointer-events-none" style={{ background: 'rgba(46, 91, 255, 0.04)', filter: 'blur(120px)' }} />
-            <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full pointer-events-none" style={{ background: 'rgba(87, 27, 193, 0.03)', filter: 'blur(100px)' }} />
-            {/* Grid enclosure */}
-            <div ref={gridContainerRef} className="flex-1 min-h-0 flex items-center justify-center overflow-hidden relative z-10">
-              <div className="glass-panel-blur push-grid-shadow p-1 rounded-[1.5rem] border border-[rgba(67,70,86,0.2)]">
-                <div className="bg-[#0e0e0e] p-4 rounded-[1.3rem]" style={{ boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.4)' }}>
-              <div style={{ transform: `scale(${gridScale})`, transformOrigin: 'center' }}>
-                <InteractiveGrid
-                  assignments={assignments}
-                  layoutOverride={currentLayoutOverride}
-                  selectedEventIndex={state.selectedEventIndex}
-                  onEventClick={idx => dispatch({ type: 'SELECT_EVENT', payload: idx })}
-                  onionSkin={onionSkin}
-                  voiceConstraints={state.voiceConstraints}
-                  gridLabels={viewSettings.gridLabels}
-                  highlightedInstancePads={highlightedInstancePads}
-                  onPresetDrop={handlePresetDrop}
-                  dragPreview={dragPreview}
-                  onGridDragOver={handleGridDragOver}
-                  onGridDragLeave={handleGridDragLeave}
-                  debuggerIteration={debuggerIteration}
-                />
-              </div>
-                </div>
-              </div>
-            </div>
+        {/* Center Column: Grid, splitter and the Timeline | Composer drawer */}
+        <div ref={setCenterEl} className="flex-1 flex flex-col min-w-0 min-h-0 px-0.5 overflow-hidden">
+          {/* Grid region: measured, and the pads sized to fit it (T04) */}
+          <div ref={gridRegionRef} data-testid="grid-region" className="flex-1 min-h-0 overflow-hidden">
+            <InteractiveGrid
+              padSize={padSize}
+              assignments={assignments}
+              layoutOverride={currentLayoutOverride}
+              selectedEventIndex={state.selectedEventIndex}
+              onEventClick={idx => dispatch({ type: 'SELECT_EVENT', payload: idx })}
+              onionSkin={onionSkin}
+              voiceConstraints={state.voiceConstraints}
+              gridLabels={viewSettings.gridLabels}
+              highlightedInstancePads={highlightedInstancePads}
+              onPresetDrop={handlePresetDrop}
+              dragPreview={dragPreview}
+              onGridDragOver={handleGridDragOver}
+              onGridDragLeave={handleGridDragLeave}
+              debuggerIteration={debuggerIteration}
+            />
           </div>
 
+          <DrawerSplitter
+            height={drawerHeight ?? DRAWER_TAB_BAR_HEIGHT}
+            maxHeight={maxDrawerHeight(centerHeight)}
+            collapsed={drawerCollapsed}
+            onResize={(height, commit) => {
+              const next = { height, collapsed: false };
+              if (commit) commitDrawerPrefs(next);
+              else setDrawerPrefs(next);
+            }}
+            onReset={() => commitDrawerPrefs({ height: null, collapsed: false })}
+            onToggleCollapsed={() => setDrawerCollapsed(!drawerCollapsed)}
+          />
+
           {/* Timeline / Composer — tabbed view */}
-          <div className="flex-[0_1_480px] min-h-[240px] glass-panel overflow-hidden flex flex-col">
+          <div
+            data-testid="bottom-drawer"
+            className="flex-shrink-0 glass-panel overflow-hidden flex flex-col"
+            style={{ height: drawerHeight, minHeight: DRAWER_TAB_BAR_HEIGHT }}
+          >
             {/* Tab bar */}
-            <div className="flex items-center border-b border-[var(--border-subtle)] flex-shrink-0 px-1">
+            <div className="flex items-center border-b border-[var(--border-subtle)] flex-shrink-0 px-1" style={{ height: DRAWER_TAB_BAR_HEIGHT }}>
               <button
                 data-testid="drawer-tab-timeline"
                 className={`pf-tab ${timelineTab === 'timeline' ? 'active' : ''}`}
-                onClick={() => setTimelineTab('timeline')}
+                onClick={() => openDrawerTab('timeline')}
               >
                 Timeline
               </button>
               <button
                 data-testid="drawer-tab-composer"
                 className={`pf-tab ${timelineTab === 'composer' ? 'active' : ''}`}
-                onClick={() => setTimelineTab('composer')}
+                onClick={() => openDrawerTab('composer')}
               >
                 Composer
+              </button>
+              <span className="flex-1" />
+              <button
+                data-testid="drawer-collapse"
+                className="w-7 h-7 flex items-center justify-center rounded-pf-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
+                onClick={() => setDrawerCollapsed(!drawerCollapsed)}
+                aria-expanded={!drawerCollapsed}
+                aria-label={drawerCollapsed ? 'Expand the timeline drawer' : 'Collapse the timeline drawer'}
+                title={drawerCollapsed ? 'Expand the drawer' : 'Collapse the drawer (the grid gets the room)'}
+              >
+                {drawerCollapsed ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
               </button>
             </div>
             {/* Tab content. Both tabs stay mounted, so a tab switch never stops
                 playback or drops a pending Composer edit (T60, T67); the
-                inactive one is hidden and inert. */}
+                inactive one is hidden and inert, and so are both while the
+                drawer is collapsed. */}
             <div className="flex-1 min-h-0 overflow-hidden">
-              <DrawerPanel tab="timeline" active={timelineTab === 'timeline'}>
+              <DrawerPanel tab="timeline" active={timelineTab === 'timeline' && !drawerCollapsed}>
                 <UnifiedTimeline
                   highlightedStreamIds={highlightedStreamIds}
-                  isVisible={timelineTab === 'timeline'}
+                  isVisible={timelineTab === 'timeline' && !drawerCollapsed}
                 />
               </DrawerPanel>
-              <DrawerPanel tab="composer" active={timelineTab === 'composer'} className="overflow-auto">
-                <WorkspacePatternStudio isActive={timelineTab === 'composer'} />
+              <DrawerPanel tab="composer" active={timelineTab === 'composer' && !drawerCollapsed} className="overflow-auto">
+                <WorkspacePatternStudio isActive={timelineTab === 'composer' && !drawerCollapsed} />
               </DrawerPanel>
             </div>
           </div>

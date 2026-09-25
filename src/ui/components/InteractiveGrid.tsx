@@ -25,6 +25,16 @@ import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
 import { midiNoteToName } from '../../utils/midiNotes';
 import { COMPOSER_PRESET_DRAG_TYPE } from './composer/PresetCard';
 import { type PresetDragPreview } from '../../types/composerPreset';
+import {
+  AXIS_WIDTH,
+  COLUMN_LABELS_HEIGHT,
+  FRAME_INSET,
+  PAD_GAP,
+  SECONDARY_LABEL_MIN_PAD,
+  STATE_BAR_GAP,
+  STATE_BAR_HEIGHT,
+  ZONE_LABELS_HEIGHT,
+} from './workspace/gridSizing';
 
 interface InteractiveGridProps {
   assignments?: FingerAssignment[];
@@ -51,6 +61,8 @@ interface InteractiveGridProps {
   onGridDragLeave?: () => void;
   /** Current optimization iteration for visual debugging overlays. */
   debuggerIteration?: import('../../engine/optimization/optimizerInterface').OptimizationIteration;
+  /** Pad edge in px, measured by the workspace (T04); labels keep their sizes. */
+  padSize?: number;
 }
 
 /** Abbreviated finger names for display (numbered: thumb=1 through pinky=5) */
@@ -65,11 +77,10 @@ const HAND_COLORS = {
   mixed: '#FFCC00',
 };
 
-const CELL_SIZE = 56;
-const CELL_GAP = 4;
-const GRID_STEP = CELL_SIZE + CELL_GAP;
-const GRID_OFFSET_X = 20;
-const GRID_CENTER_OFFSET = CELL_SIZE / 2;
+/** The overlay's x origin: pads start right of the row-number column. */
+const GRID_OFFSET_X = AXIS_WIDTH;
+/** Pad size the transition arcs' curvature was drawn for; arcs scale from it. */
+const ARC_REFERENCE_PAD = 56;
 
 interface PadSummary {
   voiceName: string;
@@ -92,8 +103,15 @@ function safeColorAlpha(color: string | null | undefined, alpha: number, fallbac
 /** Physical reach threshold: pads farther apart than this are flagged as impossible. */
 const IMPOSSIBLE_REACH_THRESHOLD = 5;
 
-export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave, debuggerIteration }: InteractiveGridProps) {
+export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave, debuggerIteration, padSize = 56 }: InteractiveGridProps) {
   const { state, dispatch } = useProject();
+  // Overlay geometry follows the measured pad size (T04).
+  const gridStep = padSize + PAD_GAP;
+  const toGridX = (col: number) => col * gridStep + padSize / 2;
+  const toGridY = (row: number) => (7 - row) * gridStep + padSize / 2;
+  const arcScale = padSize / ARC_REFERENCE_PAD;
+  // Secondary labels (note, position, empty-pad coordinates) hide on small pads.
+  const showSecondaryLabels = padSize >= SECONDARY_LABEL_MIN_PAD;
   const layout = layoutOverride ?? getDisplayedLayout(state);
   // Drum-rack note for a pad is a function of its GRID POSITION, never the sound
   // that happens to sit on it (Product Invariant #5: MIDI pitch is metadata only).
@@ -253,8 +271,8 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
         const endY = toGridY(toRow);
         const midX = (startX + endX) / 2;
         const midY = (startY + endY) / 2;
-        const controlX = midX + (move.hand === 'left' ? -18 : 18);
-        const controlY = midY - 24;
+        const controlX = midX + (move.hand === 'left' ? -18 : 18) * arcScale;
+        const controlY = midY - 24 * arcScale;
         return {
           id: `${move.hand}-${move.finger}-${move.fromPad}-${move.toPad}`,
           color: HAND_COLORS[move.hand],
@@ -264,7 +282,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           endY,
         };
       });
-  }, [selectedTransition, showTransitionArrows, state.isPlaying]);
+  }, [selectedTransition, showTransitionArrows, state.isPlaying, padSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Visual Debugger Overlays: Candidate Moves
   const debuggerPaths = useMemo(() => {
@@ -328,7 +346,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       })
       // sort so chosen move is drawn last (on top)
       .sort((a, b) => (a.isChosen === b.isChosen ? 0 : a.isChosen ? 1 : -1));
-  }, [debuggerIteration]);
+  }, [debuggerIteration, padSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Active playing pads — with blink tracking for repeated hits
   const BLINK_DURATION_MS = 120; // how long the flash lasts
@@ -670,8 +688,8 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           tabIndex={-1}
           aria-label={`Row ${row}, column ${col}, ${voice ? voice.name : 'empty'}`}
           className={`
-            group relative flex flex-col items-center justify-center
-            w-14 h-14 rounded-lg text-[10px] font-mono leading-tight
+            group relative flex flex-col items-center justify-center flex-shrink-0
+            rounded-lg text-[10px] font-mono leading-tight
             border transition-[transform,box-shadow,background-color,border-color,filter] duration-100 select-none outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400
             ${isSelected ? 'z-10 scale-105 brightness-125 bg-[var(--bg-card)]' : ''}
             ${isBlinking && !isSelected ? 'z-10 scale-110 brightness-200 bg-[var(--bg-card)]' : ''}
@@ -687,6 +705,8 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             ${isMuted ? 'cursor-default' : voice ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
           `}
           style={{
+            width: padSize,
+            height: padSize,
             backgroundColor: isSelected && selectedFingerInfo
               ? selectedFingerInfo.color
               : isSelected || isActivePlaying
@@ -763,13 +783,13 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                   </span>
                 )}
                 {/* Note label — the pad's Ableton Drum Rack note, by position (e.g. C1, C#1) */}
-                {gridLabels?.showNoteLabels && (
+                {gridLabels?.showNoteLabels && showSecondaryLabels && (
                   <span className="block text-[10px] font-mono text-cyan-300/80 leading-none mt-0.5">
                     {midiNoteToName(padDrumRackNote(row, col))}
                   </span>
                 )}
                 {/* Position label */}
-                {gridLabels?.showPositionLabels && (
+                {gridLabels?.showPositionLabels && showSecondaryLabels && (
                   <span className="block text-[8px] text-gray-500 leading-none mt-0.5">
                     ({row},{col})
                   </span>
@@ -810,28 +830,42 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                 )}
               </>
             )
-          ) : (
+          ) : showSecondaryLabels ? (
             <span className="text-[8px] text-gray-600">
               {gridLabels?.showNoteLabels ? midiNoteToName(padDrumRackNote(row, col)) : `${row},${col}`}
             </span>
-          )}
+          ) : null}
         </div>
       );
     }
     rows.push(
-      <div key={row} className="flex gap-1 items-center">
-        <span className="w-4 text-pf-xs text-[var(--text-tertiary)] text-right mr-1 font-mono tabular-nums">{row}</span>
+      <div key={row} className="flex items-center" style={{ gap: PAD_GAP }}>
+        <span className="w-4 flex-shrink-0 text-pf-xs text-[var(--text-tertiary)] text-right font-mono tabular-nums" style={{ marginRight: AXIS_WIDTH - 16 - PAD_GAP }}>{row}</span>
         {cells}
       </div>
     );
   }
 
+  const moveCount = selectedTransition
+    ? selectedTransition.fingerMoves.filter(move => !move.isHold && move.fromPad && move.toPad).length
+    : 0;
+  const matrixWidth = GRID_OFFSET_X + 8 * padSize + 7 * PAD_GAP;
+  const zoneWidth = 4 * padSize + 3 * PAD_GAP;
+
   return (
-    <div className="space-y-1.5">
-      {/* Layout role badge + analysis stale indicator */}
-      <div className="flex items-center gap-2">
+    // The state-bar slot and the frame, centred as one group in the measured
+    // region ("safe" keeps the top visible if the pads are at their minimum).
+    <div className="h-full w-full flex flex-col items-center" style={{ justifyContent: 'safe center' }}>
+      {/* State-bar slot: fixed height, never scaled (P3's layout-state bar fills
+          it). Holds the role badge, freshness and the transition preview, so
+          selecting an event no longer changes the grid's size. */}
+      <div
+        data-testid="state-bar-slot"
+        className="w-full flex items-center gap-2 flex-shrink-0 min-w-0 overflow-hidden"
+        style={{ height: STATE_BAR_HEIGHT, marginBottom: STATE_BAR_GAP }}
+      >
         {layout && (
-          <span className={`pf-badge ${
+          <span className={`pf-badge flex-shrink-0 ${
             getDisplayedLayoutRole(state) === 'working'
               ? 'bg-amber-500/10 text-amber-400 border border-amber-500/15'
               : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/15'
@@ -840,18 +874,50 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           </span>
         )}
         {state.analysisStale && state.analysisResult && (
-          <span className="text-pf-xs text-amber-400/80">
+          <span className="text-pf-xs text-amber-400/80 flex-shrink-0">
             Analysis outdated
           </span>
         )}
+        <span className="flex-1" />
+        {selectedTransition?.next && (
+          <>
+            <span
+              className="text-pf-xs text-sky-300/70 truncate min-w-0"
+              title="Transition preview: the time to the next event, pads it shares with this one, and the fingers that move"
+            >
+              Transition preview: {selectedTransition.timeDelta?.toFixed(3)}s to next event
+              {' · '}
+              {selectedTransition.sharedPadKeys.size} shared pad{selectedTransition.sharedPadKeys.size === 1 ? '' : 's'}
+              {' · '}
+              {moveCount} finger move{moveCount === 1 ? '' : 's'}
+            </span>
+            <button
+              className={`flex-shrink-0 text-pf-xs px-1.5 py-0.5 rounded-pf-sm transition-colors ${
+                showTransitionArrows
+                  ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30'
+                  : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border border-[var(--border-subtle)]'
+              }`}
+              onClick={() => setShowTransitionArrows(prev => !prev)}
+              title={showTransitionArrows ? 'Hide transition arrows' : 'Show transition arrows'}
+            >
+              {showTransitionArrows ? 'Arrows On' : 'Arrows Off'}
+            </button>
+          </>
+        )}
       </div>
 
-      <div className="inline-block relative">
+      {/* Hardware frame, fitted to the matrix (no invisible blur layers). */}
+      <div
+        data-testid="grid-frame"
+        className="flex-shrink-0 rounded-[1.25rem] border border-[rgba(67,70,86,0.25)] bg-[#0e0e0e]"
+        style={{ padding: FRAME_INSET - 1, boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.4), var(--shadow-xl)' }}
+      >
+      <div className="relative" style={{ width: matrixWidth }}>
         {(transitionPaths.length > 0 || debuggerPaths.length > 0) && (
           <svg
-            className="absolute inset-0 pointer-events-none overflow-visible z-20"
-            style={{ width: GRID_OFFSET_X + (GRID_STEP * 8), height: GRID_STEP * 8 }}
-            viewBox={`0 0 ${GRID_OFFSET_X + (GRID_STEP * 8)} ${GRID_STEP * 8}`}
+            className="absolute left-0 top-0 pointer-events-none overflow-visible z-20"
+            style={{ width: matrixWidth, height: gridStep * 8 }}
+            viewBox={`0 0 ${matrixWidth} ${gridStep * 8}`}
             aria-hidden="true"
           >
             <defs>
@@ -921,49 +987,26 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             })}
           </svg>
         )}
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col" style={{ gap: PAD_GAP }}>
           {rows}
           {/* Column labels */}
-          <div className="flex gap-1 ml-5">
+          <div className="flex" style={{ gap: PAD_GAP, marginLeft: GRID_OFFSET_X, height: COLUMN_LABELS_HEIGHT }}>
             {Array.from({ length: 8 }, (_, col) => (
-              <div key={col} className="w-14 text-center text-pf-xs text-[var(--text-tertiary)] font-mono tabular-nums">{col}</div>
+              <div key={col} className="flex-shrink-0 text-center text-pf-xs leading-4 text-[var(--text-tertiary)] font-mono tabular-nums" style={{ width: padSize }}>{col}</div>
             ))}
           </div>
         </div>
         {/* Zone labels */}
-        <div className="flex ml-5 mt-1 gap-1">
-          <div className="w-[calc(4*3.5rem+3*0.25rem)] text-center text-[10px] text-[var(--text-tertiary)] border-t border-[var(--border-subtle)] pt-0.5">
+        <div className="flex" style={{ gap: PAD_GAP, marginLeft: GRID_OFFSET_X, marginTop: ZONE_LABELS_HEIGHT - 16, height: 16 }}>
+          <div data-testid="zone-label-left" className="flex-shrink-0 text-center text-[11px] leading-[15px] text-[var(--text-tertiary)] border-t border-[var(--border-subtle)]" style={{ width: zoneWidth }}>
             Left Hand
           </div>
-          <div className="w-[calc(4*3.5rem+3*0.25rem)] text-center text-[10px] text-[var(--text-tertiary)] border-t border-[var(--border-subtle)] pt-0.5">
+          <div data-testid="zone-label-right" className="flex-shrink-0 text-center text-[11px] leading-[15px] text-[var(--text-tertiary)] border-t border-[var(--border-subtle)]" style={{ width: zoneWidth }}>
             Right Hand
           </div>
         </div>
       </div>
-
-      {/* Transition preview */}
-      {selectedTransition?.next && (
-        <div className="flex items-center gap-3 mt-1.5">
-          <div className="text-pf-xs text-sky-300/70">
-            Transition preview: {selectedTransition.timeDelta?.toFixed(3)}s to next event
-            {' · '}
-            {selectedTransition.sharedPadKeys.size} shared pad{selectedTransition.sharedPadKeys.size === 1 ? '' : 's'}
-            {' · '}
-            {selectedTransition.fingerMoves.filter(move => !move.isHold && move.fromPad && move.toPad).length} finger move{selectedTransition.fingerMoves.filter(move => !move.isHold && move.fromPad && move.toPad).length === 1 ? '' : 's'}
-          </div>
-          <button
-            className={`text-pf-xs px-1.5 py-0.5 rounded-pf-sm transition-colors ${
-              showTransitionArrows
-                ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30'
-                : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border border-[var(--border-subtle)]'
-            }`}
-            onClick={() => setShowTransitionArrows(prev => !prev)}
-            title={showTransitionArrows ? 'Hide transition arrows' : 'Show transition arrows'}
-          >
-            {showTransitionArrows ? 'Arrows On' : 'Arrows Off'}
-          </button>
-        </div>
-      )}
+      </div>
 
       {/* Context menu */}
       {contextMenu && (
@@ -987,12 +1030,4 @@ function padRings(f: { isShared: boolean; isImpossible: boolean; isInstanceHighl
   if (f.isDragOver || f.isDragSource) rings.push('0 0 0 2px rgba(96, 165, 250, 0.7)');
   if (f.isShared) rings.push('0 0 0 1px rgba(52, 211, 153, 0.5)');
   return rings;
-}
-
-function toGridX(col: number): number {
-  return (col * GRID_STEP) + GRID_CENTER_OFFSET;
-}
-
-function toGridY(row: number): number {
-  return ((7 - row) * GRID_STEP) + GRID_CENTER_OFFSET;
 }

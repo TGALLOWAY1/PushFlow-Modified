@@ -15,16 +15,19 @@ import { getDisplayedExecutionPlan, type SoundStream } from '../state/projectSta
 import { useLaneImport } from '../hooks/useLaneImport';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { RehearsalAudio, type RehearsalHit } from '../audio/rehearsalAudio';
+import { TimelineToolbar } from './TimelineToolbar';
+import {
+  BAR_HEADER_HEIGHT,
+  BEAT_HEADER_HEIGHT,
+  TOTAL_HEADER_HEIGHT,
+  TRACK_HEIGHT,
+} from './timelineLayout';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const TRACK_HEIGHT = 32;
 const SIDEBAR_WIDTH = 180;
 const MIN_ZOOM = 30;  // px per second minimum
 const MAX_ZOOM = 500; // px per second maximum
-const BAR_HEADER_HEIGHT = 40;  // Bar number row
-const BEAT_HEADER_HEIGHT = 20; // Beat subdivision row
-const TOTAL_HEADER_HEIGHT = BAR_HEADER_HEIGHT + BEAT_HEADER_HEIGHT;
 
 const FINGER_ABBREV: Record<string, string> = {
   thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
@@ -53,7 +56,15 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
   const { state, dispatch } = useProject();
   const { importFiles } = useLaneImport();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // The scroll container is also kept as state, so the width observer attaches
+  // whenever it mounts, including after the empty state gives way to the first
+  // import (T50: an import that left the duration unchanged never measured).
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  const setScrollContainer = useCallback((el: HTMLDivElement | null) => {
+    scrollContainerRef.current = el;
+    setScrollEl(el);
+  }, []);
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
 
   const [zoomOverride, setZoomOverride] = useState<number | null>(null); // null = auto-fit
@@ -226,17 +237,17 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.isPlaying, dispatch]);
 
-  // Auto-fit zoom: measure container width and fill it with the clip
-  // Re-measure when totalDuration changes (e.g. after MIDI import), and when the
-  // drawer shows the timeline again: while hidden it measures 0, so a window
+  // Auto-fit zoom: measure the scroll container and fill it with the clip. The
+  // observer attaches when the container mounts (callback ref) and again when
+  // the drawer shows the timeline: while hidden it measures 0, so a window
   // resize during that time is caught only on return (T60).
   const [containerWidth, setContainerWidth] = useState(0);
   useEffect(() => {
-    const el = scrollContainerRef.current;
+    const el = scrollEl;
     if (!el || !isVisible) return;
     const measure = () => {
       // A hidden container reports 0; keep the last real width until shown.
-      if (el.clientWidth > 0) setContainerWidth(el.clientWidth);
+      if (el.clientWidth > 0) setContainerWidth(prev => (prev === el.clientWidth ? prev : el.clientWidth));
     };
     measure();
     // Re-measure after a frame to catch layout shifts from content changes
@@ -244,7 +255,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => { observer.disconnect(); cancelAnimationFrame(raf); };
-  }, [totalDuration, isVisible]);
+  }, [scrollEl, isVisible]);
 
   // Auto-fit: scale so full bar-snapped duration fills the container width exactly
   const autoFitZoom = containerWidth > 0 && totalDuration > 0
@@ -314,6 +325,13 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
     seekRef.current = t;
     dispatch({ type: 'SET_CURRENT_TIME', payload: t });
   }, [dispatch]);
+
+  // Return: the start, or the loop start while looping a region. Playback keeps
+  // its state, so Return while playing restarts the passage (T61's Return).
+  const handleReturn = useCallback(() => {
+    const start = state.loopEnabled && state.loopStart !== null ? state.loopStart : minTime;
+    seekTo(start);
+  }, [state.loopEnabled, state.loopStart, minTime, seekTo]);
 
   const handleRulerMouseUp = useCallback(() => {
     if (!dragRegion) return;
@@ -574,157 +592,26 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
 
   return (
     <div className="flex flex-col h-full">
-      {/* ─── Toolbar ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-3 py-2 border-b border-[var(--border-subtle)] bg-[var(--bg-panel)]/40 flex-shrink-0">
-        {/* Import */}
-        <button
-          className="pf-btn pf-btn-primary text-pf-xs"
-          onClick={handleImportClick}
-        >
-          Import MIDI
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".mid,.midi"
-          multiple
-          className="hidden"
-          onChange={handleFileChange}
-        />
-
-        {/* Info */}
-        <span className="text-pf-sm text-[var(--text-tertiary)]">
-          {visibleStreams.length} sounds
-        </span>
-
-        <div className="flex-1" />
-
-        {/* Zoom */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-pf-xs text-[var(--text-tertiary)]">Zoom</span>
-          <input
-            type="range"
-            min={effectiveMinZoom}
-            max={MAX_ZOOM}
-            value={Math.max(effectiveMinZoom, Math.min(MAX_ZOOM, zoom))}
-            onChange={e => setZoomOverride(Math.max(effectiveMinZoom, Number(e.target.value)))}
-            className="w-20 h-1 accent-blue-500"
-          />
-          <button
-            className={`px-1.5 py-0.5 text-pf-xs rounded-pf-sm transition-colors ${
-              zoomOverride === null
-                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] border border-[var(--border-default)]'
-            }`}
-            onClick={() => setZoomOverride(null)}
-            title="Auto-fit: fill container with MIDI content"
-          >
-            Fit
-          </button>
-        </div>
-
-        {/* Transport */}
-        <div data-testid="transport" className="flex items-center gap-2 pl-2 border-l border-[var(--border-default)]">
-          <span className="text-[var(--text-tertiary)] font-mono text-pf-sm w-14 text-right">
-            {state.currentTime.toFixed(2)}s
-          </span>
-          <button
-            data-testid="transport-play"
-            className={`px-2.5 py-1 rounded-pf-sm text-pf-xs font-bold transition-colors ${
-              state.isPlaying
-                ? 'bg-amber-500 text-amber-950'
-                : 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-            }`}
-            onClick={() => dispatch({ type: 'TOGGLE_PLAYING' })}
-          >
-            {state.isPlaying ? '⏹ STOP' : '▶ PLAY'}
-          </button>
-          <button
-            className="px-2 py-1 rounded-pf-sm bg-[var(--bg-card)]/50 text-pf-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-            onClick={() => {
-              dispatch({ type: 'SET_IS_PLAYING', payload: false });
-              dispatch({ type: 'SET_CURRENT_TIME', payload: 0 });
-            }}
-          >
-            RESET
-          </button>
-        </div>
-
-        {/* Rehearsal controls — practising a hard passage means slowing it down,
-            looping it, and hearing it. */}
-        <div className="flex items-center gap-2 pl-2 border-l border-[var(--border-default)]">
-          <label className="flex items-center gap-1 text-pf-xs text-[var(--text-tertiary)]">
-            Speed
-            <select
-              className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-pf-sm px-1 py-0.5 text-pf-xs text-[var(--text-primary)]"
-              value={state.playbackRate}
-              onChange={(e) => dispatch({ type: 'SET_PLAYBACK_RATE', payload: Number(e.target.value) })}
-              title="Rehearsal speed — the layout and analysis are unchanged"
-            >
-              {[0.25, 0.5, 0.75, 1, 1.25, 1.5].map(rate => (
-                <option key={rate} value={rate}>{rate}x</option>
-              ))}
-            </select>
-          </label>
-
-          <button
-            className={`px-2 py-1 rounded-pf-sm text-pf-xs font-semibold transition-colors ${
-              state.loopEnabled
-                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] border border-[var(--border-default)]'
-            }`}
-            onClick={() => dispatch({ type: 'SET_LOOP_ENABLED', payload: !state.loopEnabled })}
-            title={
-              state.loopStart !== null && state.loopEnd !== null
-                ? `Loop ${state.loopStart.toFixed(2)}s - ${state.loopEnd.toFixed(2)}s`
-                : 'Loop the whole performance (shift-drag the beat ruler to set a region)'
-            }
-          >
-            LOOP
-          </button>
-
-          <button
-            className={`px-2 py-1 rounded-pf-sm text-pf-xs font-semibold transition-colors ${
-              state.rehearsalAudio.metronome
-                ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] border border-[var(--border-default)]'
-            }`}
-            onClick={() => dispatch({
-              type: 'SET_REHEARSAL_AUDIO',
-              payload: { metronome: !state.rehearsalAudio.metronome },
-            })}
-            title="Click track at the project tempo"
-          >
-            CLICK
-          </button>
-
-          <button
-            className={`px-2 py-1 rounded-pf-sm text-pf-xs font-semibold transition-colors ${
-              state.rehearsalAudio.hits
-                ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] border border-[var(--border-default)]'
-            }`}
-            onClick={() => dispatch({
-              type: 'SET_REHEARSAL_AUDIO',
-              payload: { hits: !state.rehearsalAudio.hits },
-            })}
-            title="Hear each sound as the playhead reaches it"
-          >
-            SOUND
-          </button>
-
-          {state.loopStart !== null && state.loopEnd !== null && (
-            <button
-              className="px-2 py-1 rounded-pf-sm bg-[var(--bg-card)]/50 text-pf-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-              onClick={() => dispatch({ type: 'SET_LOOP_REGION', payload: { start: null, end: null } })}
-              title="Clear the loop region"
-            >
-              ✕ REGION
-            </button>
-          )}
-        </div>
-
-      </div>
+      {/* ─── Toolbar: transport cluster + secondary controls (T05) ──────────── */}
+      <TimelineToolbar
+        soundCount={visibleStreams.length}
+        onImportClick={handleImportClick}
+        zoom={zoom}
+        minZoom={effectiveMinZoom}
+        maxZoom={MAX_ZOOM}
+        isAutoFit={zoomOverride === null}
+        onZoom={z => setZoomOverride(z)}
+        onFit={() => setZoomOverride(null)}
+        onReturn={handleReturn}
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".mid,.midi"
+        multiple
+        className="hidden"
+        onChange={handleFileChange}
+      />
 
       {/* ─── Timeline Body ────────────────────────────────────────────────── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -752,7 +639,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
 
         {/* Scrollable Track Area */}
         <div
-          ref={scrollContainerRef}
+          ref={setScrollContainer}
           data-testid="timeline-scroll"
           className="flex-1 min-w-0 overflow-auto"
           onScroll={handleTimelineScroll}

@@ -192,8 +192,9 @@ export async function gridClip(page: Page): Promise<{ x: number; y: number; widt
 }
 
 /**
- * Centre of the part of a pad that is actually visible. At 1366x768 the grid
- * wrapper clips the top row (T04, fixed in S2.1), so a pad's own centre can be hidden.
+ * Centre of the part of a pad that is actually visible. Since S2.1 (T04) the
+ * whole grid is on screen at 1366x768 and 1600x1000, so this is the pad's own
+ * centre; the clipping check stays as a guard for smaller windows.
  */
 export async function visiblePadPoint(page: Page, padKey: string): Promise<{ x: number; y: number }> {
   const pad = page.getByTestId(`pad-${padKey.replace(',', '-')}`);

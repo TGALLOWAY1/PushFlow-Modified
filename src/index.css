@@ -188,11 +188,6 @@ body {
   box-shadow: 0 0 15px rgba(153, 97, 0, 0.4);
 }
 
-/* Push grid enclosure shadow */
-.push-grid-shadow {
-  box-shadow: 0 0 40px 0 rgba(184, 195, 255, 0.06), var(--shadow-xl);
-}
-
 /* Glass panel with backdrop blur */
 .glass-panel-blur {
   backdrop-filter: blur(16px);
