@@ -13,6 +13,7 @@ import * as path from 'path';
 
 const FIXTURE = path.resolve(__dirname, '../../fixtures/projects/saved-by-main.json');
 const GHOST_FIXTURE = path.resolve(__dirname, '../../fixtures/projects/ghost-locks.json');
+const ROLE_FIXTURE = path.resolve(__dirname, '../../fixtures/projects/role-suffixes.json');
 
 const log: string[] = [];
 const projects = new Map<string, unknown>();
@@ -57,7 +58,7 @@ describe('loadProjectAsync migrates behind a backup', () => {
 
     const state = await loadProjectAsync(saved.id);
     expect(state?.recoveredDrafts).toEqual([]);
-    expect(log).toEqual(['putBackup v1', 'putProject v4']);
+    expect(log).toEqual(['putBackup v1', 'putProject v5']);
 
     const backup = await getLatestBackup(saved.id);
     expect(backup?.key).toBe(`${saved.id}@v1`);
@@ -78,7 +79,7 @@ describe('loadProjectAsync migrates behind a backup', () => {
     projects.set(saved.id, saved);
 
     const state = await loadProjectAsync(saved.id);
-    expect(log).toEqual(['putBackup v2', 'putProject v4']);
+    expect(log).toEqual(['putBackup v2', 'putProject v5']);
     const backup = await getLatestBackup(saved.id);
     expect(backup?.key).toBe(`${saved.id}@v2`);
     // The backup is the untouched record, ghost locks and all.
@@ -94,12 +95,39 @@ describe('loadProjectAsync migrates behind a backup', () => {
       }
     }
     expect(state!.activeLayout.placementLocks).toEqual({ 'lane_1790212333742_q33d4p': '3,3' });
-    expect((projects.get(saved.id) as { schemaVersion: number }).schemaVersion).toBe(4);
+    expect((projects.get(saved.id) as { schemaVersion: number }).schemaVersion).toBe(5);
 
     log.length = 0;
     const again = await loadProjectAsync(saved.id);
     expect(log).toEqual([]);
     expect(again!.activeLayout.placementLocks).toEqual(state!.activeLayout.placementLocks);
+  });
+
+  // S3.2 (T32; roadmap P3-10a): role words leave stored layout names.
+  it('P3-10a: backs up a project with role words in its layout names, then stores clean names; a second load changes nothing', async () => {
+    const saved = JSON.parse(fs.readFileSync(ROLE_FIXTURE, 'utf8'));
+    expect(saved.schemaVersion).toBe(4);
+    projects.set(saved.id, saved);
+    const storedNames = () => {
+      const p = projects.get(saved.id) as { activeLayout: { name: string }; workingLayout: { name: string }; savedVariants: { name: string }[]; recoveredDrafts: { name: string }[] };
+      return [p.activeLayout, p.workingLayout, ...p.savedVariants, ...p.recoveredDrafts].map(l => l.name);
+    };
+    expect(storedNames().filter(n => /\((draft|suggested)\)/.test(n))).toHaveLength(6);
+
+    const state = await loadProjectAsync(saved.id);
+    expect(log).toEqual(['putBackup v4', 'putProject v5']);
+    // The backup is the untouched record, role words and all.
+    expect((await getLatestBackup(saved.id))?.record).toEqual(saved);
+    // Stored and loaded names are clean.
+    expect(storedNames().filter(n => /\((draft|suggested)\)|\(replaced/.test(n))).toEqual([]);
+    expect(state!.activeLayout).toMatchObject({ name: 'Default', provenance: 'suggested' });
+    expect(state!.workingLayout!.name).toBe('Default');
+
+    log.length = 0;
+    const before = structuredClone(projects.get(saved.id));
+    await loadProjectAsync(saved.id);
+    expect(log).toEqual([]);
+    expect(projects.get(saved.id)).toEqual(before);
   });
 
   it('when the backup fails, the stored record is left as it was', async () => {

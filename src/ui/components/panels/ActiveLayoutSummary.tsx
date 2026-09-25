@@ -29,6 +29,7 @@ import { formatPadLocator, formatPadPosition } from '../../../utils/padPosition'
 import { formatBarBeat, formatMilliseconds, formatSeconds } from '../../../utils/musicalTime';
 import { SoundLabel } from '../shared/SoundLabel';
 import { momentDifficultyCounts } from '../../analysis/momentCounts';
+import { layoutLabel } from '../../state/layoutLabels';
 
 export function ActiveLayoutSummary() {
   const { state, dispatch } = useProject();
@@ -136,14 +137,16 @@ export function ActiveLayoutSummary() {
               />
             ) : (
               <span
+                data-testid="layout-summary-name"
                 className="text-pf-sm text-[var(--text-primary)] font-medium truncate editable-field transition-colors"
                 onDoubleClick={() => {
+                  // A rename edits the base name, never the label ("Draft of …").
                   setNameDraft(displayedLayout?.name ?? '');
                   setEditingName(true);
                 }}
                 title="Double-click to rename"
               >
-                {displayedLayout?.name ?? 'No Layout'}
+                {displayedLayout ? layoutLabel(displayedLayout, { role: layoutRole ?? undefined }) : 'No Layout'}
               </span>
             )}
             <span className={`pf-badge ${

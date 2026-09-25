@@ -23,6 +23,9 @@
  */
 
 import { PERSISTED_SCHEMA_VERSION } from './persistedProject';
+import { FALLBACK_LAYOUT_NAME, legacyRoleWords, withoutLegacyRoleWords } from '../state/layoutLabels';
+import { variantStamp } from '../state/variantNames';
+import { uniqueName } from '../../utils/uniqueName';
 
 /** A stored project record, as parsed JSON. */
 export type StoredRecord = Record<string, unknown>;
@@ -85,7 +88,72 @@ export const MIGRATIONS: readonly Migration[] = [
       lastOpenedAt: typeof record.lastOpenedAt === 'string' ? record.lastOpenedAt : record.updatedAt,
     }),
   },
+  {
+    // S3.2 (T32): layout names carry no role words. Earlier versions wrote
+    // " (draft)", " (suggested)" and " (replaced <date>)" into names, which
+    // piled up ("Default (draft) (draft)") and mislabelled a promoted Active.
+    // They come out of every stored name, and where the last one says where the
+    // layout came from it moves into provenance. A replaced Active's date
+    // becomes the " – 24 Sep 14:02" stamp new ones get (from its savedAt), and
+    // a variant renamed here is numbered if its new name is taken.
+    from: 4,
+    to: 5,
+    name: 'clean-layout-names',
+    up: record => {
+      const next: StoredRecord = { ...record };
+      for (const key of ['activeLayout', 'workingLayout'] as const) {
+        if (key in record) next[key] = cleanLayoutName(record[key], false);
+      }
+      if (Array.isArray(record.recoveredDrafts)) {
+        next.recoveredDrafts = (record.recoveredDrafts as unknown[]).map(layout => cleanLayoutName(layout, false));
+      }
+      if (Array.isArray(record.savedVariants)) next.savedVariants = cleanVariantNames(record.savedVariants as unknown[]);
+      return next;
+    },
+  },
 ];
+
+type StoredLayout = { name?: unknown; provenance?: unknown; savedAt?: unknown };
+
+/**
+ * A stored layout whose name has no role words and isn't empty, with the
+ * provenance its last role word gives ('suggested'; 'replaced-active' for a
+ * saved variant) unless it has one. "(draft)" says nothing reliable: a manual
+ * edit and an applied candidate both wrote it. Clean layouts and non-layouts
+ * are returned as they are.
+ */
+function cleanLayoutName(layout: unknown, isVariant: boolean): unknown {
+  if (!layout || typeof layout !== 'object') return layout;
+  const l = layout as StoredLayout;
+  const name = typeof l.name === 'string' ? l.name : '';
+  const words = legacyRoleWords(name);
+  if (words.length === 0) return name.trim() ? layout : { ...l, name: FALLBACK_LAYOUT_NAME };
+
+  const last = words[words.length - 1];
+  const replacedActive = isVariant && last === 'replaced';
+  const savedAt = typeof l.savedAt === 'string' ? new Date(l.savedAt) : null;
+  const base = withoutLegacyRoleWords(name);
+  const cleaned = replacedActive && savedAt && !Number.isNaN(savedAt.getTime())
+    ? `${base} – ${variantStamp(savedAt)}`
+    : base;
+  const inferred = last === 'suggested' ? 'suggested' : replacedActive ? 'replaced-active' : undefined;
+  const provenance = l.provenance ?? inferred;
+  return { ...l, name: cleaned, ...(provenance !== undefined ? { provenance } : {}) };
+}
+
+/** Every saved variant cleaned; one renamed here takes a free name, so no two share one (T29). */
+function cleanVariantNames(variants: unknown[]): unknown[] {
+  const cleaned = variants.map(v => cleanLayoutName(v, true));
+  const nameOf = (v: unknown) => ((v as StoredLayout | null)?.name as string | undefined) ?? '';
+  // Names that stay as they were are taken first; renamed ones fit around them.
+  const taken = cleaned.filter((v, i) => v === variants[i]).map(nameOf);
+  return cleaned.map((v, i) => {
+    if (v === variants[i]) return v;
+    const name = uniqueName(nameOf(v), taken);
+    taken.push(name);
+    return name === nameOf(v) ? v : { ...(v as object), name };
+  });
+}
 
 /** The layout with only the locks whose Sound sits on the locked pad. Non-layouts pass through. */
 function pruneGhostLocks(layout: unknown): unknown {
