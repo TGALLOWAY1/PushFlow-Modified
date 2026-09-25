@@ -8,7 +8,7 @@
  * Flips in S1b.4 (moment-view stop-gaps).
  */
 
-import { test, expect, EXPECTED_FAIL } from './fixtures';
+import { test, expect } from './fixtures';
 import { openTestMidi1, suggestStartingLayout, waitForAnalysis, selectMoment } from './project';
 import type { Page } from '@playwright/test';
 
@@ -51,7 +51,6 @@ test.describe('C8 · selected event during playback', () => {
   });
 
   test('with an event selected, struck pads look as they do with nothing selected, and Stop restores the selection', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C8: the selection greying stays on during playback and overrides the pad flash (flips in S1b.4)');
     // Control: playing with nothing selected greys nothing.
     await page.getByTestId('transport-play').click();
     const control = await framesWithGreyedPads(page, 1500);
@@ -72,7 +71,6 @@ test.describe('C8 · selected event during playback', () => {
   });
 
   test('ArrowRight during playback neither seeks nor selects the first event', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C8: ArrowRight while playing selects the t=0 event (flips in S1b.4)');
     await page.getByTestId('transport-play').click();
     await expect.poll(async () => (await pf.call('status')).currentTime).toBeGreaterThan(1);
     const before = (await pf.call('status')).currentTime;

@@ -7,7 +7,7 @@
  */
 
 import { useState } from 'react';
-import { createPortal } from 'react-dom';
+import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { CONSTRAINT_RULE_NAMES, OPTIMIZER_METHOD_KEYS, OPTIMIZER_METHOD_LABELS } from '@/engine';
 import { VERDICT_TIERS } from '../../analysis/verdictTiers';
 import { FACTOR_KEYS, FACTOR_META } from '../../analysis/factorMeta';
@@ -77,22 +77,26 @@ const WORKFLOW_STEPS = [
 
 export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
   const [tab, setTab] = useState<LearnMoreTab>('overview');
+  const titleId = useOverlayTitleId();
 
   if (!open) return null;
 
-  // Rendered into <body>: opened from a side panel whose styling makes it the
-  // containing block for fixed-position children, the modal was otherwise
-  // squeezed into that ~300px panel and most of its text was cut off.
-  return createPortal(
-    <>
-      <div className="fixed inset-0 z-[60] bg-black/50" onClick={onClose} />
-      <div className="fixed inset-6 z-[61] max-w-3xl mx-auto rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-app)] shadow-pf-xl flex flex-col overflow-hidden">
+  // A Dialog (T06): rendered into <body>, so the side panel it is opened from
+  // can't squeeze it; Escape, outside press, focus trap and focus return.
+  return (
+    <Dialog
+      onClose={onClose}
+      labelledBy={titleId}
+      testId="learn-more-dialog"
+      className="fixed inset-6 z-[61] max-w-3xl mx-auto rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-app)] shadow-pf-xl flex flex-col overflow-hidden"
+    >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)]">
-          <h2 className="text-pf-lg font-semibold text-[var(--text-primary)]">Learn More</h2>
+          <h2 id={titleId} className="text-pf-lg font-semibold text-[var(--text-primary)]">Learn More</h2>
           <button
             className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors text-lg"
             onClick={onClose}
+            aria-label="Close"
           >
             &times;
           </button>
@@ -129,9 +133,7 @@ export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
           {tab === 'optimizers' && <OptimizersSection />}
           {tab === 'constraints' && <ConstraintsSection />}
         </div>
-      </div>
-    </>,
-    document.body,
+    </Dialog>
   );
 }
 
@@ -266,11 +268,11 @@ function OverviewInfographic() {
             </div>
             <div className="text-[9px] text-gray-500 space-y-1">
               <div className="text-[10px] text-gray-400">Onion view:</div>
-              <p className="text-gray-600 leading-snug">
-                Ghosted previous/next event states with curved transition arcs
+              <p className="text-gray-600 leading-snug" data-testid="learn-more-onion">
+                With an event selected, its pads are highlighted, the next event&apos;s pads get a dashed outline, and every other pad dims. Onion skin adds a dotted outline on the previous event&apos;s pads, empty or not.
               </p>
               <p className="text-[8px] text-gray-700">
-                Active sounds highlighted for selected event
+                During playback the selection overlay pauses so struck pads flash normally; Stop brings it back.
               </p>
             </div>
           </div>
@@ -668,7 +670,7 @@ export const HARD_CONSTRAINTS = [
       {
         name: 'One Finger Per Sound',
         key: 'ownership',
-        description: 'Every sound is played by the same finger for the whole performance, so the pad\u2192finger mapping is something you can memorise. If you set a finger for a sound, that is its finger; otherwise the solver picks one, looking ahead to avoid a finger that a later chord\u2019s grip cannot keep. A Sound has one finger setting, shared by the Sounds panel, the grid and the Composer; clearing it in any of them clears it everywhere. Placing a Composer preset applies only fingering that was a finger preference when the preset was saved: fingering marked unverified is shown but never applied.',
+        description: 'Every sound is played by the same finger for the whole performance, so the pad\u2192finger mapping is something you can memorise. If you set a finger for a sound, that is its finger; otherwise the solver picks one, looking ahead to avoid a finger that a later chord\u2019s grip cannot keep. A Sound has one finger setting, shared by the Sounds panel, the grid and the Composer; clearing it in any of them clears it everywhere. Save Preset records a pad\u2019s finger only when its Sound has a finger preference, and leaves it blank otherwise. Placing a Composer preset applies only those preferences: fingering marked unverified (in presets saved before this rule) is shown but never applied. A preset is placed only when all its Sounds are in this project and every pad it needs is empty; otherwise the drop is refused with the reason.',
       },
       {
         name: 'When a Rule Gives Way',

@@ -5,11 +5,14 @@
  * Shows grids, tradeoff metrics, scores, and allows promoting.
  */
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useProject } from '../../state/ProjectContext';
 import { useDraftReplacement } from '../../hooks/useDraftReplacement';
-import { getAnalysisForLayout } from '../../state/projectState';
+import { useLayoutAnalysis, type LayoutAnalysisState } from '../../analysis/layoutAnalysis';
+import { useToast } from '../shared/Toast';
+import { ACTIVE_COMPARE_ID } from '../../state/compareSet';
 import { CompareGridView } from '../CompareGridView';
+import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { CandidateCompare } from '../CandidateCompare';
 import { type CandidateSolution } from '../../../types/candidateSolution';
 
@@ -18,102 +21,124 @@ interface CompareModalProps {
   onClose: () => void;
 }
 
-/**
- * Build a synthetic CandidateSolution from the active layout for comparison.
- * Uses the latest analysis result if available, otherwise builds a minimal stub.
- */
-function buildActiveCandidate(state: ReturnType<typeof useProject>['state']): CandidateSolution {
-  const activeAnalysis = getAnalysisForLayout(state, state.activeLayout);
-  const plan = activeAnalysis?.executionPlan ?? {
-    score: 0, unplayableCount: 0, hardCount: 0,
-    fingerAssignments: [], fingerUsageStats: {}, fatigueMap: {},
-    averageDrift: 0, averageMetrics: {
-      fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0,
-      handBalance: 0, constraintPenalty: 0, total: 0,
-    },
-  };
-  const diffAnalysis = activeAnalysis?.difficultyAnalysis ?? {
-    overallScore: 0, passages: [], bindingConstraints: [],
-  };
-  const tradeoff = activeAnalysis?.tradeoffProfile ?? {
-    playability: 0, compactness: 0, handBalance: 0, transitionEfficiency: 0, structuralCoherence: 0.5,
-  };
-  return {
-    id: '__active__',
-    layout: state.activeLayout,
-    executionPlan: plan,
-    difficultyAnalysis: diffAnalysis,
-    tradeoffProfile: tradeoff,
-    metadata: { strategy: 'Active Layout', seed: 0 },
-  };
-}
 
 export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
   const { state } = useProject();
   const replaceDraft = useDraftReplacement();
+  const toast = useToast();
+  const titleId = useOverlayTitleId();
 
-  // Find candidates from IDs — handle special '__active__' ID
+  // The Active side is analysed for real: its own fresh plan, the per-layout
+  // cache, or a solve through the cache ('Analysing Active…'). Never a zero
+  // stub (T08); a failed solve reads "Couldn't analyse".
+  const wantsActive = candidateIds.includes(ACTIVE_COMPARE_ID);
+  const activeAnalysis = useLayoutAnalysis(wantsActive ? state.activeLayout : null);
+  const activeCandidate: CandidateSolution | null = activeAnalysis.status === 'ready'
+    ? {
+      ...activeAnalysis.analysis,
+      id: ACTIVE_COMPARE_ID,
+      layout: state.activeLayout,
+      metadata: { strategy: 'Active Layout', seed: 0 },
+    }
+    : null;
+
+  // Find candidates from IDs; the Active side is a placeholder until analysed.
   const allCandidates = state.candidates;
-  const activeSynthetic = buildActiveCandidate(state);
+  const comparable = candidateIds
+    .map(id => (id === ACTIVE_COMPARE_ID ? (activeCandidate ?? ACTIVE_COMPARE_ID) : allCandidates.find(c => c.id === id)))
+    .filter((c): c is CandidateSolution | typeof ACTIVE_COMPARE_ID => c !== undefined);
 
-  const comparableCandidates = candidateIds
-    .map(id => {
-      if (id === '__active__') return activeSynthetic;
-      return allCandidates.find(c => c.id === id);
-    })
-    .filter((c): c is CandidateSolution => c !== undefined);
+  function handlePromote(candidate: CandidateSolution) {
+    if (candidate.id === ACTIVE_COMPARE_ID) return; // Can't promote active to active
+    if (confirm('Promote this candidate to become the Active Layout? The current active layout will be auto-saved as a variant.')) {
+      const label = labelFor(candidate);
+      replaceDraft({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
+      // The promoted layout is now Active, so this pair would compare a layout
+      // with itself: close, and say what happened (T08).
+      onClose();
+      toast.show({ message: `Promoted ${label} to Active Layout` });
+    }
+  }
+
+  function labelFor(c: CandidateSolution | typeof ACTIVE_COMPARE_ID) {
+    if (typeof c === 'string' || c.id === ACTIVE_COMPARE_ID) return 'Active Layout';
+    const idx = allCandidates.indexOf(c) + 1;
+    return `#${idx} ${c.metadata.strategy ?? 'Candidate'}`;
+  }
 
   // Allow picking which two to compare if more than 2 selected
   const [leftIdx, setLeftIdx] = useState(0);
-  const [rightIdx, setRightIdx] = useState(Math.min(1, comparableCandidates.length - 1));
+  const [rightIdx, setRightIdx] = useState(Math.min(1, comparable.length - 1));
 
-  const candidateA = comparableCandidates[leftIdx] ?? null;
-  const candidateB = comparableCandidates[rightIdx] ?? null;
+  const sideA = comparable[leftIdx] ?? null;
+  const sideB = comparable[rightIdx] ?? null;
 
-  if (!candidateA || !candidateB) {
+  if (sideA && sideB && (typeof sideA === 'string' || typeof sideB === 'string')) {
+    // One side is the Active Layout, still analysing or failed.
+    const other = typeof sideA === 'string' ? sideB : sideA;
     return (
-      <>
-        <div className="fixed inset-0 z-[70] bg-black/60" onClick={onClose} />
-        <div data-testid="compare-dialog" className="fixed inset-8 z-[71] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex items-center justify-center">
-          <div className="text-[var(--text-tertiary)] text-pf-lg">Not enough candidates to compare.</div>
+      <Dialog
+        onClose={onClose}
+        labelledBy={titleId}
+        testId="compare-dialog"
+        backdropClassName="fixed inset-0 z-[70] bg-black/60"
+        className="fixed inset-6 z-[71] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex flex-col overflow-hidden"
+      >
+        <CompareHeader titleId={titleId} onClose={onClose} />
+        <div className="flex-1 overflow-y-auto p-5">
+          <div className="grid grid-cols-2 gap-4">
+            <ActivePendingCard state={activeAnalysis} />
+            {typeof other === 'string'
+              ? <ActivePendingCard state={activeAnalysis} />
+              : <ComparisonCard candidate={other} label={labelFor(other)} onPromote={() => handlePromote(other)} />}
+          </div>
         </div>
-      </>
+      </Dialog>
     );
   }
 
-  const handlePromote = (candidate: CandidateSolution) => {
-    if (candidate.id === '__active__') return; // Can't promote active to active
-    if (confirm('Promote this candidate to become the Active Layout? The current active layout will be auto-saved as a variant.')) {
-      replaceDraft({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
-      // Don't close — remaining candidates are preserved so the user can keep comparing
-    }
-  };
+  const candidateA = typeof sideA === 'string' ? null : sideA;
+  const candidateB = typeof sideB === 'string' ? null : sideB;
 
-  const getLabelForCandidate = (c: CandidateSolution) => {
-    if (c.id === '__active__') return 'Active Layout';
-    const idx = allCandidates.indexOf(c) + 1;
-    return `#${idx} ${c.metadata.strategy ?? 'Candidate'}`;
-  };
+  if (!candidateA || !candidateB) {
+    // Every Compare state has a heading, a Close button and Escape (T06, T08).
+    return (
+      <Dialog
+        onClose={onClose}
+        labelledBy={titleId}
+        testId="compare-dialog"
+        backdropClassName="fixed inset-0 z-[70] bg-black/60"
+        className="fixed inset-8 z-[71] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex flex-col overflow-hidden"
+      >
+        <CompareHeader titleId={titleId} onClose={onClose} />
+        <div className="flex-1 flex items-center justify-center text-[var(--text-tertiary)] text-pf-lg">
+          Not enough layouts to compare.
+        </div>
+      </Dialog>
+    );
+  }
 
   return (
-    <>
-      <div className="fixed inset-0 z-[70] bg-black/60" onClick={onClose} />
-      <div data-testid="compare-dialog" className="fixed inset-6 z-[71] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)] flex-shrink-0">
-          <h3 className="text-pf-lg font-semibold text-[var(--text-primary)]">Compare Layouts</h3>
-          <div className="flex items-center gap-3">
-            {comparableCandidates.length > 2 && (
+    <Dialog
+      onClose={onClose}
+      labelledBy={titleId}
+      testId="compare-dialog"
+      backdropClassName="fixed inset-0 z-[70] bg-black/60"
+      className="fixed inset-6 z-[71] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex flex-col overflow-hidden"
+    >
+        <CompareHeader titleId={titleId} onClose={onClose}>
+            {comparable.length > 2 && (
               <div className="flex items-center gap-2 text-pf-sm text-[var(--text-secondary)]">
                 <span>Left:</span>
                 <select
                   className="pf-select text-pf-sm px-1 py-0.5"
                   value={leftIdx}
                   onChange={e => setLeftIdx(Number(e.target.value))}
+                  aria-label="Left layout"
                 >
-                  {comparableCandidates.map((c, i) => (
-                    <option key={c.id} value={i} disabled={i === rightIdx}>
-                      {getLabelForCandidate(c)}
+                  {comparable.map((c, i) => (
+                    <option key={typeof c === 'string' ? c : c.id} value={i} disabled={i === rightIdx}>
+                      {labelFor(c)}
                     </option>
                   ))}
                 </select>
@@ -122,18 +147,17 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
                   className="pf-select text-pf-sm px-1 py-0.5"
                   value={rightIdx}
                   onChange={e => setRightIdx(Number(e.target.value))}
+                  aria-label="Right layout"
                 >
-                  {comparableCandidates.map((c, i) => (
-                    <option key={c.id} value={i} disabled={i === leftIdx}>
-                      {getLabelForCandidate(c)}
+                  {comparable.map((c, i) => (
+                    <option key={typeof c === 'string' ? c : c.id} value={i} disabled={i === leftIdx}>
+                      {labelFor(c)}
                     </option>
                   ))}
                 </select>
               </div>
             )}
-            <button className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-lg transition-colors" onClick={onClose}>&times;</button>
-          </div>
-        </div>
+        </CompareHeader>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
@@ -142,8 +166,8 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
             candidateA={candidateA}
             candidateB={candidateB}
             voices={state.soundStreams}
-            candidateALabel={getLabelForCandidate(candidateA)}
-            candidateBLabel={getLabelForCandidate(candidateB)}
+            candidateALabel={labelFor(candidateA)}
+            candidateBLabel={labelFor(candidateB)}
           />
 
           {/* Tradeoff comparison */}
@@ -153,20 +177,61 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
           <div className="grid grid-cols-2 gap-4">
             <ComparisonCard
               candidate={candidateA}
-              label={getLabelForCandidate(candidateA)}
+              label={labelFor(candidateA)}
               onPromote={() => handlePromote(candidateA)}
-              isActive={candidateA.id === '__active__'}
+              isActive={candidateA.id === ACTIVE_COMPARE_ID}
             />
             <ComparisonCard
               candidate={candidateB}
-              label={getLabelForCandidate(candidateB)}
+              label={labelFor(candidateB)}
               onPromote={() => handlePromote(candidateB)}
-              isActive={candidateB.id === '__active__'}
+              isActive={candidateB.id === ACTIVE_COMPARE_ID}
             />
           </div>
         </div>
+    </Dialog>
+  );
+}
+
+function CompareHeader({ titleId, onClose, children }: { titleId: string; onClose: () => void; children?: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)] flex-shrink-0">
+      <h3 id={titleId} className="text-pf-lg font-semibold text-[var(--text-primary)]">Compare Layouts</h3>
+      <div className="flex items-center gap-3">
+        {children}
+        <button
+          className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-lg transition-colors"
+          onClick={onClose}
+          aria-label="Close"
+          title="Close"
+          data-testid="compare-close"
+        >
+          &times;
+        </button>
       </div>
-    </>
+    </div>
+  );
+}
+
+/** The Active side before its analysis is ready: analysing, failed, or nothing placed. */
+function ActivePendingCard({ state }: { state: LayoutAnalysisState }) {
+  const text = state.status === 'error'
+    ? "Couldn't analyse the Active Layout"
+    : state.status === 'empty'
+      ? 'Active Layout · nothing to analyse'
+      : 'Analysing Active\u2026';
+  return (
+    <div
+      data-testid="compare-card"
+      data-candidate-id={ACTIVE_COMPARE_ID}
+      data-status={state.status}
+      role={state.status === 'error' ? 'alert' : 'status'}
+      className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 space-y-2"
+    >
+      <div className="text-pf-sm font-medium text-[var(--text-primary)]">Active Layout</div>
+      <div className={`text-pf-sm ${state.status === 'error' ? 'text-red-400' : 'text-[var(--text-secondary)]'}`}>{text}</div>
+      {state.status === 'error' && <div className="text-pf-xs text-[var(--text-tertiary)] break-words">{state.message}</div>}
+    </div>
   );
 }
 

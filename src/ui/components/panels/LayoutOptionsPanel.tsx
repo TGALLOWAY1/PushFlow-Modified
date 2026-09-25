@@ -6,6 +6,7 @@
  */
 
 import { useState } from 'react';
+import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { useProject } from '../../state/ProjectContext';
 import { useDraftReplacement } from '../../hooks/useDraftReplacement';
 import { type Layout } from '../../../types/layout';
@@ -16,6 +17,8 @@ import { MiniGridPreview } from './MiniGridPreview';
 
 interface LayoutOptionsPanelProps {
   selectedForCompare: Set<string>;
+  /** Two or more distinct layouts are selected (T08). */
+  compareEnabled?: boolean;
   onToggleCompare: (id: string) => void;
   onCompare: () => void;
   /** Re-runs candidate generation after a failure. */
@@ -24,6 +27,7 @@ interface LayoutOptionsPanelProps {
 
 export function LayoutOptionsPanel({
   selectedForCompare,
+  compareEnabled = selectedForCompare.size >= 2,
   onToggleCompare,
   onCompare,
   onRetryGenerate,
@@ -52,7 +56,7 @@ export function LayoutOptionsPanel({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {compareCount >= 2 && (
+          {compareEnabled && (
             <button
               className="px-2 py-0.5 text-pf-xs rounded-pf-sm bg-purple-600 hover:bg-purple-500 text-white transition-colors"
               onClick={onCompare}
@@ -305,13 +309,18 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useProject();
   const replaceDraft = useDraftReplacement();
 
+  const titleId = useOverlayTitleId();
+
   return (
-    <>
-      <div className="fixed inset-0 z-[60] bg-black/50" onClick={onClose} />
-      <div className="fixed inset-8 z-[61] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex flex-col overflow-hidden max-w-3xl mx-auto">
+    <Dialog
+      onClose={onClose}
+      labelledBy={titleId}
+      testId="view-all-dialog"
+      className="fixed inset-8 z-[61] rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl flex flex-col overflow-hidden max-w-3xl mx-auto"
+    >
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)]">
-          <h3 className="text-pf-lg font-semibold text-[var(--text-primary)]">All Candidates & Variants</h3>
-          <button className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-lg" onClick={onClose}>&times;</button>
+          <h3 id={titleId} className="text-pf-lg font-semibold text-[var(--text-primary)]">All Candidates & Variants</h3>
+          <button className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-lg" onClick={onClose} aria-label="Close">&times;</button>
         </div>
         <div className="flex-1 overflow-y-auto p-5">
           {state.candidates.length > 0 && (
@@ -373,8 +382,7 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
             </div>
           )}
         </div>
-      </div>
-    </>
+    </Dialog>
   );
 }
 

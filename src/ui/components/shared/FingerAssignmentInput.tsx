@@ -50,7 +50,12 @@ interface FingerAssignmentInputProps {
 export function FingerAssignmentInput({ value, onChange, size = 'sm', isSuggestion = false }: FingerAssignmentInputProps) {
   const displayValue = value ? fingerAssignmentLabel(value) : '';
   const [editing, setEditing] = useState(false);
-  const [editText, setEditText] = useState(displayValue);
+  const [editText, setEditText] = useState('');
+  // Whether the user typed (or cleared) anything since the field opened. Blur
+  // or Escape without that changes nothing (T19): a stray click can no longer
+  // turn the solver's suggestion into the user's preference.
+  const [touched, setTouched] = useState(false);
+  const [invalid, setInvalid] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -60,30 +65,44 @@ export function FingerAssignmentInput({ value, onChange, size = 'sm', isSuggesti
     }
   }, [editing]);
 
-  const commit = useCallback(() => {
+  const close = useCallback(() => {
+    setEditing(false);
+    setTouched(false);
+    setInvalid(false);
+    setEditText('');
+  }, []);
+
+  /** Enter: commit a valid entry, keep the field open and flag an invalid one. */
+  const commit = useCallback((fromBlur: boolean) => {
+    if (!touched) { close(); return; }
     const trimmed = editText.trim();
     if (trimmed === '') {
-      onChange(null);
-    } else {
-      const parsed = parseFingerShorthand(trimmed);
-      if (parsed) {
-        onChange(parsed);
-      }
-      // On invalid input, just revert silently
+      // Emptied on purpose: clears a preference (never a suggestion, which isn't one).
+      if (!isSuggestion && value) onChange(null);
+      close();
+      return;
     }
-    setEditing(false);
-  }, [editText, onChange]);
+    const parsed = parseFingerShorthand(trimmed);
+    if (parsed) {
+      onChange(parsed);
+      close();
+    } else if (fromBlur) {
+      close(); // leaving an invalid entry changes nothing
+    } else {
+      setInvalid(true);
+    }
+  }, [touched, editText, isSuggestion, value, onChange, close]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      commit();
+      commit(false);
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      setEditText(displayValue);
-      setEditing(false);
+      e.stopPropagation();
+      close();
     }
-  }, [commit, displayValue]);
+  }, [commit, close]);
 
   const isSm = size === 'sm';
   const baseClass = isSm
@@ -92,16 +111,31 @@ export function FingerAssignmentInput({ value, onChange, size = 'sm', isSuggesti
 
   if (editing) {
     return (
-      <input
-        ref={inputRef}
-        className={`${baseClass} bg-[var(--bg-input)] border border-[var(--border-default)] rounded-pf-sm px-0.5 text-center text-[var(--text-primary)] outline-none focus:border-[var(--accent-primary)] focus:shadow-[0_0_0_2px_rgba(91,141,239,0.15)] flex-shrink-0`}
-        value={editText}
-        onChange={e => setEditText(e.target.value.slice(0, 2))}
-        onBlur={commit}
-        onKeyDown={handleKeyDown}
-        maxLength={2}
-        placeholder="--"
-      />
+      <span className="inline-flex flex-col items-center flex-shrink-0">
+        <input
+          ref={inputRef}
+          className={`${baseClass} bg-[var(--bg-input)] border rounded-pf-sm px-0.5 text-center text-[var(--text-primary)] outline-none placeholder:opacity-50 flex-shrink-0 ${
+            invalid
+              ? 'border-red-500 focus:shadow-[0_0_0_2px_rgba(239,68,68,0.2)]'
+              : 'border-[var(--border-default)] focus:border-[var(--accent-primary)] focus:shadow-[0_0_0_2px_rgba(91,141,239,0.15)]'
+          }`}
+          value={editText}
+          onChange={e => { setEditText(e.target.value.slice(0, 2)); setTouched(true); setInvalid(false); }}
+          onBlur={() => commit(true)}
+          onKeyDown={handleKeyDown}
+          maxLength={2}
+          // A solver suggestion shows only as a faint placeholder (CLAUDE.md
+          // finger display rule); nothing is set until the user types.
+          placeholder={displayValue || '--'}
+          aria-label={isSuggestion && displayValue ? `Finger preference (solver suggests ${displayValue})` : 'Finger preference'}
+          aria-invalid={invalid || undefined}
+          title={invalid ? 'Type L1–L5 or R1–R5' : 'Type L1–L5 or R1–R5; Enter to set, Escape to cancel'}
+          data-testid="finger-input"
+        />
+        {invalid && (
+          <span role="alert" className="text-pf-micro text-red-400 whitespace-nowrap">L1–L5 or R1–R5</span>
+        )}
+      </span>
     );
   }
 
@@ -118,7 +152,10 @@ export function FingerAssignmentInput({ value, onChange, size = 'sm', isSuggesti
         opacity: isSuggestion ? 0.5 : 1,
       }}
       onClick={() => {
-        setEditText(displayValue);
+        // A suggestion opens an empty field (the suggestion is the placeholder);
+        // the user's own preference opens selected, ready to retype or clear.
+        setEditText(isSuggestion ? '' : displayValue);
+        setTouched(false);
         setEditing(true);
       }}
       title={value

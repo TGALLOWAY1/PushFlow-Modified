@@ -7,7 +7,7 @@
  */
 
 import { useMemo, type DragEvent } from 'react';
-import { type ComposerPreset, type PresetPad, hasUnverifiedFingering } from '../../../types/composerPreset';
+import { type ComposerPreset, type PresetPad, hasUnverifiedFingering, hasRecordedHands, canMirrorPreset } from '../../../types/composerPreset';
 import { GRID_ROWS, GRID_COLS } from '../../../types/padGrid';
 import { totalSteps } from '../../../types/loopEditor';
 
@@ -54,13 +54,16 @@ export function PresetCard({
   onDragStartPreset,
   onDragEndPreset,
 }: PresetCardProps) {
+  const mirrorable = preset.mirrorEligible || canMirrorPreset(preset.pads);
   const handleDragStart = (e: DragEvent) => {
     e.dataTransfer.setData(COMPOSER_PRESET_DRAG_TYPE, JSON.stringify({
       presetId: preset.id,
-      isMirrored,
+      isMirrored: isMirrored && mirrorable,
     }));
+    // Copy, as the grid's dragover says for a preset drag; with 'move' there
+    // the browser never fired drop (T65).
     e.dataTransfer.effectAllowed = 'copy';
-    onDragStartPreset?.(preset.id, isMirrored);
+    onDragStartPreset?.(preset.id, isMirrored && mirrorable);
   };
 
   const handleDragEnd = () => {
@@ -84,31 +87,35 @@ export function PresetCard({
         <span className="text-xs font-medium text-gray-200 truncate flex-1">
           {preset.name}
         </span>
-        <span
-          className="text-[10px] font-mono px-1 rounded"
-          style={{
-            color: HAND_COLORS[preset.handedness],
-            backgroundColor: `${HAND_COLORS[preset.handedness]}15`,
-          }}
-        >
-          {HAND_LABELS[preset.handedness]}
-        </span>
-        {preset.mirrorEligible && (
-          <button
-            className={`text-[10px] px-1 rounded transition-colors ${
-              isMirrored
-                ? 'bg-violet-600/30 text-violet-300'
-                : 'bg-gray-700/50 text-gray-500 hover:text-gray-300'
-            }`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleMirror?.(preset.id);
+        {hasRecordedHands(preset.pads) && (
+          <span
+            className="text-[10px] font-mono px-1 rounded"
+            style={{
+              color: HAND_COLORS[preset.handedness],
+              backgroundColor: `${HAND_COLORS[preset.handedness]}15`,
             }}
-            title="Mirror (flip hand)"
           >
-            ⟷
-          </button>
+            {HAND_LABELS[preset.handedness]}
+          </span>
         )}
+        {/* Always visible, set before dragging: a key press is not delivered
+            during a native drag (T65). */}
+        <button
+          className={`text-[10px] px-1.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+            isMirrored
+              ? 'bg-violet-600/30 text-violet-300'
+              : 'bg-gray-700/50 text-gray-400 hover:text-gray-200'
+          }`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleMirror?.(preset.id);
+          }}
+          disabled={!mirrorable}
+          aria-pressed={isMirrored}
+          title={mirrorable ? 'Mirror (flip hand)' : 'Mirror (flip hand) · not available: this preset uses both hands or has no pads'}
+        >
+          ⟷ Mirror
+        </button>
       </div>
 
       {/* Mini grid preview */}
@@ -215,7 +222,7 @@ function MiniGridPreview({
                 width={cellSize}
                 height={cellSize}
                 rx={1}
-                fill={pad ? (pad.hand === 'left' ? '#0088FF' : '#FF4400') : '#333'}
+                fill={pad ? (pad.hand === 'left' ? '#0088FF' : pad.hand === 'right' ? '#FF4400' : '#888') : '#333'}
                 opacity={pad ? 0.8 : 0.15}
               />
             );

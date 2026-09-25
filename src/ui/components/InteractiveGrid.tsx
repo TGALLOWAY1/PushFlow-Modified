@@ -16,6 +16,7 @@ import { useProject } from '../state/ProjectContext';
 import { getDisplayedLayout, getDisplayedLayoutRole, isPadLocked } from '../state/projectState';
 import { LOCKED_SOUND_DRAG_TYPE } from './dragTypes';
 import { PadContextMenu } from './PadContextMenu';
+import { useRemovePadWithUndo } from '../hooks/useRemovePadWithUndo';
 import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { type GridLabelSettings } from '../state/viewSettings';
@@ -102,7 +103,8 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
   const padDrumRackNote = (row: number, col: number) => bottomLeftNote + row * 8 + col;
   const [dragOverPad, setDragOverPad] = useState<string | null>(null);
   const [dragSourcePad, setDragSourcePad] = useState<string | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ padKey: string; x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ padKey: string; x: number; y: number; pad: HTMLElement } | null>(null);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
   const [showTransitionArrows, setShowTransitionArrows] = useState(true);
 
   const soundStreamLookup = useMemo(
@@ -223,7 +225,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
   }, [selectedTransition, onionSkin]);
 
   const transitionPaths = useMemo(() => {
-    if (!selectedTransition || !showTransitionArrows) return [];
+    if (!selectedTransition || !showTransitionArrows || state.isPlaying) return [];
 
     const movesWithDistance = selectedTransition.fingerMoves
       .filter(move => move.fromPad && move.toPad && !move.isHold)
@@ -262,7 +264,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           endY,
         };
       });
-  }, [selectedTransition, showTransitionArrows]);
+  }, [selectedTransition, showTransitionArrows, state.isPlaying]);
 
   // Visual Debugger Overlays: Candidate Moves
   const debuggerPaths = useMemo(() => {
@@ -400,7 +402,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
   // Build ghost preview pad map for rendering
   const ghostPads = useMemo(() => {
     if (!dragPreview) return null;
-    const map = new Map<string, { hand: string; valid: boolean }>();
+    const map = new Map<string, { hand: string | null; valid: boolean }>();
     for (const pad of dragPreview.pads) {
       const absRow = dragPreview.anchorRow + pad.position.rowOffset;
       const absCol = dragPreview.anchorCol + pad.position.colOffset;
@@ -410,6 +412,11 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     return map;
   }, [dragPreview]);
 
+  // The latest preset-drop handler, read at drop time: a memoised handleDrop
+  // kept a stale one, which validated against an old layout (T65).
+  const onPresetDropRef = useRef(onPresetDrop);
+  onPresetDropRef.current = onPresetDrop;
+
   // Handle dropping a sound onto a pad
   const handleDrop = useCallback((e: React.DragEvent, padKey: string) => {
     e.preventDefault();
@@ -418,13 +425,16 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     // A locked pad takes no drop, and a locked Sound goes nowhere else (canon
     // section 11). The reducer refuses these too; this keeps the gesture from
     // looking accepted.
-    if ((layout && isPadLocked(layout, padKey)) || e.dataTransfer.types.includes(LOCKED_SOUND_DRAG_TYPE)) {
+    // (A preset drop onto a locked pad reaches its handler, which refuses it with a reason.)
+    const isPresetDrop = e.dataTransfer.types.includes(COMPOSER_PRESET_DRAG_TYPE);
+    if ((layout && isPadLocked(layout, padKey) && !isPresetDrop) || e.dataTransfer.types.includes(LOCKED_SOUND_DRAG_TYPE)) {
       setDragSourcePad(null);
       return;
     }
 
     // Check for composer preset drop first
     const presetData = e.dataTransfer.getData(COMPOSER_PRESET_DRAG_TYPE);
+    const onPresetDrop = onPresetDropRef.current;
     if (presetData && onPresetDrop) {
       try {
         const { presetId, isMirrored } = JSON.parse(presetData);
@@ -472,22 +482,26 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     }
 
     setDragSourcePad(null);
-  }, [state.soundStreams, dispatch, layout, onPresetDrop]);
+  }, [state.soundStreams, dispatch, layout]);
 
   const handleDragOver = useCallback((e: React.DragEvent, padKey: string) => {
     // No drop onto a locked pad, and none of a locked Sound: without
     // preventDefault the browser refuses the drop and the pointer says so.
-    if ((layout && isPadLocked(layout, padKey)) || e.dataTransfer.types.includes(LOCKED_SOUND_DRAG_TYPE)) {
+    const lockedTarget = layout && isPadLocked(layout, padKey) && !e.dataTransfer.types.includes(COMPOSER_PRESET_DRAG_TYPE);
+    if (lockedTarget || e.dataTransfer.types.includes(LOCKED_SOUND_DRAG_TYPE)) {
       e.dataTransfer.dropEffect = 'none';
       setDragOverPad(null);
       return;
     }
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+    // A preset drag allows only 'copy'; answering 'move' made the browser
+    // cancel the drop (T65).
+    const isPresetDrag = e.dataTransfer.types.includes(COMPOSER_PRESET_DRAG_TYPE);
+    e.dataTransfer.dropEffect = isPresetDrag ? 'copy' : 'move';
     setDragOverPad(padKey);
 
     // Notify workspace for ghost preview (only for composer preset drags)
-    if (onGridDragOver && e.dataTransfer.types.includes(COMPOSER_PRESET_DRAG_TYPE)) {
+    if (onGridDragOver && isPresetDrag) {
       const [rowStr, colStr] = padKey.split(',');
       onGridDragOver(parseInt(rowStr, 10), parseInt(colStr, 10));
     }
@@ -529,11 +543,13 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     }
   }, [livePadToVoice, assignments, onEventClick]);
 
-  const handleRemovePad = useCallback((padKey: string) => {
-    dispatch({ type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey } });
-  }, [dispatch]);
+  // The pad's ×: removes with an Undo toast (T28).
+  const handleRemovePad = useRemovePadWithUndo();
 
-  const hasEventSelected = selectedEventIndex !== null && selectedPadKeys.size > 0;
+  // The selection overlay is suspended while playing and comes back on Stop
+  // (T10 slice): struck pads then look exactly as they do with nothing selected.
+  const showSelection = !state.isPlaying;
+  const hasEventSelected = showSelection && selectedEventIndex !== null && selectedPadKeys.size > 0;
 
   // Render grid rows (row 7 at top, row 0 at bottom — Push 3 orientation)
   const rows = [];
@@ -544,20 +560,22 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const voice = livePadToVoice[padKey];
       const summary = padSummaries.get(padKey);
       const isStreamHighlighted = !!voice && !!state.selectedStreamId && voice.id === state.selectedStreamId;
-      const isSelected = selectedPadKeys.has(padKey);
+      const isSelected = showSelection && selectedPadKeys.has(padKey);
       const isActivePlaying = activePadKeys.has(padKey);
       const isBlinking = blinkingPads.has(padKey);
-      const isNext = nextPadKeys.has(padKey);
-      const isPrevious = onionSkin && previousPadKeys.has(padKey) && !isSelected;
-      const isShared = sharedPadKeys.has(padKey);
-      const isImpossible = impossibleMoveTargets.has(padKey);
+      const isNext = showSelection && nextPadKeys.has(padKey);
+      const isPrevious = showSelection && onionSkin && previousPadKeys.has(padKey) && !isSelected;
+      const isShared = showSelection && sharedPadKeys.has(padKey);
+      const isImpossible = showSelection && impossibleMoveTargets.has(padKey);
       const isDragOver = padKey === dragOverPad;
       const isDragSource = padKey === dragSourcePad;
       const isInstanceHighlighted = highlightedInstancePads?.has(padKey) ?? false;
       const ghostInfo = ghostPads?.get(padKey);
       const constraint = layout?.fingerConstraints[padKey];
       const isLocked = !!voice && layout?.placementLocks[voice.id] === padKey;
-      const isGreyedOut = hasEventSelected && !isSelected;
+      // Uninvolved pads dim to about 45% without desaturating (T09 slice);
+      // the selected, next and (with onion skin) previous events stay readable.
+      const isGreyedOut = hasEventSelected && !isSelected && !isNext && !isPrevious;
       const selectedFingerInfo = selectedPadFingers.get(padKey);
 
       // Determine colors
@@ -648,23 +666,23 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
         <div
           key={padKey}
           data-testid={`pad-${row}-${col}`}
+          // Focusable by script only, so the pad menu can hand focus back (T06).
+          tabIndex={-1}
+          aria-label={`Row ${row}, column ${col}, ${voice ? voice.name : 'empty'}`}
           className={`
             group relative flex flex-col items-center justify-center
             w-14 h-14 rounded-lg text-[10px] font-mono leading-tight
-            border transition-all duration-100 select-none
+            border transition-[transform,box-shadow,background-color,border-color,filter] duration-100 select-none outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400
             ${isSelected ? 'z-10 scale-105 brightness-125 bg-[var(--bg-card)]' : ''}
             ${isBlinking && !isSelected ? 'z-10 scale-110 brightness-200 bg-[var(--bg-card)]' : ''}
             ${isActivePlaying && !isSelected && !isBlinking ? 'z-10 scale-105 brightness-150 bg-[var(--bg-card)]' : ''}
             ${isNext && !isSelected ? 'border-dashed brightness-110' : ''}
             ${isPrevious ? 'opacity-60' : ''}
-            ${isShared ? 'ring-1 ring-emerald-400/50' : ''}
-            ${isImpossible ? 'ring-2 ring-red-500/80' : ''}
-            ${isInstanceHighlighted ? 'ring-2 ring-violet-400/60' : ''}
-            ${isDragOver ? 'ring-2 ring-blue-400/60 scale-105 bg-[var(--bg-card)]' : ''}
+            ${isDragOver ? 'scale-105 bg-[var(--bg-card)]' : ''}
             ${isDragSource ? 'opacity-30' : ''}
             ${isMuted ? 'opacity-30 pointer-events-none' : ''}
-            ${isGreyedOut ? 'opacity-20 saturate-0' : ''}
-            ${isDragSource ? 'opacity-40 ring-2 ring-blue-400' : ''}
+            ${isGreyedOut ? 'opacity-[0.45]' : ''}
+            ${isDragSource ? 'opacity-40' : ''}
             ${!voice ? 'hover:brightness-110' : 'hover:scale-[1.02]'}
             ${isMuted ? 'cursor-default' : voice ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
           `}
@@ -682,17 +700,21 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
               ? selectedFingerInfo.color
               : isDragOver ? '#3b82f6' : isNext && !isSelected ? '#60a5fa' : borderColor,
             color: isSelected && selectedFingerInfo ? '#ffffff' : textColor,
-            boxShadow: isStreamHighlighted && !isSelected
-              ? '0 0 8px rgba(96, 165, 250, 0.5), inset 0 0 4px rgba(96, 165, 250, 0.2)'
-              : isSelected && selectedFingerInfo
-              ? `0 0 12px ${selectedFingerInfo.color}, inset 0 0 8px rgba(255,255,255,0.15)`
-              : boxGlow,
-            opacity: isGreyedOut ? 0.2 : isNext && !isSelected && !isActivePlaying ? 0.92 : undefined,
+            // Rings are part of this one box-shadow, so no state's glow can
+            // hide another's ring; opacity comes from classes only (T09 slice).
+            boxShadow: [
+              ...padRings({ isShared, isImpossible, isInstanceHighlighted, isDragOver, isDragSource }),
+              isStreamHighlighted && !isSelected
+                ? '0 0 8px rgba(96, 165, 250, 0.5), inset 0 0 4px rgba(96, 165, 250, 0.2)'
+                : isSelected && selectedFingerInfo
+                ? `0 0 12px ${selectedFingerInfo.color}, inset 0 0 8px rgba(255,255,255,0.15)`
+                : boxGlow,
+            ].filter(v => v && v !== 'none').join(', ') || 'none',
           }}
           onClick={() => !isMuted && handlePadClick(row, col)}
           onContextMenu={e => {
             e.preventDefault();
-            if (!isMuted) setContextMenu({ padKey, x: e.clientX, y: e.clientY });
+            if (!isMuted) setContextMenu({ padKey, x: e.clientX, y: e.clientY, pad: e.currentTarget });
           }}
           onDragOver={e => !isMuted && handleDragOver(e, padKey)}
           onDragLeave={handleDragLeave}
@@ -710,19 +732,20 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
               className="absolute inset-0 rounded-lg pointer-events-none z-20"
               style={{
                 backgroundColor: ghostInfo.valid
-                  ? ghostInfo.hand === 'left' ? 'rgba(0,136,255,0.25)' : 'rgba(255,68,0,0.25)'
+                  ? ghostInfo.hand === 'left' ? 'rgba(0,136,255,0.25)' : ghostInfo.hand === 'right' ? 'rgba(255,68,0,0.25)' : 'rgba(148,163,184,0.25)'
                   : 'rgba(255,50,50,0.3)',
                 border: ghostInfo.valid
-                  ? `2px solid ${ghostInfo.hand === 'left' ? 'rgba(0,136,255,0.6)' : 'rgba(255,68,0,0.6)'}`
+                  ? `2px solid ${ghostInfo.hand === 'left' ? 'rgba(0,136,255,0.6)' : ghostInfo.hand === 'right' ? 'rgba(255,68,0,0.6)' : 'rgba(148,163,184,0.7)'}`
                   : '2px solid rgba(255,50,50,0.6)',
               }}
             />
           )}
-          {/* Previous event ghost (onion skin) */}
-          {isPrevious && !voice && (
+          {/* Previous event ghost (onion skin), on empty and occupied pads alike */}
+          {isPrevious && (
             <div
+              data-testid="onion-previous"
               className="absolute inset-0 rounded-lg pointer-events-none"
-              style={{ backgroundColor: 'rgba(100, 130, 255, 0.08)', border: '1px dotted rgba(100, 130, 255, 0.2)' }}
+              style={{ backgroundColor: 'rgba(100, 130, 255, 0.12)', border: '2px dotted rgba(140, 160, 255, 0.75)' }}
             />
           )}
           {voice ? (
@@ -948,11 +971,22 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           padKey={contextMenu.padKey}
           x={contextMenu.x}
           y={contextMenu.y}
-          onClose={() => setContextMenu(null)}
+          returnFocusTo={contextMenu.pad}
+          onClose={closeContextMenu}
         />
       )}
     </div>
   );
+}
+
+/** Ring outlines for a pad's states, as box-shadow layers. */
+function padRings(f: { isShared: boolean; isImpossible: boolean; isInstanceHighlighted: boolean; isDragOver: boolean; isDragSource: boolean }): string[] {
+  const rings: string[] = [];
+  if (f.isImpossible) rings.push('0 0 0 2px rgba(239, 68, 68, 0.8)');
+  if (f.isInstanceHighlighted) rings.push('0 0 0 2px rgba(167, 139, 250, 0.6)');
+  if (f.isDragOver || f.isDragSource) rings.push('0 0 0 2px rgba(96, 165, 250, 0.7)');
+  if (f.isShared) rings.push('0 0 0 1px rgba(52, 211, 153, 0.5)');
+  return rings;
 }
 
 function toGridX(col: number): number {

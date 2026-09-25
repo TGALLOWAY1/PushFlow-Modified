@@ -9,7 +9,7 @@
  */
 
 import { useMemo, useState, useCallback } from 'react';
-import { type ComposerPreset, type PresetPad, type PlacedPresetInstance, computeHandedness, isMirrorEligible, isPresetFingerVerified } from '../../../types/composerPreset';
+import { type ComposerPreset, type PresetPad, type PlacedPresetInstance, canMirrorPreset, isPresetFingerVerified } from '../../../types/composerPreset';
 import { type FingerType } from '../../../types/fingerModel';
 import { GRID_ROWS, GRID_COLS } from '../../../types/padGrid';
 import { totalSteps } from '../../../types/loopEditor';
@@ -99,13 +99,19 @@ export function PresetInspector({ preset, instance, onRemoveInstance, onMirrorIn
                 <span className="text-gray-400 truncate flex-1">
                   {lane?.name ?? pad.laneId}
                 </span>
-                <span style={{ color: HAND_COLORS[pad.hand] }}>
-                  {pad.hand === 'left' ? 'L' : 'R'}{FINGER_ABBREV[pad.finger]}
-                </span>
-                <span className="text-gray-600">
-                  {FINGER_LABELS[pad.finger]}
-                </span>
-                {!isPresetFingerVerified(pad) && (
+                {pad.hand && pad.finger ? (
+                  <>
+                    <span style={{ color: HAND_COLORS[pad.hand] }}>
+                      {pad.hand === 'left' ? 'L' : 'R'}{FINGER_ABBREV[pad.finger]}
+                    </span>
+                    <span className="text-gray-600">
+                      {FINGER_LABELS[pad.finger]}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-gray-500" title="No finger preference was set when the preset was saved">no finger</span>
+                )}
+                {pad.finger != null && !isPresetFingerVerified(pad) && (
                   <span className="text-amber-300/80" title="Not a finger preference when saved; not applied on placement">
                     unverified
                   </span>
@@ -150,7 +156,7 @@ export function PresetInspector({ preset, instance, onRemoveInstance, onMirrorIn
       {/* Instance actions */}
       {instance && (
         <div className="space-y-1.5">
-          {onMirrorInstance && isMirrorEligible(computeHandedness(instance.pads)) && (
+          {onMirrorInstance && canMirrorPreset(instance.pads) && (
             <button
               className="w-full px-3 py-1.5 text-xs rounded bg-violet-500/10 text-violet-400 border border-violet-500/20 hover:bg-violet-500/20 transition-colors"
               onClick={() => onMirrorInstance(instance.id)}
@@ -227,10 +233,10 @@ function InspectorGridPreview({
                   width={cellSize}
                   height={cellSize}
                   rx={2}
-                  fill={pad ? (pad.hand === 'left' ? '#0088FF' : '#FF4400') : '#222'}
+                  fill={pad ? (pad.hand === 'left' ? '#0088FF' : pad.hand === 'right' ? '#FF4400' : '#777') : '#222'}
                   opacity={pad ? 0.7 : 0.1}
                 />
-                {pad && (
+                {pad?.finger && (
                   <text
                     x={x + cellSize / 2}
                     y={y + cellSize / 2 + 1}
@@ -240,7 +246,7 @@ function InspectorGridPreview({
                     fill="white"
                     opacity={0.9}
                   >
-                    {FINGER_ABBREV[pad.finger]}
+                    {FINGER_ABBREV[pad.finger!]}
                   </text>
                 )}
               </g>

@@ -5,15 +5,18 @@
  * Options: set finger constraint, remove voice, view reachability.
  */
 
-import { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { getDisplayedLayout } from '../state/projectState';
+import { Popover, useOverlayTitleId } from './shared/Overlay';
+import { useRemovePadWithUndo } from '../hooks/useRemovePadWithUndo';
 
 interface PadContextMenuProps {
   padKey: string;
   x: number;
   y: number;
   onClose: () => void;
+  /** The pad that opened the menu; focus returns to it on close. */
+  returnFocusTo?: HTMLElement | null;
 }
 
 const FINGER_OPTIONS = [
@@ -29,70 +32,41 @@ const FINGER_OPTIONS = [
   { label: 'R5 (Pinky)', value: 'R5' },
 ];
 
-export function PadContextMenu({ padKey, x, y, onClose }: PadContextMenuProps) {
+export function PadContextMenu({ padKey, x, y, onClose, returnFocusTo }: PadContextMenuProps) {
   const { state, dispatch } = useProject();
   const layout = getDisplayedLayout(state);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const titleId = useOverlayTitleId();
+  const removePad = useRemovePadWithUndo();
 
   const voice = layout?.padToVoice[padKey];
   const currentConstraint = layout?.fingerConstraints[padKey];
   const isLocked = !!voice && layout?.placementLocks[voice.id] === padKey;
 
-  // Clamp position to viewport bounds
-  const [position, setPosition] = useState({ left: x, top: y });
-  useLayoutEffect(() => {
-    const el = menuRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    let left = x;
-    let top = y;
-    if (x + rect.width > vw - 8) left = vw - rect.width - 8;
-    if (y + rect.height > vh - 8) top = vh - rect.height - 8;
-    if (left < 8) left = 8;
-    if (top < 8) top = 8;
-    setPosition({ left, top });
-  }, [x, y]);
-
-  // Close on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
-
-  // Close on Escape
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
-
+  // Portalled to <body> and clamped inside the viewport by Popover (T06): it
+  // opens at the cursor however the grid is scaled or filtered.
   return (
-    <div
-      ref={menuRef}
-      data-testid="pad-menu"
-      className="fixed z-50 bg-[var(--bg-panel)] border border-[var(--border-default)] rounded-pf-lg shadow-pf-xl py-1 min-w-[160px]"
-      style={{ left: position.left, top: position.top }}
+    <Popover
+      x={x}
+      y={y}
+      onClose={onClose}
+      role="menu"
+      labelledBy={titleId}
+      returnFocusTo={returnFocusTo}
+      testId="pad-menu"
+      className="bg-[var(--bg-panel)] border border-[var(--border-default)] rounded-pf-lg shadow-pf-xl py-1 min-w-[160px]"
     >
       {/* Header */}
-      <div className="px-3 py-1.5 text-pf-xs text-[var(--text-tertiary)] border-b border-[var(--border-subtle)]">
+      <div id={titleId} className="px-3 py-1.5 text-pf-xs text-[var(--text-tertiary)] border-b border-[var(--border-subtle)]">
         Pad [{padKey}] {voice ? `— ${voice.name}` : '— empty'}
       </div>
 
       {/* Remove voice; refused while the Sound is locked to this pad (canon section 11) */}
       {voice && (
         <button
+          role="menuitem"
           className="w-full px-3 py-1.5 text-left text-pf-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           onClick={() => {
-            dispatch({ type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey } });
+            removePad(padKey);
             onClose();
           }}
           disabled={isLocked}
@@ -106,6 +80,7 @@ export function PadContextMenu({ padKey, x, y, onClose }: PadContextMenuProps) {
       {/* Placement lock */}
       {voice && (
         <button
+          role="menuitem"
           className="w-full px-3 py-1.5 text-left text-pf-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
           onClick={() => {
             dispatch({ type: 'TOGGLE_PLACEMENT_LOCK', payload: { voiceId: voice.id, padKey } });
@@ -124,6 +99,7 @@ export function PadContextMenu({ padKey, x, y, onClose }: PadContextMenuProps) {
           </div>
           {FINGER_OPTIONS.map(opt => (
             <button
+              role="menuitem"
               key={opt.value}
               className={`w-full px-3 py-1 text-left text-pf-sm hover:bg-[var(--bg-hover)] transition-colors ${
                 currentConstraint === opt.value ? 'text-purple-300' : 'text-[var(--text-secondary)]'
@@ -144,6 +120,7 @@ export function PadContextMenu({ padKey, x, y, onClose }: PadContextMenuProps) {
           ))}
           {currentConstraint && (
             <button
+              role="menuitem"
               className="w-full px-3 py-1.5 text-left text-pf-sm text-amber-400 hover:bg-[var(--bg-hover)] transition-colors border-t border-[var(--border-subtle)]"
               onClick={() => {
                 dispatch({
@@ -158,6 +135,6 @@ export function PadContextMenu({ padKey, x, y, onClose }: PadContextMenuProps) {
           )}
         </>
       )}
-    </div>
+    </Popover>
   );
 }

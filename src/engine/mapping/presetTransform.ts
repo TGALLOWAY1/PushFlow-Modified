@@ -87,7 +87,7 @@ export function validatePlacement(
     }
 
     // Hand zone check (only if within grid)
-    if (isValidPad(abs) && !isZoneValid(abs, pad.hand)) {
+    if (isValidPad(abs) && pad.hand && !isZoneValid(abs, pad.hand)) {
       reasons.push(
         `Pad at (${abs.row}, ${abs.col}) is outside the ${pad.hand} hand zone`
       );
@@ -141,7 +141,8 @@ export function getPlacementPadKeys(
 // ============================================================================
 
 /** Swap hand side. */
-function flipHand(hand: HandSide): HandSide {
+function flipHand(hand: HandSide | null): HandSide | null {
+  if (!hand) return null;
   return hand === 'left' ? 'right' : 'left';
 }
 

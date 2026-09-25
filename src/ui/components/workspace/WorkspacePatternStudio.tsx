@@ -17,7 +17,7 @@ import {
   type PresetFingerSource,
   computeBoundingBox,
   computeHandedness,
-  isMirrorEligible,
+  canMirrorPreset,
   normalizePadPositions,
 } from '../../../types/composerPreset';
 import { type FingerType, type HandSide } from '../../../types/fingerModel';
@@ -435,26 +435,24 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
         const vc = projectState.voiceConstraints[voice.id]
           ?? projectState.voiceConstraints[lane.id]
           ?? (mappedVoiceId ? projectState.voiceConstraints[mappedVoiceId] : undefined);
-        let hand: HandSide;
-        let finger: FingerType;
-        // A made-up hand and finger is marked unverified, so placing the preset
-        // never applies it as a preference (F9-12).
-        let fingerSource: PresetFingerSource = 'preference';
+        // Only a real preference is recorded; otherwise the pad's hand and
+        // finger stay blank. Save Preset never invents fingering (T65).
+        let hand: HandSide | null = null;
+        let finger: FingerType | null = null;
+        let fingerSource: PresetFingerSource | undefined;
 
         if (vc?.hand && vc?.finger) {
           hand = vc.hand;
           finger = vc.finger as FingerType;
+          fingerSource = 'preference';
         } else {
-          // Fallback: parse finger constraint from layout
+          // A pad-level preference (derived from the Sound's) counts too.
           const constraint = fingerConstraints[padKeyStr];
           const parsed = constraint ? parseFingerConstraint(constraint) : null;
           if (parsed) {
             hand = parsed.hand;
             finger = parsed.finger;
-          } else {
-            hand = coord.col <= 4 ? 'left' : 'right';
-            finger = 'index';
-            fingerSource = 'unverified';
+            fingerSource = 'preference';
           }
         }
 
@@ -463,7 +461,7 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
           laneId: lane.id,
           finger,
           hand,
-          fingerSource,
+          ...(fingerSource ? { fingerSource } : {}),
         });
       }
     }
@@ -482,7 +480,7 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
       lanes: displayLanes,
       events: Array.from(loopState.events.entries()),
       handedness,
-      mirrorEligible: isMirrorEligible(handedness),
+      mirrorEligible: canMirrorPreset(normalizedPads),
       boundingBox: computeBoundingBox(normalizedPads),
       tags: [],
     });
