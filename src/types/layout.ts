@@ -11,7 +11,7 @@
  *
  * V3 workflow roles:
  * - Active Layout: the committed baseline (read-mostly, changed only by Promote)
- * - Working/Test Layout: a session-scoped exploratory draft (created on first edit)
+ * - Working/Test Layout: the exploratory draft (created on first edit; saved with the project, decision Q1)
  * - Saved Layout Variant: a durable named alternative (kept for comparison)
  */
 
@@ -24,7 +24,7 @@ export type LayoutMode = 'manual' | 'optimized' | 'random' | 'auto' | 'none';
  * LayoutRole: the workflow role of a layout in the project.
  *
  * - 'active': the committed baseline
- * - 'working': the session-scoped exploratory draft
+ * - 'working': the exploratory draft (saved with the project, decision Q1)
  * - 'variant': a durable named alternative
  */
 export type LayoutRole = 'active' | 'working' | 'variant';
