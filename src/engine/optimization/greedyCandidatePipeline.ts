@@ -31,6 +31,7 @@ import { type SeedContext, SEED_GENERATORS } from './seedGenerators';
 import { UPDATE_POLICIES } from './updatePolicies';
 import { type GreedyRunOptions, GreedyOptimizer } from './greedyOptimizer';
 import { countRelaxedStrikes } from '../evaluation/constraintRelaxation';
+import { COMFORTABLE_PLAN_SCORE } from '../evaluation/planScore';
 import { analyzeDifficulty, computeTradeoffProfile } from '../evaluation/difficultyScoring';
 import { compositeScore } from './candidateRanker';
 import {
@@ -525,6 +526,24 @@ function selectDiverseFinalists(
 // ============================================================================
 
 /**
+ * Whether a finalist may say it won on "low overall difficulty".
+ *
+ * plan.score is higher-is-better (0-100). The claim used to fire for score < 5,
+ * which put it on the hardest candidates. It now needs a comfortable score on
+ * the displayed scale, nothing Hard or Unplayable, and the best score among the
+ * finalists (strictly above at least one of them, so a tie across all finalists
+ * claims nothing).
+ */
+export function claimsLowOverallDifficulty(
+  plan: { score: number; hardCount: number; unplayableCount: number },
+  otherScores: readonly number[],
+): boolean {
+  const leads = otherScores.every(o => plan.score >= o)
+    && (otherScores.length === 0 || plan.score > Math.min(...otherScores));
+  return plan.score >= COMFORTABLE_PLAN_SCORE && plan.hardCount === 0 && plan.unplayableCount === 0 && leads;
+}
+
+/**
  * Build a structured explanation for a finalist candidate.
  */
 function buildExplanation(
@@ -560,7 +579,10 @@ function buildExplanation(
   if (plan.unplayableCount === 0) {
     wonBecause.push('all events playable');
   }
-  if (plan.score < 5) {
+  const otherScores = allFinalists
+    .filter(f => f.candidate.id !== scored.candidate.id)
+    .map(f => f.candidate.executionPlan.score);
+  if (claimsLowOverallDifficulty(plan, otherScores)) {
     wonBecause.push('low overall difficulty');
   }
 

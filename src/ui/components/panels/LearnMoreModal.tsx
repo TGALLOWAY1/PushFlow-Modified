@@ -8,6 +8,9 @@
 
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { CONSTRAINT_RULE_NAMES, OPTIMIZER_METHOD_KEYS, OPTIMIZER_METHOD_LABELS } from '@/engine';
+import { VERDICT_TIERS } from '../../analysis/verdictTiers';
+import { FACTOR_KEYS, FACTOR_META } from '../../analysis/factorMeta';
 
 interface LearnMoreModalProps {
   open: boolean;
@@ -473,6 +476,53 @@ function CostFactorsSection() {
           </div>
         </div>
       ))}
+
+      <VerdictsSection />
+    </div>
+  );
+}
+
+/** Joins names as "A, B and C". */
+function listNames(names: readonly string[]): string {
+  return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/**
+ * Verdicts, rendered from the same tier list FeasibilityBadge uses, and the
+ * per-event cost, named with the same FACTOR_META labels as the Selected event card.
+ */
+function VerdictsSection() {
+  return (
+    <div className="space-y-3 pt-2 border-t border-[var(--border-subtle)]">
+      <h4 className="text-pf-base font-medium text-[var(--text-primary)]">Verdicts</h4>
+      <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
+        The layout verdict always describes the whole layout, whichever event you select. Under it, a scope line
+        says what was analysed, for example &ldquo;Analysing 5 of 7 Sounds &middot; 2 muted&rdquo;: muted Sounds are
+        left out of the analysis, and a Sound that isn&rsquo;t on the grid can&rsquo;t be played.
+      </p>
+      <div className="space-y-1.5">
+        {VERDICT_TIERS.map(tier => (
+          <div key={tier.level} data-testid={`learn-verdict-${tier.level}`} className="flex gap-2 text-pf-sm">
+            <span className={`px-1.5 py-0.5 rounded-pf-sm border text-pf-xs font-medium flex-shrink-0 w-24 ${tier.className}`}>
+              {tier.icon} {tier.label}
+            </span>
+            <span className="text-[var(--text-tertiary)] leading-relaxed">{tier.description}</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
+        &lsquo;Unknown&rsquo; is not a warning about your layout: it means there is no analysis to judge it by yet
+        (&lsquo;Analysing&hellip;&rsquo; while one runs). PushFlow never shows &lsquo;Feasible&rsquo; without an analysis
+        that says so.
+      </p>
+      <h4 className="text-pf-base font-medium text-[var(--text-primary)]">Per-event cost</h4>
+      <p data-testid="learn-per-event-cost" className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
+        An event is everything you strike at one instant, so a chord is one event with several notes. Its cost is
+        counted once for the event, never once per note, so a three-note chord and a single note with the same
+        difficulty cost the same. Selecting an event shows its own level (Easy, Medium, Hard or Unplayable) and its
+        {' '}{listNames(FACTOR_KEYS.map(k => FACTOR_META[k].label))} costs, in a separate card below the layout
+        verdict. An event with a note that can&rsquo;t be played reads Unplayable instead of showing empty bars.
+      </p>
     </div>
   );
 }
@@ -529,8 +579,14 @@ function OptimizersSection() {
  * Constraints Section — active voice constraints, placement locks, finger constraints
  * ═══════════════════════════════════════════════════════════════════════ */
 
-/** The optimization methods, each of which pre-places locked Sounds and never moves them. */
-export const LOCK_ENFORCING_METHODS = ['Greedy', 'Beam', 'Annealing'] as const;
+/**
+ * The optimization methods, each of which pre-places locked Sounds and never
+ * moves them: every method the engine offers (OPTIMIZER_METHOD_KEYS).
+ */
+export const LOCK_ENFORCING_METHODS: readonly string[] = OPTIMIZER_METHOD_KEYS.map(key => OPTIMIZER_METHOD_LABELS[key]);
+
+/** The rule names the solvers' feasibility checks report; each has an entry below. */
+export const SOLVER_CONSTRAINT_RULES = CONSTRAINT_RULE_NAMES;
 
 export const HARD_CONSTRAINTS = [
   {
@@ -542,7 +598,7 @@ export const HARD_CONSTRAINTS = [
       {
         name: 'Placement Locks',
         key: 'placementLock',
-        description: `A lock pins a Sound to one pad, and it is the one hard placement rule you set. ${LOCK_ENFORCING_METHODS.slice(0, -1).join(', ')} and ${LOCK_ENFORCING_METHODS[LOCK_ENFORCING_METHODS.length - 1]} all place locked Sounds first, on their locked pads, and never move them; a candidate that would break a lock is dropped, and the candidate list says so. Manual edits enforce locks too: a locked Sound cannot be dragged off its pad, and nothing can be dropped onto a locked pad (Locked \u00b7 Unlock to move); Remove from pad is refused too until the Sound is unlocked, and a Composer preset is never placed or mirrored over a locked Sound.`,
+        description: `A lock pins a Sound to one pad, and it is the one hard placement rule you set. ${listNames(LOCK_ENFORCING_METHODS)} all place locked Sounds first, on their locked pads, and never move them; a candidate that would break a lock is dropped, and the candidate list says so. Manual edits enforce locks too: a locked Sound cannot be dragged off its pad, and nothing can be dropped onto a locked pad (Locked \u00b7 Unlock to move); Remove from pad is refused too until the Sound is unlocked, and a Composer preset is never placed or mirrored over a locked Sound.`,
       },
       {
         name: 'Sound Identity',
@@ -553,7 +609,7 @@ export const HARD_CONSTRAINTS = [
         // Generate proposes; it never takes a placed Sound off the grid (T15).
         name: 'Placed Sounds Stay Placed',
         key: 'pinned',
-        description: `Generate never removes a Sound that is already on the grid. A placed Sound whose events are not in the performance being optimized (a muted Sound) keeps its pad in every candidate from ${LOCK_ENFORCING_METHODS.slice(0, -1).join(', ')} and ${LOCK_ENFORCING_METHODS[LOCK_ENFORCING_METHODS.length - 1]}: it is pinned for that run, not locked, so no lock is added and you can still move it by hand. The candidate list says how many muted Sounds kept their pads.`,
+        description: `Generate never removes a Sound that is already on the grid. A placed Sound whose events are not in the performance being optimized (a muted Sound) keeps its pad in every candidate from ${listNames(LOCK_ENFORCING_METHODS)}: it is pinned for that run, not locked, so no lock is added and you can still move it by hand. The candidate list says how many muted Sounds kept their pads.`,
       },
     ],
   },
@@ -679,7 +735,7 @@ function ConstraintsSection() {
       <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
         <h4 className="text-pf-sm font-medium text-[var(--text-primary)] mb-1">Enforcement</h4>
         <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
-          Placement locks come first: Greedy, Beam and Annealing each start from the locked pads and never move a
+          Placement locks come first: {listNames(LOCK_ENFORCING_METHODS)} each start from the locked pads and never move a
           locked Sound, and manual edits respect locks too. When a biomechanical constraint is violated, the candidate
           grip is rejected entirely. Hand separation and one finger per sound are enforced just as strictly: the solver
           first searches only among plans that keep them, and considers breaking one only when that search cannot

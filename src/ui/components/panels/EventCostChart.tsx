@@ -14,6 +14,7 @@
 import { useState, useMemo } from 'react';
 import { type FingerAssignment } from '../../../types/executionPlan';
 import { type V1CostBreakdown } from '../../../types/diagnostics';
+import { groupIntoMoments, summarizeMomentCost } from '@/engine';
 
 interface EventCostChartProps {
   fingerAssignments: FingerAssignment[];
@@ -47,6 +48,8 @@ const COST_LAYERS: CostLayer[] = [
 
 interface EventBar {
   eventIndex: number;
+  /** Every event index in this moment (a beam plan indexes notes, greedy moments). */
+  eventIndices: Set<number>;
   startTime: number;
   segments: Array<{ key: string; value: number; color: string; label: string }>;
   total: number;
@@ -68,59 +71,33 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
     });
   };
 
-  // Group assignments by startTime to get per-event cost
+  // One bar per moment (shared grouping), costed once per moment: every note of
+  // a moment carries the whole moment's cost, so summing them made each bar grow
+  // with the chord's size.
   const eventBars: EventBar[] = useMemo(() => {
-    // Group by startTime (each unique startTime = one Performance Event)
-    const timeMap = new Map<number, FingerAssignment[]>();
-    for (const a of fingerAssignments) {
-      const group = timeMap.get(a.startTime);
-      if (group) group.push(a);
-      else timeMap.set(a.startTime, [a]);
-    }
+    return groupIntoMoments(fingerAssignments).map(moment => {
+      const { breakdown } = summarizeMomentCost(moment.items);
+      const segments = breakdown
+        ? COST_LAYERS
+            .filter(l => enabledLayers.has(l.key))
+            .map(l => ({
+              key: l.key,
+              value: l.accessor(breakdown),
+              color: l.color,
+              label: l.label,
+            }))
+            .filter(s => s.value > 0)
+        : [];
 
-    const sortedTimes = [...timeMap.keys()].sort((a, b) => a - b);
-    return sortedTimes.map((time, idx) => {
-      const assignments = timeMap.get(time)!;
-      // Aggregate cost breakdown across all notes in this event
-      const aggregated: V1CostBreakdown = {
-        fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0,
-        handBalance: 0,
-        constraintPenalty: 0,
-        total: 0,
-      };
-      for (const a of assignments) {
-        if (a.costBreakdown) {
-          aggregated.fingerPreference += a.costBreakdown.fingerPreference;
-          aggregated.handShapeDeviation += a.costBreakdown.handShapeDeviation;
-          aggregated.alternation += a.costBreakdown.alternation;
-          aggregated.transitionCost += a.costBreakdown.transitionCost;
-          aggregated.handBalance += a.costBreakdown.handBalance;
-          aggregated.constraintPenalty += a.costBreakdown.constraintPenalty;
-          aggregated.total += a.costBreakdown.total;
-        } else {
-          // Fallback: use raw cost split equally
-          aggregated.transitionCost += a.cost;
-          aggregated.total += a.cost;
-        }
-      }
-
-      const segments = COST_LAYERS
-        .filter(l => enabledLayers.has(l.key))
-        .map(l => ({
-          key: l.key,
-          value: l.accessor(aggregated),
-          color: l.color,
-          label: l.label,
-        }))
-        .filter(s => s.value > 0);
-
+      const eventIndices = moment.items
+        .map(a => a.eventIndex)
+        .filter((i): i is number => i !== undefined);
       return {
-        // The REAL event index, not the bar's position. Bars are grouped by
-        // timestamp, so passing the array position selected a different moment
-        // than the one clicked — on the reference plan, clicking the bar at
-        // t=15.5s showed the breakdown of a note 5.5 seconds earlier.
-        eventIndex: assignments[0].eventIndex ?? idx,
-        startTime: time,
+        // A real event index from this moment, not the bar's position, so a
+        // click selects the moment that was clicked.
+        eventIndex: eventIndices[0] ?? moment.index,
+        eventIndices: new Set(eventIndices),
+        startTime: moment.startTime,
         segments,
         total: segments.reduce((sum, s) => sum + s.value, 0),
       };
@@ -154,7 +131,7 @@ export function EventCostChart({ fingerAssignments, candidateLabel, selectedEven
           {eventBars.map((bar, idx) => {
             const barHeight = bar.total > 0 ? (bar.total / maxTotal) * height : 0;
             const isHovered = hoveredEvent === idx;
-            const isSelected = selectedEventIndex !== undefined && selectedEventIndex !== null && bar.eventIndex === selectedEventIndex;
+            const isSelected = selectedEventIndex !== undefined && selectedEventIndex !== null && bar.eventIndices.has(selectedEventIndex);
 
             return (
               <div

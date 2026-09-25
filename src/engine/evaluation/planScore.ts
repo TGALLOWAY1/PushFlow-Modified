@@ -15,6 +15,13 @@
  * (a genuinely unplayable layout must always score worse than a merely awkward one).
  */
 
+/**
+ * The displayed score from which a plan reads as comfortable (the UI's
+ * "Comfortable" band, higher = easier). Claims such as "low overall difficulty"
+ * use this same threshold, so they can't disagree with the score beside them.
+ */
+export const COMFORTABLE_PLAN_SCORE = 80;
+
 /** Points removed per hard moment. */
 const HARD_MOMENT_PENALTY = 5;
 

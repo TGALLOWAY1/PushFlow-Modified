@@ -263,18 +263,22 @@ export const ACTIVATION_COST = 5.0;
 
 /**
  * Named constraint rules — each encodes a specific biomechanical invariant.
- * Used by diagnostic mode to report which rule rejected a grip.
+ * Used by diagnostic mode to report which rule rejected a grip. Learn More's
+ * Constraints section is checked against this list (LearnMoreModal.test.tsx).
  */
-export type ConstraintRuleName =
-  | 'span'           // Per-pair span exceeds limit
-  | 'ordering'       // Finger ordering violation (crossover)
-  | 'collision'      // Two fingers on same pad
-  | 'thumbDelta'     // Thumb too far above other fingers
-  | 'topology'       // Left/right hand topology violation
-  | 'reachability'   // Finger outside reach given hand anchor
-  | 'speed'          // Transition too fast (exceeds MAX_HAND_SPEED)
-  | 'zone'           // Hand in wrong zone (left hand in right territory)
-  | 'outwardRotation'; // Outer finger below inner finger requires unnatural hand rotation
+export const CONSTRAINT_RULE_NAMES = [
+  'span',            // Per-pair span exceeds limit
+  'ordering',        // Finger ordering violation (crossover)
+  'collision',       // Two fingers on same pad
+  'thumbDelta',      // Thumb too far above other fingers
+  'topology',        // Left/right hand topology violation
+  'reachability',    // Finger outside reach given hand anchor
+  'speed',           // Transition too fast (exceeds MAX_HAND_SPEED)
+  'zone',            // Hand in wrong zone (left hand in right territory)
+  'outwardRotation', // Outer finger below inner finger requires unnatural hand rotation
+] as const;
+
+export type ConstraintRuleName = typeof CONSTRAINT_RULE_NAMES[number];
 
 /**
  * GripRejection: Diagnostic data for why a grip was rejected.

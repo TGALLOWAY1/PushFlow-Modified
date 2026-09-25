@@ -9,6 +9,7 @@
 
 import { type V1CostBreakdown } from '../../../types/diagnostics';
 import { type DiagnosticsPayload, type FeasibilityVerdict } from '../../../types/diagnostics';
+import { verdictTier, type VerdictLevel } from '../../analysis/verdictTiers';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Props
@@ -21,51 +22,57 @@ interface CostBreakdownBarsProps {
   unplayableCount?: number;
   /** Events classified Medium — playable but needing attention. */
   mediumCount?: number;
-  /** When set, shows event-specific metrics with a label */
-  eventLabel?: string;
+  /** Which Sounds the verdict covers (analysisScopeLine). */
+  scope: string;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
 // Feasibility badge
 // ────────────────────────────────────────────────────────────────────────────
 
-export function FeasibilityBadge({ verdict, unplayableCount }: {
+/**
+ * The whole-layout verdict. It is derived only from data that exists: with no
+ * verdict and no counts it reads 'Unknown' ('Analysing...' while a run is in
+ * flight), never 'Feasible'. Every verdict carries its scope line.
+ */
+export function FeasibilityBadge({ verdict, unplayableCount, hardCount, pending = false, scope }: {
   verdict?: FeasibilityVerdict;
   unplayableCount?: number;
+  hardCount?: number;
+  /** An analysis is running, so 'Unknown' reads 'Analysing...'. */
+  pending?: boolean;
+  /** Which Sounds the verdict covers; null only where no Sounds are known. */
+  scope: string | null;
 }) {
-  // Derive level from verdict or from raw counts
-  const level = verdict?.level
-    ?? (unplayableCount && unplayableCount > 0 ? 'infeasible' : 'feasible');
+  // Counts alone can prove a layout infeasible or degraded, never feasible:
+  // 'feasible' also needs no fallback grips and no broken hand rules.
+  const level: VerdictLevel = verdict?.level
+    ?? (unplayableCount !== undefined && unplayableCount > 0
+      ? 'infeasible'
+      : hardCount !== undefined && hardCount > 0 ? 'degraded' : 'unknown');
+  const tier = verdictTier(level);
 
   const summary = verdict?.summary
-    ?? (level === 'feasible'
-      ? 'All events playable'
+    ?? (level === 'infeasible'
+      ? `${unplayableCount} unplayable event${unplayableCount !== 1 ? 's' : ''}`
       : level === 'degraded'
         ? 'Playable with hard passages'
-        : `${unplayableCount ?? '?'} unplayable event${(unplayableCount ?? 0) !== 1 ? 's' : ''}`);
-
-  const styles: Record<string, string> = {
-    feasible: 'bg-green-500/10 border-green-500/30 text-green-400',
-    degraded: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
-    infeasible: 'bg-red-500/10 border-red-500/30 text-red-400',
-  };
-
-  const icons: Record<string, string> = {
-    feasible: '\u2713',
-    degraded: '\u26A0',
-    infeasible: '\u2717',
-  };
+        : pending ? 'Analysing\u2026' : 'No analysis yet');
 
   return (
     <div
       data-testid="verdict-badge"
       data-level={level}
-      className={`flex items-center gap-2 px-2 py-1.5 rounded-pf-sm border text-pf-xs ${styles[level]}`}
+      className={`flex items-center gap-2 px-2 py-1.5 rounded-pf-sm border text-pf-xs ${tier.className}`}
+      title={tier.description}
     >
-      <span className="text-pf-sm">{icons[level]}</span>
-      <div>
-        <div className="font-medium capitalize">{level}</div>
+      <span className="text-pf-sm">{tier.icon}</span>
+      <div className="min-w-0">
+        <div className="font-medium">{tier.label}</div>
         <div className="text-pf-micro opacity-80">{summary}</div>
+        {scope && (
+          <div data-testid="verdict-scope" className="text-pf-micro text-[var(--text-tertiary)]">{scope}</div>
+        )}
       </div>
     </div>
   );
@@ -233,20 +240,16 @@ function DifficultySummary({ hardCount, unplayableCount, mediumCount }: {
 // Composite component
 // ────────────────────────────────────────────────────────────────────────────
 
-export function CostBreakdownBars({ metrics, diagnostics, hardCount, unplayableCount, eventLabel , mediumCount }: CostBreakdownBarsProps) {
+export function CostBreakdownBars({ metrics, diagnostics, hardCount, unplayableCount, mediumCount, scope }: CostBreakdownBarsProps) {
   return (
     <div className="space-y-3">
-      {/* Event-specific label */}
-      {eventLabel && (
-        <div className="text-pf-xs text-cyan-400 px-1.5 py-0.5 rounded-pf-sm bg-cyan-500/10 border border-cyan-500/20 inline-block">
-          {eventLabel}
-        </div>
-      )}
-
-      {/* Layer 1: Feasibility verdict */}
+      {/* Layer 1: Feasibility verdict — always the whole layout's, pinned here
+          whether or not an event is selected (the selected event has its own card). */}
       <FeasibilityBadge
         verdict={diagnostics?.feasibility}
         unplayableCount={unplayableCount}
+        hardCount={hardCount}
+        scope={scope}
       />
 
       {/* Layer 2: Ergonomic cost breakdown */}

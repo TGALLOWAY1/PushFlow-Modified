@@ -16,7 +16,10 @@ import {
 } from '../../state/projectState';
 import { type FingerType, ALL_FINGERS } from '../../../types/fingerModel';
 import { type ConstraintRelaxationSummary } from '../../../types/executionPlan';
-import { CostBreakdownBars } from './CostBreakdownBars';
+import { CostBreakdownBars, FeasibilityBadge } from './CostBreakdownBars';
+import { SelectedEventCard } from './SelectedEventCard';
+import { findSelectedMoment } from '../../analysis/selectedMoment';
+import { analysisScopeLine } from '../../analysis/analysisScope';
 import { EventCostChart } from './EventCostChart';
 import { LearnMoreModal } from './LearnMoreModal';
 import { buildSelectedTransitionModel } from '../../analysis/selectionModel';
@@ -43,37 +46,12 @@ export function ActiveLayoutSummary() {
     return assignments.find(a => a.eventIndex === state.selectedEventIndex) ?? null;
   }, [state.selectedEventIndex, assignments]);
 
-  // All assignments for the selected event (for per-event cost breakdown)
-  const selectedEventAssignments = useMemo(() => {
-    if (state.selectedEventIndex === null || !assignments) return null;
-    const selected = assignments.filter(a => a.eventIndex === state.selectedEventIndex);
-    return selected.length > 0 ? selected : null;
-  }, [state.selectedEventIndex, assignments]);
-
-  // Per-event aggregated metrics
-  const selectedEventMetrics = useMemo(() => {
-    if (!selectedEventAssignments) return null;
-    const metrics = {
-      fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0,
-      handBalance: 0,
-      constraintPenalty: 0,
-      total: 0,
-    };
-    for (const a of selectedEventAssignments) {
-      if (a.costBreakdown) {
-        metrics.fingerPreference += a.costBreakdown.fingerPreference;
-        metrics.handShapeDeviation += a.costBreakdown.handShapeDeviation;
-        metrics.transitionCost += a.costBreakdown.transitionCost;
-        metrics.handBalance += a.costBreakdown.handBalance;
-        metrics.constraintPenalty += a.costBreakdown.constraintPenalty;
-        metrics.total += a.costBreakdown.total;
-      } else {
-        metrics.transitionCost += a.cost;
-        metrics.total += a.cost;
-      }
-    }
-    return metrics;
-  }, [selectedEventAssignments]);
+  // The selected event's whole moment, costed once (never summed per note).
+  const selectedMoment = useMemo(
+    () => findSelectedMoment(assignments, state.selectedEventIndex),
+    [assignments, state.selectedEventIndex],
+  );
+  const scope = analysisScopeLine(state.soundStreams, displayedLayout);
 
   // Transition data
   const transition = useMemo(
@@ -197,6 +175,9 @@ export function ActiveLayoutSummary() {
                 <QuickStat label="Sounds" value={String(activeStreams.length)} />
               </div>
 
+              {/* No analysis means no claim: 'Unknown', never 'Feasible'. */}
+              {mappedCount > 0 && <FeasibilityBadge pending={state.isProcessing} scope={scope} />}
+
               {/* An empty grid is not an unplayable layout — it is an unfinished one.
                   Say so, and offer a starting point the user explicitly asks for. */}
               {mappedCount === 0 && activeStreams.length > 0 && (
@@ -234,15 +215,17 @@ export function ActiveLayoutSummary() {
             />
 
             <CostBreakdownBars
-              metrics={selectedEventMetrics ?? currentPlan.averageMetrics}
-              diagnostics={selectedEventMetrics ? undefined : currentPlan.diagnostics}
-              hardCount={selectedEventMetrics ? undefined : currentPlan.hardCount}
-              unplayableCount={selectedEventMetrics ? undefined : currentPlan.unplayableCount}
-              mediumCount={selectedEventMetrics ? undefined : currentPlan.mediumCount}
-              eventLabel={selectedEventMetrics && state.selectedEventIndex !== null
-                ? `Event ${state.selectedEventIndex + 1} (t=${assignment?.startTime.toFixed(3) ?? '?'}s)`
-                : undefined}
+              metrics={currentPlan.averageMetrics}
+              diagnostics={currentPlan.diagnostics}
+              hardCount={currentPlan.hardCount}
+              unplayableCount={currentPlan.unplayableCount}
+              mediumCount={currentPlan.mediumCount}
+              scope={scope}
             />
+
+            {selectedMoment && (
+              <SelectedEventCard selected={selectedMoment} tempo={state.tempo} scope={scope} />
+            )}
             </>
           )}
 
@@ -270,7 +253,7 @@ export function ActiveLayoutSummary() {
           {assignment && (
             <div className="pt-3 border-t border-[var(--border-subtle)] space-y-2.5">
               <div className="flex items-center justify-between">
-                <h4 className="section-header">Selected Event</h4>
+                <h4 className="section-header">Selected note</h4>
                 <button
                   className="text-pf-xs text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
                   onClick={() => dispatch({ type: 'SELECT_EVENT', payload: null })}
@@ -289,7 +272,6 @@ export function ActiveLayoutSummary() {
                   color={effectiveHand === 'left' ? 'text-blue-300' : effectiveHand === 'right' ? 'text-orange-300' : 'text-red-400'}
                 />
                 <DetailChip label="Finger" value={effectiveFinger ?? 'none'} />
-                <DetailChip label="Cost" value={assignment.cost.toFixed(2)} />
               </div>
 
               {/* Finger constraint controls */}

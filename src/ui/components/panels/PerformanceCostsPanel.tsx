@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useProject } from '../../state/ProjectContext';
-import { getDisplayedExecutionPlan } from '../../state/projectState';
-import { CostBreakdownBars } from './CostBreakdownBars';
+import { getDisplayedExecutionPlan, getDisplayedLayout } from '../../state/projectState';
+import { CostBreakdownBars, FeasibilityBadge } from './CostBreakdownBars';
+import { SelectedEventCard } from './SelectedEventCard';
+import { findSelectedMoment } from '../../analysis/selectedMoment';
+import { analysisScopeLine } from '../../analysis/analysisScope';
 import { EventCostChart } from './EventCostChart';
 import { formatPlanScore, getPlanScoreQuality, getPlanScoreSummary } from '../../analysis/planScore';
 
@@ -10,44 +13,20 @@ export function PerformanceCostsPanel() {
   const [chartOpen, setChartOpen] = useState(false);
   const currentPlan = getDisplayedExecutionPlan(state);
 
-  const assignment = useMemo(() => {
-    if (state.selectedEventIndex === null || !currentPlan) return null;
-    return currentPlan.fingerAssignments.find(a => a.eventIndex === state.selectedEventIndex) ?? null;
-  }, [currentPlan, state.selectedEventIndex]);
-
-  const selectedEventMetrics = useMemo(() => {
-    if (state.selectedEventIndex === null || !currentPlan) return null;
-    const assignments = currentPlan.fingerAssignments.filter(a => a.eventIndex === state.selectedEventIndex);
-    if (assignments.length === 0) return null;
-
-    const metrics = {
-      fingerPreference: 0, handShapeDeviation: 0, alternation: 0, transitionCost: 0,
-      handBalance: 0,
-      constraintPenalty: 0,
-      total: 0,
-    };
-
-    for (const current of assignments) {
-      if (current.costBreakdown) {
-        metrics.fingerPreference += current.costBreakdown.fingerPreference;
-        metrics.handShapeDeviation += current.costBreakdown.handShapeDeviation;
-        metrics.transitionCost += current.costBreakdown.transitionCost;
-        metrics.handBalance += current.costBreakdown.handBalance;
-        metrics.constraintPenalty += current.costBreakdown.constraintPenalty;
-        metrics.total += current.costBreakdown.total;
-      } else {
-        metrics.transitionCost += current.cost;
-        metrics.total += current.cost;
-      }
-    }
-
-    return metrics;
-  }, [currentPlan, state.selectedEventIndex]);
+  // The selected event's whole moment, costed once (never summed per note).
+  const selectedMoment = useMemo(
+    () => findSelectedMoment(currentPlan?.fingerAssignments, state.selectedEventIndex),
+    [currentPlan, state.selectedEventIndex],
+  );
+  const scope = analysisScopeLine(state.soundStreams, getDisplayedLayout(state));
 
   if (!currentPlan && !state.isProcessing) {
     return (
-      <div className="px-3 py-4 text-pf-xs text-[var(--text-tertiary)] text-center">
-        No cost analysis yet. Generate or preview a layout to inspect playability.
+      <div className="px-3 py-4 space-y-2">
+        {state.soundStreams.length > 0 && <FeasibilityBadge scope={scope} />}
+        <div className="text-pf-xs text-[var(--text-tertiary)] text-center">
+          No cost analysis yet. Generate or preview a layout to inspect playability.
+        </div>
       </div>
     );
   }
@@ -122,9 +101,7 @@ export function PerformanceCostsPanel() {
         )}
 
         {state.isProcessing && !currentPlan ? (
-          <div className="text-pf-xs text-blue-400 py-4 text-center animate-pulse">
-            Analyzing layout...
-          </div>
+          <FeasibilityBadge pending scope={scope} />
         ) : null}
 
         {currentPlan ? (
@@ -153,15 +130,17 @@ export function PerformanceCostsPanel() {
             </div>
 
             <CostBreakdownBars
-              metrics={selectedEventMetrics ?? currentPlan.averageMetrics}
-              diagnostics={selectedEventMetrics ? undefined : currentPlan.diagnostics}
-              hardCount={selectedEventMetrics ? undefined : currentPlan.hardCount}
-              unplayableCount={selectedEventMetrics ? undefined : currentPlan.unplayableCount}
-              mediumCount={selectedEventMetrics ? undefined : currentPlan.mediumCount}
-              eventLabel={selectedEventMetrics && state.selectedEventIndex !== null
-                ? `Event ${state.selectedEventIndex + 1} (t=${assignment?.startTime.toFixed(3) ?? '?'}s)`
-                : undefined}
+              metrics={currentPlan.averageMetrics}
+              diagnostics={currentPlan.diagnostics}
+              hardCount={currentPlan.hardCount}
+              unplayableCount={currentPlan.unplayableCount}
+              mediumCount={currentPlan.mediumCount}
+              scope={scope}
             />
+
+            {selectedMoment && (
+              <SelectedEventCard selected={selectedMoment} tempo={state.tempo} scope={scope} />
+            )}
 
             {currentPlan.fingerAssignments.length > 0 && (
               <div>
