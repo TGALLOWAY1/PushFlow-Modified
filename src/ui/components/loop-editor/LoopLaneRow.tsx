@@ -9,7 +9,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { type LoopLane } from '../../../types/loopEditor';
 import { type LoopEditorAction } from '../../state/loopEditorReducer';
 import { type FingerType, type HandSide } from '../../../types/fingerModel';
-import { formatPadPosition } from '../../../utils/padPosition';
+import { formatPadLocator, formatPadPosition } from '../../../utils/padPosition';
 import { FingerAssignmentInput, type FingerAssignmentValue } from '../shared/FingerAssignmentInput';
 
 /** A hand+finger assignment for a lane. */
@@ -104,8 +104,8 @@ export function LoopLaneRow({ lane, dispatch, fingerAssignment, onFingerAssignme
       />
 
       {/* Pad position label */}
-      <span className="text-pf-xs text-[var(--text-secondary)] w-7 text-center flex-shrink-0" title={padPosition ? `Pad ${padPosition}` : 'Not assigned to pad'}>
-        {padPosition ? formatPadPosition(padPosition) : '--'}
+      <span className="text-pf-xs text-[var(--text-secondary)] w-11 text-center flex-shrink-0 tabular-nums" title={padPosition ? formatPadPosition(padPosition) : 'Not assigned to pad'}>
+        {padPosition ? formatPadLocator(padPosition) : '--'}
       </span>
 
       {/* M/S buttons */}

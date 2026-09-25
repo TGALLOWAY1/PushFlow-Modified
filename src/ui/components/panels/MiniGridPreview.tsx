@@ -57,6 +57,7 @@ export function MiniGridPreview({ layout, soundStreams, size = 1, highlighted = 
           return (
             <div
               key={padKey}
+              data-occupied={voice ? 'true' : undefined}
               className="rounded-sm"
               style={{
                 width: cellSize,

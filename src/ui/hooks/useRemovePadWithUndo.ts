@@ -7,6 +7,7 @@
  * revert, so it can never undo something else.
  */
 
+import { formatPadPosition } from '../../utils/padPosition';
 import { useCallback, useEffect, useRef } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { useToast } from '../components/shared/Toast';
@@ -36,7 +37,7 @@ export function useRemovePadWithUndo(): (padKey: string) => void {
     dispatch({ type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey } });
     if (toastRef.current !== null) toast.dismiss(toastRef.current);
     toastRef.current = toast.show({
-      message: `Removed ${voice.name} from [${padKey}]`,
+      message: `Removed ${voice.name} from ${formatPadPosition(padKey)}`,
       action: { label: 'Undo', onClick: undo },
     });
   }, [dispatch, toast, undo]);

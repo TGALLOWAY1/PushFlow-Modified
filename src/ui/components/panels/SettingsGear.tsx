@@ -1,26 +1,32 @@
 /**
  * SettingsGear.
  *
- * Popover for grid view options and layout display settings.
- * Two sections matching the Push-style settings panel:
- * - View Options: note labels, position labels, finger assignment
- * - Layout Options: organize by 4x4 banks, duplicate layout
+ * Popover for the grid's view options (note, position and finger labels,
+ * hand colours) and the cost toggles. The dead "Organize by 4x4 Banks" and the
+ * hidden second Save Variant ("Duplicate Layout") are gone (S2.3, T39).
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { type GridLabelSettings, type LayoutDisplaySettings } from '../../state/viewSettings';
-import { type CostToggles, TOGGLE_LABELS, TOGGLE_CATEGORIES, isExperimentalMode } from '../../../types/costToggles';
+import { type GridLabelSettings } from '../../state/viewSettings';
+import { type CostToggles, TOGGLE_CATEGORIES, isExperimentalMode } from '../../../types/costToggles';
+import { COST_FAMILY_FACTOR, FACTOR_META } from '../../analysis/factorMeta';
+import { DisabledReason, useDisabledReason } from '../shared/DisabledReason';
+
+/** A cost family's name is its factor's (FACTOR_META, T20). */
+const familyLabel = (key: keyof CostToggles) => FACTOR_META[COST_FAMILY_FACTOR[key]].label;
+
+/** The analysis supplies the finger assignment once a Sound is on the grid. */
+const CALCULATE_DISABLED_REASON = 'Place a Sound on the grid first: the cost needs a finger assignment';
 
 interface SettingsGearProps {
   gridLabels: GridLabelSettings;
-  layoutDisplay: LayoutDisplaySettings;
   onToggleGridLabel: (key: keyof GridLabelSettings) => void;
-  onToggleLayoutDisplay: (key: keyof LayoutDisplaySettings) => void;
-  onDuplicateLayout?: () => void;
   costToggles?: CostToggles;
   onCostToggleChange?: (toggles: CostToggles) => void;
   onCalculateCost?: () => void;
   hasAssignment?: boolean;
+  /** Opens the keyboard and mouse sheet (also on '?'). */
+  onOpenShortcuts?: () => void;
 }
 
 const VIEW_OPTIONS: Array<{ key: keyof GridLabelSettings; label: string }> = [
@@ -33,17 +39,16 @@ const VIEW_OPTIONS: Array<{ key: keyof GridLabelSettings; label: string }> = [
 
 export function SettingsGear({
   gridLabels,
-  layoutDisplay,
   onToggleGridLabel,
-  onToggleLayoutDisplay,
-  onDuplicateLayout,
   costToggles,
   onCostToggleChange,
   onCalculateCost,
   hasAssignment,
+  onOpenShortcuts,
 }: SettingsGearProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -59,6 +64,7 @@ export function SettingsGear({
   return (
     <div className="relative" ref={ref}>
       <button
+        ref={buttonRef}
         className={`w-8 h-8 flex items-center justify-center rounded-pf-lg transition-colors ${
           open ? 'bg-[var(--bg-active)] text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
         }`}
@@ -74,7 +80,20 @@ export function SettingsGear({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-64 rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-lg z-50 overflow-hidden">
+        // A dialog to the input table: keys pressed in it are its own (Space
+        // toggles the focused option), and Escape closes it.
+        <div
+          role="dialog"
+          aria-label="View settings"
+          data-testid="settings-popover"
+          className="absolute right-0 top-full mt-1 w-64 rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-lg z-50 overflow-hidden"
+          onKeyDown={e => {
+            if (e.key !== 'Escape') return;
+            e.stopPropagation();
+            setOpen(false);
+            buttonRef.current?.focus();
+          }}
+        >
           {/* View Options section */}
           <div className="px-4 pt-3 pb-1">
             <div className="section-header">
@@ -104,41 +123,6 @@ export function SettingsGear({
             ))}
           </div>
 
-          {/* Divider */}
-          <div className="pf-divider-h mx-3" />
-
-          {/* Layout Options section */}
-          <div className="px-4 pt-3 pb-1">
-            <div className="section-header">
-              Layout Options
-            </div>
-          </div>
-          <div className="px-2 pb-2">
-            <button
-              className="w-full flex items-center gap-3 px-2 py-2.5 text-left hover:bg-[var(--bg-hover)] rounded-pf-lg transition-colors"
-              onClick={() => onToggleLayoutDisplay('organize4x4Banks')}
-            >
-              <span className={`text-pf-base ${layoutDisplay.organize4x4Banks ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
-                Organize by 4x4 Banks
-              </span>
-            </button>
-            {onDuplicateLayout && (
-              <button
-                className="w-full flex items-center justify-between px-2 py-2.5 text-left hover:bg-[var(--bg-hover)] rounded-pf-lg transition-colors"
-                onClick={() => {
-                  onDuplicateLayout();
-                  setOpen(false);
-                }}
-              >
-                <span className="text-pf-base text-[var(--text-secondary)]">Duplicate Layout</span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-tertiary)]">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                </svg>
-              </button>
-            )}
-          </div>
-
           {/* Cost Toggles section */}
           {costToggles && onCostToggleChange && (
             <>
@@ -154,6 +138,27 @@ export function SettingsGear({
                 onCalculate={onCalculateCost}
                 hasAssignment={hasAssignment ?? false}
               />
+            </>
+          )}
+
+          {/* The keyboard and mouse sheet (T61) */}
+          {onOpenShortcuts && (
+            <>
+              <div className="pf-divider-h mx-3" />
+              <div className="px-2 py-2">
+                <button
+                  type="button"
+                  data-testid="open-shortcuts"
+                  className="w-full flex items-center justify-between gap-3 px-2 py-2 text-left hover:bg-[var(--bg-hover)] rounded-pf-lg transition-colors"
+                  onClick={() => {
+                    setOpen(false);
+                    onOpenShortcuts();
+                  }}
+                >
+                  <span className="text-pf-base text-[var(--text-primary)]">Keyboard and mouse</span>
+                  <kbd className="px-1.5 py-0.5 rounded-pf-sm bg-[var(--bg-card)] border border-[var(--border-default)] font-mono text-pf-xs text-[var(--text-secondary)]">?</kbd>
+                </button>
+              </div>
             </>
           )}
         </div>
@@ -173,8 +178,9 @@ function CostTogglesSection({
   onCalculate?: () => void;
   hasAssignment: boolean;
 }) {
-  const toggleKeys = Object.keys(TOGGLE_LABELS) as Array<keyof CostToggles>;
+  const toggleKeys = Object.keys(COST_FAMILY_FACTOR) as Array<keyof CostToggles>;
   const experimental = isExperimentalMode(costToggles);
+  const calculateReason = useDisabledReason(hasAssignment ? null : CALCULATE_DISABLED_REASON);
 
   const handleToggle = (key: keyof CostToggles) => {
     onToggleChange({ ...costToggles, [key]: !costToggles[key] });
@@ -191,23 +197,23 @@ function CostTogglesSection({
         {staticToggles.map(key => (
           <label key={key} className="flex items-center gap-2 cursor-pointer group">
             <input type="checkbox" checked={costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded-pf-sm accent-[var(--accent-primary)]" />
-            <span className={`text-pf-sm group-hover:text-[var(--text-primary)] ${costToggles[key] ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] line-through'}`}>{TOGGLE_LABELS[key]}</span>
+            <span className={`text-pf-sm group-hover:text-[var(--text-primary)] ${costToggles[key] ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] line-through'}`}>{familyLabel(key)}</span>
           </label>
         ))}
 
-        <div className="text-[10px] text-gray-500 uppercase tracking-wider pt-1">Temporal</div>
+        <div className="text-pf-micro text-[var(--text-tertiary)] uppercase tracking-wider pt-1">Temporal</div>
         {temporalToggles.map(key => (
           <label key={key} className="flex items-center gap-2 cursor-pointer group">
             <input type="checkbox" checked={costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded-pf-sm accent-[var(--accent-primary)]" />
-            <span className={`text-pf-sm group-hover:text-[var(--text-primary)] ${costToggles[key] ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] line-through'}`}>{TOGGLE_LABELS[key]}</span>
+            <span className={`text-pf-sm group-hover:text-[var(--text-primary)] ${costToggles[key] ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] line-through'}`}>{familyLabel(key)}</span>
           </label>
         ))}
 
-        <div className="text-[10px] text-gray-500 uppercase tracking-wider pt-1">Hard Rules</div>
+        <div className="text-pf-micro text-[var(--text-tertiary)] uppercase tracking-wider pt-1">Hard Rules</div>
         {hardToggles.map(key => (
           <label key={key} className="flex items-center gap-2 cursor-pointer group">
             <input type="checkbox" checked={costToggles[key]} onChange={() => handleToggle(key)} className="w-3 h-3 rounded-pf-sm accent-[var(--accent-primary)]" />
-            <span className={`text-pf-sm group-hover:text-[var(--text-primary)] ${costToggles[key] ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] line-through'} ${!costToggles[key] ? 'text-orange-400' : ''}`}>{TOGGLE_LABELS[key]}</span>
+            <span className={`text-pf-sm group-hover:text-[var(--text-primary)] ${costToggles[key] ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] line-through'} ${!costToggles[key] ? 'text-orange-400' : ''}`}>{familyLabel(key)}</span>
             <span className="text-pf-micro text-[var(--text-tertiary)] ml-auto">(hard)</span>
           </label>
         ))}
@@ -220,16 +226,20 @@ function CostTogglesSection({
       )}
 
       {onCalculate && (
-        <button
-          className={`w-full px-3 py-2 rounded-pf-md text-pf-sm font-medium transition-colors ${
-            hasAssignment ? 'pf-btn-primary' : 'bg-[var(--bg-hover)] text-[var(--text-tertiary)] cursor-not-allowed'
-          }`}
-          onClick={onCalculate}
-          disabled={!hasAssignment}
-          title={!hasAssignment ? 'Run Generate first to create a finger assignment' : 'Evaluate with active cost toggles'}
-        >
-          Calculate Cost
-        </button>
+        <div className="space-y-1">
+          <button
+            className={`w-full px-3 py-2 rounded-pf-md text-pf-sm font-medium transition-colors ${
+              hasAssignment ? 'pf-btn-primary' : 'bg-[var(--bg-hover)] text-[var(--text-tertiary)] cursor-not-allowed'
+            }`}
+            onClick={onCalculate}
+            disabled={!hasAssignment}
+            aria-describedby={calculateReason.describedBy}
+            title={hasAssignment ? 'Evaluate with active cost toggles' : CALCULATE_DISABLED_REASON}
+          >
+            Calculate cost
+          </button>
+          <DisabledReason id={calculateReason.id} reason={hasAssignment ? null : CALCULATE_DISABLED_REASON} className="block" />
+        </div>
       )}
     </div>
   );

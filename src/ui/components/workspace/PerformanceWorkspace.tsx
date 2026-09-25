@@ -15,6 +15,7 @@
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useReducer, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useProject } from '../../state/ProjectContext';
 import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
 import { useIdentityMatchingNotice } from '../../hooks/useIdentityMatchingNotice';
@@ -58,6 +59,22 @@ import {
 } from '../../../engine/mapping/presetTransform';
 import { generateId } from '../../../utils/idGenerator';
 import { padKey } from '../../../types/padGrid';
+import { useMeasuredPadSize } from './gridSizing';
+import { DrawerSplitter } from './DrawerSplitter';
+import { CENTER_MIN_WIDTH, fitSidePanels, maxPanelWidth } from './panelSizing';
+import { ArmedSoundHint, GridStartCard, NothingPlacedHint } from './GridEmptyState';
+import { ShortcutSheet } from '../shared/ShortcutSheet';
+import { useLaneImport } from '../../hooks/useLaneImport';
+import {
+  DRAWER_TAB_BAR_HEIGHT,
+  drawerHeightFor,
+  loadDrawerPrefs,
+  maxDrawerHeight,
+  minDrawerHeight,
+  saveDrawerPrefs,
+  type DrawerPrefs,
+} from './drawerSizing';
+import { timelineContentHeight } from '../timelineLayout';
 
 type LeftPanelTab = 'sounds' | 'events' | 'presets';
 type RightPanelTab = 'costs' | 'layouts';
@@ -70,6 +87,9 @@ const LEFT_DEFAULT = 320;
 const RIGHT_MIN = 280;
 const RIGHT_MAX = 600;
 const RIGHT_DEFAULT = 340;
+/** A collapsed side panel, and the drag handle beside an open one. */
+const COLLAPSED_PANEL_WIDTH = 36;
+const RESIZE_HANDLE_WIDTH = 8;
 
 /**
  * One bottom-drawer tab's content. The inactive panel stays mounted but is not
@@ -111,7 +131,10 @@ function PerformanceWorkspaceInner() {
   const { generateFull, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason } = useAutoAnalysis();
   useIdentityMatchingNotice(state);
   const { saveStatus, saveNow } = useAutoSave(state);
-  useKeyboardShortcuts({ onSave: saveNow });
+  // The '?' sheet, generated from the input table (T61).
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
+  useKeyboardShortcuts({ onSave: saveNow, onOpenShortcuts: openShortcuts });
   const toast = useToast();
   // "Export a copy": the way out when saving keeps failing. Until P8 moves the
   // Composer's pattern into the project it lives in localStorage, and the file
@@ -184,7 +207,7 @@ function PerformanceWorkspaceInner() {
     return keys;
   }, [composerWorkspace.selectedInstanceId, composerWorkspace.placedInstances]);
 
-  // Dragging preset state (for ghost preview + mirror-during-drag)
+  // Dragging preset state (for the ghost preview; the Mirror toggle sets isMirrored)
   const [draggingPreset, setDraggingPreset] = useState<{ preset: ComposerPreset; isMirrored: boolean } | null>(null);
   const [dragPreview, setDragPreview] = useState<PresetDragPreview | null>(null);
 
@@ -200,21 +223,6 @@ function PerformanceWorkspaceInner() {
     setDraggingPreset(null);
     setDragPreview(null);
   }, []);
-
-  // M key toggles mirror during drag
-  useEffect(() => {
-    if (!draggingPreset) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'm' || e.key === 'M') {
-        setDraggingPreset(prev => {
-          if (!prev) return prev;
-          return { ...prev, isMirrored: !prev.isMirrored };
-        });
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [draggingPreset]);
 
   // Update ghost preview when dragging preset mirror state changes
   const handleGridDragOver = useCallback((anchorRow: number, anchorCol: number) => {
@@ -299,25 +307,80 @@ function PerformanceWorkspaceInner() {
   const startX = useRef(0);
   const startWidth = useRef(0);
 
-  // Grid scaling — ResizeObserver measures container, scale grid to fit
-  const gridContainerRef = useRef<HTMLDivElement>(null);
-  const [gridScale, setGridScale] = useState(1);
-  const GRID_NATURAL_SIZE = 8 * (56 + 4) + 40; // 8 cells * (cell + gap) + padding/labels
-
-  useEffect(() => {
-    const el = gridContainerRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        const available = Math.min(width, height);
-        const scale = Math.min(1.2, available / GRID_NATURAL_SIZE);
-        setGridScale(Math.max(0.5, scale));
-      }
-    });
-    observer.observe(el);
+  // The side panels give way so the centre keeps room for the timeline's
+  // transport cluster and its "⋯" button (T05): the widths the viewer dragged
+  // to are kept, and shown only as wide as the measured body allows.
+  const [bodyEl, setBodyEl] = useState<HTMLDivElement | null>(null);
+  const [bodyWidth, setBodyWidth] = useState(0);
+  useLayoutEffect(() => {
+    if (!bodyEl) return;
+    const measure = () => {
+      const style = getComputedStyle(bodyEl);
+      const w = bodyEl.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      if (w > 0) setBodyWidth(prev => (prev === w ? prev : w));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(bodyEl);
     return () => observer.disconnect();
+  }, [bodyEl]);
+  const fixedWidth = (leftCollapsed ? COLLAPSED_PANEL_WIDTH : RESIZE_HANDLE_WIDTH)
+    + (rightCollapsed ? COLLAPSED_PANEL_WIDTH : 0) + RESIZE_HANDLE_WIDTH;
+  // What the open panels may take together; unknown until the body is measured.
+  const panelRoom = bodyWidth > 0 ? bodyWidth - fixedWidth - CENTER_MIN_WIDTH : Infinity;
+  const shownPanels = fitSidePanels(
+    panelRoom,
+    { left: leftCollapsed ? 0 : leftWidth, right: rightCollapsed ? 0 : rightWidth },
+    { left: leftCollapsed ? 0 : LEFT_MIN, right: rightCollapsed ? 0 : RIGHT_MIN },
+  );
+  const shownLeftWidth = leftCollapsed ? COLLAPSED_PANEL_WIDTH : shownPanels.left;
+  const shownRightWidth = rightCollapsed ? COLLAPSED_PANEL_WIDTH : shownPanels.right;
+  // Read by the drag handlers, which are bound once.
+  const panelLayout = useRef({ room: panelRoom, left: shownPanels.left, right: shownPanels.right });
+  panelLayout.current = { room: panelRoom, left: shownPanels.left, right: shownPanels.right };
+
+  // Measured grid (T04): the pads are sized to the grid region, never scaled.
+  const [gridRegionRef, padSize] = useMeasuredPadSize();
+
+  // Bottom drawer: fits the timeline's content (at most ~40% of the centre
+  // column) unless the viewer dragged the splitter; remembered per viewer.
+  const [centerEl, setCenterEl] = useState<HTMLDivElement | null>(null);
+  const [centerHeight, setCenterHeight] = useState(0);
+  useLayoutEffect(() => {
+    if (!centerEl) return;
+    const measure = () => {
+      const h = centerEl.clientHeight;
+      if (h > 0) setCenterHeight(prev => (prev === h ? prev : h));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(centerEl);
+    return () => observer.disconnect();
+  }, [centerEl]);
+  const [drawerPrefs, setDrawerPrefs] = useState<DrawerPrefs>(loadDrawerPrefs);
+  const commitDrawerPrefs = useCallback((next: DrawerPrefs) => {
+    setDrawerPrefs(next);
+    saveDrawerPrefs(next);
   }, []);
+  // The drawer fits the timeline's content while the timeline is shown. The
+  // Composer gets the full default height instead: its lanes need the room, and
+  // the height must not follow the Sound count there, because a first note on
+  // a new lane adds a Sound and re-fitting then moved the whole Composer up one
+  // lane under the pointer (T69).
+  const drawerContentHeight = timelineTab === 'composer'
+    ? Number.POSITIVE_INFINITY
+    : timelineContentHeight(state.soundStreams.length);
+  const drawerHeight = centerHeight > 0
+    ? drawerHeightFor(centerHeight, drawerContentHeight, drawerPrefs)
+    : undefined;
+  const drawerCollapsed = drawerPrefs.collapsed;
+  const setDrawerCollapsed = useCallback((collapsed: boolean) => {
+    commitDrawerPrefs({ ...drawerPrefs, collapsed });
+  }, [drawerPrefs, commitDrawerPrefs]);
+  const openDrawerTab = useCallback((tab: TimelineTab) => {
+    setTimelineTab(tab);
+    if (drawerPrefs.collapsed) commitDrawerPrefs({ ...drawerPrefs, collapsed: false });
+  }, [drawerPrefs, commitDrawerPrefs]);
 
   // Compare state
   const [selectedForCompare, setSelectedForCompare] = useState<Set<string>>(new Set());
@@ -327,18 +390,20 @@ function PerformanceWorkspaceInner() {
   const handleResizeStart = useCallback((side: 'left' | 'right', e: React.MouseEvent) => {
     isResizing.current = side;
     startX.current = e.clientX;
-    startWidth.current = side === 'left' ? leftWidth : rightWidth;
+    // Start from the width on screen, which may be less than the one remembered.
+    startWidth.current = side === 'left' ? panelLayout.current.left : panelLayout.current.right;
     e.preventDefault();
-  }, [leftWidth, rightWidth]);
+  }, []);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing.current) return;
       const dx = e.clientX - startX.current;
+      const { room, left, right } = panelLayout.current;
       if (isResizing.current === 'left') {
-        setLeftWidth(Math.max(LEFT_MIN, Math.min(LEFT_MAX, startWidth.current + dx)));
+        setLeftWidth(Math.max(LEFT_MIN, Math.min(maxPanelWidth(room, right, LEFT_MIN, LEFT_MAX), startWidth.current + dx)));
       } else {
-        setRightWidth(Math.max(RIGHT_MIN, Math.min(RIGHT_MAX, startWidth.current - dx)));
+        setRightWidth(Math.max(RIGHT_MIN, Math.min(maxPanelWidth(room, left, RIGHT_MIN, RIGHT_MAX), startWidth.current - dx)));
       }
     };
     const handleMouseUp = () => { isResizing.current = null; };
@@ -517,6 +582,15 @@ function PerformanceWorkspaceInner() {
     ? debuggerIteration.stateBefore.layout
     : selectedCandidate?.layout;
 
+  // Sounds but nothing on the grid: the state bar says how to place them (T44).
+  const { importFiles } = useLaneImport();
+  const displayedPadCount = Object.keys((state.workingLayout ?? state.activeLayout).padToVoice).length;
+  const nothingPlaced = state.soundStreams.length > 0 && displayedPadCount === 0 && !currentLayoutOverride;
+  // The Sound armed for click-to-place (T62), and whether a click would move it.
+  const armedStream = state.armedStreamId ? state.soundStreams.find(s => s.id === state.armedStreamId) ?? null : null;
+  const armedStreamPlaced = !!armedStream
+    && Object.values((state.workingLayout ?? state.activeLayout).padToVoice).some(v => v.id === armedStream.id);
+
   // Wrap generateFull to auto-open analysis after generation
   const handleGenerate = useCallback(async (mode?: Parameters<typeof generateFull>[0]) => {
     await generateFull(mode);
@@ -541,6 +615,11 @@ function PerformanceWorkspaceInner() {
     [selectedForCompare, state.candidates, state.activeLayout], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const compareEnabled = canCompare(compareIds, state);
+  // Said next to the disabled Compare button (T31).
+  const compareDisabledReason = compareEnabled ? null
+    : state.candidates.length === 0 ? 'Generate candidates first'
+    : compareIds.length < 2 ? 'Tick 2 layouts to compare'
+    : 'The ticked layouts are the same';
   const liveCompareSet = useMemo(() => new Set(compareIds), [compareIds]);
   useEffect(() => {
     if (compareIds.length !== selectedForCompare.size) setSelectedForCompare(new Set(compareIds));
@@ -553,6 +632,22 @@ function PerformanceWorkspaceInner() {
     if (compareEnabled) setCompareModalOpen(true);
   }, [compareEnabled]);
 
+  // A saved variant is shown straight away (T29): the Layouts tab opens and
+  // its card scrolls into view once it has rendered.
+  const [revealVariantId, setRevealVariantId] = useState<string | null>(null);
+  const handleVariantSaved = useCallback((variantId: string) => {
+    setRightCollapsed(false);
+    setRightTab('layouts');
+    setRevealVariantId(variantId);
+  }, []);
+  useEffect(() => {
+    if (!revealVariantId) return;
+    const card = document.querySelector(`[data-variant-id="${revealVariantId}"]`);
+    if (!card) return;
+    card.scrollIntoView({ block: 'nearest' });
+    setRevealVariantId(null);
+  }, [revealVariantId, state.savedVariants, rightTab]);
+
   return (
     <div className="h-full flex flex-col bg-[var(--bg-app)] overflow-hidden">
       {/* ─── Top Toolbar ──────────────────────────────────────── */}
@@ -564,12 +659,15 @@ function PerformanceWorkspaceInner() {
         canGenerate={canGenerate}
         generateDisabledReason={generateDisabledReason ?? null}
         compareCount={compareEnabled ? compareIds.length : 0}
+        compareDisabledReason={compareDisabledReason}
         onCompare={handleOpenCompare}
         onCalculateCost={() => calculateCost(state.costToggles)}
         hasAssignment={!!assignments?.length}
         saveStatus={saveStatus}
         onSave={saveNow}
         onExport={handleExport}
+        onVariantSaved={handleVariantSaved}
+        onOpenShortcuts={openShortcuts}
       />
 
       {/* ─── Error Banner ─────────────────────────────────────── */}
@@ -586,9 +684,9 @@ function PerformanceWorkspaceInner() {
       )}
 
       {/* ─── Main Body: 3-column ──────────────────────────────── */}
-      <div className="flex-1 flex overflow-hidden p-2.5 gap-0 min-h-0">
+      <div ref={setBodyEl} className="flex-1 flex overflow-hidden p-2.5 gap-0 min-h-0">
         {/* Left Column: Tabbed Sounds / Events */}
-        <div className="flex-shrink-0 flex flex-col transition-all" style={{ width: leftCollapsed ? 36 : leftWidth }}>
+        <div data-testid="left-panel" className="flex-shrink-0 flex flex-col transition-all" style={{ width: shownLeftWidth }}>
           {leftCollapsed ? (
             <button
               className="flex flex-col items-center gap-3 py-4 w-full cursor-pointer hover:bg-[var(--bg-hover)] rounded-pf-lg transition-colors h-full"
@@ -664,77 +762,117 @@ function PerformanceWorkspaceInner() {
         {/* Left resize handle */}
         {!leftCollapsed && (
           <div
-            className="w-2 flex-shrink-0 cursor-col-resize group flex items-center justify-center hover:bg-[var(--accent-muted)] transition-colors rounded-sm"
+            data-testid="left-panel-handle"
+            className="flex-shrink-0 cursor-col-resize group flex items-center justify-center hover:bg-[var(--accent-muted)] transition-colors rounded-sm"
+            style={{ width: RESIZE_HANDLE_WIDTH }}
             onMouseDown={e => handleResizeStart('left', e)}
           >
             <div className="w-px h-8 bg-[var(--border-subtle)] group-hover:bg-[var(--accent-primary)] transition-colors rounded-full" />
           </div>
         )}
 
-        {/* Center Column: Grid + Timeline stacked */}
-        <div className="flex-1 flex flex-col gap-2.5 min-w-0 min-h-0 px-0.5 overflow-hidden">
-          {/* Push Grid — takes available space, scales to fill */}
-          <div className="flex-1 min-h-0 relative flex flex-col overflow-hidden">
-            {/* Ambient background glows */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full pointer-events-none" style={{ background: 'rgba(46, 91, 255, 0.04)', filter: 'blur(120px)' }} />
-            <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full pointer-events-none" style={{ background: 'rgba(87, 27, 193, 0.03)', filter: 'blur(100px)' }} />
-            {/* Grid enclosure */}
-            <div ref={gridContainerRef} className="flex-1 min-h-0 flex items-center justify-center overflow-hidden relative z-10">
-              <div className="glass-panel-blur push-grid-shadow p-1 rounded-[1.5rem] border border-[rgba(67,70,86,0.2)]">
-                <div className="bg-[#0e0e0e] p-4 rounded-[1.3rem]" style={{ boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.4)' }}>
-              <div style={{ transform: `scale(${gridScale})`, transformOrigin: 'center' }}>
-                <InteractiveGrid
-                  assignments={assignments}
-                  layoutOverride={currentLayoutOverride}
-                  selectedEventIndex={state.selectedEventIndex}
-                  onEventClick={idx => dispatch({ type: 'SELECT_EVENT', payload: idx })}
-                  onionSkin={onionSkin}
-                  voiceConstraints={state.voiceConstraints}
-                  gridLabels={viewSettings.gridLabels}
-                  highlightedInstancePads={highlightedInstancePads}
-                  onPresetDrop={handlePresetDrop}
-                  dragPreview={dragPreview}
-                  onGridDragOver={handleGridDragOver}
-                  onGridDragLeave={handleGridDragLeave}
-                  debuggerIteration={debuggerIteration}
-                />
-              </div>
-                </div>
-              </div>
-            </div>
+        {/* Center Column: Grid, splitter and the Timeline | Composer drawer */}
+        <div ref={setCenterEl} className="flex-1 flex flex-col min-w-0 min-h-0 px-0.5 overflow-hidden">
+          {/* Grid region: measured, and the pads sized to fit it (T04) */}
+          <div ref={gridRegionRef} data-testid="grid-region" className="relative flex-1 min-h-0 overflow-hidden">
+            <InteractiveGrid
+              padSize={padSize}
+              stateBarHint={armedStream
+                ? (
+                  <ArmedSoundHint
+                    name={armedStream.name}
+                    color={armedStream.color}
+                    placed={armedStreamPlaced}
+                    onStop={() => dispatch({ type: 'ARM_SOUND', payload: null })}
+                  />
+                )
+                : nothingPlaced
+                ? <NothingPlacedHint soundCount={state.soundStreams.length} onSuggest={() => dispatch({ type: 'SUGGEST_STARTING_LAYOUT' })} />
+                : undefined}
+              assignments={assignments}
+              layoutOverride={currentLayoutOverride}
+              selectedEventIndex={state.selectedEventIndex}
+              onionSkin={onionSkin}
+              voiceConstraints={state.voiceConstraints}
+              gridLabels={viewSettings.gridLabels}
+              highlightedInstancePads={highlightedInstancePads}
+              onPresetDrop={handlePresetDrop}
+              dragPreview={dragPreview}
+              onGridDragOver={handleGridDragOver}
+              onGridDragLeave={handleGridDragLeave}
+              debuggerIteration={debuggerIteration}
+            />
+            {/* The staged empty state (T44): the ways in, at the grid. */}
+            {state.soundStreams.length === 0 && (
+              <GridStartCard
+                onImportFiles={files => { void importFiles(files); }}
+                onBuildPattern={() => openDrawerTab('composer')}
+                onRejectedFiles={names => toast.show({ message: `Only MIDI files (.mid, .midi) can be imported: ${names.join(', ')}` })}
+              />
+            )}
           </div>
 
+          <DrawerSplitter
+            height={drawerHeight ?? DRAWER_TAB_BAR_HEIGHT}
+            maxHeight={maxDrawerHeight(centerHeight)}
+            minHeight={minDrawerHeight(centerHeight)}
+            collapsed={drawerCollapsed}
+            onResize={(height, commit) => {
+              const next = { height, collapsed: false };
+              if (commit) commitDrawerPrefs(next);
+              else setDrawerPrefs(next);
+            }}
+            onReset={() => commitDrawerPrefs({ height: null, collapsed: false })}
+            onToggleCollapsed={() => setDrawerCollapsed(!drawerCollapsed)}
+          />
+
           {/* Timeline / Composer — tabbed view */}
-          <div className="flex-[0_1_480px] min-h-[240px] glass-panel overflow-hidden flex flex-col">
+          <div
+            data-testid="bottom-drawer"
+            className="flex-shrink-0 glass-panel overflow-hidden flex flex-col"
+            style={{ height: drawerHeight, minHeight: DRAWER_TAB_BAR_HEIGHT }}
+          >
             {/* Tab bar */}
-            <div className="flex items-center border-b border-[var(--border-subtle)] flex-shrink-0 px-1">
+            <div className="flex items-center border-b border-[var(--border-subtle)] flex-shrink-0 px-1" style={{ height: DRAWER_TAB_BAR_HEIGHT }}>
               <button
                 data-testid="drawer-tab-timeline"
                 className={`pf-tab ${timelineTab === 'timeline' ? 'active' : ''}`}
-                onClick={() => setTimelineTab('timeline')}
+                onClick={() => openDrawerTab('timeline')}
               >
                 Timeline
               </button>
               <button
                 data-testid="drawer-tab-composer"
                 className={`pf-tab ${timelineTab === 'composer' ? 'active' : ''}`}
-                onClick={() => setTimelineTab('composer')}
+                onClick={() => openDrawerTab('composer')}
               >
                 Composer
+              </button>
+              <span className="flex-1" />
+              <button
+                data-testid="drawer-collapse"
+                className="w-7 h-7 flex items-center justify-center rounded-pf-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
+                onClick={() => setDrawerCollapsed(!drawerCollapsed)}
+                aria-expanded={!drawerCollapsed}
+                aria-label={drawerCollapsed ? 'Expand the timeline drawer' : 'Collapse the timeline drawer'}
+                title={drawerCollapsed ? 'Expand the drawer' : 'Collapse the drawer (the grid gets the room)'}
+              >
+                {drawerCollapsed ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
               </button>
             </div>
             {/* Tab content. Both tabs stay mounted, so a tab switch never stops
                 playback or drops a pending Composer edit (T60, T67); the
-                inactive one is hidden and inert. */}
+                inactive one is hidden and inert, and so are both while the
+                drawer is collapsed. */}
             <div className="flex-1 min-h-0 overflow-hidden">
-              <DrawerPanel tab="timeline" active={timelineTab === 'timeline'}>
+              <DrawerPanel tab="timeline" active={timelineTab === 'timeline' && !drawerCollapsed}>
                 <UnifiedTimeline
                   highlightedStreamIds={highlightedStreamIds}
-                  isVisible={timelineTab === 'timeline'}
+                  isVisible={timelineTab === 'timeline' && !drawerCollapsed}
                 />
               </DrawerPanel>
-              <DrawerPanel tab="composer" active={timelineTab === 'composer'} className="overflow-auto">
-                <WorkspacePatternStudio isActive={timelineTab === 'composer'} />
+              <DrawerPanel tab="composer" active={timelineTab === 'composer' && !drawerCollapsed} className="overflow-auto">
+                <WorkspacePatternStudio isActive={timelineTab === 'composer' && !drawerCollapsed} />
               </DrawerPanel>
             </div>
           </div>
@@ -742,14 +880,16 @@ function PerformanceWorkspaceInner() {
 
         {/* Right resize handle */}
         <div
-          className="w-2 flex-shrink-0 cursor-col-resize group flex items-center justify-center hover:bg-[var(--accent-muted)] transition-colors rounded-sm"
+          data-testid="right-panel-handle"
+          className="flex-shrink-0 cursor-col-resize group flex items-center justify-center hover:bg-[var(--accent-muted)] transition-colors rounded-sm"
+          style={{ width: RESIZE_HANDLE_WIDTH }}
           onMouseDown={e => handleResizeStart('right', e)}
         >
           <div className="w-px h-8 bg-[var(--border-subtle)] group-hover:bg-[var(--accent-primary)] transition-colors rounded-full" />
         </div>
 
         {/* Right Column: Tabbed Costs / Layouts */}
-        <div className="flex-shrink-0 flex flex-col min-h-0 transition-all" style={{ width: rightCollapsed ? 36 : rightWidth }}>
+        <div data-testid="right-panel" className="flex-shrink-0 flex flex-col min-h-0 transition-all" style={{ width: shownRightWidth }}>
           {rightCollapsed ? (
             <button
               className="flex flex-col items-center gap-3 py-4 w-full cursor-pointer hover:bg-[var(--bg-hover)] rounded-pf-lg transition-colors h-full"
@@ -833,6 +973,9 @@ function PerformanceWorkspaceInner() {
           onClose={() => setCompareModalOpen(false)}
         />
       )}
+
+      {/* ─── Keyboard and mouse ('?') ─────────────────────────── */}
+      {shortcutsOpen && <ShortcutSheet onClose={() => setShortcutsOpen(false)} />}
     </div>
   );
 }

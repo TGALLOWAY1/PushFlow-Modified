@@ -42,7 +42,8 @@ export async function importTestMidi1(): Promise<ProjectState> {
   const projectData = await parseMidiProject(arrayBuffer, fileName);
   const { lanes, sourceFile } = buildLanesFromMidiProject(projectData, fileName, {
     currentMaxOrder: -1,
-    color: '#f59e0b',
+    existingNames: [],
+    existingColors: [],
   });
   let state = createEmptyProjectState();
   state = projectReducer(state, { type: 'IMPORT_LANES', payload: { lanes, sourceFile } });
@@ -123,7 +124,7 @@ export function unplayableCount(candidate: CandidateSolution): number {
 
 /**
  * An id-free summary of a candidate for snapshots: Sound ids are random per
- * import, so pads are named by Sound name ("Test MIDI 1 3").
+ * import, so pads are named by Sound name ("TEST MIDI 1 C").
  */
 export function candidateSnapshot(state: ProjectState, candidate: CandidateSolution) {
   const nameById = new Map(state.soundStreams.map(s => [s.id, s.name]));

@@ -12,6 +12,8 @@ import { useMemo } from 'react';
 import { type Layout } from '../../types/layout';
 import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
+import { padLabel, sharedNamePrefix } from '../analysis/padLabels';
+import { formatPadLocator, formatPadPosition } from '../../utils/padPosition';
 
 interface PadGridProps {
   layout: Layout;
@@ -54,10 +56,11 @@ interface PadSummary {
 export function PadGrid({ layout: _layout, voices, assignments, selectedEventIndex, onPadClick, compact, diffPads, label, labelColor }: PadGridProps) {
   const padSize = compact ? 'w-10 h-10' : 'w-14 h-14';
   const padSizeClass = compact ? 'w-10' : 'w-14';
+  // Text never goes below 11 px (T64): compact pads show one line of name
+  // (without the words every Sound shares) above the fingers.
+  const padPx = compact ? 40 : 56;
+  const nameLines = compact ? 1 : 2;
   const textSize = compact ? 'text-pf-micro' : 'text-pf-xs';
-  const nameSize = compact ? 'text-[7px]' : 'text-pf-micro';
-  const fingerSize = compact ? 'text-[6px]' : 'text-pf-micro';
-  const badgeSize = compact ? 'text-[6px]' : 'text-[7px]';
   const zoneWidth = compact ? 'w-[calc(4*2.5rem+3*0.25rem)]' : 'w-[calc(4*3.5rem+3*0.25rem)]';
   const rowLabelWidth = compact ? 'w-3 text-pf-micro' : 'w-4 text-pf-xs';
   // Voices by Sound identity, never by pitch (invariant 5)
@@ -66,6 +69,7 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
     for (const v of voices) map.set(v.id, v);
     return map;
   }, [voices]);
+  const namePrefix = useMemo(() => sharedNamePrefix(voices.map(v => v.name)), [voices]);
 
   // Build per-pad summary from assignments
   const padSummaries = useMemo(() => {
@@ -161,35 +165,36 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
           style={{ backgroundColor: bgColor, borderColor: isSelected ? '#facc15' : borderColor, color: textColor }}
           onClick={() => onPadClick?.(row, col)}
           title={summary
-            ? `[${row},${col}] ${summary.voiceName} | Fingers: ${[...summary.fingers].join(', ')} | ${summary.hitCount} hits`
-            : `[${row},${col}] empty`}
+            ? `${formatPadPosition(padKey)} · ${summary.voiceName} · Fingers ${[...summary.fingers].join(', ')} · ${summary.hitCount} hits`
+            : `${formatPadPosition(padKey)} · empty`}
         >
           {summary && summary.hitCount > 0 ? (
             <>
               {/* Voice name */}
-              <span className={`block truncate w-full text-center ${nameSize} font-semibold text-white/90 leading-none`}>
-                {summary.voiceName}
+              <span
+                className="block w-full px-0.5 text-center text-pf-micro font-semibold text-white/90 leading-[13px] overflow-hidden [overflow-wrap:anywhere]"
+                style={{ display: '-webkit-box', WebkitLineClamp: nameLines, WebkitBoxOrient: 'vertical' }}
+              >
+                {padLabel(summary.voiceName ?? '', namePrefix, padPx, nameLines)}
               </span>
               {/* Fingers */}
-              <span className={`block ${fingerSize} leading-none mt-0.5`} style={{ color: textColor }}>
+              <span className="block text-pf-micro leading-none mt-0.5" style={{ color: textColor }}>
                 {fingerList.join(' ')}
               </span>
               {/* Hit count badge */}
               {!compact && (
-                <span className={`absolute top-0.5 right-0.5 ${badgeSize} font-bold bg-black/40 rounded px-0.5`} style={{ color: textColor }}>
+                <span className="absolute top-0.5 right-0.5 text-pf-micro font-bold bg-black/40 rounded px-0.5" style={{ color: textColor }}>
                   {summary.hitCount}
                 </span>
               )}
             </>
-          ) : (
-            <span className={`${fingerSize} text-[var(--text-tertiary)]`}>{compact ? '' : `${row},${col}`}</span>
-          )}
+          ) : null}
         </button>
       );
     }
     rows.push(
       <div key={row} className="flex gap-1 items-center">
-        <span className={`${rowLabelWidth} text-[var(--text-secondary)] text-right mr-1 font-mono`}>{row}</span>
+        <span className={`${rowLabelWidth} text-[var(--text-secondary)] text-right mr-1 font-mono`} aria-hidden="true">{row + 1}</span>
         {cells}
       </div>
     );
@@ -215,7 +220,7 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
           {!compact && (
             <div className={`flex gap-1 ${colLabelMl}`}>
               {Array.from({ length: 8 }, (_, col) => (
-                <div key={col} className={`${padSizeClass} text-center ${textSize} text-[var(--text-secondary)] font-mono`}>{col}</div>
+                <div key={col} className={`${padSizeClass} text-center ${textSize} text-[var(--text-secondary)] font-mono`} aria-hidden="true">{col + 1}</div>
               ))}
             </div>
           )}
@@ -245,7 +250,7 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
                 : 'text-yellow-400';
               return (
                 <div key={padKey} className="flex items-center gap-2 text-[var(--text-secondary)]">
-                  <span className="font-mono text-[var(--text-secondary)] w-8">[{padKey}]</span>
+                  <span className="font-mono text-[var(--text-secondary)] w-14 tabular-nums" title={formatPadPosition(padKey)}>{formatPadLocator(padKey)}</span>
                   <span className="text-[var(--text-primary)] font-medium truncate w-16">{summary.voiceName}</span>
                   <span className={`${handColor} w-16`}>{[...summary.fingers].join(', ')}</span>
                   <span className="text-[var(--text-secondary)]">{summary.hitCount}x</span>

@@ -1,36 +1,56 @@
 /**
- * ProjectLibraryPage.
+ * ProjectLibraryPage: the Library, where projects start and are reopened.
  *
- * Performance Practice Hub — the homepage.
- * Modern dark design with full-width hero, project card grid,
- * and sidebar with real library stats and quick actions.
+ * S2.3 (T51, T52, T53): "Import MIDI" is the primary way in. It accepts a
+ * MIDI file (a new project named after it, nothing placed) or a PushFlow
+ * project file, recognised by content. "Open demo project" does the same with
+ * the bundled TEST MIDI 1. The hero is the project opened last; every card
+ * shows real data only, a thumbnail of the layout the project opens on, and
+ * one "⋯" menu (Rename, Duplicate, Export, Delete with a 10 s Undo).
  *
  * Uses IndexedDB for project listing (async), with localStorage fallback.
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Upload } from 'lucide-react';
-import { type ProjectState, createEmptyProjectState } from '../state/projectState';
+import { Plus, Upload, Search } from 'lucide-react';
+import { type ProjectState } from '../state/projectState';
 import {
   listProjectsAsync,
   saveProjectAsync,
-  deleteProjectAsync,
   loadProjectAsync,
   exportProjectToFile,
   importProjectFromFile,
   listBackedUpProjectIds,
   downloadProjectBackup,
+  renameProjectAsync,
+  duplicateProjectAsync,
+  deleteProjectWithUndo,
+  restoreDeletedProject,
   type ProjectLibraryEntry,
 } from '../persistence/projectStorage';
+import {
+  DEMO_PROJECT_NAME,
+  fetchDemoMidi,
+  newProjectState,
+  pickedFileKind,
+  projectFromMidiFiles,
+} from '../persistence/newProject';
+import { lastOpenedProject } from '../persistence/projectIndex';
 import { generateId } from '../../utils/idGenerator';
+import { uniqueName } from '../../utils/uniqueName';
 import { saveSerializedLoopState } from '../persistence/loopStorage';
 import { useToast } from '../components/shared/Toast';
 
-import { ContinuePracticingHero } from '../components/Homepage/ContinuePracticingHero';
-import { PerformanceCard } from '../components/Homepage/PerformanceCard';
+import { ProjectHero } from '../components/Homepage/ProjectHero';
+import { ProjectCard } from '../components/Homepage/ProjectCard';
+import { type ProjectMenuActions } from '../components/Homepage/ProjectMenu';
 import { QuickActionsCard } from '../components/Homepage/QuickActionsCard';
 import { LibraryStatsCard } from '../components/Homepage/LibraryStatsCard';
+
+const DELETE_UNDO_MS = 10_000;
+
+const errorText = (err: unknown) => (err instanceof Error && err.message ? err.message : 'unknown error');
 
 export function ProjectLibraryPage() {
   const navigate = useNavigate();
@@ -40,6 +60,8 @@ export function ProjectLibraryPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const toast = useToast();
 
@@ -77,41 +99,102 @@ export function ProjectLibraryPage() {
     refreshProjects();
   }, [refreshProjects]);
 
-  // Hero project = most recently updated (index 0, already sorted).
-  // When searching, the hero stays put and the grid searches ALL projects.
-  const heroProject = savedProjects.length > 0 ? savedProjects[0] : null;
+  // The hero is the project opened last; the grid lists the rest (or, while
+  // searching, every match), most recently opened or created first.
+  const heroProject = useMemo(() => lastOpenedProject(savedProjects), [savedProjects]);
   const gridProjects = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (q) {
-      return savedProjects.filter(p => p.name.toLowerCase().includes(q));
-    }
-    return savedProjects.slice(1);
-  }, [savedProjects, searchQuery]);
+    if (q) return savedProjects.filter(p => p.name.toLowerCase().includes(q));
+    return savedProjects.filter(p => p.id !== heroProject?.id);
+  }, [savedProjects, searchQuery, heroProject]);
 
-  // ---- Handlers ----
+  // ---- Starting projects ----
 
   const handleNewProject = useCallback(async (queryParams: string = '') => {
-    const now = new Date().toISOString();
-    const id = generateId('proj');
-    const state: ProjectState = {
-      ...createEmptyProjectState(),
-      id,
-      name: 'Untitled Project',
-      createdAt: now,
-      updatedAt: now,
-    };
+    const state = newProjectState();
     await saveProjectAsync(state);
-    navigate(`/project/${id}${queryParams}`);
+    navigate(`/project/${state.id}${queryParams}`);
   }, [navigate]);
 
-  const handleDeleteProject = useCallback(async (entry: ProjectLibraryEntry) => {
-    const confirmed = window.confirm(
-      `Delete "${entry.name}" permanently? This cannot be undone.`,
-    );
-    if (!confirmed) return;
-    await deleteProjectAsync(entry.id);
-    refreshProjects();
+  /** A new project from MIDI files (the picked file, or the demo), saved and opened with nothing placed. */
+  const startFromMidi = useCallback(async (files: File[], name?: string) => {
+    const { state, importedCount } = await projectFromMidiFiles(files, name);
+    await saveProjectAsync(state);
+    toast.show({ message: `Created "${state.name}" · ${importedCount} ${importedCount === 1 ? 'Sound' : 'Sounds'}, nothing placed yet` });
+    navigate(`/project/${state.id}`);
+  }, [navigate, toast]);
+
+  const handleOpenDemo = useCallback(async () => {
+    setImportError(null);
+    setBusy('Opening the demo project…');
+    try {
+      await startFromMidi([await fetchDemoMidi()], DEMO_PROJECT_NAME);
+    } catch (err) {
+      setImportError(`The demo project couldn't be opened: ${errorText(err)}`);
+    } finally {
+      setBusy(null);
+    }
+  }, [startFromMidi]);
+
+  const importProjectFile = useCallback(async (file: File) => {
+    const result = await importProjectFromFile(file);
+    if (!result.ok) {
+      setImportError(`"${file.name}" isn't a PushFlow project file PushFlow can read (${result.error}).`);
+      return;
+    }
+    // Never overwrite an existing project on import: a colliding id gets a new
+    // one, and the copy a numbered name.
+    let state = result.state;
+    const existing = await loadProjectAsync(state.id);
+    if (existing) {
+      state = { ...state, id: generateId('proj'), name: uniqueName(state.name, savedProjects.map(p => p.name)) };
+    }
+    // Imported, not opened yet.
+    await saveProjectAsync({ ...state, lastOpenedAt: '' });
+    // The Composer's pattern travels with the file; put it back under the
+    // imported project's id (which may be new).
+    if (result.composerPattern) saveSerializedLoopState(state.id, result.composerPattern);
+    await refreshProjects();
+    const id = state.id;
+    toast.show({ message: `Imported "${state.name}"`, action: { label: 'Open', onClick: () => navigate(`/project/${id}`) } });
+  }, [refreshProjects, savedProjects, toast, navigate]);
+
+  const handleImportFile = useCallback(async (file: File) => {
+    setImportError(null);
+    setBusy(`Importing "${file.name}"…`);
+    try {
+      const kind = await pickedFileKind(file);
+      if (kind === 'midi') {
+        try {
+          await startFromMidi([file]);
+        } catch (err) {
+          setImportError(`"${file.name}" couldn't be read as MIDI: ${errorText(err)}`);
+        }
+      } else if (kind === 'project') {
+        await importProjectFile(file);
+      } else {
+        setImportError(`"${file.name}" isn't a MIDI file (.mid or .midi) or a PushFlow project file (.pushflow.json).`);
+      }
+    } finally {
+      setBusy(null);
+    }
+  }, [startFromMidi, importProjectFile]);
+
+  // ---- One menu for the hero and the cards ----
+
+  const handleRenameDone = useCallback(async (entry: ProjectLibraryEntry, name: string | null) => {
+    setRenamingId(null);
+    if (!name || name === entry.name) return;
+    await renameProjectAsync(entry.id, name);
+    await refreshProjects();
   }, [refreshProjects]);
+
+  const handleDuplicate = useCallback(async (entry: ProjectLibraryEntry) => {
+    const copyId = await duplicateProjectAsync(entry.id, savedProjects.map(p => p.name));
+    if (!copyId) return;
+    await refreshProjects();
+    toast.show({ message: `Duplicated "${entry.name}"`, action: { label: 'Open', onClick: () => navigate(`/project/${copyId}`) } });
+  }, [savedProjects, refreshProjects, toast, navigate]);
 
   const handleExportProject = useCallback(async (id: string) => {
     const state = projectStates.get(id) ?? await loadProjectAsync(id);
@@ -119,32 +202,37 @@ export function ProjectLibraryPage() {
     // The file carries the Composer's pattern too (it lives in localStorage
     // until P8 moves it into the project), and the toast says so (T57).
     const { composerPatternIncluded } = exportProjectToFile(state);
-    toast.show({ message: composerPatternIncluded ? 'Exported \u00b7 Composer pattern included' : 'Exported' });
+    toast.show({ message: composerPatternIncluded ? 'Exported · Composer pattern included' : 'Exported' });
   }, [projectStates, toast]);
 
-  const backupHandler = (entry: ProjectLibraryEntry) => (
-    backedUpIds.has(entry.id) ? () => { void downloadProjectBackup(entry.id, entry.name); } : undefined
-  );
-
-  const handleImportFile = useCallback(async (file: File) => {
-    setImportError(null);
-    const result = await importProjectFromFile(file);
-    if (!result.ok) {
-      setImportError(`Could not import "${file.name}": ${result.error}`);
-      return;
-    }
-    // Never overwrite an existing project on import — give collisions a new id.
-    let state = result.state;
-    const existing = await loadProjectAsync(state.id);
-    if (existing) {
-      state = { ...state, id: generateId('proj'), name: `${state.name} (imported)` };
-    }
-    await saveProjectAsync(state);
-    // The Composer's pattern travels with the file; put it back under the
-    // imported project's id (which may be new).
-    if (result.composerPattern) saveSerializedLoopState(state.id, result.composerPattern);
+  // Deleting acts at once; Undo within 10 s puts the stored record back
+  // exactly (same id, layouts and variants), with its backups (T53).
+  const handleDeleteProject = useCallback(async (entry: ProjectLibraryEntry) => {
+    const deleted = await deleteProjectWithUndo(entry.id);
+    if (!deleted) return;
     await refreshProjects();
-  }, [refreshProjects]);
+    toast.show({
+      message: `Deleted "${entry.name}"`,
+      durationMs: DELETE_UNDO_MS,
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          void restoreDeletedProject(deleted).then(async () => {
+            await refreshProjects();
+            toast.show({ message: `Restored "${entry.name}"` });
+          });
+        },
+      },
+    });
+  }, [refreshProjects, toast]);
+
+  const actionsFor = (entry: ProjectLibraryEntry): ProjectMenuActions => ({
+    onRename: () => setRenamingId(entry.id),
+    onDuplicate: () => { void handleDuplicate(entry); },
+    onExport: () => { void handleExportProject(entry.id); },
+    onDownloadBackup: backedUpIds.has(entry.id) ? () => { void downloadProjectBackup(entry.id, entry.name); } : undefined,
+    onDelete: () => { void handleDeleteProject(entry); },
+  });
 
   // ---- Render ----
 
@@ -159,59 +247,65 @@ export function ProjectLibraryPage() {
   return (
     <div className="max-w-[1600px] mx-auto space-y-10 px-8 py-8">
       {/* ---- Header ---- */}
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="font-headline text-2xl font-bold tracking-tighter text-[var(--accent-primary)]">
-            PushFlow
-          </h1>
-        </div>
-        <div className="flex items-center gap-4">
+      <header className="flex items-center justify-between gap-6">
+        <h1 className="font-headline text-2xl font-bold tracking-tighter text-accent-primary-soft">
+          PushFlow
+        </h1>
+        <div className="flex items-center gap-3">
           <div className="relative">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] text-lg">
-              search
-            </span>
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" aria-hidden="true" />
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="SEARCH PROJECTS..."
-              className="w-80 bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-xl py-2.5 pl-10 pr-4 font-label text-xs uppercase tracking-widest text-[var(--text-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)] placeholder:text-[var(--text-tertiary)] outline-none transition-colors"
+              placeholder="Search projects"
+              aria-label="Search projects"
+              className="w-72 bg-[var(--bg-app)] border border-[var(--border-subtle)] rounded-xl py-2.5 pl-9 pr-4 text-pf-sm text-[var(--text-primary)] focus:ring-1 focus:ring-[var(--accent-primary-soft)] focus:border-[var(--accent-primary-soft)] placeholder:text-[var(--text-tertiary)] outline-none transition-colors"
             />
           </div>
           <input
             ref={importInputRef}
             type="file"
-            accept=".json,application/json"
+            data-testid="library-import-input"
+            accept=".mid,.midi,audio/midi,audio/x-midi,.json,application/json"
             className="hidden"
             onChange={e => {
               const file = e.target.files?.[0];
-              if (file) handleImportFile(file);
+              if (file) void handleImportFile(file);
               e.target.value = '';
             }}
           />
           <button
+            type="button"
+            data-testid="library-import-midi"
             onClick={() => importInputRef.current?.click()}
-            className="flex items-center gap-2 px-5 py-2.5 bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-headline font-bold rounded-xl hover:border-[var(--border-default)] transition-colors"
-            title="Import a .pushflow.json project file"
+            className="flex items-center gap-2 px-5 py-2.5 bg-accent-primary hover:bg-accent-hover text-white font-headline font-bold rounded-xl transition-colors"
+            title="Start a project from a MIDI file (.mid, .midi), or import a PushFlow project file"
           >
-            <Upload size={16} />
-            Import Project
+            <Upload size={16} aria-hidden="true" />
+            Import MIDI
           </button>
           <button
-            onClick={() => handleNewProject()}
-            className="flex items-center gap-2 px-5 py-2.5 bg-[var(--bg-card)] border border-[var(--accent-primary)]/20 text-[var(--accent-primary)] font-headline font-bold rounded-xl hover:bg-[var(--accent-primary)]/5 transition-colors"
+            type="button"
+            onClick={() => { void handleNewProject(); }}
+            className="flex items-center gap-2 px-5 py-2.5 bg-[var(--bg-card)] border border-[var(--border-default)] text-[var(--text-primary)] font-headline font-bold rounded-xl hover:bg-[var(--bg-hover)] transition-colors"
           >
-            <Plus size={16} />
-            New Project
+            <Plus size={16} aria-hidden="true" />
+            New project
           </button>
         </div>
       </header>
 
+      {busy && (
+        <p role="status" className="text-pf-sm text-[var(--text-secondary)]">{busy}</p>
+      )}
+
       {importError && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-3 flex items-center justify-between">
-          <p className="text-sm text-red-300 font-body">{importError}</p>
+        <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-5 py-3 flex items-center justify-between gap-4">
+          <p className="text-pf-sm text-red-200">{importError}</p>
           <button
-            className="text-red-300 hover:text-red-100 text-xs font-label uppercase tracking-widest"
+            type="button"
+            className="text-red-200 hover:text-white text-pf-sm"
             onClick={() => setImportError(null)}
           >
             Dismiss
@@ -219,85 +313,79 @@ export function ProjectLibraryPage() {
         </div>
       )}
 
-      {/* ---- Hero Section ---- */}
+      {/* ---- Hero: the project opened last ---- */}
       {heroProject ? (
-        <ContinuePracticingHero
+        <ProjectHero
           project={heroProject}
           projectState={projectStates.get(heroProject.id) ?? null}
-          onResume={() => navigate(`/project/${heroProject.id}`)}
-          onOpenEditor={() => navigate(`/project/${heroProject.id}`)}
-          onDownloadBackup={backupHandler(heroProject)}
+          renaming={renamingId === heroProject.id}
+          onRenameDone={name => { void handleRenameDone(heroProject, name); }}
+          onOpen={() => navigate(`/project/${heroProject.id}`)}
+          actions={actionsFor(heroProject)}
         />
       ) : (
-        <section className="relative rounded-xl overflow-hidden" style={{ minHeight: 300 }}>
+        <section data-testid="library-welcome" className="relative rounded-xl overflow-hidden border border-[var(--border-subtle)]" style={{ minHeight: 280 }}>
           <div
             className="absolute inset-0"
-            style={{
-              background: 'linear-gradient(135deg, #131316 0%, #1a1a2e 30%, #16213e 60%, #0f0f1a 100%)',
-            }}
+            style={{ background: 'linear-gradient(135deg, #131316 0%, #1a1a2e 30%, #16213e 60%, #0f0f1a 100%)' }}
           />
-          <div className="relative flex flex-col items-center justify-center text-center p-16" style={{ minHeight: 300 }}>
+          <div className="relative flex flex-col items-center justify-center text-center p-14" style={{ minHeight: 280 }}>
             <h2 className="font-headline text-3xl font-bold tracking-tight text-[var(--text-primary)] mb-3">
               Welcome to PushFlow
             </h2>
-            <p className="text-[var(--text-secondary)] text-base font-body mb-6 max-w-md">
-              Create your first performance to get started with layout optimization and practice tracking.
+            <p className="text-[var(--text-secondary)] text-base font-body mb-6 max-w-lg">
+              Import a MIDI file to start a project: each pitch becomes a Sound for you to place on the Push grid.
+              Or open the demo to look around first.
             </p>
-            <button
-              onClick={() => handleNewProject()}
-              className="px-7 py-3 bg-gradient-to-br from-[var(--accent-primary)] to-[#1a3fcc] text-white font-headline font-bold rounded-xl flex items-center gap-2 inner-button-shadow hover:scale-[1.02] transition-transform"
-            >
-              <Plus size={16} />
-              New Performance
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => importInputRef.current?.click()}
+                className="px-6 py-3 bg-accent-primary hover:bg-accent-hover text-white font-headline font-bold rounded-xl flex items-center gap-2 transition-colors"
+              >
+                <Upload size={16} aria-hidden="true" />
+                Import a MIDI file
+              </button>
+              <button
+                type="button"
+                data-testid="library-open-demo"
+                onClick={() => { void handleOpenDemo(); }}
+                className="px-6 py-3 border border-[var(--border-default)] hover:border-[var(--border-strong)] text-[var(--text-primary)] font-headline font-medium rounded-xl transition-colors"
+              >
+                Open demo project
+              </button>
+            </div>
           </div>
         </section>
       )}
 
       {/* ---- Content Grid: Projects + Sidebar ---- */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-8">
-        {/* Project Grid */}
         <div>
-          <h2 className="font-label uppercase tracking-[0.15em] text-[var(--text-tertiary)] text-xs font-semibold mb-5">
-            {searchQuery.trim() ? 'Search Results' : 'Active Performances'}
+          <h2 className="text-pf-sm font-semibold uppercase tracking-[0.12em] text-[var(--text-tertiary)] mb-5">
+            {searchQuery.trim() ? 'Search results' : 'Your projects'}
           </h2>
 
           {gridProjects.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
               {gridProjects.map(entry => (
-                <PerformanceCard
+                <ProjectCard
                   key={entry.id}
                   project={entry}
                   projectState={projectStates.get(entry.id) ?? null}
+                  renaming={renamingId === entry.id}
+                  onRenameDone={name => { void handleRenameDone(entry, name); }}
                   onOpen={() => navigate(`/project/${entry.id}`)}
-                  onDelete={() => handleDeleteProject(entry)}
-                  onExport={() => handleExportProject(entry.id)}
-                  onDownloadBackup={backupHandler(entry)}
+                  actions={actionsFor(entry)}
                 />
               ))}
-              {/* Add placeholder */}
-              {!searchQuery.trim() && (
-                <button
-                  onClick={() => handleNewProject()}
-                  className="rounded-xl border border-dashed border-[var(--border-default)] bg-[var(--bg-panel)] flex items-center justify-center min-h-[220px] hover:border-[var(--accent-primary)]/30 hover:bg-[var(--accent-primary)]/5 transition-all group"
-                >
-                  <div className="text-center">
-                    <span className="material-symbols-outlined text-[var(--text-tertiary)] group-hover:text-[var(--accent-primary)] text-2xl transition-colors">
-                      add
-                    </span>
-                    <span className="text-xs font-label uppercase tracking-widest text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)] mt-2 block transition-colors">
-                      Add Performance
-                    </span>
-                  </div>
-                </button>
-              )}
             </div>
           ) : (
             <div className="rounded-xl bg-[var(--bg-panel)] border border-[var(--border-subtle)] p-12 text-center">
-              <p className="text-sm text-[var(--text-tertiary)] font-body">
+              <p className="text-pf-sm text-[var(--text-tertiary)] font-body">
                 {searchQuery.trim()
                   ? 'No projects match your search.'
-                  : 'No additional performances yet. Create one to see it here.'}
+                  : 'No other projects yet. Import a MIDI file or start a new project to see it here.'}
               </p>
             </div>
           )}
@@ -308,6 +396,7 @@ export function ProjectLibraryPage() {
           <LibraryStatsCard projects={savedProjects} />
           <QuickActionsCard
             onNewProject={handleNewProject}
+            onOpenDemo={() => { void handleOpenDemo(); }}
             onNavigate={navigate}
             heroProjectId={heroProject?.id}
           />

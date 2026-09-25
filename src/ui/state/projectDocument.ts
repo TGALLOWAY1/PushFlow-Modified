@@ -73,9 +73,10 @@ export function documentChanged(a: ProjectDocument, b: ProjectDocument): boolean
  * into the list.
  *
  * Selections that would now describe something else are cleared, as the
- * edit reducers do: a selected candidate when the layouts change (the grid
- * shows the restored layout, so the panels must too), and the event selection
- * when the Sounds change (its index may point at a different event).
+ * edit reducers do: a selected candidate and the selected pad when the layouts
+ * change (the grid shows the restored layout, so the panels must too), the
+ * event selection when the Sounds change (its index may point at a different
+ * event), and the armed Sound when it is gone.
  */
 export function restoreDocument(
   state: ProjectState,
@@ -98,8 +99,9 @@ export function restoreDocument(
     ...(returnedCandidates.length > 0 ? { candidates: [...restored.candidates, ...returnedCandidates] } : {}),
     updatedAt: new Date().toISOString(),
     analysisStale: true,
-    ...(layoutsChanged ? { selectedCandidateId: null } : {}),
+    ...(layoutsChanged ? { selectedCandidateId: null, selectedPadKey: null } : {}),
     ...(soundsChanged ? { selectedEventIndex: null, selectedMomentIndex: null } : {}),
+    ...(soundsChanged && !restored.soundStreams.some(s => s.id === state.armedStreamId) ? { armedStreamId: null } : {}),
   };
 }
 

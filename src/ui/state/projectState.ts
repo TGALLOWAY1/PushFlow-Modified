@@ -35,6 +35,8 @@ import { padKey } from '../../types/padGrid';
 import { createDefaultPose0, getPose0PadsWithOffset } from '../../engine/prior/naturalHandPose';
 import { formatFingerConstraint, parseFingerConstraint } from '../../utils/fingerConstraints';
 import { type RehearsalAudioOptions, DEFAULT_REHEARSAL_AUDIO } from '../audio/rehearsalAudio';
+import { gmDrumRenames } from '../../utils/gmDrumMap';
+import { uniqueName } from '../../utils/uniqueName';
 
 // ============================================================================
 // Sound Stream Model
@@ -148,6 +150,8 @@ export interface ProjectDocument {
 export interface ProjectSession {
   /** Last change to anything saved; drives autosave. Undo and Redo bump it. */
   updatedAt: string;
+  /** When the project was last opened in the editor (saved; the Library's "Opened"). */
+  lastOpenedAt: string;
 
   // Analysis cache
   analysisResult: CandidateSolution | null;
@@ -174,6 +178,13 @@ export interface ProjectSession {
   selectedMomentIndex: number | null;
   /** Currently selected sound stream (for cross-panel highlighting). */
   selectedStreamId: string | null;
+  /**
+   * The Sound armed for click-to-place (T62): a click on an empty pad places it.
+   * Set by clicking a Sound; cleared by Escape. See src/ui/input/inputTable.ts.
+   */
+  armedStreamId: string | null;
+  /** The pad selected by a click (T28 slice): Delete removes its Sound. */
+  selectedPadKey: string | null;
   compareCandidateId: string | null;
   isProcessing: boolean;
   error: string | null;
@@ -359,11 +370,17 @@ export type ProjectAction =
 
   // Sound streams
   | { type: 'RENAME_SOUND'; payload: { streamId: string; name: string } }
+  /** "Name from GM drum map" (T17): every Sound with a GM drum pitch takes its drum's name, as one step. */
+  | { type: 'APPLY_GM_DRUM_NAMES' }
   | { type: 'TOGGLE_MUTE'; payload: string }
   | { type: 'SOLO_STREAM'; payload: string }
   | { type: 'SET_SOUND_COLOR'; payload: { streamId: string; color: string } }
   | { type: 'SET_VOICE_CONSTRAINT'; payload: { streamId: string; hand?: 'left' | 'right' | null; finger?: string | null } }
   | { type: 'SELECT_STREAM'; payload: string | null }
+  /** Arms a Sound for click-to-place (null disarms); it is also the selected Sound. */
+  | { type: 'ARM_SOUND'; payload: string | null }
+  /** Selects a pad and the Sound on it (null clears both). */
+  | { type: 'SELECT_PAD'; payload: { padKey: string | null; streamId: string | null } }
   | { type: 'REORDER_STREAMS'; payload: { streamId: string; newIndex: number } }
 
   // Layout editing (targets working layout, auto-creates if needed)
@@ -385,9 +402,9 @@ export type ProjectAction =
   | { type: 'DELETE_CANDIDATE'; payload: { candidateId: string } }
   | { type: 'PROMOTE_VARIANT'; payload: { variantId: string } }
   | { type: 'DELETE_VARIANT'; payload: { variantId: string } }
-  | { type: 'SAVE_AS_VARIANT'; payload: { name: string; source: 'working' | 'candidate'; candidateId?: string } }
+  | { type: 'SAVE_AS_VARIANT'; payload: { name: string; source: 'working' | 'candidate'; candidateId?: string; /** The new variant's id, so the caller can show it. */ variantId?: string } }
   | { type: 'LOAD_SAVED_VARIANT'; payload: { variantId: string } }
-  | { type: 'RENAME_LAYOUT'; payload: { target: 'active' | 'working'; name: string } }
+  | { type: 'RENAME_LAYOUT'; payload: { target: 'active' | 'working'; name: string } | { target: 'variant'; variantId: string; name: string } }
   | { type: 'RESTORE_RECOVERED_DRAFT'; payload: { layoutId: string } }
   | { type: 'DELETE_RECOVERED_DRAFT'; payload: { layoutId: string } }
 
@@ -655,6 +672,8 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         workingLayout: null, // Session-scoped: strip working layout on load
         selectedEventIndex: null,
         selectedMomentIndex: null,
+        armedStreamId: null,
+        selectedPadKey: null,
         compareCandidateId: null,
         isProcessing: false,
         error: null,
@@ -741,6 +760,17 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
           layout: { ...state.analysisResult.layout, padToVoice: renamePadVoices(state.analysisResult.layout.padToVoice) },
         } : null,
       };
+    }
+
+    case 'APPLY_GM_DRUM_NAMES': {
+      // Opt-in naming from pitch (canon §10, Q3). Read at dispatch time, so a
+      // toast's action renames the Sounds as they are then. Nothing to rename
+      // returns the same state (no undo step).
+      const renames = gmDrumRenames(state.soundStreams);
+      return Object.entries(renames).reduce(
+        (s, [streamId, name]) => projectReducer(s, { type: 'RENAME_SOUND', payload: { streamId, name } }),
+        state,
+      );
     }
 
     case 'TOGGLE_MUTE': {
@@ -855,6 +885,26 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
     case 'SELECT_STREAM':
       return { ...state, selectedStreamId: action.payload };
+
+    case 'ARM_SOUND': {
+      const armed = action.payload;
+      if (armed === null) {
+        if (state.armedStreamId === null) return state;
+        // Disarming also drops the Sound selection that came with arming.
+        const selectedStreamId = state.selectedStreamId === state.armedStreamId ? null : state.selectedStreamId;
+        return { ...state, armedStreamId: null, selectedStreamId };
+      }
+      // Arming selects the Sound and ends any pad selection, so Delete can't
+      // act on a pad the user has moved on from.
+      if (armed === state.armedStreamId && armed === state.selectedStreamId && state.selectedPadKey === null) return state;
+      return { ...state, armedStreamId: armed, selectedStreamId: armed, selectedPadKey: null };
+    }
+
+    case 'SELECT_PAD': {
+      const { padKey, streamId } = action.payload;
+      if (padKey === state.selectedPadKey && streamId === state.selectedStreamId) return state;
+      return { ...state, selectedPadKey: padKey, selectedStreamId: streamId };
+    }
 
     case 'REORDER_STREAMS': {
       const { streamId: reorderId, newIndex } = action.payload;
@@ -1223,7 +1273,13 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
       if (!sourceLayout) return state;
 
-      const variant = cloneLayout(sourceLayout, generateId(), name, 'variant');
+      // No two variants share a name (T29): a taken name gets " (2)".
+      const variant = cloneLayout(
+        sourceLayout,
+        action.payload.variantId ?? generateId(),
+        uniqueName(name, state.savedVariants.map(v => v.name)),
+        'variant',
+      );
 
       return {
         ...state,
@@ -1301,6 +1357,17 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
     case 'RENAME_LAYOUT': {
       const { target, name: newName } = action.payload;
+      if (action.payload.target === 'variant') {
+        const { variantId } = action.payload;
+        const others = state.savedVariants.filter(v => v.id !== variantId).map(v => v.name);
+        const trimmed = newName.trim();
+        if (!trimmed || !state.savedVariants.some(v => v.id === variantId)) return state;
+        return {
+          ...state,
+          savedVariants: state.savedVariants.map(v => (v.id === variantId ? { ...v, name: uniqueName(trimmed, others) } : v)),
+          updatedAt: new Date().toISOString(),
+        };
+      }
       if (target === 'active') {
         return {
           ...state,
@@ -1598,6 +1665,7 @@ export function createEmptyProjectState(): ProjectState {
     name: '',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    lastOpenedAt: new Date().toISOString(),
     soundStreams: [],
     tempo: DEFAULT_PROJECT_TEMPO,
     instrumentConfig: {
@@ -1636,6 +1704,8 @@ export function createEmptyProjectState(): ProjectState {
     selectedEventIndex: null,
     selectedMomentIndex: null,
     selectedStreamId: null,
+    armedStreamId: null,
+    selectedPadKey: null,
     compareCandidateId: null,
     isProcessing: false,
     error: null,

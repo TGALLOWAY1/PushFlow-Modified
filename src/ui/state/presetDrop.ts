@@ -13,6 +13,7 @@
  * The first failure is the reason shown to the user; nothing is placed.
  */
 
+import { formatPadPosition } from '../../utils/padPosition';
 import { validatePlacement, mirrorPreset } from '../../engine/mapping/presetTransform';
 import { padKey } from '../../types/padGrid';
 import type { ComposerPreset, PresetPad } from '../../types/composerPreset';
@@ -77,7 +78,7 @@ export function resolvePresetDrop(args: {
       .map(p => position(p, anchorRow, anchorCol))
       .find(p => occupied.has(padKey(p.row, p.col)));
     const reason = occupiedHit
-      ? `Can't drop the preset here: pad [${occupiedHit.row},${occupiedHit.col}] is occupied.`
+      ? `Can't drop the preset here: ${formatPadPosition(`${occupiedHit.row},${occupiedHit.col}`)} is occupied.`
       : `Can't drop the preset here: ${validation.reasons[0]}.`;
     return { ok: false, reason };
   }
@@ -85,7 +86,7 @@ export function resolvePresetDrop(args: {
   // 3. A Sound lives on one pad.
   for (const sound of sounds.values()) {
     const at = Object.entries(layout.padToVoice).find(([, v]) => v.id === sound.id)?.[0];
-    if (at) return { ok: false, reason: `Can't drop the preset here: ${sound.name} is already on pad [${at}].` };
+    if (at) return { ok: false, reason: `Can't drop the preset here: ${sound.name} is already on ${formatPadPosition(at)}.` };
   }
 
   const padToVoice: Record<string, Voice> = {};

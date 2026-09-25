@@ -27,7 +27,7 @@ const LABELS: Record<Exclude<SaveStatus, 'error'>, string> = {
 
 const STYLES: Record<Exclude<SaveStatus, 'error'>, string> = {
   saved: 'bg-emerald-600/12 text-emerald-400 border border-emerald-500/20',
-  saving: 'bg-[var(--accent-muted)] text-[var(--accent-primary)] border border-[var(--accent-primary)]/20',
+  saving: 'bg-[var(--accent-muted)] text-accent-primary-soft border border-accent-primary/20',
   unsaved: 'pf-btn-subtle',
 };
 

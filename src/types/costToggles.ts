@@ -76,15 +76,6 @@ export function isExperimentalMode(toggles: CostToggles): boolean {
   return !toggles.constraintPenalty;
 }
 
-/** Human-readable labels for each toggle. */
-export const TOGGLE_LABELS: Record<keyof CostToggles, string> = {
-  poseNaturalness: 'Grip Quality',
-  transitionCost: 'Movement Cost',
-  constraintPenalty: 'Hard Constraints',
-  alternation: 'Finger Repetition',
-  handBalance: 'Hand Balance',
-};
-
 /** Category grouping: static vs temporal. */
 export const TOGGLE_CATEGORIES: Record<keyof CostToggles, 'static' | 'temporal' | 'hard'> = {
   poseNaturalness: 'static',

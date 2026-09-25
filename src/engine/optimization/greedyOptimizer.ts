@@ -25,6 +25,7 @@ import {
   type StopReason,
 } from './optimizerInterface';
 import { registerOptimizer } from './optimizerRegistry';
+import { formatPadPosition, formatRowCol } from '../../utils/padPosition';
 import { evaluatePerformance } from '../evaluation/canonicalEvaluator';
 import { computePlanScore } from '../evaluation/planScore';
 import { summarizeConstraintRelaxation } from '../evaluation/constraintRelaxation';
@@ -637,7 +638,7 @@ class GreedyOptimizer implements OptimizerMethod {
         const padKey = `${pad.row},${pad.col}`;
         candidateMoves.push({
           moveType: 'pad_move',
-          description: `Place ${voice.name ?? soundId} at (${pad.row},${pad.col})`,
+          description: `Place ${voice.name ?? soundId} at ${formatRowCol(pad.row, pad.col)}`,
           fromPadKey: null,
           toPadKey: padKey,
           targetId: voice.id,
@@ -673,13 +674,13 @@ class GreedyOptimizer implements OptimizerMethod {
         stateAfter: { layout: deepCopyLayout(layout), assignment: {} },
         candidateMoves,
         chosenMove: chosenMove ?? null,
-        summary: `Placed ${voice.name ?? soundId} at (${bestPad.row},${bestPad.col})`
+        summary: `Placed ${voice.name ?? soundId} at ${formatRowCol(bestPad.row, bestPad.col)}`
       });
 
       moveHistory.push({
         iteration: moveHistory.length,
         type: 'pad_move',
-        description: `Placed ${voice.name ?? soundId} at (${bestPad.row},${bestPad.col})`,
+        description: `Placed ${voice.name ?? soundId} at ${formatRowCol(bestPad.row, bestPad.col)}`,
         costBefore: 0,
         costAfter: 0,
         costDelta: 0,
@@ -724,7 +725,7 @@ class GreedyOptimizer implements OptimizerMethod {
         if (!layout.padToVoice[neighborKey]) {
           moves.push({
             type: 'pad_move',
-            description: `Move ${voiceName} from (${pad.row},${pad.col}) to (${neighbor.row},${neighbor.col})`,
+            description: `Move ${voiceName} from ${formatRowCol(pad.row, pad.col)} to ${formatRowCol(neighbor.row, neighbor.col)}`,
             padKey,
             targetPadKey: neighborKey,
             voiceId: voice.id,
@@ -744,7 +745,7 @@ class GreedyOptimizer implements OptimizerMethod {
         const otherName = otherVoice.name ?? otherVoice.id ?? String(otherVoice.originalMidiNote);
         moves.push({
           type: 'pad_swap',
-          description: `Swap ${voiceName} at (${pad.row},${pad.col}) with ${otherName} at ${otherPadKey}`,
+          description: `Swap ${voiceName} at ${formatRowCol(pad.row, pad.col)} with ${otherName} at ${formatPadPosition(otherPadKey)}`,
           padKey,
           targetPadKey: otherPadKey,
           secondaryPadKey: otherPadKey,
@@ -766,7 +767,7 @@ class GreedyOptimizer implements OptimizerMethod {
           if (hand === currentAssignment.hand && finger === currentAssignment.finger) continue;
           moves.push({
             type: 'finger_reassignment',
-            description: `Reassign ${voiceName} at (${pad.row},${pad.col}) from ${currentAssignment.hand[0].toUpperCase()}-${currentAssignment.finger} to ${hand[0].toUpperCase()}-${finger}`,
+            description: `Reassign ${voiceName} at ${formatRowCol(pad.row, pad.col)} from ${currentAssignment.hand[0].toUpperCase()}-${currentAssignment.finger} to ${hand[0].toUpperCase()}-${finger}`,
             padKey,
             targetPadKey: padKey,
             voiceId: voice.id,

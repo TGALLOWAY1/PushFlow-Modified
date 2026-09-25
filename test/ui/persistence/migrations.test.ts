@@ -113,7 +113,7 @@ describe('recovered-drafts-store (schema 1 → 2)', () => {
 
   it('a schema-1 project runs every later step too and lands on the current schema', () => {
     const { record, applied } = runMigrations(savedByMain());
-    expect(applied).toEqual(['recovered-drafts-store', 'prune-ghost-locks']);
+    expect(applied).toEqual(['recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at']);
     expect(record.schemaVersion).toBe(PERSISTED_SCHEMA_VERSION);
   });
 
@@ -139,7 +139,7 @@ describe('prune-ghost-locks (schema 2 → 3)', () => {
 
   it('removes every ghost lock, keeps every lock whose Sound is on its pad, and changes nothing else', () => {
     const saved = withGhostLocks();
-    const { record, applied } = runMigrations(saved);
+    const { record, applied } = runMigrations(saved, onlyStep('prune-ghost-locks'));
     expect(applied).toEqual(['prune-ghost-locks']);
     expect(record.schemaVersion).toBe(3);
 
@@ -172,8 +172,36 @@ describe('prune-ghost-locks (schema 2 → 3)', () => {
   });
 
   it('leaves a layout with no locks map, or no layout at all, as it is', () => {
-    const { record } = runMigrations({ id: 'p', schemaVersion: 2, activeLayout: { id: 'a', padToVoice: {} }, savedVariants: 'not-a-list' });
+    const { record } = runMigrations({ id: 'p', schemaVersion: 2, activeLayout: { id: 'a', padToVoice: {} }, savedVariants: 'not-a-list' }, onlyStep('prune-ghost-locks'));
     expect(record).toEqual({ id: 'p', schemaVersion: 3, activeLayout: { id: 'a', padToVoice: {} }, savedVariants: 'not-a-list' });
+  });
+});
+
+// S2.3 (T52): the Library shows when a project was last opened.
+describe('last-opened-at (schema 3 → 4)', () => {
+  it('starts lastOpenedAt at the last save and changes nothing else', () => {
+    const at3 = runMigrations(savedByMain(), MIGRATIONS.filter(m => m.to <= 3)).record;
+    expect(at3.schemaVersion).toBe(3);
+    const { record, applied } = runMigrations(at3, onlyStep('last-opened-at'));
+    expect(applied).toEqual(['last-opened-at']);
+    expect(record.schemaVersion).toBe(4);
+    expect(record.lastOpenedAt).toBe(at3.updatedAt);
+    const { schemaVersion: _a, lastOpenedAt: _b, ...rest } = record;
+    const { schemaVersion: _c, ...before } = at3;
+    expect(rest).toEqual(before);
+  });
+
+  it('keeps a lastOpenedAt the record already has', () => {
+    const { record } = runMigrations({ id: 'p', schemaVersion: 3, updatedAt: '2026-09-01T00:00:00.000Z', lastOpenedAt: '2026-09-20T10:00:00.000Z' });
+    expect(record.lastOpenedAt).toBe('2026-09-20T10:00:00.000Z');
+  });
+
+  it('running it again changes nothing', () => {
+    const once = runMigrations(savedByMain()).record;
+    const twice = runMigrations(structuredClone(once));
+    expect(twice.applied).toEqual([]);
+    expect(twice.record).toEqual(once);
+    expect(onlyStep('last-opened-at')[0].up(structuredClone(once))).toEqual(once);
   });
 });
 
@@ -192,9 +220,9 @@ describe('migrateWithBackup', () => {
       },
       record => runMigrations(record, [...MIGRATIONS.map(m => ({ ...m, up: (r: StoredRecord) => { log.push(m.name); return m.up(r); } }))]),
     );
-    expect(log).toEqual(['backup v1', 'recovered-drafts-store', 'prune-ghost-locks']);
+    expect(log).toEqual(['backup v1', 'recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at']);
     expect(backedUp).toEqual(untouched);
-    expect(result.record.schemaVersion).toBe(3);
+    expect(result.record.schemaVersion).toBe(PERSISTED_SCHEMA_VERSION);
   });
 
   it('writes no backup when nothing needs migrating', async () => {

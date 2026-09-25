@@ -7,37 +7,34 @@
  */
 
 import { generateId } from '../utils/idGenerator';
+import { nextSoundColors } from '../utils/soundPalette';
 import { type MidiProjectData } from './midiImport';
+import { defaultSoundNames } from './soundNaming';
 import { type PerformanceLane, type LaneEvent, type SourceFile } from '../types/performanceLane';
 
-/**
- * Derive a clean display name from a file name.
- * "lead_chops.mid" → "Lead Chops"
- * "BASS.midi" → "Bass"
- */
-export function fileNameToDisplayName(fileName: string): string {
-  return fileName
-    .replace(/\.(mid|midi)$/i, '')
-    .replace(/[_-]/g, ' ')
-    .replace(/\b\w/g, c => c.toUpperCase())
-    .trim();
-}
+export { fileNameToDisplayName } from './soundNaming';
 
 export interface MidiLanesOptions {
   /** Highest orderIndex among the project's existing lanes (-1 if none). */
   currentMaxOrder: number;
-  /** Colour every new lane inherits. */
-  color: string;
+  /** The project's current Sound names: new names continue past them (Q3). */
+  existingNames?: readonly string[];
+  /** The project's current Sound colours: new Sounds take palette colours not yet used (T17). */
+  existingColors?: readonly string[];
 }
 
-/** Builds one lane per unique MIDI pitch in the file, and the file's SourceFile record. */
+/**
+ * Builds one lane per unique MIDI pitch in the file, and the file's SourceFile
+ * record. Each new Sound gets its own palette colour (its own, not its group's:
+ * colorMode 'overridden') and a name from its track or the file plus a letter,
+ * never from its pitch (T17, Q3).
+ */
 export function buildLanesFromMidiProject(
   projectData: MidiProjectData,
   fileName: string,
-  { currentMaxOrder, color }: MidiLanesOptions,
+  { currentMaxOrder, existingNames = [], existingColors = [] }: MidiLanesOptions,
 ): { lanes: PerformanceLane[]; sourceFile: SourceFile } {
   const sourceFileId = generateId('src');
-  const displayName = fileNameToDisplayName(fileName);
 
   // Group events by unique MIDI pitch
   const byNote = new Map<number, typeof projectData.performance.events>();
@@ -48,7 +45,8 @@ export function buildLanesFromMidiProject(
   }
 
   const sortedNotes = [...byNote.keys()].sort((a, b) => a - b);
-  const hasMultiplePitches = sortedNotes.length > 1;
+  const names = defaultSoundNames(fileName, projectData.tracks ?? [], sortedNotes, existingNames);
+  const colors = nextSoundColors(existingColors, sortedNotes.length);
 
   // Create lanes — one per unique pitch (no group by default)
   const lanes: PerformanceLane[] = sortedNotes.map((noteNumber, i) => {
@@ -65,20 +63,15 @@ export function buildLanesFromMidiProject(
       rawChannel: e.channel,
     }));
 
-    // Name: "Bass" if single pitch, "Bass 1", "Bass 2" if multiple
-    const laneName = hasMultiplePitches
-      ? `${displayName} ${i + 1}`
-      : displayName;
-
     return {
       id: laneId,
-      name: laneName,
+      name: names[i]!,
       sourceFileId,
       sourceFileName: fileName,
       groupId: null,
       orderIndex: currentMaxOrder + 1 + i,
-      color,
-      colorMode: 'inherited' as const,
+      color: colors[i]!,
+      colorMode: 'overridden' as const,
       events,
       isHidden: false,
       isMuted: false,

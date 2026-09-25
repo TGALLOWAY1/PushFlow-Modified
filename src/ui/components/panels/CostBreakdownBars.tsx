@@ -10,6 +10,7 @@
 import { type V1CostBreakdown } from '../../../types/diagnostics';
 import { type DiagnosticsPayload, type FeasibilityVerdict } from '../../../types/diagnostics';
 import { verdictTier, type VerdictLevel } from '../../analysis/verdictTiers';
+import { FACTOR_KEYS, FACTOR_META, factorsFromBreakdown, type FactorKey } from '../../analysis/factorMeta';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Props
@@ -22,8 +23,42 @@ interface CostBreakdownBarsProps {
   unplayableCount?: number;
   /** Events classified Medium — playable but needing attention. */
   mediumCount?: number;
+  /** Notes that can't be played, and all notes (T23: notes are single hits, events are moments). */
+  unplayableNotes?: number;
+  noteCount?: number;
   /** Which Sounds the verdict covers (analysisScopeLine). */
   scope: string;
+}
+
+/** Event and note counts, as momentDifficultyCounts gives them. */
+export interface VerdictCounts {
+  events: number;
+  notes: number;
+  hard: number;
+  unplayable: number;
+  unplayableNotes: number;
+}
+
+/**
+ * The verdict's one-line summary in events and notes (T23). The engine's own
+ * summary counts whatever its plan counts (notes for Beam, events for Greedy),
+ * so the UI states it from the shared moment counts instead.
+ */
+export function verdictSummary(level: VerdictLevel, c: VerdictCounts, verdict?: FeasibilityVerdict): string {
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  if (level === 'feasible') return `All ${plural(c.events, 'event', 'events')} play with natural grips`;
+  if (level === 'infeasible') {
+    return c.unplayableNotes > 0
+      ? `${c.unplayableNotes} of ${plural(c.notes, 'note', 'notes')} can't be played`
+      : verdict?.summary ?? 'Not fully playable';
+  }
+  if (level === 'degraded') {
+    const parts: string[] = [];
+    if (c.hard > 0) parts.push(plural(c.hard, 'hard event', 'hard events'));
+    if (verdict?.reasons.some(r => r.type === 'constraint_relaxed' || r.type === 'fallback_grip')) parts.push('fingering rules relaxed');
+    return parts.length > 0 ? `Playable, with ${parts.join(' and ')}` : 'Playable, with hard passages';
+  }
+  return verdict?.summary ?? 'No analysis yet';
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -35,7 +70,7 @@ interface CostBreakdownBarsProps {
  * verdict and no counts it reads 'Unknown' ('Analysing...' while a run is in
  * flight), never 'Feasible'. Every verdict carries its scope line.
  */
-export function FeasibilityBadge({ verdict, unplayableCount, hardCount, pending = false, scope }: {
+export function FeasibilityBadge({ verdict, unplayableCount, hardCount, pending = false, scope, counts }: {
   verdict?: FeasibilityVerdict;
   unplayableCount?: number;
   hardCount?: number;
@@ -43,6 +78,8 @@ export function FeasibilityBadge({ verdict, unplayableCount, hardCount, pending 
   pending?: boolean;
   /** Which Sounds the verdict covers; null only where no Sounds are known. */
   scope: string | null;
+  /** Event and note counts: the summary is stated from these when given (T23). */
+  counts?: VerdictCounts;
 }) {
   // Counts alone can prove a layout infeasible or degraded, never feasible:
   // 'feasible' also needs no fallback grips and no broken hand rules.
@@ -52,7 +89,9 @@ export function FeasibilityBadge({ verdict, unplayableCount, hardCount, pending 
       : hardCount !== undefined && hardCount > 0 ? 'degraded' : 'unknown');
   const tier = verdictTier(level);
 
-  const summary = verdict?.summary
+  const summary = counts && level !== 'unknown'
+    ? verdictSummary(level, counts, verdict)
+    : verdict?.summary
     ?? (level === 'infeasible'
       ? `${unplayableCount} unplayable event${unplayableCount !== 1 ? 's' : ''}`
       : level === 'degraded'
@@ -82,65 +121,14 @@ export function FeasibilityBadge({ verdict, unplayableCount, hardCount, pending 
 // Ergonomic factor bars
 // ────────────────────────────────────────────────────────────────────────────
 
-interface FactorRow {
-  label: string;
-  value: number;
-  color: string;
-  tooltip: string;
-}
-
 function ErgonomicFactors({ metrics, diagnostics }: {
   metrics: V1CostBreakdown;
   diagnostics?: DiagnosticsPayload;
 }) {
-  // Prefer canonical DiagnosticFactors when available, fall back to V1
-  const rows: FactorRow[] = diagnostics?.factors
-    ? [
-        {
-          label: 'Grip',
-          value: diagnostics.factors.gripNaturalness,
-          color: '#a855f7',
-          tooltip: 'Hand shape deviation + finger preference cost',
-        },
-        {
-          label: 'Movement',
-          value: diagnostics.factors.transition,
-          color: '#f97316',
-          tooltip: 'Fitts\'s Law transition cost between consecutive pads',
-        },
-        {
-          label: 'Alternation',
-          value: diagnostics.factors.alternation,
-          color: '#22c55e',
-          tooltip: 'Same-finger rapid repetition penalty',
-        },
-        {
-          label: 'Balance',
-          value: diagnostics.factors.handBalance,
-          color: '#3b82f6',
-          tooltip: 'Left/right hand distribution imbalance',
-        },
-      ]
-    : [
-        {
-          label: 'Grip',
-          value: metrics.fingerPreference + metrics.handShapeDeviation,
-          color: '#a855f7',
-          tooltip: 'Hand shape deviation + finger preference cost',
-        },
-        {
-          label: 'Movement',
-          value: metrics.transitionCost,
-          color: '#f97316',
-          tooltip: 'Fitts\'s Law transition cost between consecutive pads',
-        },
-        {
-          label: 'Balance',
-          value: metrics.handBalance,
-          color: '#3b82f6',
-          tooltip: 'Left/right hand distribution imbalance',
-        },
-      ];
+  // The five canonical factors, named and coloured by FACTOR_META (T20): from
+  // the canonical DiagnosticFactors when available, else from the V1 breakdown.
+  const values: Record<FactorKey, number> = diagnostics?.factors ?? factorsFromBreakdown(metrics);
+  const rows = FACTOR_KEYS.map(key => ({ ...FACTOR_META[key], value: values[key] }));
 
   const maxValue = Math.max(...rows.map(r => r.value), 0.01);
 
@@ -151,13 +139,13 @@ function ErgonomicFactors({ metrics, diagnostics }: {
       </h4>
       <div className="space-y-1">
         {rows.map(row => (
-          <div key={row.label} className="flex items-center gap-2" title={row.tooltip}>
-            <div className="flex items-center gap-1.5 w-20">
+          <div key={row.key} className="flex items-center gap-2" title={row.description}>
+            <div className="flex items-center gap-1.5 w-24 flex-shrink-0">
               <span
                 className="w-2 h-2 rounded-full flex-shrink-0"
                 style={{ backgroundColor: row.color }}
               />
-              <span className="text-pf-sm text-[var(--text-secondary)]">{row.label}</span>
+              <span className="text-pf-sm text-[var(--text-secondary)] whitespace-nowrap">{row.label}</span>
             </div>
             <div className="flex-1 h-3 bg-[var(--bg-card)] rounded-pf-sm overflow-hidden">
               <div
@@ -177,7 +165,9 @@ function ErgonomicFactors({ metrics, diagnostics }: {
       </div>
       {diagnostics?.topContributors && diagnostics.topContributors.length > 0 && (
         <div className="text-pf-micro text-[var(--text-tertiary)]">
-          Main burden: {diagnostics.topContributors.slice(0, 2).join(', ')}
+          Main burden: {diagnostics.topContributors.slice(0, 2)
+            .map(key => FACTOR_META[key as FactorKey]?.label ?? key)
+            .join(', ')}
         </div>
       )}
     </div>
@@ -188,10 +178,12 @@ function ErgonomicFactors({ metrics, diagnostics }: {
 // Difficulty summary
 // ────────────────────────────────────────────────────────────────────────────
 
-function DifficultySummary({ hardCount, unplayableCount, mediumCount }: {
+function DifficultySummary({ hardCount, unplayableCount, mediumCount, unplayableNotes, noteCount }: {
   hardCount?: number;
   unplayableCount?: number;
   mediumCount?: number;
+  unplayableNotes?: number;
+  noteCount?: number;
 }) {
   if (hardCount === undefined && unplayableCount === undefined) return null;
   const hard = hardCount ?? 0;
@@ -226,7 +218,7 @@ function DifficultySummary({ hardCount, unplayableCount, mediumCount }: {
             </span>
           )}
           {unplay > 0 && (
-            <span className="text-red-400">
+            <span className="text-red-400" title={unplayableNotes !== undefined && noteCount !== undefined ? `${unplayableNotes} of ${noteCount} notes can't be played` : undefined}>
               {unplay} unplayable event{unplay !== 1 ? 's' : ''}
             </span>
           )}
@@ -240,7 +232,10 @@ function DifficultySummary({ hardCount, unplayableCount, mediumCount }: {
 // Composite component
 // ────────────────────────────────────────────────────────────────────────────
 
-export function CostBreakdownBars({ metrics, diagnostics, hardCount, unplayableCount, mediumCount, scope }: CostBreakdownBarsProps) {
+export function CostBreakdownBars({ metrics, diagnostics, hardCount, unplayableCount, mediumCount, unplayableNotes, noteCount, scope, events }: CostBreakdownBarsProps & { events?: number }) {
+  const counts: VerdictCounts | undefined = events !== undefined && noteCount !== undefined
+    ? { events, notes: noteCount, hard: hardCount ?? 0, unplayable: unplayableCount ?? 0, unplayableNotes: unplayableNotes ?? 0 }
+    : undefined;
   return (
     <div className="space-y-3">
       {/* Layer 1: Feasibility verdict — always the whole layout's, pinned here
@@ -250,13 +245,14 @@ export function CostBreakdownBars({ metrics, diagnostics, hardCount, unplayableC
         unplayableCount={unplayableCount}
         hardCount={hardCount}
         scope={scope}
+        counts={counts}
       />
 
       {/* Layer 2: Ergonomic cost breakdown */}
       <ErgonomicFactors metrics={metrics} diagnostics={diagnostics} />
 
       {/* Layer 3: Difficulty summary */}
-      <DifficultySummary hardCount={hardCount} unplayableCount={unplayableCount} mediumCount={mediumCount} />
+      <DifficultySummary hardCount={hardCount} unplayableCount={unplayableCount} mediumCount={mediumCount} unplayableNotes={unplayableNotes} noteCount={noteCount} />
     </div>
   );
 }

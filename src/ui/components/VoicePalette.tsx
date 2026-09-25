@@ -7,13 +7,17 @@
  */
 
 import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
+import { Crosshair, Pencil } from 'lucide-react';
 import { useProject } from '../state/ProjectContext';
+import { useInputHandler } from '../input/inputRegistry';
+import { gmDrumName, gmDrumRenames } from '../../utils/gmDrumMap';
+import { DisabledReason, useDisabledReason } from './shared/DisabledReason';
 import { getDisplayedCandidate, getDisplayedLayout, type SoundStream } from '../state/projectState';
 import type { LaneGroup } from '../../types/performanceLane';
 import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
 import { LOCKED_SOUND_DRAG_TYPE } from './dragTypes';
 import { generateId } from '../../utils/idGenerator';
-import { formatPadPosition } from '../../utils/padPosition';
+import { formatPadLocator, formatPadPosition } from '../../utils/padPosition';
 import { FingerAssignmentInput, type FingerAssignmentValue } from './shared/FingerAssignmentInput';
 import { type FingerType, type HandSide } from '../../types/fingerModel';
 
@@ -38,55 +42,72 @@ export function VoicePalette() {
     [state.soundStreams],
   );
 
-  // Cmd+G to group/ungroup selected streams
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'g' && selectedStreamIds.size > 0) {
-        e.preventDefault();
-        // Check if all selected streams are in the same group → ungroup
-        const groupIds = new Set<string | null>();
-        for (const streamId of selectedStreamIds) {
-          const lane = state.performanceLanes.find(l => l.id === streamId);
-          groupIds.add(lane?.groupId ?? null);
-        }
-        const allInSameGroup = groupIds.size === 1 && !groupIds.has(null);
+  // Mod+G groups the selected Sounds, or ungroups them if they are all in one
+  // group (the input table's group-sounds row).
+  useInputHandler('group-sounds', () => {
+    const groupIds = new Set<string | null>();
+    for (const streamId of selectedStreamIds) {
+      const lane = state.performanceLanes.find(l => l.id === streamId);
+      groupIds.add(lane?.groupId ?? null);
+    }
+    const allInSameGroup = groupIds.size === 1 && !groupIds.has(null);
 
-        if (allInSameGroup) {
-          // Ungroup: remove streams from their group
-          transact('Ungroup', () => {
-            for (const streamId of selectedStreamIds) {
-              dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: streamId, groupId: null } });
-            }
-          });
-        } else {
-          // Group: create a new group and assign all selected streams
-          const group: LaneGroup = {
-            groupId: generateId('grp'),
-            name: `Group ${state.laneGroups.length + 1}`,
-            color: COLOR_PALETTE[state.laneGroups.length % COLOR_PALETTE.length],
-            orderIndex: state.laneGroups.length,
-            isCollapsed: false,
-          };
-          transact('Group', () => {
-            dispatch({ type: 'CREATE_LANE_GROUP', payload: group });
-            for (const streamId of selectedStreamIds) {
-              dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: streamId, groupId: group.groupId } });
-            }
-          });
+    if (allInSameGroup) {
+      // Ungroup: remove streams from their group
+      transact('Ungroup', () => {
+        for (const streamId of selectedStreamIds) {
+          dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: streamId, groupId: null } });
         }
-        setSelectedStreamIds(new Set());
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedStreamIds, state.laneGroups.length, state.performanceLanes, dispatch, transact]);
+      });
+    } else {
+      // Group: create a new group and assign all selected streams
+      const group: LaneGroup = {
+        groupId: generateId('grp'),
+        name: `Group ${state.laneGroups.length + 1}`,
+        color: COLOR_PALETTE[state.laneGroups.length % COLOR_PALETTE.length],
+        orderIndex: state.laneGroups.length,
+        isCollapsed: false,
+      };
+      transact('Group', () => {
+        dispatch({ type: 'CREATE_LANE_GROUP', payload: group });
+        for (const streamId of selectedStreamIds) {
+          dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: streamId, groupId: group.groupId } });
+        }
+      });
+    }
+    setSelectedStreamIds(new Set());
+  }, { enabled: selectedStreamIds.size > 0 });
+
+  // A one-Sound selection made by an arming click follows the armed Sound: it
+  // moves on with the auto-advance and ends when placing ends (Escape), so the
+  // grouping hint never lingers on a Sound the user has moved past.
+  const lastArmedRef = useRef<string | null>(state.armedStreamId);
+  useEffect(() => {
+    const was = lastArmedRef.current;
+    const armed = state.armedStreamId;
+    lastArmedRef.current = armed;
+    if (was === null || was === armed) return;
+    setSelectedStreamIds(prev => (prev.size === 1 && prev.has(was) ? new Set(armed ? [armed] : []) : prev));
+  }, [state.armedStreamId]);
 
   // Drag-to-reorder state
   const [reorderTarget, setReorderTarget] = useState<string | null>(null);
 
+  // Rename (T17): one Sound at a time; Enter or Tab moves on to the next one.
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+
   const handleStreamSelect = useCallback((streamId: string, e: React.MouseEvent) => {
-    // Always dispatch global selection for cross-panel highlighting
-    dispatch({ type: 'SELECT_STREAM', payload: state.selectedStreamId === streamId ? null : streamId });
+    const multiSelect = e.metaKey || e.ctrlKey || (e.shiftKey && selectedStreamIds.size > 0);
+    if (multiSelect) {
+      // Selecting several Sounds (for Mod+G) is not placing: disarm, and
+      // toggle the cross-panel highlight as before.
+      if (state.armedStreamId !== null) dispatch({ type: 'ARM_SOUND', payload: null });
+      dispatch({ type: 'SELECT_STREAM', payload: state.selectedStreamId === streamId ? null : streamId });
+    } else {
+      // A plain click arms the Sound for click-to-place (T62), and selects it.
+      // Clicking it again keeps it armed, so it never undoes the auto-advance.
+      dispatch({ type: 'ARM_SOUND', payload: streamId });
+    }
 
     if (e.metaKey || e.ctrlKey) {
       setSelectedStreamIds(prev => {
@@ -105,9 +126,9 @@ export function VoicePalette() {
       for (let i = start; i <= end; i++) next.add(allIds[i]);
       setSelectedStreamIds(next);
     } else {
-      setSelectedStreamIds(prev => prev.has(streamId) && prev.size === 1 ? new Set() : new Set([streamId]));
+      setSelectedStreamIds(new Set([streamId]));
     }
-  }, [selectedStreamIds, state.soundStreams, state.selectedStreamId, dispatch]);
+  }, [selectedStreamIds, state.soundStreams, state.selectedStreamId, state.armedStreamId, dispatch]);
 
   // Build a map of which pads each stream occupies
   const streamPadLocations = useMemo(() => {
@@ -176,6 +197,34 @@ export function VoicePalette() {
     [state.laneGroups]
   );
 
+  // Sounds in the order the rows are shown, for moving from one rename to the next.
+  const visibleOrder = useMemo(() => {
+    if (sortedGroups.length === 0) return state.soundStreams.map(s => s.id);
+    const ids: string[] = [];
+    for (const group of sortedGroups) {
+      if (group.isCollapsed) continue;
+      for (const s of groupedStreams.get(group.groupId) ?? []) ids.push(s.id);
+    }
+    for (const s of ungroupedUnassigned) ids.push(s.id);
+    for (const s of ungroupedAssigned) ids.push(s.id);
+    return ids;
+  }, [sortedGroups, groupedStreams, ungroupedUnassigned, ungroupedAssigned, state.soundStreams]);
+
+  const handleRenameDone = useCallback((streamId: string, name: string | null, move: 'next' | 'prev' | null) => {
+    if (name) dispatch({ type: 'RENAME_SOUND', payload: { streamId, name } });
+    const i = visibleOrder.indexOf(streamId);
+    const neighbour = move === 'next' ? visibleOrder[i + 1] : move === 'prev' ? visibleOrder[i - 1] : undefined;
+    setRenamingId(neighbour ?? null);
+  }, [dispatch, visibleOrder]);
+
+  // "Name from GM drum map" is offered only when it would rename something,
+  // and otherwise says why not (T31).
+  const gmRenameCount = useMemo(() => Object.keys(gmDrumRenames(state.soundStreams)).length, [state.soundStreams]);
+  const gmDisabledReason = gmRenameCount > 0 ? null
+    : state.soundStreams.some(s => gmDrumName(s.originalMidiNote)) ? 'Every GM drum Sound already has its name'
+    : 'No Sound has a GM drum pitch (35–81)';
+  const gmReason = useDisabledReason(gmDisabledReason);
+
   const handleDragStart = (e: React.DragEvent, stream: SoundStream) => {
     e.dataTransfer.setData('application/pushflow-stream', JSON.stringify({
       id: stream.id,
@@ -212,6 +261,7 @@ export function VoicePalette() {
       currentGroupId={streamGroupMap.get(stream.id) ?? null}
       isSelected={selectedStreamIds.has(stream.id)}
       isGlobalSelected={state.selectedStreamId === stream.id}
+      isArmed={state.armedStreamId === stream.id}
       onSelect={handleStreamSelect}
       onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: stream.id })}
       onSolo={() => dispatch({ type: 'SOLO_STREAM', payload: stream.id })}
@@ -228,10 +278,9 @@ export function VoicePalette() {
         type: 'SET_LANE_GROUP',
         payload: { laneId: stream.id, groupId },
       })}
-      onRename={(name) => dispatch({
-        type: 'RENAME_SOUND',
-        payload: { streamId: stream.id, name },
-      })}
+      isRenaming={renamingId === stream.id}
+      onStartRename={() => setRenamingId(stream.id)}
+      onRenameDone={(name, move) => handleRenameDone(stream.id, name, move)}
       onReorderDragStart={() => setReorderTarget(stream.id)}
       onReorderDrop={() => handleReorderDrop(stream.id)}
       isReorderTarget={reorderTarget !== null && reorderTarget !== stream.id}
@@ -242,6 +291,29 @@ export function VoicePalette() {
 
   return (
     <div className="space-y-0.5">
+      {state.soundStreams.length > 0 && (
+        <div data-testid="sounds-header" className="px-2 pb-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-pf-xs text-[var(--text-tertiary)]">
+              {state.soundStreams.length} {state.soundStreams.length === 1 ? 'Sound' : 'Sounds'}
+            </span>
+            <button
+              type="button"
+              data-testid="name-from-gm"
+              className="pf-btn pf-btn-ghost text-pf-xs px-2 py-1"
+              disabled={gmRenameCount === 0}
+              aria-describedby={gmReason.describedBy}
+              onClick={() => dispatch({ type: 'APPLY_GM_DRUM_NAMES' })}
+              title={gmRenameCount > 0
+                ? `Rename ${gmRenameCount} ${gmRenameCount === 1 ? 'Sound' : 'Sounds'} from the General MIDI drum map (36 → Kick, 38 → Snare …) · one undo step`
+                : gmDisabledReason ?? undefined}
+            >
+              Name from GM drum map
+            </button>
+          </div>
+          <DisabledReason id={gmReason.id} reason={gmDisabledReason} className="block text-right" />
+        </div>
+      )}
 
       {hasGroups ? (
         <>
@@ -300,11 +372,11 @@ export function VoicePalette() {
       )}
 
       {state.soundStreams.length === 0 && (
-        <p className="text-pf-sm text-[var(--text-tertiary)] py-3 text-center">No sounds loaded.</p>
+        <p className="text-pf-sm text-[var(--text-tertiary)] py-3 px-3 text-center">No Sounds yet. Import MIDI or build a pattern to add some.</p>
       )}
 
       {selectedStreamIds.size > 0 && (
-        <div className="text-pf-xs text-[var(--accent-primary)] pt-2 px-2">
+        <div className="text-pf-xs text-accent-primary-soft pt-2 px-2">
           {selectedStreamIds.size} selected — press <kbd className="px-1 py-0.5 rounded-pf-sm bg-[var(--bg-card)] text-[var(--text-secondary)] font-mono text-pf-micro border border-[var(--border-subtle)]">{navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+G</kbd> to group/ungroup
         </div>
       )}
@@ -353,7 +425,7 @@ function GroupHeader({
     <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-pf-sm hover:bg-[var(--bg-hover)] transition-colors">
       {/* Collapse toggle */}
       <button
-        className="text-[8px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] w-3 flex-shrink-0 transition-colors"
+        className="text-pf-micro text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] w-3 flex-shrink-0 transition-colors"
         onClick={onToggleCollapse}
       >
         {group.isCollapsed ? '\u25B8' : '\u25BE'}
@@ -368,7 +440,7 @@ function GroupHeader({
           title="Change group color"
         />
         {showGroupColor && (
-          <div className="absolute left-0 top-full mt-1 p-1.5 rounded-pf-md border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl z-50 grid grid-cols-4 gap-1" style={{ width: 88 }}>
+          <div role="dialog" aria-label="Group color" className="absolute left-0 top-full mt-1 p-1.5 rounded-pf-md border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl z-50 grid grid-cols-4 gap-1" style={{ width: 88 }}>
             {COLOR_PALETTE.map(c => (
               <button
                 key={c}
@@ -426,6 +498,7 @@ function StreamRow({
   currentGroupId,
   isSelected,
   isGlobalSelected,
+  isArmed,
   isGrouped,
   onSelect,
   onToggleMute,
@@ -434,7 +507,9 @@ function StreamRow({
   onSetConstraint,
   onChangeColor,
   onSetGroup,
-  onRename,
+  isRenaming,
+  onStartRename,
+  onRenameDone,
   onReorderDragStart,
   onReorderDrop,
   isReorderTarget,
@@ -446,6 +521,8 @@ function StreamRow({
   solverAssignment?: { label: string; hand: string; finger: string };
   isSelected: boolean;
   isGlobalSelected: boolean;
+  /** Armed for click-to-place: the next click on an empty pad places it. */
+  isArmed: boolean;
   isGrouped: boolean;
   onSelect: (streamId: string, e: React.MouseEvent) => void;
   groups: LaneGroup[];
@@ -456,20 +533,37 @@ function StreamRow({
   onSetConstraint: (hand?: 'left' | 'right' | null, finger?: string | null) => void;
   onChangeColor: (color: string) => void;
   onSetGroup: (groupId: string | null) => void;
-  onRename: (name: string) => void;
+  isRenaming: boolean;
+  onStartRename: () => void;
+  /** The rename ended: `name` to apply (null for none), and whether to move on to the next or previous Sound. */
+  onRenameDone: (name: string | null, move: 'next' | 'prev' | null) => void;
   onReorderDragStart: () => void;
   onReorderDrop: () => void;
   isReorderTarget: boolean;
 }) {
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(stream.name);
   const colorRef = useRef<HTMLDivElement>(null);
+  const nameRef = useRef<HTMLSpanElement>(null);
+  // One ending per rename: Enter, Tab or Escape end it before the input's blur does.
+  const renameDone = useRef(false);
 
-  const commitName = () => {
+  useEffect(() => {
+    if (isRenaming) {
+      setNameDraft(stream.name);
+      renameDone.current = false;
+    }
+    // Only when a rename starts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRenaming]);
+
+  const finishRename = (move: 'next' | 'prev' | null, apply: boolean, refocus: boolean) => {
+    if (renameDone.current) return;
+    renameDone.current = true;
     const trimmed = nameDraft.trim();
-    if (trimmed && trimmed !== stream.name) onRename(trimmed);
-    setEditingName(false);
+    onRenameDone(apply && trimmed && trimmed !== stream.name ? trimmed : null, move);
+    // Ended from the keyboard without moving on: keep focus on this Sound.
+    if (refocus && !move) requestAnimationFrame(() => nameRef.current?.focus());
   };
 
   useEffect(() => {
@@ -485,16 +579,21 @@ function StreamRow({
 
   return (
     <div
+      data-testid="sound-row"
+      data-sound-id={stream.id}
+      data-armed={isArmed ? 'true' : undefined}
       className={`
-        flex items-center gap-1.5 py-1.5 rounded-pf-sm text-pf-sm
+        group flex items-center gap-1.5 py-1.5 rounded-pf-sm text-pf-sm
         border transition-all duration-fast
         cursor-grab active:cursor-grabbing active:scale-[0.98]
         ${isGrouped ? 'pl-6 pr-2' : 'px-2'}
         ${stream.muted ? 'opacity-35' : ''}
-        ${isGlobalSelected
-          ? 'border-[var(--accent-primary)]/40 bg-[var(--accent-muted)] ring-1 ring-[var(--accent-primary)]/20'
+        ${isArmed
+          ? 'border-accent-primary bg-[var(--accent-muted)] ring-1 ring-accent-primary/60'
+          : isGlobalSelected
+          ? 'border-accent-primary/40 bg-[var(--accent-muted)] ring-1 ring-accent-primary/20'
           : isSelected
-            ? 'border-[var(--accent-primary)]/25 bg-[var(--accent-muted)]'
+            ? 'border-accent-primary/25 bg-[var(--accent-muted)]'
             : 'border-transparent hover:bg-[var(--bg-hover)]'
         }
       `}
@@ -517,7 +616,7 @@ function StreamRow({
           title="Color & group"
         />
         {showColorPicker && (
-          <div className="absolute left-0 top-full mt-1 rounded-pf-md border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl z-50" style={{ width: 120 }}>
+          <div role="dialog" aria-label="Color and group" className="absolute left-0 top-full mt-1 rounded-pf-md border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl z-50" style={{ width: 120 }}>
             {/* Colors */}
             <div className="p-1.5 grid grid-cols-4 gap-1">
               {COLOR_PALETTE.map(c => (
@@ -560,33 +659,75 @@ function StreamRow({
         )}
       </div>
 
-      {/* Name (double-click to edit) */}
-      {editingName ? (
+      {/* Name: double-click, F2, Enter or the pencil renames it (T17) */}
+      {isRenaming ? (
         <input
+          data-testid="sound-rename-input"
+          aria-label={`Rename ${stream.name}`}
           className="pf-input flex-1 text-pf-sm font-medium min-w-0"
           value={nameDraft}
           onChange={e => setNameDraft(e.target.value)}
-          onBlur={commitName}
-          onKeyDown={e => { if (e.key === 'Enter') commitName(); if (e.key === 'Escape') setEditingName(false); }}
+          onBlur={() => finishRename(null, true, false)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); finishRename('next', true, true); }
+            else if (e.key === 'Tab') { e.preventDefault(); finishRename(e.shiftKey ? 'prev' : 'next', true, true); }
+            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finishRename(null, false, true); }
+          }}
           onClick={e => e.stopPropagation()}
           onMouseDown={e => e.stopPropagation()}
           autoFocus
+          onFocus={e => e.currentTarget.select()}
         />
       ) : (
+        <>
+          <span
+            ref={nameRef}
+            data-testid="sound-name"
+            tabIndex={0}
+            className="flex-1 min-w-0 truncate text-[var(--text-primary)] font-medium cursor-text text-pf-sm rounded-sm outline-none focus-visible:ring-1 focus-visible:ring-sky-400"
+            onDoubleClick={e => { e.stopPropagation(); onStartRename(); }}
+            onKeyDown={e => {
+              if (e.key === 'F2' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); onStartRename(); }
+            }}
+            title={`${stream.name} · double-click, F2 or Enter to rename`}
+          >
+            {stream.name}
+          </span>
+          <button
+            type="button"
+            data-testid="sound-rename"
+            className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-pf-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+            onClick={e => { e.stopPropagation(); onStartRename(); }}
+            onMouseDown={e => e.stopPropagation()}
+            aria-label={`Rename ${stream.name}`}
+            title="Rename"
+          >
+            <Pencil size={11} aria-hidden="true" />
+          </button>
+        </>
+      )}
+
+      {/* Armed for click-to-place (T62) */}
+      {isArmed && (
         <span
-          className="flex-1 truncate text-[var(--text-primary)] font-medium cursor-text text-pf-sm"
-          onDoubleClick={e => { e.stopPropagation(); setNameDraft(stream.name); setEditingName(true); }}
-          title={stream.name}
+          data-testid="sound-armed"
+          className="flex-shrink-0 flex items-center text-accent-primary-soft"
+          title={padKeys.length > 0 ? 'Armed · click an empty pad to move it there' : 'Armed · click an empty pad to place it'}
         >
-          {stream.name}
+          <Crosshair size={12} aria-hidden="true" />
+          <span className="sr-only">Armed for placing</span>
         </span>
       )}
 
       {/* Pad location(s) + lock indicator */}
       {padKeys.length > 0 && (
-        <span className="text-pf-xs text-[var(--text-secondary)] font-mono flex-shrink-0 flex items-center gap-0.5 tabular-nums">
-          {isLocked && <span className="text-[8px] text-amber-400" title="Locked · Unlock to move" aria-label="Locked · Unlock to move">&#x1F512;</span>}
-          {formatPadPosition(padKeys[0])}
+        <span
+          data-testid="sound-pad-locator"
+          className="text-pf-xs text-[var(--text-secondary)] font-mono flex-shrink-0 flex items-center gap-0.5 tabular-nums"
+          title={padKeys.map(formatPadPosition).join(', ')}
+        >
+          {isLocked && <span className="text-pf-micro text-amber-400" title="Locked · Unlock to move" aria-label="Locked · Unlock to move">&#x1F512;</span>}
+          {formatPadLocator(padKeys[0])}
           {padKeys.length > 1 && `+${padKeys.length - 1}`}
         </span>
       )}

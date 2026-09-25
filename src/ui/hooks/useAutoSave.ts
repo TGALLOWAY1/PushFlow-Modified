@@ -33,6 +33,8 @@ export function useAutoSave(state: ProjectState): UseAutoSaveResult {
   const lastSavedRef = useRef<string>(state.updatedAt);
   /** The write in flight, if any; saves queue behind it. */
   const inFlightRef = useRef<Promise<void> | null>(null);
+  /** updatedAt of the state that write is saving. */
+  const writingRef = useRef<string | null>(null);
   const lastFailedRef = useRef(false);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -47,6 +49,7 @@ export function useAutoSave(state: ProjectState): UseAutoSaveResult {
     if (!snapshot.id) return;
     if (snapshot.updatedAt === lastSavedRef.current && !lastFailedRef.current) return;
     setSaveStatus('saving');
+    writingRef.current = snapshot.updatedAt;
     const attempt = saveProjectAsync(snapshot)
       .then(() => {
         lastSavedRef.current = snapshot.updatedAt;
@@ -61,6 +64,7 @@ export function useAutoSave(state: ProjectState): UseAutoSaveResult {
       })
       .finally(() => {
         if (inFlightRef.current === attempt) inFlightRef.current = null;
+        if (writingRef.current === snapshot.updatedAt) writingRef.current = null;
       });
     inFlightRef.current = attempt;
     await attempt;
@@ -128,6 +132,9 @@ export function useAutoSave(state: ProjectState): UseAutoSaveResult {
     return () => {
       window.removeEventListener('pagehide', flush);
       window.removeEventListener('beforeunload', warn);
+      // Leaving within the app (← Library saves first): a write of this very
+      // state is already on its way, so don't save it, and re-stamp it, twice.
+      if (writingRef.current !== null && writingRef.current === stateRef.current.updatedAt) return;
       flush();
     };
   }, []);

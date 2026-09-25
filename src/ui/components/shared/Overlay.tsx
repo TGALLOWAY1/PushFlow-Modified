@@ -214,7 +214,10 @@ export function Popover({
       aria-label={labelledBy ? undefined : ariaLabel}
       tabIndex={-1}
       data-testid={testId}
-      className={`fixed z-[80] outline-none ${className ?? ''}`}
+      // Above toasts (z-90): a menu the user just opened is never covered by a
+      // passing notification. Dialogs stay below toasts, so an Undo toast
+      // raised from inside one can still be clicked.
+      className={`fixed z-[95] outline-none ${className ?? ''}`}
       style={{ left: pos?.left ?? x, top: pos?.top ?? y }}
     >
       {children}

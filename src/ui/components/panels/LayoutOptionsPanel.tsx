@@ -6,6 +6,7 @@
  */
 
 import { useState } from 'react';
+import { Pencil } from 'lucide-react';
 import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { useProject } from '../../state/ProjectContext';
 import { useDraftReplacement } from '../../hooks/useDraftReplacement';
@@ -14,6 +15,9 @@ import { type SoundStream, RECOVERED_DRAFTS_CAP } from '../../state/projectState
 import { describeDroppedForLocks, describePinnedPlacements } from '@/engine';
 import { CandidatePreviewCard } from './CandidatePreviewCard';
 import { MiniGridPreview } from './MiniGridPreview';
+import { useLayoutAnalysis } from '../../analysis/layoutAnalysis';
+import { momentDifficultyCounts } from '../../analysis/momentCounts';
+import { formatPlanScore, getPlanScoreQuality } from '../../analysis/planScore';
 
 interface LayoutOptionsPanelProps {
   selectedForCompare: Set<string>;
@@ -106,7 +110,7 @@ export function LayoutOptionsPanel({
         {/* Empty state */}
         {!hasCandidates && !state.isProcessing && !state.error && (
           <div className="text-pf-xs text-[var(--text-tertiary)] py-6 text-center">
-            Click <strong className="text-[var(--text-secondary)]">Generate</strong> to create candidate layouts.
+            <strong className="text-[var(--text-secondary)]">Generate</strong> proposes alternative layouts to preview, compare and keep.
           </div>
         )}
 
@@ -263,6 +267,7 @@ export function LayoutOptionsPanel({
                   onLoad={() => replaceDraft({ type: 'LOAD_SAVED_VARIANT', payload: { variantId: variant.id } })}
                   onPromote={() => replaceDraft({ type: 'PROMOTE_VARIANT', payload: { variantId: variant.id } })}
                   onDelete={() => dispatch({ type: 'DELETE_VARIANT', payload: { variantId: variant.id } })}
+                  onRename={name => dispatch({ type: 'RENAME_LAYOUT', payload: { target: 'variant', variantId: variant.id, name } })}
                 />
               ))}
             </div>
@@ -376,6 +381,7 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
                     }}
                     onPromote={() => replaceDraft({ type: 'PROMOTE_VARIANT', payload: { variantId: variant.id } })}
                     onDelete={() => dispatch({ type: 'DELETE_VARIANT', payload: { variantId: variant.id } })}
+                    onRename={name => dispatch({ type: 'RENAME_LAYOUT', payload: { target: 'variant', variantId: variant.id, name } })}
                   />
                 ))}
               </div>
@@ -392,14 +398,17 @@ function SavedVariantCard({
   onLoad,
   onPromote,
   onDelete,
+  onRename,
 }: {
   variant: Layout;
   soundStreams: SoundStream[];
   onLoad: () => void;
   onPromote: () => void;
   onDelete: () => void;
+  onRename: (name: string) => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [renaming, setRenaming] = useState(false);
 
   return (
     <div
@@ -408,16 +417,37 @@ function SavedVariantCard({
       className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3"
     >
       <div className="flex items-start justify-between gap-3 mb-2">
-        <div className="min-w-0">
-          <div className="text-pf-sm text-[var(--text-primary)] font-medium truncate">{variant.name}</div>
-          <div className="text-pf-xs text-[var(--text-tertiary)]">
-            {Object.keys(variant.padToVoice).length} pads assigned
-          </div>
-          {variant.savedAt && (
-            <div className="text-pf-xs text-[var(--text-tertiary)]">
-              Saved {new Date(variant.savedAt).toLocaleDateString()}
+        <div className="min-w-0 space-y-0.5">
+          {renaming ? (
+            <VariantNameField
+              name={variant.name}
+              onDone={name => {
+                setRenaming(false);
+                if (name && name !== variant.name) onRename(name);
+              }}
+            />
+          ) : (
+            <div className="flex items-center gap-1 min-w-0">
+              <span data-testid="variant-name" className="text-pf-sm text-[var(--text-primary)] font-medium truncate" title={variant.name} onDoubleClick={() => setRenaming(true)}>
+                {variant.name}
+              </span>
+              <button
+                type="button"
+                data-testid="variant-rename"
+                className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-pf-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                aria-label={`Rename ${variant.name}`}
+                title="Rename"
+                onClick={() => setRenaming(true)}
+              >
+                <Pencil size={11} aria-hidden="true" />
+              </button>
             </div>
           )}
+          <VariantScore variant={variant} />
+          <div className="text-pf-xs text-[var(--text-tertiary)]">
+            {Object.keys(variant.padToVoice).length} pads assigned
+            {variant.savedAt ? ` · Saved ${new Date(variant.savedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
+          </div>
         </div>
         <div className="flex-shrink-0">
           <MiniGridPreview
@@ -432,7 +462,7 @@ function SavedVariantCard({
           className="px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-blue-600/15 border border-blue-500/30 text-blue-400 hover:bg-blue-600/25"
           onClick={onLoad}
         >
-          Load Draft
+          Load draft
         </button>
         <VariantPromoteButton onPromote={onPromote} />
         {confirmDelete ? (
@@ -464,6 +494,57 @@ function SavedVariantCard({
         )}
       </div>
     </div>
+  );
+}
+
+/** A variant's score and difficulty, from the per-layout analysis cache (T29): "Scoring..." until it's in. */
+function VariantScore({ variant }: { variant: Layout }) {
+  const analysis = useLayoutAnalysis(variant);
+  if (analysis.status === 'empty') return null;
+  if (analysis.status === 'analysing') {
+    return <div data-testid="variant-score" className="text-pf-xs text-[var(--text-tertiary)] animate-pulse">Scoring...</div>;
+  }
+  if (analysis.status === 'error') {
+    return <div data-testid="variant-score" className="text-pf-xs text-red-300" title={analysis.message}>Couldn't score</div>;
+  }
+  const plan = analysis.analysis.executionPlan;
+  const counts = momentDifficultyCounts(plan.fingerAssignments);
+  const quality = getPlanScoreQuality(plan.score);
+  return (
+    <div data-testid="variant-score" className="text-pf-xs text-[var(--text-secondary)]">
+      <span className={`font-semibold ${quality === 'good' ? 'text-emerald-300' : quality === 'ok' ? 'text-amber-300' : 'text-red-300'}`}>
+        Score {formatPlanScore(plan.score)}
+      </span>
+      {' · '}{counts.hard} hard · {counts.unplayable} unplayable
+    </div>
+  );
+}
+
+/** Renames a variant in place: Enter keeps the name, Escape cancels. */
+function VariantNameField({ name, onDone }: { name: string; onDone: (name: string | null) => void }) {
+  const [draft, setDraft] = useState(name);
+  const [finished, setFinished] = useState(false);
+  const finish = (value: string | null) => {
+    if (finished) return;
+    setFinished(true);
+    onDone(value);
+  };
+  return (
+    <input
+      data-testid="variant-name-input"
+      aria-label="Variant name"
+      className="pf-input w-full text-pf-sm"
+      value={draft}
+      autoFocus
+      onFocus={e => e.currentTarget.select()}
+      onChange={e => setDraft(e.target.value)}
+      onKeyDown={e => {
+        e.stopPropagation();
+        if (e.key === 'Enter') finish(draft.trim() || null);
+        if (e.key === 'Escape') finish(null);
+      }}
+      onBlur={() => finish(draft.trim() || null)}
+    />
   );
 }
 

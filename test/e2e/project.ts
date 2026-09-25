@@ -13,10 +13,10 @@ export const TEST_MIDI_1 = fileURLToPath(new URL('../fixtures/midi/TEST MIDI 1.m
 /** Pads chosen to spread seven Sounds over the grid, corners included (from the C1 probe). */
 export const SPREAD_PADS = ['0,0', '7,0', '4,3', '3,7', '7,7', '0,7', '5,5'];
 
-/** Library → New Project → editor with the test hook ready. */
+/** Library → New project → editor with the test hook ready. */
 export async function newProject(page: Page, pf: PfHandle): Promise<void> {
   await page.goto('/');
-  await page.getByRole('button', { name: 'New Project' }).click();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.waitForURL('**/project/**');
   await pf.ready();
 }
@@ -192,8 +192,9 @@ export async function gridClip(page: Page): Promise<{ x: number; y: number; widt
 }
 
 /**
- * Centre of the part of a pad that is actually visible. At 1366x768 the grid
- * wrapper clips the top row (T04, fixed in S2.1), so a pad's own centre can be hidden.
+ * Centre of the part of a pad that is actually visible. Since S2.1 (T04) the
+ * whole grid is on screen at 1366x768 and 1600x1000, so this is the pad's own
+ * centre; the clipping check stays as a guard for smaller windows.
  */
 export async function visiblePadPoint(page: Page, padKey: string): Promise<{ x: number; y: number }> {
   const pad = page.getByTestId(`pad-${padKey.replace(',', '-')}`);

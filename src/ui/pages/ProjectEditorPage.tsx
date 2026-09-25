@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { type ProjectState } from '../state/projectState';
 import { ProjectProvider } from '../state/ProjectContext';
-import { loadProjectAsync, loadProject } from '../persistence/projectStorage';
+import { loadProjectAsync, loadProject, markProjectOpened } from '../persistence/projectStorage';
 import { PerformanceWorkspace } from '../components/workspace/PerformanceWorkspace';
 
 export function ProjectEditorPage() {
@@ -32,7 +32,12 @@ export function ProjectEditorPage() {
       .then(state => {
         if (cancelled) return;
         if (state) {
-          setInitialState(state);
+          // Opening is recorded for the Library (last opened, T52) without
+          // touching updatedAt, and the loaded state carries the same time so
+          // a later autosave writes it back unchanged.
+          const openedAt = new Date().toISOString();
+          setInitialState({ ...state, lastOpenedAt: openedAt });
+          void markProjectOpened(id, openedAt).catch(() => {});
         } else {
           // Sync fallback for edge cases
           const syncState = loadProject(id);

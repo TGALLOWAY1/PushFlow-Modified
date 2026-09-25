@@ -7,6 +7,7 @@
  */
 
 import { type PersistedProject, type ProjectIndexEntry } from './persistedProject';
+import { byRecency, projectIndexEntry, unreadableIndexEntry } from './projectIndex';
 
 const DB_NAME = 'pushflow';
 /** 2 adds the backups store (S1a.2 migration runner). */
@@ -121,8 +122,8 @@ export async function deleteProjectFromDb(id: string): Promise<void> {
 }
 
 /**
- * List all projects as lightweight index entries.
- * Returns entries sorted by updatedAt (most recent first).
+ * List all projects as lightweight index entries (projectIndex.ts), most
+ * recently opened or created first.
  */
 export async function listAllProjects(): Promise<ProjectIndexEntry[]> {
   const db = await openDb();
@@ -137,48 +138,13 @@ export async function listAllProjects(): Promise<ProjectIndexEntry[]> {
       const entries: ProjectIndexEntry[] = [];
       for (const p of projects) {
         try {
-          const soundStreams = Array.isArray(p.soundStreams) ? p.soundStreams : [];
-          let eventCount = 0;
-          let maxTime = 0;
-          for (const s of soundStreams) {
-            const events = Array.isArray(s.events) ? s.events : [];
-            eventCount += events.length;
-            for (const e of events) {
-              const end = e.startTime + e.duration;
-              if (end > maxTime) maxTime = end;
-            }
-          }
-          const beatDuration = 60 / (p.bpm || 120);
-          const barDuration = beatDuration * 4;
-          const durationBars = barDuration > 0 ? Math.ceil(maxTime / barDuration) : 0;
-          entries.push({
-            id: p.id,
-            name: p.name,
-            createdAt: p.createdAt,
-            updatedAt: p.updatedAt,
-            soundCount: soundStreams.length,
-            eventCount,
-            tempo: p.bpm || 120,
-            durationBars,
-          });
+          entries.push(projectIndexEntry(p));
         } catch (err) {
           console.warn(`Skipping unreadable project record ${p?.id ?? '(unknown)'}:`, err);
-          if (p && typeof p.id === 'string') {
-            entries.push({
-              id: p.id,
-              name: typeof p.name === 'string' ? p.name : 'Unreadable project',
-              createdAt: typeof p.createdAt === 'string' ? p.createdAt : '',
-              updatedAt: typeof p.updatedAt === 'string' ? p.updatedAt : '',
-              soundCount: 0,
-              eventCount: 0,
-              tempo: 120,
-              durationBars: 0,
-            });
-          }
+          if (p && typeof p.id === 'string') entries.push(unreadableIndexEntry(p));
         }
       }
-      // Sort by updatedAt descending
-      entries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      entries.sort(byRecency);
       resolve(entries);
     };
     request.onerror = () => reject(request.error);

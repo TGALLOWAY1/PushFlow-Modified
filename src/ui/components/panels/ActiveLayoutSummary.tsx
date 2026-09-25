@@ -25,6 +25,10 @@ import { LearnMoreModal } from './LearnMoreModal';
 import { buildSelectedTransitionModel } from '../../analysis/selectionModel';
 import { formatPlanScore, getPlanScoreQuality, getPlanScoreSummary } from '../../analysis/planScore';
 import { formatFingerConstraint, parseFingerConstraint } from '../../../utils/fingerConstraints';
+import { formatPadLocator, formatPadPosition } from '../../../utils/padPosition';
+import { formatBarBeat, formatMilliseconds, formatSeconds } from '../../../utils/musicalTime';
+import { SoundLabel } from '../shared/SoundLabel';
+import { momentDifficultyCounts } from '../../analysis/momentCounts';
 
 export function ActiveLayoutSummary() {
   const { state, dispatch } = useProject();
@@ -86,6 +90,8 @@ export function ActiveLayoutSummary() {
   };
 
   const mappedCount = displayedLayout ? Object.keys(displayedLayout.padToVoice).length : 0;
+  // Events are moments for both solvers (T23); a plan's own counts mix notes and moments.
+  const counts = useMemo(() => momentDifficultyCounts(currentPlan?.fingerAssignments), [currentPlan]);
 
   return (
     <>
@@ -99,7 +105,7 @@ export function ActiveLayoutSummary() {
             )}
           </div>
           <button
-            className="text-pf-xs text-[var(--accent-primary)] hover:text-[var(--accent-hover)] transition-colors"
+            className="text-pf-xs text-[var(--accent-primary-soft)] hover:text-[var(--text-primary)] transition-colors"
             onClick={() => setLearnMoreOpen(true)}
           >
             Learn more
@@ -160,17 +166,20 @@ export function ActiveLayoutSummary() {
               />
               <QuickStat
                 label="Events"
-                value={String(new Set(currentPlan.fingerAssignments.map(a => a.startTime)).size)}
+                value={String(counts.events)}
+                subtitle={`${counts.events} events · ${counts.notes} notes`}
               />
               <QuickStat
                 label="Hard"
-                value={String(currentPlan.hardCount)}
-                quality={currentPlan.hardCount === 0 ? 'good' : 'bad'}
+                value={String(counts.hard)}
+                quality={counts.hard === 0 ? 'good' : 'bad'}
+                subtitle="Events that are hard to play"
               />
               <QuickStat
                 label="Unplay"
-                value={String(currentPlan.unplayableCount)}
-                quality={currentPlan.unplayableCount === 0 ? 'good' : 'bad'}
+                value={String(counts.unplayable)}
+                quality={counts.unplayable === 0 ? 'good' : 'bad'}
+                subtitle={`${counts.unplayable} events with a note that can't be played (${counts.unplayableNotes} of ${counts.notes} notes)`}
               />
             </div>
           ) : (
@@ -184,21 +193,13 @@ export function ActiveLayoutSummary() {
               {mappedCount > 0 && <FeasibilityBadge pending={state.isProcessing} scope={scope} />}
 
               {/* An empty grid is not an unplayable layout — it is an unfinished one.
-                  Say so, and offer a starting point the user explicitly asks for. */}
+                  Say so; the grid's state bar offers the starting point (T44). */}
               {mappedCount === 0 && activeStreams.length > 0 && (
-                <div className="rounded-pf-sm border border-[var(--border-default)] bg-[var(--bg-card)]/60 p-2.5 space-y-2">
+                <div data-testid="summary-nothing-placed" className="rounded-pf-sm border border-[var(--border-default)] bg-bg-card/60 p-2.5">
                   <p className="text-pf-xs text-[var(--text-secondary)] leading-relaxed">
-                    No sounds are on the grid yet, so there is nothing to analyse.
-                    Drag {activeStreams.length === 1 ? 'your sound' : `your ${activeStreams.length} sounds`} onto
-                    pads, or start from a comfortable two-hand shape and adjust.
+                    No Sounds are on the grid yet, so there is nothing to analyse. Place {activeStreams.length === 1 ? 'your Sound' : `your ${activeStreams.length} Sounds`} by
+                    clicking one and then a pad, or by dragging, or use Suggest a starting layout above the grid.
                   </p>
-                  <button
-                    className="w-full px-2 py-1.5 rounded-pf-sm bg-[var(--accent-primary)]/15 text-[var(--accent-primary)] border border-[var(--accent-primary)]/30 text-pf-xs font-semibold hover:bg-[var(--accent-primary)]/25 transition-colors"
-                    onClick={() => dispatch({ type: 'SUGGEST_STARTING_LAYOUT' })}
-                    title="Places your sounds in a natural hand position as a Working/Test Layout you can edit, discard, or promote"
-                  >
-                    Suggest a starting layout
-                  </button>
                 </div>
               )}
             </div>
@@ -222,9 +223,12 @@ export function ActiveLayoutSummary() {
             <CostBreakdownBars
               metrics={currentPlan.averageMetrics}
               diagnostics={currentPlan.diagnostics}
-              hardCount={currentPlan.hardCount}
-              unplayableCount={currentPlan.unplayableCount}
-              mediumCount={currentPlan.mediumCount}
+              hardCount={counts.hard}
+              unplayableCount={counts.unplayable}
+              mediumCount={counts.medium}
+              unplayableNotes={counts.unplayableNotes}
+              noteCount={counts.notes}
+              events={counts.events}
               scope={scope}
             />
 
@@ -241,12 +245,13 @@ export function ActiveLayoutSummary() {
                 className="flex items-center gap-1.5 text-pf-xs text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors mb-1"
                 onClick={() => setChartOpen(!chartOpen)}
               >
-                <span className="text-[8px]">{chartOpen ? '\u25BE' : '\u25B8'}</span>
-                Event Difficulty Chart
+                <span className="text-pf-micro" aria-hidden="true">{chartOpen ? '\u25BE' : '\u25B8'}</span>
+                Event difficulty chart
               </button>
               {chartOpen && (
                 <EventCostChart
                   fingerAssignments={currentPlan.fingerAssignments}
+                  tempo={state.tempo}
                   selectedEventIndex={state.selectedEventIndex}
                   onEventClick={(idx) => dispatch({ type: 'SELECT_EVENT', payload: idx })}
                 />
@@ -269,8 +274,8 @@ export function ActiveLayoutSummary() {
 
               <div className="grid grid-cols-3 gap-1.5">
                 <DetailChip label="Sound" value={stream?.name ?? 'Unknown Sound'} />
-                <DetailChip label="Time" value={`${assignment.startTime.toFixed(3)}s`} />
-                <DetailChip label="Pad" value={padKey ?? '—'} />
+                <DetailChip label="Time" value={formatBarBeat(assignment.startTime, state.tempo)} title={formatSeconds(assignment.startTime)} />
+                <DetailChip label="Pad" value={padKey ? formatPadPosition(padKey) : '—'} />
                 <DetailChip
                   label="Hand"
                   value={effectiveHand ?? 'Unplayable'}
@@ -333,7 +338,7 @@ export function ActiveLayoutSummary() {
             <div className="pt-3 border-t border-[var(--border-subtle)] space-y-2.5">
               <h4 className="section-header">Transition</h4>
               <div className="grid grid-cols-4 gap-1.5">
-                <DetailChip label="Delta" value={`${transition.timeDelta?.toFixed(3)}s`} />
+                <DetailChip label="Gap" value={transition.timeDelta != null ? formatMilliseconds(transition.timeDelta) : '—'} />
                 <DetailChip label="Holds" value={String(transition.sharedPadKeys.size)} />
                 <DetailChip label="Moves" value={String(transition.fingerMoves.filter(m => m.fromPad && m.toPad && !m.isHold).length)} />
                 <DetailChip label="Paths" value={String(transition.fingerMoves.length)} />
@@ -346,7 +351,7 @@ export function ActiveLayoutSummary() {
                         {move.hand[0].toUpperCase()}-{move.finger.slice(0, 2).toUpperCase()}
                       </span>
                       <span className="text-[var(--text-tertiary)]">
-                        {move.fromPad ?? '—'} → {move.toPad ?? '—'}
+                        {move.fromPad ? formatPadLocator(move.fromPad) : '—'} → {move.toPad ? formatPadLocator(move.toPad) : '—'}
                       </span>
                       <span className="text-[var(--text-tertiary)] font-mono text-pf-micro">
                         {move.isHold ? 'hold' : move.rawDistance?.toFixed(1) ?? 'new'}
@@ -361,7 +366,7 @@ export function ActiveLayoutSummary() {
           {/* Empty state */}
           {!currentPlan && !state.isProcessing && (
             <div className="text-pf-xs text-[var(--text-tertiary)] py-4 text-center">
-              Assign sounds to pads, then <strong className="text-[var(--text-secondary)]">Generate</strong> to analyze.
+              Analysis updates automatically as you place Sounds · <strong className="text-[var(--text-secondary)]">Generate</strong> proposes alternatives.
             </div>
           )}
         </div>
@@ -393,9 +398,9 @@ function QuickStat({ label, value, quality, subtitle }: {
   );
 }
 
-function DetailChip({ label, value, color }: { label: string; value: string; color?: string }) {
+function DetailChip({ label, value, color, title }: { label: string; value: string; color?: string; title?: string }) {
   return (
-    <div className="rounded-pf-sm border border-[var(--border-subtle)] bg-[var(--bg-card)]/60 px-2 py-1.5">
+    <div className="rounded-pf-sm border border-[var(--border-subtle)] bg-bg-card/60 px-2 py-1.5" title={title}>
       <div className="text-pf-micro text-[var(--text-tertiary)] uppercase tracking-wider">{label}</div>
       <div className={`text-pf-xs font-medium ${color ?? 'text-[var(--text-primary)]'}`}>{value}</div>
     </div>
@@ -417,7 +422,7 @@ function StructuralRulesStatus({
   hasFingerChoices,
 }: {
   relaxation?: ConstraintRelaxationSummary;
-  streams: Array<{ id: string; name: string }>;
+  streams: Array<{ id: string; name: string; color?: string }>;
   /** Whether the user set a finger for any sound — then that may be the cause. */
   hasFingerChoices: boolean;
 }) {
@@ -434,9 +439,6 @@ function StructuralRulesStatus({
       </div>
     );
   }
-
-  const nameFor = (soundId: string) =>
-    streams.find(s => s.id === soundId)?.name ?? soundId;
 
   return (
     <div className="rounded-pf-sm border border-violet-400/30 bg-violet-500/5 p-2.5 space-y-1.5">
@@ -467,7 +469,7 @@ function StructuralRulesStatus({
           const others = sound.fingersUsed.filter(f => f !== sound.ownerFinger);
           return (
             <div key={sound.soundId} className="flex justify-between gap-2 text-pf-xs">
-              <span className="text-[var(--text-secondary)] truncate">{nameFor(sound.soundId)}</span>
+              <SoundLabel id={sound.soundId} sounds={streams} className="text-[var(--text-secondary)]" />
               <span className="font-mono text-[var(--text-tertiary)] whitespace-nowrap">
                 {sound.ownerFinger
                   ? <>
@@ -512,17 +514,14 @@ function WhatIsLimitingThis({
 }: {
   constraints?: string[];
   infeasibleSounds?: Array<{ soundId: string; violationCount: number; totalEvents: number }>;
-  streams: Array<{ id: string; name: string }>;
+  streams: Array<{ id: string; name: string; color?: string }>;
 }) {
   const hasConstraints = constraints && constraints.length > 0;
   const hasSounds = infeasibleSounds && infeasibleSounds.length > 0;
   if (!hasConstraints && !hasSounds) return null;
 
-  const nameFor = (soundId: string) =>
-    streams.find(s => s.id === soundId)?.name ?? soundId;
-
   return (
-    <div className="rounded-pf-sm border border-[var(--border-default)] bg-[var(--bg-card)]/50 p-2.5 space-y-1.5">
+    <div className="rounded-pf-sm border border-[var(--border-default)] bg-bg-card/50 p-2.5 space-y-1.5">
       <div className="text-pf-xs font-semibold text-[var(--text-secondary)]">
         What is limiting this layout
       </div>
@@ -543,8 +542,8 @@ function WhatIsLimitingThis({
           </div>
           {infeasibleSounds!.slice(0, 5).map(entry => (
             <div key={entry.soundId} className="flex justify-between text-pf-xs">
-              <span className="text-[var(--text-secondary)] truncate">{nameFor(entry.soundId)}</span>
-              <span className="font-mono text-[var(--text-tertiary)]">
+              <SoundLabel id={entry.soundId} sounds={streams} className="text-[var(--text-secondary)]" />
+              <span className="font-mono text-[var(--text-tertiary)]" title={`${entry.violationCount} of ${entry.totalEvents} notes can't be played`}>
                 {entry.violationCount}/{entry.totalEvents}
               </span>
             </div>

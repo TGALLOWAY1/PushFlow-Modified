@@ -6,20 +6,15 @@
  * PerformanceLanes grouped by source file name (see import/midiToLanes.ts).
  */
 
-import { DEFAULT_PROJECT_TEMPO } from '../state/projectState';
 import { useCallback } from 'react';
 import { parseMidiFileToProject } from '../../import/midiImport';
-import { buildLanesFromMidiProject } from '../../import/midiToLanes';
+import { importSummary, planMidiImport } from '../state/midiImportPlan';
 import { useProject } from '../state/ProjectContext';
-
-/** Color palette for auto-assigned group colors. */
-const GROUP_COLORS = [
-  '#f59e0b', '#3b82f6', '#a855f7', '#22c55e', '#ec4899', '#06b6d4',
-  '#ef4444', '#84cc16', '#f97316', '#14b8a6', '#6366f1', '#d946ef',
-];
+import { useToast } from '../components/shared/Toast';
 
 export function useLaneImport() {
   const { state, dispatch, transact } = useProject();
+  const toast = useToast();
 
   const importFiles = useCallback(async (files: File[]) => {
     // Parse everything first, so the whole import lands as one undo step.
@@ -34,49 +29,22 @@ export function useLaneImport() {
     }
     if (parsed.length === 0) return;
 
+    const { actions, importedCount, gmPitches } = planMidiImport(
+      { performanceLanes: state.performanceLanes, soundStreams: state.soundStreams, sourceFiles: state.sourceFiles, tempo: state.tempo },
+      parsed.map(({ file, projectData }) => ({ fileName: file.name, projectData })),
+    );
     transact('Import', () => {
-      for (const { file, projectData } of parsed) {
-        const currentMaxOrder = state.performanceLanes.length > 0
-          ? Math.max(...state.performanceLanes.map(l => l.orderIndex))
-          : -1;
-
-        // Pick a group color based on number of existing groups
-        const groupColorIndex = state.laneGroups.length % GROUP_COLORS.length;
-        const groupColor = GROUP_COLORS[groupColorIndex];
-
-        // One lane per unique pitch (no group by default)
-        const { lanes, sourceFile } = buildLanesFromMidiProject(projectData, file.name, {
-          currentMaxOrder,
-          color: groupColor,
-        });
-
-        dispatch({
-          type: 'IMPORT_LANES',
-          payload: { lanes, sourceFile },
-        });
-
-        // Adopt the file's tempo on the first import into an untouched project.
-        //
-        // The header tempo was parsed and then thrown away, so a 90 or 174 BPM
-        // file left the project at the 120 BPM default while its notes sat at
-        // their true absolute times. Bar lines landed mid-note, the click track
-        // drifted against the music, and the Pattern Composer's grid (which is
-        // required to follow project tempo) was wrong too — which makes the
-        // rehearsal surfaces actively misleading rather than merely imprecise.
-        //
-        // Only on a first import, and only while the tempo is still the default,
-        // so a tempo the user chose is never overwritten.
-        const importedTempo = projectData.performance.tempo ?? 0;
-        const isFirstImport = state.performanceLanes.length === 0 && state.sourceFiles.length === 0;
-        if (isFirstImport && importedTempo > 0 && state.tempo === DEFAULT_PROJECT_TEMPO) {
-          dispatch({ type: 'SET_TEMPO', payload: importedTempo });
-        }
-
-        // bottomLeftNote stays at default (36/C1). MIDI pitch is metadata
-        // only and must not affect grid placement.
-      }
+      for (const action of actions) dispatch(action);
     });
-  }, [state.performanceLanes, state.laneGroups, state.instrumentConfig, state.sourceFiles, state.tempo, dispatch, transact]);
+
+    // Say what arrived, and offer the opt-in pitch naming when it can help (Q3).
+    toast.show({
+      message: importSummary(importedCount, parsed.map(p => p.file.name)),
+      action: gmPitches > 0
+        ? { label: 'Name from GM drum map', onClick: () => dispatch({ type: 'APPLY_GM_DRUM_NAMES' }) }
+        : undefined,
+    });
+  }, [state.performanceLanes, state.soundStreams, state.instrumentConfig, state.sourceFiles, state.tempo, dispatch, transact, toast]);
 
   return { importFiles };
 }

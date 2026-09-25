@@ -6,25 +6,26 @@
 
 import { type CandidateSolution } from '../../types/candidateSolution';
 import { compareCandidates, summarizeComparison } from '../../engine/analysis/candidateComparator';
+import { describeLayoutDiff, layoutDiff } from '../analysis/layoutDiff';
+import { SoundLabel, type SoundRef } from './shared/SoundLabel';
+import { formatPadLocator } from '../../utils/padPosition';
+import { TRADEOFF_DIMENSIONS } from '../analysis/factorMeta';
 
 interface CandidateCompareProps {
   candidateA: CandidateSolution;
   candidateB: CandidateSolution;
+  /** How each side is named in Compare ("Active Layout", "#2 Compact, left hand"). */
+  labelA: string;
+  labelB: string;
+  /** The project's Sounds, so every id reads as a name with its colour (T20). */
+  sounds: readonly SoundRef[];
 }
 
-const DIMENSION_LABELS: Record<string, string> = {
-  playability: 'Playability',
-  compactness: 'Compactness',
-  handBalance: 'Hand Balance',
-  transitionEfficiency: 'Transitions',
-};
-
-export function CandidateCompare({ candidateA, candidateB }: CandidateCompareProps) {
+export function CandidateCompare({ candidateA, candidateB, labelA, labelB, sounds }: CandidateCompareProps) {
   const comparison = compareCandidates(candidateA, candidateB);
   const summary = summarizeComparison(comparison);
+  const diff = layoutDiff(candidateA.layout, candidateB.layout);
 
-  const labelA = candidateA.metadata.strategy ?? `A (${candidateA.id.slice(0, 6)})`;
-  const labelB = candidateB.metadata.strategy ?? `B (${candidateB.id.slice(0, 6)})`;
 
   return (
     <div className="space-y-4">
@@ -35,16 +36,17 @@ export function CandidateCompare({ candidateA, candidateB }: CandidateComparePro
         <span className="text-pf-base font-medium text-purple-400">{labelB}</span>
       </div>
 
-      {/* Tradeoff comparison bars */}
+      {/* Tradeoff comparison bars: scores out of 100, higher is better */}
       <div className="space-y-2.5">
-        {(Object.keys(DIMENSION_LABELS) as Array<keyof typeof DIMENSION_LABELS>).map(dim => {
-          const valA = candidateA.tradeoffProfile[dim as keyof CandidateSolution['tradeoffProfile']];
-          const valB = candidateB.tradeoffProfile[dim as keyof CandidateSolution['tradeoffProfile']];
+        <div className="text-pf-micro text-[var(--text-tertiary)]">Tradeoff scores out of 100 · higher is better</div>
+        {TRADEOFF_DIMENSIONS.map(({ key: dim, label, description }) => {
+          const valA = candidateA.tradeoffProfile[dim];
+          const valB = candidateB.tradeoffProfile[dim];
           const diff = valA - valB;
 
           return (
-            <div key={dim} className="flex items-center gap-2">
-              <span className="w-24 text-pf-sm text-[var(--text-secondary)]">{DIMENSION_LABELS[dim]}</span>
+            <div key={dim} className="flex items-center gap-2" title={description}>
+              <span className="w-24 text-pf-sm text-[var(--text-secondary)]">{label}</span>
               {/* Bar A */}
               <div className="flex-1 flex items-center gap-1">
                 <div className="flex-1 h-2.5 bg-[var(--bg-hover)] rounded-full overflow-hidden flex justify-end">
@@ -80,13 +82,20 @@ export function CandidateCompare({ candidateA, candidateB }: CandidateComparePro
         })}
       </div>
 
-      {/* Layout differences */}
-      <div className="text-pf-sm text-[var(--text-secondary)] space-y-1">
-        <div>Layout differences: {comparison.layoutDifferences.length} pads changed</div>
-        {comparison.layoutDifferences.length > 0 && (
-          <div>
-            Affected sounds: {[...new Set(comparison.layoutDifferences.map(d => d.voiceId))].join(', ')}
-          </div>
+      {/* Layout differences: Sounds by name and colour, never by id (T20, P2-12). */}
+      <div data-testid="compare-layout-differences" className="text-pf-sm text-[var(--text-secondary)] space-y-1">
+        <div>Layout differences: {describeLayoutDiff(diff)}</div>
+        {diff.moves.length > 0 && (
+          <ul className="space-y-0.5">
+            {diff.moves.map(move => (
+              <li key={move.soundId} className="flex items-center gap-2 text-pf-xs">
+                <SoundLabel id={move.soundId} sounds={sounds} className="text-[var(--text-primary)]" />
+                <span className="text-[var(--text-tertiary)] font-mono">
+                  {move.from ? formatPadLocator(move.from) : 'not placed'} → {move.to ? formatPadLocator(move.to) : 'not placed'}
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 

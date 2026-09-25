@@ -30,8 +30,9 @@ import { type CandidateSolution } from '../../types/candidateSolution';
  * 1: the IndexedDB format.
  * 2: recoveredDrafts (S1a.2).
  * 3: ghost locks pruned from every stored layout (S1a.4).
+ * 4: lastOpenedAt (S2.3).
  */
-export const PERSISTED_SCHEMA_VERSION = 3;
+export const PERSISTED_SCHEMA_VERSION = 4;
 
 // ============================================================================
 // Persisted Project Document
@@ -100,6 +101,13 @@ export interface PersistedProject {
   // --- Metadata ---
   createdAt: string;
   updatedAt: string;
+  /**
+   * When the project was last opened in the editor (S2.3, T52): the Library's
+   * "Opened 2h ago" and the project it offers to continue. Added in schema 4;
+   * the migration starts it at updatedAt. Opening a project never changes
+   * updatedAt.
+   */
+  lastOpenedAt?: string;
   schemaVersion: number;
 }
 
@@ -112,8 +120,13 @@ export interface ProjectIndexEntry {
   name: string;
   createdAt: string;
   updatedAt: string;
+  /** Last opened in the editor; updatedAt for a project never opened since schema 4. */
+  lastOpenedAt: string;
   soundCount: number;
+  /** Events: everything struck at one instant counts once (decision Q7). */
   eventCount: number;
+  /** Notes: single hits. */
+  noteCount: number;
   tempo: number;
   durationBars: number;
 }

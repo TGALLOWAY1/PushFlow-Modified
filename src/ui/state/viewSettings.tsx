@@ -7,7 +7,7 @@
  * same state.
  */
 
-import { useState, useCallback, useContext, createContext, type ReactNode } from 'react';
+import { useState, useCallback, useContext, useEffect, createContext, type ReactNode } from 'react';
 
 /**
  * GridLabelSettings: What labels to show on each pad in the grid.
@@ -31,19 +31,11 @@ export interface GridLabelSettings {
 }
 
 /**
- * LayoutDisplaySettings: Layout-level display and organization options.
- */
-export interface LayoutDisplaySettings {
-  /** Organize the 8x8 grid into 4x4 quadrant banks */
-  organize4x4Banks: boolean;
-}
-
-/**
- * ViewSettings: Full display options state.
+ * ViewSettings: Full display options state. ("Organize by 4x4 Banks", which
+ * nothing read, is gone: S2.3, T39.)
  */
 export interface ViewSettings {
   gridLabels: GridLabelSettings;
-  layoutDisplay: LayoutDisplaySettings;
 }
 
 export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
@@ -54,10 +46,38 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
     showSoundNames: true,
     showHandColors: false,
   },
-  layoutDisplay: {
-    organize4x4Banks: false,
-  },
 };
+
+const STORAGE_KEY = 'pushflow:view-settings';
+
+/**
+ * The viewer's remembered settings (T39: they reset every session). Stored
+ * per viewer in localStorage, never in the project; blocked storage or an odd
+ * value falls back to the defaults, and unknown keys are ignored.
+ */
+export function loadViewSettings(): ViewSettings {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return DEFAULT_VIEW_SETTINGS;
+    const parsed = JSON.parse(raw) as { gridLabels?: Record<string, unknown> };
+    const gridLabels = { ...DEFAULT_VIEW_SETTINGS.gridLabels };
+    for (const key of Object.keys(gridLabels) as Array<keyof GridLabelSettings>) {
+      const value = parsed?.gridLabels?.[key];
+      if (typeof value === 'boolean') gridLabels[key] = value;
+    }
+    return { gridLabels };
+  } catch {
+    return DEFAULT_VIEW_SETTINGS;
+  }
+}
+
+export function saveViewSettings(settings: ViewSettings): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // Private mode or blocked storage: the settings still work, they just aren't remembered.
+  }
+}
 
 /**
  * Label rendering priority (highest first):
@@ -83,7 +103,6 @@ interface ViewSettingsContextValue {
   setSettings: (s: ViewSettings) => void;
   updateGridLabels: (updates: Partial<GridLabelSettings>) => void;
   toggleGridLabel: (key: keyof GridLabelSettings) => void;
-  toggleLayoutDisplay: (key: keyof LayoutDisplaySettings) => void;
 }
 
 const ViewSettingsContext = createContext<ViewSettingsContextValue | null>(null);
@@ -92,7 +111,8 @@ const ViewSettingsContext = createContext<ViewSettingsContextValue | null>(null)
  * Provider — wrap at workspace or app level so all consumers share one instance.
  */
 export function ViewSettingsProvider({ children }: { children: ReactNode }) {
-  const [settings, setSettings] = useState<ViewSettings>(DEFAULT_VIEW_SETTINGS);
+  const [settings, setSettings] = useState<ViewSettings>(loadViewSettings);
+  useEffect(() => { saveViewSettings(settings); }, [settings]);
 
   const updateGridLabels = useCallback((updates: Partial<GridLabelSettings>) => {
     setSettings(prev => ({
@@ -108,15 +128,8 @@ export function ViewSettingsProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  const toggleLayoutDisplay = useCallback((key: keyof LayoutDisplaySettings) => {
-    setSettings(prev => ({
-      ...prev,
-      layoutDisplay: { ...prev.layoutDisplay, [key]: !prev.layoutDisplay[key] },
-    }));
-  }, []);
-
   return (
-    <ViewSettingsContext.Provider value={{ settings, setSettings, updateGridLabels, toggleGridLabel, toggleLayoutDisplay }}>
+    <ViewSettingsContext.Provider value={{ settings, setSettings, updateGridLabels, toggleGridLabel }}>
       {children}
     </ViewSettingsContext.Provider>
   );

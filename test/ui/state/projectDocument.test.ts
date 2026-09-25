@@ -30,10 +30,10 @@ import { importTestMidi1 } from '../../helpers/testMidi1';
 
 /** Session fields, as listed in the tracker's S1a.1 field table. */
 const SESSION_FIELDS = [
-  'updatedAt',
+  'updatedAt', 'lastOpenedAt',
   'analysisResult', 'candidates', 'selectedCandidateId', 'generationSummary',
   'engineConfig', 'optimizerMethod', 'greedyStrategy', 'costToggles',
-  'selectedEventIndex', 'selectedMomentIndex', 'selectedStreamId', 'compareCandidateId',
+  'selectedEventIndex', 'selectedMomentIndex', 'selectedStreamId', 'armedStreamId', 'selectedPadKey', 'compareCandidateId',
   'isProcessing', 'error', 'analysisStale', 'manualCostResult',
   'moveHistory', 'iterationTrace', 'moveHistoryStopReason', 'moveHistoryIndex',
   'currentTime', 'isPlaying', 'playbackRate', 'loopEnabled', 'loopStart', 'loopEnd',
@@ -68,9 +68,16 @@ describe('documentChanged', () => {
 
   it('treats a structurally equal rebuild as no change', async () => {
     const s = await importTestMidi1();
-    const synced = projectReducer(s, { type: 'SYNC_STREAMS_FROM_LANES' });
-    expect(synced.soundStreams).not.toBe(s.soundStreams);
-    expect(documentChanged(pickDocument(s), pickDocument(synced))).toBe(false);
+    const rebuilt = { ...s, soundStreams: structuredClone(s.soundStreams) };
+    expect(rebuilt.soundStreams).not.toBe(s.soundStreams);
+    expect(documentChanged(pickDocument(s), pickDocument(rebuilt))).toBe(false);
+  });
+
+  // S2.3 (T52): every editor mount syncs Sounds from lanes; an equal rebuild
+  // must not bump updatedAt, or opening a project re-saves it as edited.
+  it('a sync that rebuilds the same Sounds returns the state untouched', async () => {
+    const s = await importTestMidi1();
+    expect(projectReducer(s, { type: 'SYNC_STREAMS_FROM_LANES' })).toBe(s);
   });
 
   it('sees a pad edit', async () => {
@@ -128,7 +135,8 @@ describe('persistence round trip', () => {
     expect(saved.schemaVersion).toBe(1);
     const { updatedAt: _a, ...savedFields } = saved;
     const { updatedAt: _b, ...resavedFields } = resaved;
-    expect(resavedFields).toEqual({ ...savedFields, schemaVersion: 3, recoveredDrafts: [] });
+    // S2.3's migration starts lastOpenedAt at the saved updatedAt.
+    expect(resavedFields).toEqual({ ...savedFields, schemaVersion: 4, recoveredDrafts: [], lastOpenedAt: saved.updatedAt });
 
     // And the document slice survives a second load unchanged.
     const reloaded = deserializeProject(validateAndMigrateRaw(JSON.parse(JSON.stringify(resaved))));

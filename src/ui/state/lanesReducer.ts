@@ -10,6 +10,7 @@ import { type ProjectState } from './projectState';
 import { type Layout } from '../../types/layout';
 import { buildSoundStreamsFromLanes } from './lanesToStreams';
 import { buildLegacySourceFile, buildPerformanceLanesFromStreams } from './streamsToLanes';
+import { deepEqual } from '../../utils/deepEqual';
 
 // ============================================================================
 // Action Types
@@ -447,6 +448,10 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
       if (state.performanceLanes.length === 0) return state;
 
       const soundStreams = buildSoundStreamsFromLanes(state.performanceLanes);
+      // Every editor mount syncs. A rebuild equal to the Sounds already there
+      // changes nothing, so opening a project neither marks it edited (and
+      // re-saved, T52) nor throws its analysis away.
+      if (deepEqual(soundStreams, state.soundStreams)) return state;
       return {
         ...state,
         updatedAt: now,

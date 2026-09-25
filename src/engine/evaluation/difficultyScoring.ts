@@ -14,6 +14,7 @@ import { type DifficultyAnalysis, type PassageDifficulty, type TradeoffProfile }
 import { scorePassagesFromSections, scorePassagesFixedWindow } from './passageDifficulty';
 import { type Performance } from '../../types/performance';
 import { type OptimizationMode } from '../../types/engineConfig';
+import { groupIntoMoments, summarizeMomentCost } from '../structure/momentGrouping';
 
 // ============================================================================
 // Difficulty Classification
@@ -351,18 +352,30 @@ function identifyBindingConstraints(
 ): string[] {
   const constraints: string[] = [];
 
+  // Counted in events (moments) and notes, the same for every solver: a plan's
+  // own counts are notes for Beam and moments for Greedy (T23, decision Q7).
+  let events = 0, unplayableEvents = 0, unplayableNotes = 0, hardEvents = 0;
+  for (const moment of groupIntoMoments(result.fingerAssignments)) {
+    const summary = summarizeMomentCost(moment.items);
+    events++;
+    unplayableNotes += summary.unplayableNoteCount;
+    if (summary.difficulty === 'Unplayable') unplayableEvents++;
+    else if (summary.difficulty === 'Hard') hardEvents++;
+  }
+  const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
   // Unplayable events
-  if (result.unplayableCount > 0) {
+  if (unplayableEvents > 0) {
     constraints.push(
-      `${result.unplayableCount} event(s) classified as Unplayable — layout may not cover all voices`
+      `${count(unplayableEvents, 'event', 'events')} can't be played (${count(unplayableNotes, 'note', 'notes')}) — some Sounds may not be on the grid`
     );
   }
 
   // Hard events
-  if (result.hardCount > 0) {
-    const hardPct = ((result.hardCount / Math.max(result.fingerAssignments.length, 1)) * 100).toFixed(0);
+  if (hardEvents > 0) {
+    const hardPct = ((hardEvents / Math.max(events, 1)) * 100).toFixed(0);
     constraints.push(
-      `${result.hardCount} Hard event(s) (${hardPct}% of total) — grip or stretch limit reached`
+      `${count(hardEvents, 'hard event', 'hard events')} (${hardPct}% of events) — grip or stretch limit reached`
     );
   }
 

@@ -304,10 +304,11 @@ export function useAutoAnalysis() {
   const activeStreams = getActiveStreams(state);
   const currentLayout = getDisplayedLayout(state);
   const canGenerate = activeStreams.length > 0 && currentLayout !== null;
+  // Shown next to the disabled button (T31), so it stays short.
   const generateDisabledReason = !currentLayout
-    ? 'No layout available'
+    ? 'No layout yet'
     : activeStreams.length === 0
-      ? 'No sounds loaded — import MIDI or create patterns first'
+      ? 'Import MIDI or build a pattern first'
       : null;
 
   return { generateFull, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason };

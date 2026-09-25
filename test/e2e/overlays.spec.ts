@@ -66,7 +66,7 @@ test.describe('Overlays (Dialog primitive)', () => {
   });
 
   test('the enlarged chart', async ({ page }) => {
-    await page.getByRole('button', { name: /Event Difficulty Chart/ }).click();
+    await page.getByRole('button', { name: /Event difficulty chart/i }).click();
     const trigger = page.getByRole('button', { name: 'Enlarge' }).first();
     await trigger.click();
     const dialog = page.getByTestId('chart-dialog');
@@ -115,6 +115,8 @@ test.describe('Overlays (Dialog primitive)', () => {
     await dialog.getByRole('button', { name: 'Promote to Active' }).first().click();
     await expect(dialog).toHaveCount(0);
     await expect(page.getByText(/Promoted #1 .* to Active Layout/)).toBeVisible();
-    await expect(page.getByTitle(/^Select 2\+ candidates to compare$/)).toBeDisabled();
+    // One compared layout is now Active, so Compare is disabled and says why (T31).
+    await expect(page.getByTestId('toolbar-compare')).toBeDisabled();
+    await expect(page.getByTestId('toolbar-compare')).toHaveAttribute('title', 'Tick 2 layouts to compare');
   });
 });

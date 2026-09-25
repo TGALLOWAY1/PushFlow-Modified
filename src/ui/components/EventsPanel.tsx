@@ -11,7 +11,7 @@
  * - exposes selection state for downstream grid/onion-view consumers
  *
  * Reuses V1 event-analysis patterns: epsilon-based temporal grouping,
- * keyboard navigation (ArrowUp/Down, j/k), auto-scroll selected row.
+ * keyboard navigation (↑/↓ and j/k while focus is in the list), auto-scroll selected row.
  */
 
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react';
@@ -19,7 +19,9 @@ import { useProject } from '../state/ProjectContext';
 import { getActiveStreams, getDisplayedExecutionPlan, type SoundStream } from '../state/projectState';
 import { groupIntoMoments, summarizeMomentCost, type MomentCost } from '@/engine';
 import { MOMENT_EPSILON } from '../../types/performanceEvent';
-import { isOverlayOpen } from './shared/Overlay';
+import { useInputHandler } from '../input/inputRegistry';
+import { formatBarBeat } from '../../utils/musicalTime';
+import { FACTOR_KEYS, FACTOR_META, factorsFromBreakdown } from '../analysis/factorMeta';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -41,15 +43,8 @@ export interface PerformanceMomentSummary {
 
 // ─── Moment Derivation ──────────────────────────────────────────────────────
 
-export function formatBeatPosition(time: number, tempo: number): string {
-  const beatDuration = 60 / (tempo || 120);
-  const totalBeats = time / beatDuration;
-  const bar = Math.floor(totalBeats / 4) + 1;
-  const beat = Math.floor(totalBeats % 4) + 1;
-  const subBeat = totalBeats % 1;
-  if (subBeat < 0.01) return `${bar}.${beat}`;
-  return `${bar}.${beat}`;
-}
+/** bar.beat.sixteenth (T43); both branches used to drop the sixteenth, so off-beat events read alike. */
+export const formatBeatPosition = formatBarBeat;
 
 /**
  * Derive PerformanceMoments from active SoundStreams, using the shared moment
@@ -129,30 +124,18 @@ export function EventsPanel({
     dispatch({ type: 'SET_CURRENT_TIME', payload: moment.startTime });
   }, [state, dispatch]);
 
-  // Keyboard navigation (V1 pattern: ArrowUp/Down, j/k)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
-      if (moments.length === 0) return;
-      // Nothing while playing (T61 slice), and nothing under an open dialog or menu.
-      if (state.isPlaying || isOverlayOpen()) return;
-
-      const currentIdx = selectedMomentIdx ?? -1;
-
-      if (e.key === 'ArrowDown' || e.key === 'j') {
-        e.preventDefault();
-        const nextIdx = Math.min(currentIdx + 1, moments.length - 1);
-        handleMomentClick(moments[nextIdx]);
-      } else if (e.key === 'ArrowUp' || e.key === 'k') {
-        e.preventDefault();
-        const prevIdx = Math.max(currentIdx - 1, 0);
-        handleMomentClick(moments[prevIdx]);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [moments, selectedMomentIdx, handleMomentClick, state.isPlaying]);
+  // ↑/↓ and j/k step through the list while focus is in it (the input table's
+  // events-list-keys row; the listener skips selects, text fields and menus).
+  useInputHandler('events-list-keys', e => {
+    // Nothing while playing (T61 slice).
+    if (state.isPlaying || moments.length === 0) return false;
+    const currentIdx = selectedMomentIdx ?? -1;
+    if (e.key === 'ArrowDown' || e.key === 'j') {
+      handleMomentClick(moments[Math.min(currentIdx + 1, moments.length - 1)]);
+    } else {
+      handleMomentClick(moments[Math.max(currentIdx - 1, 0)]);
+    }
+  });
 
   // Auto-scroll selected moment row into view (V1 pattern)
   useEffect(() => {
@@ -218,14 +201,14 @@ export function EventsPanel({
       </div>
 
       {/* Column header */}
-      <div className="flex items-center gap-2 px-2 py-1 text-pf-micro font-mono text-[var(--text-tertiary)] uppercase tracking-wider border-b border-[var(--border-subtle)]/30">
+      <div className="flex items-center gap-2 px-2 py-1 text-pf-micro font-mono text-[var(--text-tertiary)] uppercase tracking-wider border-b border-border-subtle/30">
         <span className="w-8 flex-shrink-0">#</span>
-        <span className="flex-1">Beat</span>
+        <span className="flex-1">Position</span>
         <span className="flex-shrink-0 w-10 text-right">Cost</span>
         <span className="flex-shrink-0 w-8 text-right">Notes</span>
       </div>
 
-      <div ref={listRef} className="overflow-y-auto space-y-0.5" style={{ maxHeight: 'calc(100vh - 310px)' }}>
+      <div ref={listRef} data-input-scope="events" className="overflow-y-auto space-y-0.5" style={{ maxHeight: 'calc(100vh - 310px)' }}>
         {moments.map((moment) => (
           <MomentRow
             key={moment.momentIndex}
@@ -300,32 +283,33 @@ function MomentRow({
         </span>
 
         {/* Note count badge */}
-        <span className={`text-pf-xs flex-shrink-0 w-8 text-right ${
-          moment.noteCount > 3 ? 'text-amber-400' : 'text-[var(--text-tertiary)]'
-        }`}>
-          {moment.noteCount}n
+        <span
+          className={`text-pf-xs flex-shrink-0 w-8 text-right ${
+            moment.noteCount > 3 ? 'text-amber-400' : 'text-[var(--text-tertiary)]'
+          }`}
+          title={`${moment.noteCount} ${moment.noteCount === 1 ? 'note' : 'notes'} struck together`}
+        >
+          {moment.noteCount}
         </span>
       </div>
 
       {/* Expanded cost breakdown */}
       {expanded && costBreakdown && (
         <div className="mt-1 ml-10 grid grid-cols-2 gap-x-3 gap-y-0.5 text-pf-micro" onClick={e => e.stopPropagation()}>
-          <span className="text-[var(--text-tertiary)]">Transition</span>
-          <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.transitionCost.toFixed(2)}</span>
-          <span className="text-[var(--text-tertiary)]">Grip</span>
-          <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.handShapeDeviation.toFixed(2)}</span>
-          <span className="text-[var(--text-tertiary)]">Finger Pref</span>
-          <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.fingerPreference.toFixed(2)}</span>
-          <span className="text-[var(--text-tertiary)]">Alternation</span>
-          <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.alternation.toFixed(2)}</span>
-          <span className="text-[var(--text-tertiary)]">Hand Balance</span>
-          <span className="text-[var(--text-secondary)] font-mono text-right">{costBreakdown.handBalance.toFixed(2)}</span>
-          {costBreakdown.constraintPenalty > 0 && (
-            <>
-              <span className="text-red-400">Constraint</span>
-              <span className="text-red-400 font-mono text-right">{costBreakdown.constraintPenalty.toFixed(2)}</span>
-            </>
-          )}
+          {/* The five factors, named and coloured by FACTOR_META (T20). */}
+          {FACTOR_KEYS.map(key => {
+            const meta = FACTOR_META[key];
+            const value = factorsFromBreakdown(costBreakdown)[key];
+            return (
+              <span key={key} className="contents">
+                <span className="flex items-center gap-1 text-[var(--text-tertiary)]" title={meta.description}>
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: meta.color }} aria-hidden="true" />
+                  {meta.label}
+                </span>
+                <span className="text-[var(--text-secondary)] font-mono text-right">{value.toFixed(2)}</span>
+              </span>
+            );
+          })}
         </div>
       )}
     </button>

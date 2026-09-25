@@ -45,7 +45,7 @@ describe('resolvePresetDrop', () => {
     const l = layout();
     l.padToVoice['4,5'] = { id: 'other', name: 'OTHER', sourceType: 'midi_track', sourceFile: '', originalMidiNote: null, color: '#000' };
     const r = resolvePresetDrop({ preset: preset([pad('a', 0, 0), pad('b', 0, 1)]), anchorRow: 4, anchorCol: 4, isMirrored: false, layout: l, soundStreams: sounds });
-    expect(r).toMatchObject({ ok: false, reason: expect.stringMatching(/pad \[4,5\] is occupied/) });
+    expect(r).toMatchObject({ ok: false, reason: expect.stringMatching(/Row 5 · Col 6 is occupied/) });
   });
 
   it('refuses a drop off the grid, and a Sound already placed elsewhere', () => {
@@ -54,7 +54,7 @@ describe('resolvePresetDrop', () => {
     const l = layout();
     l.padToVoice['0,0'] = { id: projectSoundIdForLane('a'), name: 'A', sourceType: 'midi_track', sourceFile: '', originalMidiNote: null, color: '#000' };
     expect(resolvePresetDrop({ preset: preset([pad('a', 0, 0), pad('b', 0, 1)]), anchorRow: 4, anchorCol: 4, isMirrored: false, layout: l, soundStreams: sounds }))
-      .toMatchObject({ ok: false, reason: expect.stringMatching(/already on pad \[0,0\]/) });
+      .toMatchObject({ ok: false, reason: expect.stringMatching(/already on Row 1 · Col 1\./) });
   });
 
   it('honours mirror: columns flip', () => {

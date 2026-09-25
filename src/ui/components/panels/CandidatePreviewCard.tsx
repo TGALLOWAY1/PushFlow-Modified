@@ -10,6 +10,9 @@ import { type CandidateSolution } from '../../../types/candidateSolution';
 import { type SoundStream } from '../../state/projectState';
 import { MiniGridPreview } from './MiniGridPreview';
 import { formatPlanScore, getPlanScoreSummary } from '../../analysis/planScore';
+import { FACTOR_KEYS, FACTOR_META, factorsFromBreakdown } from '../../analysis/factorMeta';
+import { strategyLabel } from '../../analysis/strategyLabels';
+import { type V1CostBreakdown } from '../../../types/diagnostics';
 
 interface CandidatePreviewCardProps {
   candidate: CandidateSolution;
@@ -37,15 +40,11 @@ function difficultyColor(score: number): string {
   return '#ef4444';
 }
 
-function topCostDriver(metrics: { fingerPreference: number; handShapeDeviation: number; transitionCost: number; handBalance: number; constraintPenalty: number }): string {
-  const factors: Array<[string, number]> = [
-    ['Stretch', metrics.fingerPreference + metrics.handShapeDeviation],
-    ['Movement', metrics.transitionCost],
-    ['Balance', metrics.handBalance],
-    ['Constraint', metrics.constraintPenalty],
-  ];
-  factors.sort((a, b) => b[1] - a[1]);
-  return factors[0][0];
+/** The factor that costs this plan most, by its FACTOR_META label (T20). */
+function topCostDriver(metrics: V1CostBreakdown): string {
+  const values = factorsFromBreakdown(metrics);
+  const top = [...FACTOR_KEYS].sort((a, b) => values[b] - values[a])[0]!;
+  return FACTOR_META[top].label;
 }
 
 export function CandidatePreviewCard({
@@ -133,7 +132,7 @@ export function CandidatePreviewCard({
               #{rank}
             </span>
             <span className="text-pf-xs text-[var(--text-secondary)] truncate max-w-[80px]">
-              {candidate.metadata.strategy ?? 'Candidate'}
+              {strategyLabel(candidate.metadata.strategy)}
             </span>
           </div>
           <span

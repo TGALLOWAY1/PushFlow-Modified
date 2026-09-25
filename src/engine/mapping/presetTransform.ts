@@ -9,6 +9,7 @@ import { type PadCoord, isValidPad, padKey, GRID_ROWS, GRID_COLS } from '../../t
 import { type PresetPad, type PresetBoundingBox, type ComposerPreset } from '../../types/composerPreset';
 import { type HandSide } from '../../types/fingerModel';
 import { isZoneValid } from '../surface/handZone';
+import { formatRowCol } from '../../utils/padPosition';
 
 // ============================================================================
 // Relative ↔ Absolute Conversion
@@ -82,14 +83,14 @@ export function validatePlacement(
     // Grid bounds check
     if (!isValidPad(abs)) {
       reasons.push(
-        `Pad at (${abs.row}, ${abs.col}) is outside the 8×8 grid`
+        `${formatRowCol(abs.row, abs.col)} is outside the 8×8 grid`
       );
     }
 
     // Hand zone check (only if within grid)
     if (isValidPad(abs) && pad.hand && !isZoneValid(abs, pad.hand)) {
       reasons.push(
-        `Pad at (${abs.row}, ${abs.col}) is outside the ${pad.hand} hand zone`
+        `${formatRowCol(abs.row, abs.col)} is outside the ${pad.hand} hand zone`
       );
     }
 
@@ -98,7 +99,7 @@ export function validatePlacement(
       const key = padKey(abs.row, abs.col);
       if (occupiedPads.has(key)) {
         reasons.push(
-          `Pad at (${abs.row}, ${abs.col}) collides with an occupied position`
+          `${formatRowCol(abs.row, abs.col)} collides with an occupied pad`
         );
       }
     }

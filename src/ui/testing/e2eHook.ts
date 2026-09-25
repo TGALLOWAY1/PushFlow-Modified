@@ -32,6 +32,11 @@ export interface PfStatus {
   currentTime: number;
   selectedEventIndex: number | null;
   selectedMomentIndex: number | null;
+  /** The Sound armed for click-to-place, and the selected pad (S2.4). */
+  armedStreamId: string | null;
+  selectedPadKey: string | null;
+  loopEnabled: boolean;
+  playbackRate: number;
 }
 
 export interface PfTestHook {
@@ -71,6 +76,10 @@ export function installE2EHook(get: () => E2EHookSource): () => void {
         currentTime: s.currentTime,
         selectedEventIndex: s.selectedEventIndex,
         selectedMomentIndex: s.selectedMomentIndex,
+        armedStreamId: s.armedStreamId,
+        selectedPadKey: s.selectedPadKey,
+        loopEnabled: s.loopEnabled,
+        playbackRate: s.playbackRate,
       };
     },
     layoutHash(which = 'shown') {

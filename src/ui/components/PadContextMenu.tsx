@@ -9,6 +9,7 @@ import { useProject } from '../state/ProjectContext';
 import { getDisplayedLayout } from '../state/projectState';
 import { Popover, useOverlayTitleId } from './shared/Overlay';
 import { useRemovePadWithUndo } from '../hooks/useRemovePadWithUndo';
+import { formatPadPosition } from '../../utils/padPosition';
 
 interface PadContextMenuProps {
   padKey: string;
@@ -57,7 +58,7 @@ export function PadContextMenu({ padKey, x, y, onClose, returnFocusTo }: PadCont
     >
       {/* Header */}
       <div id={titleId} className="px-3 py-1.5 text-pf-xs text-[var(--text-tertiary)] border-b border-[var(--border-subtle)]">
-        Pad [{padKey}] {voice ? `— ${voice.name}` : '— empty'}
+        {formatPadPosition(padKey)} {voice ? `· ${voice.name}` : '· empty'}
       </div>
 
       {/* Remove voice; refused while the Sound is locked to this pad (canon section 11) */}

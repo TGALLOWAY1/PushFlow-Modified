@@ -97,7 +97,7 @@ export function PresetInspector({ preset, instance, onRemoveInstance, onMirrorIn
                   style={{ backgroundColor: lane?.color ?? '#888' }}
                 />
                 <span className="text-gray-400 truncate flex-1">
-                  {lane?.name ?? pad.laneId}
+                  {lane?.name ?? 'a removed lane'}
                 </span>
                 {pad.hand && pad.finger ? (
                   <>

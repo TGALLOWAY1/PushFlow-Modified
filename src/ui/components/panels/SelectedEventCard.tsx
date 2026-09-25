@@ -31,7 +31,7 @@ export function SelectedEventCard({ selected, tempo, scope }: {
   const noteWord = cost.noteCount === 1 ? 'note' : 'notes';
 
   return (
-    <div data-testid="selected-event-card" className="rounded-pf-sm border border-[var(--border-default)] bg-[var(--bg-card)]/60 p-2.5 space-y-2">
+    <div data-testid="selected-event-card" className="rounded-pf-sm border border-[var(--border-default)] bg-bg-card/60 p-2.5 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <h4 className="section-header">Selected event</h4>
         <span className="text-pf-xs font-mono text-[var(--text-secondary)]">

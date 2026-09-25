@@ -27,7 +27,9 @@ import {
   type ProjectBackup,
 } from './indexedDbStore';
 import { migrateWithBackup, needsMigration, type StoredRecord } from './migrations';
-import { loadSerializedLoopState, type SerializedLoopState } from './loopStorage';
+import { loadSerializedLoopState, saveSerializedLoopState, type SerializedLoopState } from './loopStorage';
+import { generateId } from '../../utils/idGenerator';
+import { uniqueName } from '../../utils/uniqueName';
 
 // ============================================================================
 // Legacy localStorage keys (for migration)
@@ -193,6 +195,80 @@ export async function deleteProjectAsync(id: string): Promise<void> {
   } catch {
     // Ignore
   }
+}
+
+// ============================================================================
+// Library actions (S2.3): opened, rename, duplicate, delete with Undo
+// ============================================================================
+
+/**
+ * Records that the project was opened, and nothing else: updatedAt is kept, so
+ * looking at a project never makes it look edited (T52). Returns false when
+ * the project isn't stored.
+ */
+export async function markProjectOpened(id: string, at: string = new Date().toISOString()): Promise<boolean> {
+  const stored = await getProject(id);
+  if (!stored) return false;
+  await putProject({ ...stored, lastOpenedAt: at });
+  return true;
+}
+
+/** Renames a stored project. */
+export async function renameProjectAsync(id: string, name: string): Promise<boolean> {
+  const stored = await getProject(id);
+  const trimmed = name.trim();
+  if (!stored || !trimmed) return false;
+  await putProject({ ...stored, name: trimmed, updatedAt: new Date().toISOString() });
+  return true;
+}
+
+/**
+ * A copy of a stored project under a new id: "<name> (copy)", numbered when
+ * that name is taken, never opened yet, with its Composer pattern. Returns the
+ * new id, or null when the project isn't stored.
+ */
+export async function duplicateProjectAsync(id: string, takenNames: Iterable<string>): Promise<string | null> {
+  const state = await loadProjectAsync(id);
+  if (!state) return null;
+  const now = new Date().toISOString();
+  const copyId = generateId('proj');
+  await saveProjectAsync({
+    ...state,
+    id: copyId,
+    name: uniqueName(`${state.name} (copy)`, takenNames),
+    createdAt: now,
+    updatedAt: now,
+    lastOpenedAt: '',
+  });
+  const pattern = loadSerializedLoopState(id);
+  if (pattern) saveSerializedLoopState(copyId, pattern);
+  return copyId;
+}
+
+/** Everything a deleted project needs to come back exactly as it was. */
+export interface DeletedProject {
+  /** The stored record, untouched: same id, layouts, variants and dates. */
+  record: PersistedProject;
+  backups: ProjectBackup[];
+}
+
+/**
+ * Deletes a project now and returns what Undo needs (T53: delete with a ~10 s
+ * Undo instead of a native confirm). The Composer pattern in localStorage is
+ * left alone, as deleteProjectAsync always has.
+ */
+export async function deleteProjectWithUndo(id: string): Promise<DeletedProject | null> {
+  const record = await getProject(id);
+  if (!record) return null;
+  const backups = (await listBackups()).filter(b => b.projectId === id);
+  await deleteProjectAsync(id);
+  return { record, backups };
+}
+
+/** Undo for deleteProjectWithUndo: the record and its backups go back as they were. */
+export async function restoreDeletedProject(deleted: DeletedProject): Promise<void> {
+  await putProject(deleted.record);
+  for (const backup of deleted.backups) await putBackup(backup);
 }
 
 /**

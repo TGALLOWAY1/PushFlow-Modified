@@ -73,6 +73,18 @@ export const MIGRATIONS: readonly Migration[] = [
       return next;
     },
   },
+  {
+    // S2.3 (T52): the Library shows when a project was last opened and offers
+    // the last-opened one to continue. A project opened before this version
+    // was last opened no later than its last save, so it starts there.
+    from: 3,
+    to: 4,
+    name: 'last-opened-at',
+    up: record => ({
+      ...record,
+      lastOpenedAt: typeof record.lastOpenedAt === 'string' ? record.lastOpenedAt : record.updatedAt,
+    }),
+  },
 ];
 
 /** The layout with only the locks whose Sound sits on the locked pad. Non-layouts pass through. */

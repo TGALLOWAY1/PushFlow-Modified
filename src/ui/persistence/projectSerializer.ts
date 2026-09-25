@@ -76,6 +76,7 @@ export function serializeProject(state: ProjectState): PersistedProject {
     // Metadata
     createdAt: state.createdAt,
     updatedAt: new Date().toISOString(),
+    lastOpenedAt: state.lastOpenedAt,
     schemaVersion: PERSISTED_SCHEMA_VERSION,
 
     // Analysis results and candidates are analysis-only state, not project truth.
@@ -116,6 +117,8 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
     name: persisted.name || 'Unnamed Project',
     createdAt: persisted.createdAt || base.createdAt,
     updatedAt: persisted.updatedAt || base.updatedAt,
+    // '' is a project never opened (a copy, an imported file); keep it.
+    lastOpenedAt: typeof persisted.lastOpenedAt === 'string' ? persisted.lastOpenedAt : persisted.updatedAt || base.lastOpenedAt,
 
     // Sound
     soundStreams,
@@ -180,6 +183,8 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
     selectedEventIndex: null,
     selectedMomentIndex: null,
     selectedStreamId: null,
+    armedStreamId: null,
+    selectedPadKey: null,
     compareCandidateId: null,
     isProcessing: false,
     error: null,
@@ -308,6 +313,7 @@ function applyPersistedDefaults(p: Partial<PersistedProject> & { id: string }): 
     costToggles: isValidCostToggles(p.costToggles) ? p.costToggles : ALL_COSTS_ENABLED,
     createdAt: p.createdAt || new Date().toISOString(),
     updatedAt: p.updatedAt || new Date().toISOString(),
+    lastOpenedAt: typeof p.lastOpenedAt === 'string' ? p.lastOpenedAt : p.updatedAt || new Date().toISOString(),
     schemaVersion: PERSISTED_SCHEMA_VERSION,
   };
 }

@@ -12,6 +12,7 @@ import { type CandidateSolution } from '../../types/candidateSolution';
 import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { type SoundStream } from '../state/projectState';
+import { describeLayoutDiff, layoutDiff } from '../analysis/layoutDiff';
 
 /** Convert SoundStream[] to Voice[] for PadGrid consumption. */
 function streamsToVoices(streams: SoundStream[]): Voice[] {
@@ -81,29 +82,13 @@ export function CompareGridView({
   // Convert SoundStreams to Voices for PadGrid
   const voices = useMemo(() => streamsToVoices(soundStreams), [soundStreams]);
 
-  // Compute diff pads: pads where layout or finger assignments differ
-  const { diffPads, layoutDiffCount, fingerDiffCount } = useMemo(() => {
-    const diff = new Set<string>();
-    let layoutDiffs = 0;
+  // Compute diff pads: pads where layout or finger assignments differ.
+  // Sounds moved are counted by unique Sound id and pads by unique pad key
+  // (P2-8): the old count called every changed pad a "voice moved".
+  const { diffPads, layoutSummary, fingerDiffCount } = useMemo(() => {
+    const layout = layoutDiff(candidateA.layout, candidateB.layout);
+    const diff = new Set<string>(layout.changedPads);
     let fingerDiffs = 0;
-
-    // 1. Layout differences (which voice is on which pad)
-    const allPadKeys = new Set([
-      ...Object.keys(candidateA.layout.padToVoice),
-      ...Object.keys(candidateB.layout.padToVoice),
-    ]);
-
-    for (const pk of allPadKeys) {
-      const voiceA = candidateA.layout.padToVoice[pk];
-      const voiceB = candidateB.layout.padToVoice[pk];
-      const aId = voiceA?.id;
-      const bId = voiceB?.id;
-
-      if (aId !== bId) {
-        diff.add(pk);
-        layoutDiffs++;
-      }
-    }
 
     // 2. Finger assignment differences (same voice, different fingers)
     const fingersA = buildFingerMap(candidateA.executionPlan.fingerAssignments);
@@ -120,10 +105,10 @@ export function CompareGridView({
       }
     }
 
-    return { diffPads: diff, layoutDiffCount: layoutDiffs, fingerDiffCount: fingerDiffs };
+    return { diffPads: diff, layoutSummary: layout, fingerDiffCount: fingerDiffs };
   }, [candidateA, candidateB]);
 
-  const totalDiffs = layoutDiffCount + fingerDiffCount;
+  const layoutChanged = layoutSummary.changedPads.size > 0;
 
   return (
     <div className="space-y-2">
@@ -150,18 +135,15 @@ export function CompareGridView({
       </div>
 
       {/* Summary line */}
-      <div className="text-[10px] text-gray-500">
-        {totalDiffs === 0 ? (
+      <div data-testid="compare-diff-summary" className="text-pf-xs text-[var(--text-tertiary)]">
+        {!layoutChanged && fingerDiffCount === 0 ? (
           'No differences'
         ) : (
           <>
-            <span className="text-amber-400">{totalDiffs}</span>
-            {' '}pad{totalDiffs !== 1 ? 's' : ''} differ
-            {layoutDiffCount > 0 && (
-              <> · <span className="text-gray-400">{layoutDiffCount} voice{layoutDiffCount !== 1 ? 's' : ''} moved</span></>
-            )}
+            {layoutChanged && <span className="text-amber-400">{describeLayoutDiff(layoutSummary)}</span>}
+            {layoutChanged && fingerDiffCount > 0 && ' · '}
             {fingerDiffCount > 0 && (
-              <> · <span className="text-gray-400">{fingerDiffCount} finger{fingerDiffCount !== 1 ? 's' : ''} changed</span></>
+              <span className="text-[var(--text-secondary)]">{fingerDiffCount} {fingerDiffCount === 1 ? 'pad' : 'pads'} re-fingered</span>
             )}
           </>
         )}
