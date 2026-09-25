@@ -23,8 +23,9 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { exportProjectToFile } from '../../persistence/projectStorage';
 import { useToast } from '../shared/Toast';
 import { useViewSettings, ViewSettingsProvider } from '../../state/viewSettings';
-import { getDisplayedCandidate, getSelectedCandidate, isPadLocked, placementDisturbsLock } from '../../state/projectState';
+import { getDisplayedCandidate, getSelectedCandidate, isPadLocked } from '../../state/projectState';
 import { liveCompareIds, canCompare } from '../../state/compareSet';
+import { resolvePresetDrop } from '../../state/presetDrop';
 
 import { WorkspaceToolbar } from './WorkspaceToolbar';
 import { VoicePalette } from '../VoicePalette';
@@ -105,7 +106,7 @@ export function PerformanceWorkspace() {
 }
 
 function PerformanceWorkspaceInner() {
-  const { state, dispatch } = useProject();
+  const { state, dispatch, transact } = useProject();
   const navigate = useNavigate();
   const { generateFull, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason } = useAutoAnalysis();
   useIdentityMatchingNotice(state);
@@ -240,81 +241,56 @@ function PerformanceWorkspaceInner() {
     setDragPreview(null);
   }, []);
 
-  // Handle preset drop on grid
+  // Handle preset drop on grid. Validated against the layout at drop time and
+  // refused with a visible reason (T65 slice); read through a ref by the grid.
+  const presetDropStateRef = useRef({ state, draggingPreset });
+  presetDropStateRef.current = { state, draggingPreset };
   const handlePresetDrop = useCallback((presetId: string, anchorRow: number, anchorCol: number, isMirroredFromDrag: boolean) => {
-    const presets = loadComposerPresets();
-    let preset = presets.find(p => p.id === presetId);
-    if (!preset) return;
-
-    // Use the workspace-level mirror state if drag is active (M key may have changed it)
-    const isMirrored = draggingPreset ? draggingPreset.isMirrored : isMirroredFromDrag;
-
-    if (isMirrored) {
-      preset = mirrorPreset(preset);
-    }
-
-    // Clear drag state
+    const { state: current, draggingPreset: dragging } = presetDropStateRef.current;
+    const preset = loadComposerPresets().find(p => p.id === presetId);
     setDraggingPreset(null);
     setDragPreview(null);
+    if (!preset) return;
 
-    // Validate placement
-    const validation = validatePlacement(preset.pads, anchorRow, anchorCol, occupiedPads);
-    if (!validation.valid) {
-      window.alert(`Cannot place preset here:\n${validation.reasons.join('\n')}`);
-      return;
-    }
-
-    // Create placed instance
-    const instance: PlacedPresetInstance = {
-      id: generateId('pinst'),
-      presetId,
-      presetName: preset.name,
+    // The workspace-level mirror state wins while a drag is active.
+    const isMirrored = dragging ? dragging.isMirrored : isMirroredFromDrag;
+    const result = resolvePresetDrop({
+      preset,
       anchorRow,
       anchorCol,
       isMirrored,
-      pads: preset.pads,
-      config: preset.config,
-      lanes: preset.lanes,
-      events: preset.events,
-      boundingBox: preset.boundingBox,
-    };
-
-    // Assign pads to grid via BULK_ASSIGN_PADS
-    const padToVoice: Record<string, any> = {};
-    for (const pad of preset.pads) {
-      const absRow = anchorRow + pad.position.rowOffset;
-      const absCol = anchorCol + pad.position.colOffset;
-      const key = padKey(absRow, absCol);
-      const lane = preset.lanes.find(l => l.id === pad.laneId);
-      padToVoice[key] = {
-        id: pad.laneId,
-        name: lane?.name ?? 'Preset Pad',
-        sourceType: 'midi_track' as const,
-        sourceFile: `preset:${preset.name}`,
-        // Provenance only; a preset lane without a pitch has none (invariant 5).
-        originalMidiNote: lane?.midiNote ?? null,
-        color: lane?.color ?? '#888',
-      };
-    }
-    // A placement that would disturb a lock is refused as a whole, before
-    // anything (pads, fingers, the placed instance) is recorded.
-    if (placementDisturbsLock(state.workingLayout ?? state.activeLayout, padToVoice)) {
-      window.alert('Cannot place preset here:\nLocked \u00b7 Unlock to move');
+      layout: current.workingLayout ?? current.activeLayout,
+      soundStreams: current.soundStreams,
+    });
+    if (!result.ok) {
+      toast.show({ message: result.reason, durationMs: 8000 });
       return;
     }
-    dispatch({ type: 'MERGE_ASSIGN_PADS', payload: padToVoice });
 
-    // Set finger constraints for placed pads; unverified fingering is not applied (F9-12)
-    for (const pad of preset.pads) {
-      const constraint = presetPadFingerConstraint(pad);
-      if (!constraint) continue;
-      const key = padKey(anchorRow + pad.position.rowOffset, anchorCol + pad.position.colOffset);
-      dispatch({ type: 'SET_FINGER_CONSTRAINT', payload: { padKey: key, constraint } });
-    }
+    // One undo step: the pads and any verified finger preferences.
+    transact('Place preset', () => {
+      dispatch({ type: 'MERGE_ASSIGN_PADS', payload: result.padToVoice });
+      for (const [key, constraint] of Object.entries(result.fingerConstraints)) {
+        dispatch({ type: 'SET_FINGER_CONSTRAINT', payload: { padKey: key, constraint } });
+      }
+    });
 
-    // Add to workspace state
+    const placed = result.preset;
+    const instance: PlacedPresetInstance = {
+      id: generateId('pinst'),
+      presetId,
+      presetName: placed.name,
+      anchorRow,
+      anchorCol,
+      isMirrored,
+      pads: placed.pads,
+      config: placed.config,
+      lanes: placed.lanes,
+      events: placed.events,
+      boundingBox: placed.boundingBox,
+    };
     composerDispatch({ type: 'PLACE_PRESET', instance });
-  }, [dispatch, occupiedPads, draggingPreset, state.workingLayout, state.activeLayout]);
+  }, [dispatch, transact, toast]);
 
   // Resizable panel state
   const [leftWidth, setLeftWidth] = useState(LEFT_DEFAULT);

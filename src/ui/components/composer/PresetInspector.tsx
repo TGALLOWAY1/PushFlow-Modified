@@ -99,13 +99,19 @@ export function PresetInspector({ preset, instance, onRemoveInstance, onMirrorIn
                 <span className="text-gray-400 truncate flex-1">
                   {lane?.name ?? pad.laneId}
                 </span>
-                <span style={{ color: HAND_COLORS[pad.hand] }}>
-                  {pad.hand === 'left' ? 'L' : 'R'}{FINGER_ABBREV[pad.finger]}
-                </span>
-                <span className="text-gray-600">
-                  {FINGER_LABELS[pad.finger]}
-                </span>
-                {!isPresetFingerVerified(pad) && (
+                {pad.hand && pad.finger ? (
+                  <>
+                    <span style={{ color: HAND_COLORS[pad.hand] }}>
+                      {pad.hand === 'left' ? 'L' : 'R'}{FINGER_ABBREV[pad.finger]}
+                    </span>
+                    <span className="text-gray-600">
+                      {FINGER_LABELS[pad.finger]}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-gray-500" title="No finger preference was set when the preset was saved">no finger</span>
+                )}
+                {pad.finger != null && !isPresetFingerVerified(pad) && (
                   <span className="text-amber-300/80" title="Not a finger preference when saved; not applied on placement">
                     unverified
                   </span>
@@ -227,10 +233,10 @@ function InspectorGridPreview({
                   width={cellSize}
                   height={cellSize}
                   rx={2}
-                  fill={pad ? (pad.hand === 'left' ? '#0088FF' : '#FF4400') : '#222'}
+                  fill={pad ? (pad.hand === 'left' ? '#0088FF' : pad.hand === 'right' ? '#FF4400' : '#777') : '#222'}
                   opacity={pad ? 0.7 : 0.1}
                 />
-                {pad && (
+                {pad?.finger && (
                   <text
                     x={x + cellSize / 2}
                     y={y + cellSize / 2 + 1}
@@ -240,7 +246,7 @@ function InspectorGridPreview({
                     fill="white"
                     opacity={0.9}
                   >
-                    {FINGER_ABBREV[pad.finger]}
+                    {FINGER_ABBREV[pad.finger!]}
                   </text>
                 )}
               </g>

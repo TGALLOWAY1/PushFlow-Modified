@@ -927,6 +927,11 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       // pad (canon section 11): the whole placement is refused, like a drop
       // onto a locked pad. Nothing changes, so no draft and no undo step.
       if (placementDisturbsLock(state.workingLayout ?? state.activeLayout, action.payload)) return state;
+      // Nor does it overwrite a pad another Sound occupies (T65): refused whole.
+      {
+        const shown = state.workingLayout ?? state.activeLayout;
+        if (Object.entries(action.payload).some(([k, v]) => shown.padToVoice[k] && shown.padToVoice[k].id !== v.id)) return state;
+      }
       return updateWorkingLayout(state, layout => {
         const nextPadToVoice = { ...layout.padToVoice, ...action.payload };
         return {
@@ -1487,6 +1492,12 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       // Clearing an already-empty selection changes nothing (T06: an Escape
       // that closes an overlay must not also re-render the whole editor).
       if (action.payload === state.selectedEventIndex) return state;
+      // Selecting an event while stopped moves the playhead to it, so Play
+      // starts there (T10 slice). While playing, the playhead is left alone.
+      if (action.payload !== null && !state.isPlaying) {
+        const hit = getDisplayedExecutionPlan(state)?.fingerAssignments.find(a => a.eventIndex === action.payload);
+        if (hit) return { ...state, selectedEventIndex: action.payload, currentTime: hit.startTime };
+      }
       return { ...state, selectedEventIndex: action.payload };
 
     case 'SELECT_MOMENT':

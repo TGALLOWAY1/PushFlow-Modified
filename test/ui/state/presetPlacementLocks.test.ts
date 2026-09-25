@@ -36,11 +36,17 @@ describe('MERGE_ASSIGN_PADS and locks', () => {
     expect(projectReducer(state, { type: 'MERGE_ASSIGN_PADS', payload: { '5,5': voice('kick') } })).toBe(state);
   });
 
-  it('places over an unlocked pad as before, keeping the lock', () => {
-    const next = projectReducer(lockedState(), { type: 'MERGE_ASSIGN_PADS', payload: { '0,1': voice('preset-a'), '3,3': voice('preset-b') } });
+  it('places on empty pads, keeping the lock', () => {
+    const next = projectReducer(lockedState(), { type: 'MERGE_ASSIGN_PADS', payload: { '2,2': voice('preset-a'), '3,3': voice('preset-b') } });
     expect(next.workingLayout?.padToVoice['0,0']?.id).toBe('kick');
-    expect(next.workingLayout?.padToVoice['0,1']?.id).toBe('preset-a');
+    expect(next.workingLayout?.padToVoice['2,2']?.id).toBe('preset-a');
     expect(next.workingLayout?.placementLocks).toEqual({ kick: '0,0' });
+  });
+
+  it('refuses, whole, a placement over a pad another Sound occupies (S1b.4, T65)', () => {
+    const state = lockedState();
+    const occupied = Object.entries(state.activeLayout.padToVoice).find(([, v]) => v.id !== 'kick')![0];
+    expect(projectReducer(state, { type: 'MERGE_ASSIGN_PADS', payload: { [occupied]: voice('preset-a'), '3,3': voice('preset-b') } })).toBe(state);
   });
 
   it('placementDisturbsLock is the check the drop handler runs before recording anything', () => {

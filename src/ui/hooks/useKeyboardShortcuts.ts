@@ -5,13 +5,16 @@
  * - Ctrl+S / Cmd+S: Save now
  * - Ctrl+Z / Cmd+Z: Undo
  * - Ctrl+Y / Cmd+Shift+Z: Redo
- * - Delete / Backspace: Remove selected pad assignment
  * - Escape: Deselect event
+ * - Arrow Left/Right: previous/next event, only while stopped
+ *
+ * Delete/Backspace no longer remove the selected event's pad (T28): a pad is
+ * removed through its menu, its × or by dragging it off.
  */
 
 import { useEffect } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getDisplayedLayout, getDisplayedExecutionPlan } from '../state/projectState';
+import { getDisplayedExecutionPlan } from '../state/projectState';
 
 export interface KeyboardShortcutOptions {
   /** Cmd/Ctrl+S: save now (T57). Without it the browser offers to save the page as HTML. */
@@ -35,7 +38,7 @@ export function useKeyboardShortcuts({ onSave }: KeyboardShortcutOptions = {}) {
 
       // Don't intercept when typing in inputs
       const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable) {
         return;
       }
 
@@ -61,6 +64,9 @@ export function useKeyboardShortcuts({ onSave }: KeyboardShortcutOptions = {}) {
 
       // Arrow Left/Right: Navigate through time steps (groups of simultaneous events)
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        // While playing, the arrows do nothing for now (T10/T61 slice; P4 makes
+        // them seek by event). They used to jump the selection back to t=0.
+        if (state.isPlaying) return;
         const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
         if (!assignments || assignments.length === 0) return;
         e.preventDefault();
@@ -93,22 +99,6 @@ export function useKeyboardShortcuts({ onSave }: KeyboardShortcutOptions = {}) {
         const firstAtTime = assignments.find(a => a.startTime === targetTime);
         dispatch({ type: 'SELECT_EVENT', payload: firstAtTime?.eventIndex ?? null });
         return;
-      }
-
-      // Delete / Backspace: Remove pad at selected event
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (state.selectedEventIndex === null) return;
-        const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
-        if (!assignments) return;
-        const a = assignments.find(fa => fa.eventIndex === state.selectedEventIndex);
-        if (!a || a.row === undefined || a.col === undefined) return;
-        const layout = getDisplayedLayout(state);
-        if (!layout) return;
-        const padKey = `${a.row},${a.col}`;
-        if (layout.padToVoice[padKey]) {
-          e.preventDefault();
-          dispatch({ type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey } });
-        }
       }
     };
 

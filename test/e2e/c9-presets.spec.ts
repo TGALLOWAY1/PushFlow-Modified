@@ -56,7 +56,6 @@ async function dropPresetOn(page: Page, padKey: string) {
 
 test.describe('C9 · Composer presets on the grid', () => {
   test('dropping a preset on empty pads places its Sounds', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C9: dragover sets dropEffect "move" but the card allows only "copy", so drop never fires (flips in S1b.4)');
     await newProject(page, pf);
     const [a, b] = await buildPreset(page, pf);
     await openPresets(page);
@@ -66,7 +65,6 @@ test.describe('C9 · Composer presets on the grid', () => {
   });
 
   test('a drop overlapping an occupied pad is refused with a reason', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C9: the drop never fires, so no reason is ever shown (flips in S1b.4)');
     await newProject(page, pf);
     const [a] = await buildPreset(page, pf);
     const stream = (await pf.call('state')).soundStreams.find(s => s.id === a)!;
@@ -79,7 +77,6 @@ test.describe('C9 · Composer presets on the grid', () => {
   });
 
   test('a Mirror toggle set before dragging is honoured', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C9: the drop never fires, so the mirror state is never applied (flips in S1b.4)');
     await newProject(page, pf);
     const [a, b] = await buildPreset(page, pf);
     await openPresets(page);
@@ -97,7 +94,6 @@ test.describe('C9 · Composer presets on the grid', () => {
   });
 
   test('a preset whose Sounds are not in this project is refused and places nothing', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C9: no refusal message; lanes are never checked against project Sound ids (flips in S1b.4)');
     await newProject(page, pf);
     await buildPreset(page, pf);
     // A different project: TEST MIDI 1's Sounds, none of them the preset's lanes.
@@ -111,7 +107,6 @@ test.describe('C9 · Composer presets on the grid', () => {
   });
 
   test('Save Preset leaves fingers blank instead of inventing them', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C9: Save Preset invents hand/finger from the column ("left"/"index") (flips in S1b.4)');
     await newProject(page, pf);
     await buildPreset(page, pf);
     const stored = await page.evaluate(k => JSON.parse(localStorage.getItem(k) ?? '[]'), PRESETS_KEY) as

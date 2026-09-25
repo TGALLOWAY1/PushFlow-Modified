@@ -268,11 +268,11 @@ function OverviewInfographic() {
             </div>
             <div className="text-[9px] text-gray-500 space-y-1">
               <div className="text-[10px] text-gray-400">Onion view:</div>
-              <p className="text-gray-600 leading-snug">
-                Ghosted previous/next event states with curved transition arcs
+              <p className="text-gray-600 leading-snug" data-testid="learn-more-onion">
+                With an event selected, its pads are highlighted, the next event&apos;s pads get a dashed outline, and every other pad dims. Onion skin adds a dotted outline on the previous event&apos;s pads, empty or not.
               </p>
               <p className="text-[8px] text-gray-700">
-                Active sounds highlighted for selected event
+                During playback the selection overlay pauses so struck pads flash normally; Stop brings it back.
               </p>
             </div>
           </div>
@@ -670,7 +670,7 @@ export const HARD_CONSTRAINTS = [
       {
         name: 'One Finger Per Sound',
         key: 'ownership',
-        description: 'Every sound is played by the same finger for the whole performance, so the pad\u2192finger mapping is something you can memorise. If you set a finger for a sound, that is its finger; otherwise the solver picks one, looking ahead to avoid a finger that a later chord\u2019s grip cannot keep. A Sound has one finger setting, shared by the Sounds panel, the grid and the Composer; clearing it in any of them clears it everywhere. Placing a Composer preset applies only fingering that was a finger preference when the preset was saved: fingering marked unverified is shown but never applied.',
+        description: 'Every sound is played by the same finger for the whole performance, so the pad\u2192finger mapping is something you can memorise. If you set a finger for a sound, that is its finger; otherwise the solver picks one, looking ahead to avoid a finger that a later chord\u2019s grip cannot keep. A Sound has one finger setting, shared by the Sounds panel, the grid and the Composer; clearing it in any of them clears it everywhere. Save Preset records a pad\u2019s finger only when its Sound has a finger preference, and leaves it blank otherwise. Placing a Composer preset applies only those preferences: fingering marked unverified (in presets saved before this rule) is shown but never applied. A preset is placed only when all its Sounds are in this project and every pad it needs is empty; otherwise the drop is refused with the reason.',
       },
       {
         name: 'When a Rule Gives Way',

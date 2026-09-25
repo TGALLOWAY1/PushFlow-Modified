@@ -19,6 +19,7 @@ import { useProject } from '../state/ProjectContext';
 import { getActiveStreams, getDisplayedExecutionPlan, type SoundStream } from '../state/projectState';
 import { groupIntoMoments, summarizeMomentCost, type MomentCost } from '@/engine';
 import { MOMENT_EPSILON } from '../../types/performanceEvent';
+import { isOverlayOpen } from './shared/Overlay';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -131,8 +132,10 @@ export function EventsPanel({
   // Keyboard navigation (V1 pattern: ArrowUp/Down, j/k)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       if (moments.length === 0) return;
+      // Nothing while playing (T61 slice), and nothing under an open dialog or menu.
+      if (state.isPlaying || isOverlayOpen()) return;
 
       const currentIdx = selectedMomentIdx ?? -1;
 
@@ -149,7 +152,7 @@ export function EventsPanel({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [moments, selectedMomentIdx, handleMomentClick]);
+  }, [moments, selectedMomentIdx, handleMomentClick, state.isPlaying]);
 
   // Auto-scroll selected moment row into view (V1 pattern)
   useEffect(() => {

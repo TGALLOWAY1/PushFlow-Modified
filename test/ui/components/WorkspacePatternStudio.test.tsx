@@ -249,8 +249,8 @@ describe('P1a-12c · Undo after Clear restores the notes, Sounds and pads', () =
   });
 });
 
-describe('P1a-13b · Save Preset marks made-up fingering unverified', () => {
-  it('records a finger preference as such, and the column/index fallback as unverified', async () => {
+describe('P1a-13b / P1b-5d · Save Preset records only real fingering', () => {
+  it('records a finger preference as such, and leaves a pad without one blank (S1b.4: no invented fingering)', async () => {
     const { project } = setup();
     const kick = await addLaneWithNote(project, 0, 0);
     const snare = await addLaneWithNote(project, 1, 4);
@@ -268,7 +268,8 @@ describe('P1a-13b · Save Preset marks made-up fingering unverified', () => {
       window.prompt = prompt;
     }
     const [preset] = JSON.parse(localStorage.getItem('pushflow_composer_presets') ?? '[]');
-    const byLane = Object.fromEntries(preset.pads.map((p: { laneId: string; fingerSource: string; finger: string }) => [p.laneId, [p.finger, p.fingerSource]]));
-    expect(Object.values(byLane).sort()).toEqual([['index', 'unverified'], ['middle', 'preference']]);
+    const byLane = Object.fromEntries(preset.pads.map((p: { laneId: string; fingerSource?: string; finger: string | null; hand: string | null }) => [p.laneId, [p.hand, p.finger, p.fingerSource ?? null]]));
+    expect(Object.values(byLane)).toContainEqual(['left', 'middle', 'preference']);
+    expect(Object.values(byLane)).toContainEqual([null, null, null]);
   });
 });

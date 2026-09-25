@@ -38,10 +38,13 @@ export interface PresetPad {
   position: RelativePadPosition;
   /** Lane ID this pad is linked to (connects pad → events). */
   laneId: string;
-  /** Mandatory finger assignment. */
-  finger: FingerType;
-  /** Which hand plays this pad. */
-  hand: HandSide;
+  /**
+   * Finger that plays this pad: the Sound's finger preference when the preset
+   * was saved, or null when there was none (Save Preset never invents one, T65).
+   */
+  finger: FingerType | null;
+  /** Hand that plays this pad, or null when no preference was recorded. */
+  hand: HandSide | null;
   /**
    * Where hand and finger came from. 'preference': the Sound's finger
    * preference when the preset was saved, applied (as a soft preference) on
@@ -188,6 +191,7 @@ export function computeHandedness(pads: PresetPad[]): PresetHandedness {
     if (pad.hand === 'right') hasRight = true;
     if (hasLeft && hasRight) return 'both';
   }
+  if (!hasLeft && !hasRight) return 'both'; // no hand recorded on any pad
   return hasLeft ? 'left' : 'right';
 }
 
@@ -223,9 +227,23 @@ export function isPresetFingerVerified(pad: PresetPad): boolean {
   return pad.fingerSource === 'preference';
 }
 
-/** Whether any of a preset's pads carries fingering that is not applied. */
+/** Whether any of a preset's pads carries fingering that is not applied (blank pads carry none). */
 export function hasUnverifiedFingering(pads: PresetPad[]): boolean {
-  return pads.some(pad => !isPresetFingerVerified(pad));
+  return pads.some(pad => pad.finger != null && !isPresetFingerVerified(pad));
+}
+
+/** Whether a preset records a hand on any pad. */
+export function hasRecordedHands(pads: PresetPad[]): boolean {
+  return pads.some(pad => pad.hand != null);
+}
+
+/**
+ * Whether a preset can be mirrored: it has pads, and they are played by one
+ * hand or by no recorded hand (mirroring then only flips the columns).
+ */
+export function canMirrorPreset(pads: PresetPad[]): boolean {
+  if (pads.length === 0) return false;
+  return !hasRecordedHands(pads) || isMirrorEligible(computeHandedness(pads));
 }
 
 const FINGER_NUMBER: Record<FingerType, number> = { thumb: 1, index: 2, middle: 3, ring: 4, pinky: 5 };
@@ -235,7 +253,7 @@ const FINGER_NUMBER: Record<FingerType, number> = { thumb: 1, index: 2, middle: 
  * fingering is unverified and must not be applied (F9-12).
  */
 export function presetPadFingerConstraint(pad: PresetPad): string | null {
-  if (!isPresetFingerVerified(pad)) return null;
+  if (!isPresetFingerVerified(pad) || !pad.hand || !pad.finger) return null;
   return `${pad.hand === 'left' ? 'L' : 'R'}${FINGER_NUMBER[pad.finger] ?? 2}`;
 }
 

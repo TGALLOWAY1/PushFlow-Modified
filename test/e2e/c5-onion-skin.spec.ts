@@ -8,12 +8,11 @@
  * Flips in S1b.4 (moment-view stop-gaps).
  */
 
-import { test, expect, EXPECTED_FAIL } from './fixtures';
+import { test, expect } from './fixtures';
 import { openTestMidi1, suggestStartingLayout, waitForAnalysis, selectMoment, gridClip } from './project';
 
 test.describe('C5 · onion skin', () => {
   test('turning onion skin on changes grid pixels for a selected event', async ({ page, pf }) => {
-    test.fail(EXPECTED_FAIL, 'C5: inline opacity/saturate on non-selected pads hide the onion layers (flips in S1b.4)');
     await openTestMidi1(page, pf);
     await suggestStartingLayout(page, pf);
     await waitForAnalysis(pf);
