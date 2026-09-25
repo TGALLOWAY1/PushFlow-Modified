@@ -27,7 +27,7 @@ import { type PerformanceLane, type LaneGroup, type SourceFile } from '../../typ
 import { type LaneAction, isLaneAction, lanesReducer } from './lanesReducer';
 import { type CostToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
 import { type PerformanceCostBreakdown } from '../../types/costBreakdown';
-import { type OptimizerMethodKey, type OptimizerMove, type OptimizationIteration } from '../../engine/optimization/optimizerInterface';
+import { type OptimizerMethodKey, type OptimizerMove, type OptimizationIteration, type StopReason } from '../../engine/optimization/optimizerInterface';
 import { type GreedyLayoutStrategy } from '../../engine/optimization/greedyCandidatePipeline';
 import { checkPlanFreshness } from '../../engine/evaluation/executionPlanValidation';
 import { hashLayout } from '../../engine/mapping/mappingResolver';
@@ -200,6 +200,12 @@ export interface ProjectSession {
   moveHistoryStopReason: string | null;
   /** Current index in move history for step-through replay. */
   moveHistoryIndex: number | null;
+  /**
+   * How the last Generate ended (T35). A cancelled run commits nothing else
+   * (no candidates, summary or trace), so its 'cancelled' lives here: the
+   * candidate list and the trace fields above still describe the run before.
+   */
+  lastGenerationRun: GenerationRunRecord | null;
 
   // Transport
   currentTime: number;
@@ -221,6 +227,20 @@ export interface ProjectSession {
   countInBars: number;
   /** Rehearsal audio settings (click track and audible hits). */
   rehearsalAudio: RehearsalAudioOptions;
+}
+
+/** How a Generate run ended (session only; see ProjectSession.lastGenerationRun). */
+export interface GenerationRunRecord {
+  outcome: 'completed' | 'cancelled' | 'failed';
+  /**
+   * 'cancelled' for Cancel; for a completed run 'time_budget' when a candidate
+   * used its whole time limit, else 'completed'; null when the run failed.
+   */
+  stopReason: StopReason | null;
+  method: OptimizerMethodKey;
+  /** Candidates the run committed: 0 unless it completed. */
+  candidateCount: number;
+  elapsedMs: number;
 }
 
 /**
@@ -434,6 +454,7 @@ export type ProjectAction =
   | { type: 'SET_MANUAL_COST_RESULT'; payload: PerformanceCostBreakdown | null }
   | { type: 'SET_MOVE_HISTORY'; payload: { moves: OptimizerMove[] | null; trace: OptimizationIteration[] | null; stopReason?: string } }
   | { type: 'SET_MOVE_HISTORY_INDEX'; payload: number | null }
+  | { type: 'SET_GENERATION_RUN'; payload: GenerationRunRecord | null }
 
   // Transport
   | { type: 'SET_CURRENT_TIME'; payload: number }
@@ -1649,6 +1670,9 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'SET_MOVE_HISTORY_INDEX':
       return { ...state, moveHistoryIndex: action.payload };
 
+    case 'SET_GENERATION_RUN':
+      return { ...state, lastGenerationRun: action.payload };
+
     default:
       return state;
   }
@@ -1715,6 +1739,7 @@ export function createEmptyProjectState(): ProjectState {
     iterationTrace: null,
     moveHistoryStopReason: null,
     moveHistoryIndex: null,
+    lastGenerationRun: null,
     currentTime: 0,
     isPlaying: false,
     playbackRate: 1,

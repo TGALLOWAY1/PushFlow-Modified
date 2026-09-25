@@ -147,9 +147,23 @@ export {
 export { BeamSolver, createBeamSolver } from './solvers/beamSolver';
 
 // Optimization
-export { AnnealingSolver, createAnnealingSolver } from './optimization/annealingSolver';
+export { AnnealingSolver, createAnnealingSolver, planAnnealingRun, annealingRunSummary, type AnnealingPlan } from './optimization/annealingSolver';
 export { applyRandomMutation, getEmptyPads } from './optimization/mutationService';
-export { generateCandidates, type CandidateGenerationResult } from './optimization/multiCandidateGenerator';
+export { generateCandidates, type CandidateGenerationResult, type CandidateGenerationConfig } from './optimization/multiCandidateGenerator';
+// Generation progress, Cancel and the clock (T35)
+export {
+  type AbortFlag,
+  type GenerationProgress,
+  type RunControl,
+  type AnnealingProgress,
+  type AnnealingRunControl,
+  GenerationCancelledError,
+  isGenerationCancelled,
+  throwIfCancelled,
+  estimateRemainingMs,
+  Yielder,
+  YIELD_SLICE_MS,
+} from './optimization/runControl';
 export { rankCandidates, filterPareto, compositeScore, compareDimensions } from './optimization/candidateRanker';
 
 // Pluggable optimizer framework
@@ -165,6 +179,8 @@ export {
   type OptimizerConfig,
   type MoveType,
   type StopReason,
+  STOP_REASON_LABELS,
+  STOP_REASONS_EXPLAINED,
 } from './optimization/optimizerInterface';
 export {
   registerOptimizer,

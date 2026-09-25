@@ -23,10 +23,14 @@ import {
   getDisplayedCandidate,
   getDisplayedLayout,
   getActiveStreams,
+  type GenerationRunRecord,
 } from '../state/projectState';
+import { type RunControl, isGenerationCancelled, throwIfCancelled } from '@/engine';
+import { type CandidateSolution } from '../../types/candidateSolution';
+import { createGenerationProgressStore } from './generationProgress';
 import { classifyOptimizationDifficulty } from '../../engine/evaluation/difficultyScoring';
 import { evaluatePerformance } from '../../engine/evaluation/canonicalEvaluator';
-import { generateCandidates } from '../../engine/optimization/multiCandidateGenerator';
+import { generateCandidates, type CandidateGenerationResult } from '../../engine/optimization/multiCandidateGenerator';
 import { generateGreedyCandidates } from '../../engine/optimization/greedyCandidatePipeline';
 import { pinnedPlacements } from '../../engine/mapping/placementLocks';
 import { analyzeLayout, buildSolverConstraints, constraintsToManualAssignments } from '../analysis/analyzeLayout';
@@ -48,12 +52,33 @@ export type GenerationMode = OptimizationMode | 'auto';
 
 const AUTO_ANALYSIS_DEBOUNCE_MS = 1000;
 
-export function useAutoAnalysis() {
+export interface AutoAnalysisOptions {
+  /** The clock for Generate's budgets, elapsed time and ETA (tests inject one). */
+  now?: () => number;
+}
+
+/**
+ * A completed run's stop reason: 'time_budget' when any candidate used its
+ * whole time limit (Thorough), else 'completed'.
+ */
+function completedRunStopReason(candidates: CandidateSolution[]): GenerationRunRecord['stopReason'] {
+  return candidates.some(c => c.stopReason === 'time_budget') ? 'time_budget' : 'completed';
+}
+
+export function useAutoAnalysis(options: AutoAnalysisOptions = {}) {
   const { state, dispatch } = useProject();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef(false);
-  const [generationProgress, setGenerationProgress] = useState<string | null>(null);
   const [analysisPhase, setAnalysisPhase] = useState<'idle' | 'analyzing' | 'generating'>('idle');
+  // Generate's progress lives outside project state, so a report re-renders
+  // only the pill that shows it (see generationProgress.ts).
+  const [generationProgress] = useState(createGenerationProgressStore);
+  // The run in flight; Cancel aborts it (T35).
+  const runRef = useRef<AbortController | null>(null);
+  const clock = options.now;
+
+  // Leaving the project stops a run in flight rather than letting it finish unseen.
+  useEffect(() => () => runRef.current?.abort(), []);
 
   // Auto re-analysis: fast single-candidate when stale
   useEffect(() => {
@@ -131,17 +156,35 @@ export function useAutoAnalysis() {
     };
   }, [state.analysisStale, state.isProcessing, state.soundStreams, state.activeLayout, state.workingLayout, state.instrumentConfig, state.sections, state.engineConfig, dispatch]);
 
-  // Full generation (manual trigger) — routes to selected optimizer method
+  // Full generation (manual trigger) — routes to selected optimizer method.
+  //
+  // Progress, Cancel and one commit (T35): the run reports progress to the
+  // toolbar's pill, Cancel aborts it at its next yield, and its results are
+  // dispatched together only once it has finished. A cancelled run dispatches
+  // no candidates, summary or trace (the previous ones stay), records
+  // stopReason 'cancelled' in lastGenerationRun, and raises no error banner.
   const generateFull = useCallback(async (mode: GenerationMode = 'fast') => {
     const activeStreams = getActiveStreams(state);
     const layout = getDisplayedLayout(state);
-    if (activeStreams.length === 0 || !layout) return;
+    // One run at a time (Generate is disabled while one is in flight).
+    if (activeStreams.length === 0 || !layout || runRef.current) return 0;
+
+    const controller = new AbortController();
+    runRef.current = controller;
+    const now = clock ?? Date.now;
+    const started = now();
+    const method = state.optimizerMethod;
+    const runControl: RunControl = { signal: controller.signal, now, onProgress: generationProgress.report };
+    const recordRun = (record: Omit<GenerationRunRecord, 'method' | 'elapsedMs'>) => dispatch({
+      type: 'SET_GENERATION_RUN',
+      payload: { ...record, method, elapsedMs: now() - started },
+    });
 
     dispatch({ type: 'SET_ERROR', payload: null });
     dispatch({ type: 'SET_PROCESSING', payload: true });
-    dispatch({ type: 'SET_MOVE_HISTORY', payload: { moves: null, trace: null } }); // Clear previous trace
+    dispatch({ type: 'SET_GENERATION_RUN', payload: null });
     setAnalysisPhase('generating');
-    setGenerationProgress('Preparing layout...');
+    generationProgress.start(method);
 
     try {
       const performance = getActivePerformance(state);
@@ -154,18 +197,13 @@ export function useAutoAnalysis() {
       // in every candidate, pinned for the run rather than locked.
       const pinned = pinnedPlacements(effectiveLayout, performance);
 
-      const method = state.optimizerMethod;
+      let generationResult: CandidateGenerationResult;
 
       // ── Route: Greedy diverse candidate pipeline ───────────
       if (method === 'greedy') {
         const neutralHandCenters = getNeutralHandCenters(effectiveLayout, state.instrumentConfig);
 
-        const strategyLabel = state.greedyStrategy === 'all'
-          ? 'all strategies'
-          : state.greedyStrategy;
-        setGenerationProgress(`Greedy optimization (${strategyLabel}): generating candidates...`);
-
-        const generationResult = await generateGreedyCandidates({
+        generationResult = await generateGreedyCandidates({
           performance,
           instrumentConfig: state.instrumentConfig,
           engineConfig: state.engineConfig,
@@ -184,63 +222,81 @@ export function useAutoAnalysis() {
           strategy: state.greedyStrategy,
           voiceHints: state.soundStreams,
           pinnedPlacements: pinned,
+          runControl,
         });
+      } else {
+        // ── Route: Legacy multi-candidate (beam / annealing) ────
+        const resolvedMode: OptimizationMode = mode === 'auto'
+          ? classifyOptimizationDifficulty(performance)
+          : mode;
 
-        const candidates = generationResult.candidates;
+        const solverConstraints = buildSolverConstraints(performance, effectiveLayout);
+        const manualAssignments = constraintsToManualAssignments(solverConstraints);
 
-        // Generate only proposes: the candidates fill the list, and the draft,
-        // the grid and the draft's analysis are left alone (invariant 7). The
-        // user tries one with Preview.
-        dispatch({ type: 'SET_CANDIDATES', payload: candidates });
-        dispatch({ type: 'SET_GENERATION_SUMMARY', payload: generationResult.summary });
-
-        return candidates.length;
+        const defaultPose = createDefaultPose0();
+        generationResult = await generateCandidates(performance, defaultPose, {
+          count: 3,
+          optimizationMode: resolvedMode,
+          engineConfig: state.engineConfig,
+          instrumentConfig: state.instrumentConfig,
+          sections: state.sections,
+          manualAssignments,
+          baseLayout: effectiveLayout,
+          activeLayout: effectiveLayout,
+          // Sounds with no pad yet, by identity, so a seeded candidate can place them.
+          voiceHints: state.soundStreams,
+          pinnedPlacements: pinned,
+          runControl,
+        });
       }
 
-      // ── Route: Legacy multi-candidate (beam / annealing) ────
-      const resolvedMode: OptimizationMode = mode === 'auto'
-        ? classifyOptimizationDifficulty(performance)
-        : mode;
+      // A Cancel that arrived after the engine's last check still discards the run.
+      throwIfCancelled(controller.signal);
 
-      const solverConstraints = buildSolverConstraints(performance, effectiveLayout);
-      const manualAssignments = constraintsToManualAssignments(solverConstraints);
-
-      const modeLabel = resolvedMode === 'deep' ? 'Thorough' : 'Quick';
-      setGenerationProgress(`${modeLabel} optimization: generating 3 candidates...`);
-
-      const defaultPose = createDefaultPose0();
-      const generationResult = await generateCandidates(performance, defaultPose, {
-        count: 3,
-        optimizationMode: resolvedMode,
-        engineConfig: state.engineConfig,
-        instrumentConfig: state.instrumentConfig,
-        sections: state.sections,
-        manualAssignments,
-        baseLayout: effectiveLayout,
-        activeLayout: effectiveLayout,
-        // Sounds with no pad yet, by identity, so a seeded candidate can place them.
-        voiceHints: state.soundStreams,
-        pinnedPlacements: pinned,
+      // Generate only proposes: the candidates fill the list, and the draft,
+      // the grid and the draft's analysis are left alone (invariant 7). The
+      // list, its summary, the trace and the run record land together, in one
+      // synchronous batch. The trace panel starts on the top candidate's own
+      // trace and stop reason (T33; every candidate carries its own).
+      const { candidates, summary } = generationResult;
+      const top = candidates[0];
+      dispatch({ type: 'SET_CANDIDATES', payload: candidates });
+      dispatch({ type: 'SET_GENERATION_SUMMARY', payload: summary });
+      dispatch({
+        type: 'SET_MOVE_HISTORY',
+        payload: {
+          moves: top?.moveHistory ?? null,
+          trace: top?.iterationTrace ?? null,
+          stopReason: top?.stopReason,
+        },
       });
-
-      setGenerationProgress('Ranking results...');
-      dispatch({ type: 'SET_CANDIDATES', payload: generationResult.candidates });
-      dispatch({ type: 'SET_GENERATION_SUMMARY', payload: generationResult.summary });
-      return generationResult.candidates.length;
+      recordRun({ outcome: 'completed', stopReason: completedRunStopReason(candidates), candidateCount: candidates.length });
+      return candidates.length;
     } catch (err) {
+      if (isGenerationCancelled(err)) {
+        // Cancelled, not failed: no error banner, and nothing from the run is kept.
+        recordRun({ outcome: 'cancelled', stopReason: 'cancelled', candidateCount: 0 });
+        return 0;
+      }
       dispatch({ type: 'SET_ERROR', payload: err instanceof Error ? err.message : 'Generation failed' });
+      recordRun({ outcome: 'failed', stopReason: null, candidateCount: 0 });
       return 0;
     } finally {
-      // CLAUDE.md requires isProcessing be reset on BOTH paths. The beam and
-      // annealing branch previously returned without clearing it, so after a
-      // successful Generate with either method the spinner ran forever and every
-      // control gated on isProcessing stayed disabled until a page reload — the
-      // user could not inspect, compare or promote the candidates just produced.
+      // CLAUDE.md requires isProcessing be reset on every path: success, error
+      // and cancel. The beam and annealing branch once returned without
+      // clearing it, so the spinner ran forever and every control gated on
+      // isProcessing stayed disabled until a page reload.
+      runRef.current = null;
       dispatch({ type: 'SET_PROCESSING', payload: false });
-      setGenerationProgress(null);
+      generationProgress.finish();
       setAnalysisPhase('idle');
     }
-  }, [state, dispatch]);
+  }, [state, dispatch, clock, generationProgress]);
+
+  /** Cancels the Generate in flight (T35); it stops at its next yield and commits nothing. */
+  const cancelGeneration = useCallback(() => {
+    runRef.current?.abort();
+  }, []);
 
   // Calculate Cost: evaluate current layout + assignment with given toggles
   const calculateCost = useCallback(async (costToggles: CostToggles) => {
@@ -311,5 +367,13 @@ export function useAutoAnalysis() {
       ? 'Import MIDI or build a pattern first'
       : null;
 
-  return { generateFull, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason };
+  return {
+    generateFull,
+    cancelGeneration,
+    calculateCost,
+    generationProgress,
+    analysisPhase,
+    canGenerate,
+    generateDisabledReason,
+  };
 }

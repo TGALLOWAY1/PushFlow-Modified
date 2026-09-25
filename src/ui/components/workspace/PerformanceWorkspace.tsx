@@ -128,7 +128,9 @@ export function PerformanceWorkspace() {
 function PerformanceWorkspaceInner() {
   const { state, dispatch, transact } = useProject();
   const navigate = useNavigate();
-  const { generateFull, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason } = useAutoAnalysis();
+  const {
+    generateFull, cancelGeneration, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason,
+  } = useAutoAnalysis();
   useIdentityMatchingNotice(state);
   const { saveStatus, saveNow } = useAutoSave(state);
   // The '?' sheet, generated from the input table (T61).
@@ -570,10 +572,18 @@ function PerformanceWorkspaceInner() {
   const assignments = displayedCandidate?.executionPlan.fingerAssignments;
   const selectedCandidate = getSelectedCandidate(state);
 
-  // Active trace for Visual Debugger. Generate no longer selects a candidate,
-  // so with none previewed the trace shown is the top-ranked candidate's.
-  const activeTrace = state.iterationTrace
-    ?? (selectedCandidate ?? state.candidates[0])?.iterationTrace;
+  // Active trace for Visual Debugger. A previewed candidate shows its own trace
+  // and stop reason (every candidate carries them, T33). With none previewed,
+  // the panel reads state.moveHistory, which Generate sets to the top-ranked
+  // candidate's.
+  const traceCandidate = selectedCandidate?.moveHistory || selectedCandidate?.iterationTrace
+    ? selectedCandidate
+    : null;
+  const activeTrace = traceCandidate
+    ? traceCandidate.iterationTrace
+    : state.iterationTrace ?? state.candidates[0]?.iterationTrace;
+  const activeMoves = traceCandidate ? traceCandidate.moveHistory : state.moveHistory;
+  const activeStopReason = traceCandidate ? traceCandidate.stopReason : state.moveHistoryStopReason;
   const debuggerIteration = (activeTrace && state.moveHistoryIndex !== null)
     ? activeTrace[state.moveHistoryIndex]
     : undefined;
@@ -654,6 +664,7 @@ function PerformanceWorkspaceInner() {
       <WorkspaceToolbar
         onNavigateLibrary={() => { saveNow(); navigate('/'); }}
         generateFull={handleGenerate}
+        cancelGeneration={cancelGeneration}
         generationProgress={generationProgress}
         analysisPhase={analysisPhase}
         canGenerate={canGenerate}
@@ -949,12 +960,12 @@ function PerformanceWorkspaceInner() {
                       onCompare={handleOpenCompare}
                       onRetryGenerate={handleGenerate}
                     />
-                    {((state.moveHistory && state.moveHistory.length > 0) || (activeTrace && activeTrace.length > 0)) && (
+                    {((activeMoves && activeMoves.length > 0) || (activeTrace && activeTrace.length > 0)) && (
                       <div className="p-2.5">
                         <MoveTracePanel
-                          moves={state.moveHistory}
+                          moves={activeMoves}
                           trace={activeTrace}
-                          stopReason={state.moveHistoryStopReason as any}
+                          stopReason={activeStopReason}
                         />
                       </div>
                     )}

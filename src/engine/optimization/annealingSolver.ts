@@ -32,6 +32,8 @@ import { countRelaxedStrikes } from '../evaluation/constraintRelaxation';
 import { applyRandomMutation, applyZoneTransferMutation } from './mutationService';
 import { computeMappingCoverage } from '../mapping/mappingCoverage';
 import { createSeededRng } from '../../utils/seededRng';
+import { type AnnealingRunControl, Yielder, throwIfCancelled } from './runControl';
+import { type OptimizerTelemetry } from './optimizerInterface';
 
 /**
  * Cost added per strike whose plan breaks a structural rule (hand separation or
@@ -47,6 +49,49 @@ import { createSeededRng } from '../../utils/seededRng';
  * snapshot records the relaxed strikes behind its cost.
  */
 const RELAXED_STRIKE_PENALTY = 100;
+
+// ============================================================================
+// Run plan (budgets)
+// ============================================================================
+
+/** How a run's iterations are laid out over its restarts. */
+export interface AnnealingPlan {
+  /** Iterations each restart runs unless its share of the time runs out. */
+  iterationsPerRestart: number[];
+  /** Cooling factor applied after each iteration, per restart. */
+  coolingRates: number[];
+  /** Iterations planned for the whole run. */
+  total: number;
+}
+
+/**
+ * The run's plan. Without an iteration budget every restart runs `iterations`
+ * at `coolingRate`, exactly as before. With one, the budget is shared equally
+ * by the restarts (every restart runs at least one iteration), and each
+ * restart's cooling is rescaled so it still ends at the temperature the
+ * configured schedule reaches: the same schedule, in fewer steps.
+ */
+export function planAnnealingRun(config: AnnealingConfig): AnnealingPlan {
+  const runs = Math.max(0, config.restartCount) + 1;
+  const configured = Math.max(1, config.iterations);
+  const iterationsPerRestart: number[] = [];
+  if (config.iterationBudget === undefined) {
+    for (let r = 0; r < runs; r++) iterationsPerRestart.push(configured);
+  } else {
+    const budget = Math.max(runs, Math.floor(config.iterationBudget));
+    const share = Math.floor(budget / runs);
+    const extra = budget % runs;
+    for (let r = 0; r < runs; r++) iterationsPerRestart.push(share + (r < extra ? 1 : 0));
+  }
+  const coolingRates = iterationsPerRestart.map(n => (n === configured
+    ? config.coolingRate
+    : Math.pow(config.coolingRate, configured / n)));
+  return {
+    iterationsPerRestart,
+    coolingRates,
+    total: iterationsPerRestart.reduce((sum, n) => sum + n, 0),
+  };
+}
 
 // ============================================================================
 // AnnealingSolver Implementation
@@ -71,6 +116,8 @@ export class AnnealingSolver implements SolverStrategy {
   private bestLayout: Layout | null = null;
   private seed: number;
   private annealingConfig: AnnealingConfig;
+  /** Cancel, clock and progress for the solve (see runControl.ts). */
+  private runControl: AnnealingRunControl;
   /** The user's finger preferences, applied to every evaluation of the run. */
   private manualAssignments: Record<string, { hand: 'left' | 'right'; finger: FingerType }> | undefined;
 
@@ -86,6 +133,7 @@ export class AnnealingSolver implements SolverStrategy {
     this.initialPadOwnership = config.initialPadOwnership;
     this.seed = config.seed ?? Math.floor(Math.random() * 0x7fffffff);
     this.annealingConfig = config.annealingConfig ?? FAST_ANNEALING_CONFIG;
+    this.runControl = config.runControl ?? {};
   }
 
   /**
@@ -198,6 +246,16 @@ export class AnnealingSolver implements SolverStrategy {
    * 4. Accepts better solutions or probabilistically accepts worse ones
    * 5. Cools temperature each iteration
    * 6. After all restarts, runs final high-quality Beam Search on best layout
+   *
+   * Budgets (AnnealingConfig): an iteration budget sizes each restart (see
+   * planAnnealingRun); a wall-clock budget gives each restart an equal share
+   * of the time, so every restart starts. A restart whose share runs out stops
+   * early, the run keeps the best layout found so far, and the telemetry and
+   * the trace say 'time_budget'. Cancel (runControl.signal) throws
+   * GenerationCancelledError at the next iteration.
+   *
+   * The clock (runControl.now) is read once when the solve starts, once per
+   * iteration and once at the end, so an injected clock steps predictably.
    */
   public async solve(
     performance: Performance,
@@ -210,9 +268,18 @@ export class AnnealingSolver implements SolverStrategy {
 
     this.manualAssignments = manualAssignments;
     const ac = this.annealingConfig;
-    const iterations = Math.max(1, ac.iterations);
-    const restartCount = Math.max(0, ac.restartCount);
-    const startWallClock = Date.now();
+    const plan = planAnnealingRun(ac);
+    const restartCount = plan.iterationsPerRestart.length - 1;
+    const { signal, onProgress } = this.runControl;
+    const now = this.runControl.now ?? Date.now;
+    const yielder = new Yielder(signal);
+    throwIfCancelled(signal);
+    const startWallClock = now();
+    // Each restart's share of the wall-clock budget ends at a fixed point from
+    // the start, so time a restart leaves unused passes to the next one.
+    const timeShare = ac.timeBudgetMs !== undefined
+      ? Math.max(0, ac.timeBudgetMs) / (restartCount + 1)
+      : Number.POSITIVE_INFINITY;
 
     // Deep copy initial layout
     let currentLayout = this.deepCopyLayout(this.initialLayout);
@@ -251,9 +318,19 @@ export class AnnealingSolver implements SolverStrategy {
     let totalInvalid = 0;
     let improvementCount = 0;
     const restartBestCosts: number[] = [];
-    const totalIterations = iterations * (restartCount + 1);
+    const completedIterationsPerRestart: number[] = [];
+    const restartsStoppedByTime: number[] = [];
+    const totalIterations = plan.total;
     const costAtMilestones = { pct25: 0, pct50: 0, pct75: 0, pct100: 0 };
     let globalStep = 0;
+    let clock = startWallClock;
+    const reportProgress = (restartIndex: number) => onProgress?.({
+      iteration: globalStep,
+      iterationsPlanned: totalIterations,
+      restartIndex,
+      runs: restartCount + 1,
+      elapsedMs: clock - startWallClock,
+    });
 
     // ====================================================================
     // Restart Loop
@@ -270,11 +347,25 @@ export class AnnealingSolver implements SolverStrategy {
       }
 
       let currentTemp = ac.initialTemp;
+      const iterations = plan.iterationsPerRestart[restart];
+      const coolingRate = plan.coolingRates[restart];
+      const deadline = startWallClock + (restart + 1) * timeShare;
+      let completed = 0;
+      reportProgress(restart);
 
       // ================================================================
       // SA Iteration Loop
       // ================================================================
       for (let step = 0; step < iterations; step++) {
+        throwIfCancelled(signal);
+        clock = now();
+        // Every restart runs at least one iteration, so every restart starts.
+        if (step > 0 && clock >= deadline) {
+          annealingTrace[annealingTrace.length - 1].stoppedBy = 'time_budget';
+          restartsStoppedByTime.push(restart);
+          break;
+        }
+
         const candidateLayout = this.applyMutation(currentLayout, rng);
 
         const candidateEvaluation = await this.evaluateLayoutCost(
@@ -356,29 +447,33 @@ export class AnnealingSolver implements SolverStrategy {
         });
 
         // Cooling
-        currentTemp *= ac.coolingRate;
+        currentTemp *= coolingRate;
 
         // Track cost at milestone iterations
         globalStep++;
+        completed++;
         if (globalStep === Math.floor(totalIterations * 0.25)) costAtMilestones.pct25 = globalBestCost;
         if (globalStep === Math.floor(totalIterations * 0.50)) costAtMilestones.pct50 = globalBestCost;
         if (globalStep === Math.floor(totalIterations * 0.75)) costAtMilestones.pct75 = globalBestCost;
 
-        // Yield to prevent UI freezing
-        if (step % 50 === 0 && step > 0) {
-          await new Promise(resolve => setTimeout(resolve, 0));
+        // Yield on elapsed time (about every 50 ms), so the page can paint
+        // progress and take a Cancel click; yielding never changes the result.
+        if (yielder.due()) {
+          reportProgress(restart);
+          await yielder.yield();
         }
       }
 
       restartBestCosts.push(globalBestCost);
-
-      // Yield between restarts
-      if (restart < restartCount) {
-        await new Promise(resolve => setTimeout(resolve, 0));
-      }
+      completedIterationsPerRestart.push(completed);
     }
 
     costAtMilestones.pct100 = globalBestCost;
+    // Milestones a time-limited run never reached hold the best it ended with, not 0.
+    if (globalStep < Math.floor(totalIterations * 0.25)) costAtMilestones.pct25 = globalBestCost;
+    if (globalStep < Math.floor(totalIterations * 0.50)) costAtMilestones.pct50 = globalBestCost;
+    if (globalStep < Math.floor(totalIterations * 0.75)) costAtMilestones.pct75 = globalBestCost;
+    throwIfCancelled(signal);
 
     // Store the best layout
     this.bestLayout = this.deepCopyLayout(globalBestLayout);
@@ -401,7 +496,7 @@ export class AnnealingSolver implements SolverStrategy {
       performance, finalConfig, manualAssignments
     );
 
-    const wallClockMs = Date.now() - startWallClock;
+    const wallClockMs = now() - startWallClock;
     const iterationsCompleted = globalStep;
     const totalDecisions = totalAccepted + totalRejected;
 
@@ -423,6 +518,12 @@ export class AnnealingSolver implements SolverStrategy {
         ? (initialErgonomicCost - globalBestErgonomicCost) / initialErgonomicCost
         : 0,
       initialErgonomicCost,
+      stopReason: restartsStoppedByTime.length > 0 ? 'time_budget' : 'completed',
+      ...(ac.iterationBudget !== undefined ? { iterationBudget: ac.iterationBudget } : {}),
+      ...(ac.timeBudgetMs !== undefined ? { timeBudgetMs: ac.timeBudgetMs } : {}),
+      plannedIterationsPerRestart: plan.iterationsPerRestart,
+      completedIterationsPerRestart,
+      restartsStoppedByTime,
       costAtMilestones,
     };
 
@@ -443,4 +544,42 @@ export class AnnealingSolver implements SolverStrategy {
 /** Factory function to create an AnnealingSolver instance. */
 export function createAnnealingSolver(config: SolverConfig): AnnealingSolver {
   return new AnnealingSolver(config);
+}
+
+/**
+ * An annealing plan's run as the method-agnostic OptimizerTelemetry and stop
+ * reason (the optimizer output contract), budgets included.
+ */
+export function annealingRunSummary(
+  plan: ExecutionPlanResult,
+  wallClockMs?: number,
+): { stopReason: 'completed' | 'time_budget'; telemetry: OptimizerTelemetry } {
+  const solver = plan.metadata?.solverTelemetry;
+  // Prefer the initial cost the solver recorded. Back-computing it from the
+  // improvement ratio is only a fallback; an improvement at or above 1 (final
+  // cost reached 0) would divide by zero or flip sign.
+  const improvementRatio = solver?.finalCostImprovement || 0;
+  const initialCost = solver?.initialErgonomicCost
+    ?? (improvementRatio > 0 && improvementRatio < 1
+      ? plan.averageMetrics.total / (1 - improvementRatio)
+      : plan.averageMetrics.total);
+  const planned = solver?.plannedIterationsPerRestart;
+  return {
+    stopReason: solver?.stopReason ?? 'completed',
+    telemetry: {
+      wallClockMs: wallClockMs ?? solver?.wallClockMs ?? 0,
+      iterationsCompleted: solver?.iterationsCompleted ?? 0,
+      movesEvaluated: solver?.iterationsCompleted,
+      movesAccepted: solver?.totalAccepted,
+      movesRejected: solver?.totalRejected,
+      initialCost,
+      finalCost: plan.averageMetrics.total,
+      improvement: solver?.finalCostImprovement ?? 0,
+      seed: plan.metadata?.seed,
+      ...(solver?.iterationBudget !== undefined ? { iterationBudget: solver.iterationBudget } : {}),
+      ...(solver?.timeBudgetMs !== undefined ? { timeBudgetMs: solver.timeBudgetMs } : {}),
+      ...(planned ? { iterationsPlanned: planned.reduce((sum, n) => sum + n, 0) } : {}),
+      ...(solver?.restartsStoppedByTime ? { restartsStoppedByTime: solver.restartsStoppedByTime } : {}),
+    },
+  };
 }
