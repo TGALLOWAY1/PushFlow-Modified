@@ -60,12 +60,14 @@ export function Tabs<Id extends string>({
   const tabRefs = useRef(new Map<Id, HTMLButtonElement>());
   const tabId = (i: number) => `${base}-tab-${i}`;
   const panelId = (i: number) => `${base}-panel-${i}`;
+  // The tab in the Tab order: the selected one, or the first if none is.
+  const tabStop = Math.max(0, tabs.findIndex(t => t.id === selected));
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || tabs.length === 0) return;
     // From the focused tab (normally the selected one).
     const focused = tabs.findIndex(t => tabRefs.current.get(t.id) === e.target);
-    const from = focused >= 0 ? focused : Math.max(0, tabs.findIndex(t => t.id === selected));
+    const from = focused >= 0 ? focused : tabStop;
     let to: number;
     switch (e.key) {
       case 'ArrowRight': to = (from + 1) % tabs.length; break;
@@ -103,7 +105,7 @@ export function Tabs<Id extends string>({
             id={tabId(i)}
             aria-selected={isSelected}
             aria-controls={panelId(i)}
-            tabIndex={isSelected ? 0 : -1}
+            tabIndex={i === tabStop ? 0 : -1}
             data-testid={tab.testId}
             className={`pf-tab focus-ring ${isSelected ? 'active' : ''} ${tabClassName ?? ''}`}
             onClick={() => { if (!isSelected) onSelect(tab.id); }}

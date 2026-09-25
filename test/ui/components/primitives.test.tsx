@@ -93,12 +93,17 @@ describe('Tabs', () => {
   });
 
   it('roving tabindex: only the selected tab is in the Tab order', () => {
-    render(<DrawerTabs />);
+    const { unmount } = render(<DrawerTabs />);
     expect(screen.getAllByRole('tab').map(t => t.tabIndex)).toEqual([0, -1, -1]);
     fireEvent.click(tab('Presets'));
     expect(screen.getAllByRole('tab').map(t => t.tabIndex)).toEqual([-1, -1, 0]);
     expect(selectedTabName()).toBe('Presets');
     expect(screen.getByRole('tabpanel', { name: 'Presets' }).textContent).toBe('presets content');
+    unmount();
+    // With no tab selected, the first one keeps the list reachable.
+    render(<Tabs label="Drawer" tabs={DRAWER_TABS} selected={'none' as DrawerTab} onSelect={() => {}} renderPanel={() => null} />);
+    expect(screen.getAllByRole('tab').map(t => t.tabIndex)).toEqual([0, -1, -1]);
+    expect(selectedTabName()).toBeUndefined();
   });
 
   it('←/→ (wrapping), Home and End move focus and select, and keep the key from anything else', () => {
