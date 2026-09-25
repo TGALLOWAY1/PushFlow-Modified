@@ -18,6 +18,12 @@ import { SettingsGear } from '../panels/SettingsGear';
 import { SaveStatusControl } from './SaveStatusControl';
 import { useViewSettings } from '../../state/viewSettings';
 import { DisabledReason, useDisabledReason } from '../shared/DisabledReason';
+import { SaveVariantPopover } from './SaveVariantPopover';
+import { Popover } from '../shared/Overlay';
+import { MoreHorizontal } from 'lucide-react';
+import { suggestVariantName } from '../../state/variantNames';
+import { generateId } from '../../../utils/idGenerator';
+import { uniqueName } from '../../../utils/uniqueName';
 
 interface WorkspaceToolbarProps {
   onNavigateLibrary: () => void;
@@ -36,6 +42,8 @@ interface WorkspaceToolbarProps {
   onSave?: () => void;
   /** Downloads a copy of the project (offered when saving fails). */
   onExport?: () => void;
+  /** A variant was saved: show it (the Layouts tab, scrolled to its card). */
+  onVariantSaved?: (variantId: string) => void;
 }
 
 export function WorkspaceToolbar({
@@ -53,9 +61,10 @@ export function WorkspaceToolbar({
   saveStatus = 'saved',
   onSave,
   onExport,
+  onVariantSaved,
 }: WorkspaceToolbarProps) {
-  const { state, dispatch, transact, undo, redo, canUndo, canRedo, undoLabel, redoLabel } = useProject();
-  const { settings: viewSettings, toggleGridLabel, toggleLayoutDisplay } = useViewSettings();
+  const { state, dispatch, undo, redo, canUndo, canRedo, undoLabel, redoLabel } = useProject();
+  const { settings: viewSettings, toggleGridLabel } = useViewSettings();
   const toast = useToast();
   const hasChanges = hasWorkingChanges(state);
   const generateReason = useDisabledReason(canGenerate ? null : generateDisabledReason);
@@ -86,6 +95,12 @@ export function WorkspaceToolbar({
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const startRename = () => {
+    setNameDraft(state.name || 'Untitled');
+    setEditingName(true);
+  };
+  const titleMenuRef = useRef<HTMLButtonElement>(null);
+  const [titleMenuAt, setTitleMenuAt] = useState<{ x: number; y: number } | null>(null);
 
   // Editable BPM
   const [editingBpm, setEditingBpm] = useState(false);
@@ -93,6 +108,19 @@ export function WorkspaceToolbar({
 
   // Generation mode
   const [generationMode, setGenerationMode] = useState<GenerationMode>('fast');
+
+  // Save as variant asks for a name first (T29).
+  const saveVariantRef = useRef<HTMLButtonElement>(null);
+  const [saveVariantAt, setSaveVariantAt] = useState<{ x: number; y: number } | null>(null);
+  const saveVariant = (requested: string) => {
+    const variantId = generateId('variant');
+    // The name the reducer will keep: a taken one is numbered.
+    const name = uniqueName(requested, state.savedVariants.map(v => v.name));
+    dispatch({ type: 'SAVE_AS_VARIANT', payload: { name, source: 'working', variantId } });
+    setSaveVariantAt(null);
+    toast.show({ message: `Saved variant "${name}"` });
+    onVariantSaved?.(variantId);
+  };
 
   const commitName = () => {
     const trimmed = nameDraft.trim();
@@ -141,11 +169,9 @@ export function WorkspaceToolbar({
           />
         ) : (
           <span
+            data-testid="project-title"
             className="block text-pf-base font-semibold text-[var(--text-primary)] truncate editable-field hover:text-white transition-colors cursor-pointer"
-            onClick={() => {
-              setNameDraft(state.name || 'Untitled');
-              setEditingName(true);
-            }}
+            onClick={startRename}
             title="Click to rename"
           >
             {state.name || 'Untitled'}
@@ -153,6 +179,52 @@ export function WorkspaceToolbar({
           </span>
         )}
       </div>
+
+      {/* The title menu: Rename and Export (T53: the editor had no Export). */}
+      <button
+        ref={titleMenuRef}
+        type="button"
+        data-testid="project-title-menu"
+        aria-label="Project actions"
+        aria-haspopup="menu"
+        aria-expanded={titleMenuAt !== null}
+        className="w-7 h-7 flex-shrink-0 rounded-pf-sm flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+        onClick={e => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setTitleMenuAt(prev => (prev ? null : { x: r.left, y: r.bottom + 4 }));
+        }}
+      >
+        <MoreHorizontal size={15} aria-hidden="true" />
+      </button>
+      {titleMenuAt && (
+        <Popover
+          x={titleMenuAt.x}
+          y={titleMenuAt.y}
+          onClose={() => setTitleMenuAt(null)}
+          role="menu"
+          ariaLabel="Project actions"
+          returnFocusTo={titleMenuRef.current}
+          testId="project-title-menu-popover"
+          className="flex flex-col min-w-[190px] py-1 bg-[var(--bg-panel)] border border-[var(--border-default)] rounded-pf-lg shadow-pf-xl"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="w-full px-3 py-2 text-left text-pf-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] outline-none focus-visible:bg-[var(--bg-hover)]"
+            onClick={() => { setTitleMenuAt(null); startRename(); }}
+          >
+            Rename project
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="w-full px-3 py-2 text-left text-pf-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] outline-none focus-visible:bg-[var(--bg-hover)]"
+            onClick={() => { setTitleMenuAt(null); onExport?.(); }}
+          >
+            Export project file
+          </button>
+        </Popover>
+      )}
 
       {/* BPM */}
       {editingBpm ? (
@@ -200,12 +272,29 @@ export function WorkspaceToolbar({
               Promote
             </button>
             <button
+              ref={saveVariantRef}
+              data-testid="save-variant"
               className="pf-btn text-pf-sm bg-accent-primary/80 hover:bg-accent-primary text-white border border-accent-primary/30"
-              onClick={() => dispatch({ type: 'SAVE_AS_VARIANT', payload: { name: `${state.activeLayout.name} variant`, source: 'working' } })}
-              title="Save current working layout as a named variant"
+              aria-haspopup="dialog"
+              aria-expanded={saveVariantAt !== null}
+              onClick={e => {
+                const r = e.currentTarget.getBoundingClientRect();
+                setSaveVariantAt(prev => (prev ? null : { x: r.left, y: r.bottom + 6 }));
+              }}
+              title="Keep this layout as a named variant, without changing the Active Layout"
             >
-              Save Variant
+              Save variant
             </button>
+            {saveVariantAt && (
+              <SaveVariantPopover
+                x={saveVariantAt.x}
+                y={saveVariantAt.y}
+                defaultName={suggestVariantName(state.workingLayout?.name ?? state.activeLayout.name, state.savedVariants.map(v => v.name))}
+                returnFocusTo={saveVariantRef.current}
+                onSave={saveVariant}
+                onClose={() => setSaveVariantAt(null)}
+              />
+            )}
             <button
               className="pf-btn pf-btn-subtle text-pf-sm hover:bg-red-900/30 hover:text-red-300 hover:border-red-500/30"
               onClick={handleDiscard}
@@ -347,20 +436,7 @@ export function WorkspaceToolbar({
       {/* Settings gear */}
       <SettingsGear
         gridLabels={viewSettings.gridLabels}
-        layoutDisplay={viewSettings.layoutDisplay}
         onToggleGridLabel={toggleGridLabel}
-        onToggleLayoutDisplay={toggleLayoutDisplay}
-        onDuplicateLayout={() => {
-          if (state.workingLayout) {
-            dispatch({ type: 'SAVE_AS_VARIANT', payload: { name: `${state.workingLayout.name} copy`, source: 'working' } });
-          } else {
-            transact('Duplicate layout', () => {
-              dispatch({ type: 'CREATE_WORKING_LAYOUT' });
-              dispatch({ type: 'SAVE_AS_VARIANT', payload: { name: `${state.activeLayout.name} copy`, source: 'working' } });
-              dispatch({ type: 'DISCARD_WORKING_LAYOUT' });
-            });
-          }
-        }}
         costToggles={state.costToggles}
         onCostToggleChange={(toggles) => dispatch({ type: 'SET_COST_TOGGLES', payload: toggles })}
         onCalculateCost={onCalculateCost}

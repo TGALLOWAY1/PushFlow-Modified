@@ -13,10 +13,10 @@ export const TEST_MIDI_1 = fileURLToPath(new URL('../fixtures/midi/TEST MIDI 1.m
 /** Pads chosen to spread seven Sounds over the grid, corners included (from the C1 probe). */
 export const SPREAD_PADS = ['0,0', '7,0', '4,3', '3,7', '7,7', '0,7', '5,5'];
 
-/** Library → New Project → editor with the test hook ready. */
+/** Library → New project → editor with the test hook ready. */
 export async function newProject(page: Page, pf: PfHandle): Promise<void> {
   await page.goto('/');
-  await page.getByRole('button', { name: 'New Project' }).click();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.waitForURL('**/project/**');
   await pf.ready();
 }

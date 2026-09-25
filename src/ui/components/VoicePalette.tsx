@@ -356,7 +356,7 @@ export function VoicePalette() {
       )}
 
       {state.soundStreams.length === 0 && (
-        <p className="text-pf-sm text-[var(--text-tertiary)] py-3 text-center">No sounds loaded.</p>
+        <p className="text-pf-sm text-[var(--text-tertiary)] py-3 px-3 text-center">No Sounds yet. Import MIDI or build a pattern to add some.</p>
       )}
 
       {selectedStreamIds.size > 0 && (

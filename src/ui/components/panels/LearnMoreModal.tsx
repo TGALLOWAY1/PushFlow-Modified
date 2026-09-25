@@ -50,14 +50,15 @@ const OPTIMIZER_METHODS = [
   },
 ];
 
+// Analysis is automatic and Generate only proposes (T44): the flow says so.
 const WORKFLOW_STEPS = [
-  { step: '1', title: 'Import', description: 'Import MIDI or create performance material' },
-  { step: '2', title: 'Inspect', description: 'Review events, structure, and sound assignments' },
-  { step: '3', title: 'Generate', description: 'Generate candidate layout solutions' },
-  { step: '4', title: 'Analyze', description: 'Review costs and difficulty factors per event' },
+  { step: '1', title: 'Import', description: 'Import a MIDI file (the Library starts a project from one) or build a pattern in the Composer' },
+  { step: '2', title: 'Place', description: 'Drag Sounds onto pads, or Suggest a starting layout' },
+  { step: '3', title: 'Analyze', description: 'Analysis updates automatically as you place Sounds: costs and difficulty per event' },
+  { step: '4', title: 'Generate', description: 'Generate proposes alternative layouts; your draft stays as it is' },
   { step: '5', title: 'Compare', description: 'Compare candidates side by side' },
-  { step: '6', title: 'Promote', description: 'Promote best candidate to active layout' },
-  { step: '7', title: 'Iterate', description: 'Continue editing, adjusting, and regenerating' },
+  { step: '6', title: 'Keep', description: 'Save variant keeps a layout under a name, without changing the Active Layout' },
+  { step: '7', title: 'Promote', description: 'Promote makes the layout you choose the new Active Layout' },
 ];
 
 export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
@@ -551,7 +552,7 @@ function OptimizersSection() {
       </div>
 
       <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
-        <h4 className="text-pf-sm font-medium text-[var(--text-primary)] mb-2">Calculate Cost</h4>
+        <h4 className="text-pf-sm font-medium text-[var(--text-primary)] mb-2">Calculate cost</h4>
         <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
           The Calculate Cost button evaluates your current layout and finger assignment without running a full optimization.
           It shows total cost, static/temporal subtotals, per-factor breakdown, feasibility verdict, and event counts.

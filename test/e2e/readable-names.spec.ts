@@ -72,7 +72,7 @@ test.describe('S2.2b · readable names and counts', () => {
     await expect(dialog).toBeHidden();
     await page.getByRole('button', { name: /Library/ }).first().click();
     await page.waitForURL(url => !url.pathname.includes('/project/'));
-    await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'New project', exact: true })).toBeVisible();
     await expect(page.getByText('7 sounds').first()).toBeVisible();
     expect(rawIds(await page.locator('body').innerText(), ids), 'Library text').toEqual([]);
   });

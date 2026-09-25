@@ -3,7 +3,7 @@
  *
  * P2-4: a DOM audit finds no grid or timeline text node under 11 px, with the
  * default labels, with every grid label on, and with a moment selected.
- * T38: token colours take Tailwind's opacity modifier, so Save Variant has its
+ * T38: token colours take Tailwind's opacity modifier, so Save variant has its
  * fill. T31: disabled buttons keep their pointer events and say why inline.
  */
 
@@ -74,10 +74,10 @@ test.describe('S2.2b · readability floor', () => {
     expect(await gridAndTimelineAudit(page), 'moment selected').toEqual([]);
   });
 
-  test('Save Variant has its accent fill (T38 token alpha)', async ({ page, pf }) => {
+  test('Save variant has its accent fill (T38 token alpha)', async ({ page, pf }) => {
     await openTestMidi1(page, pf);
     await suggestStartingLayout(page, pf);
-    const save = page.getByRole('button', { name: 'Save Variant' });
+    const save = page.getByTestId('save-variant');
     await expect(save).toBeVisible();
     const { background, border } = await save.evaluate(el => {
       const cs = getComputedStyle(el);
@@ -96,7 +96,7 @@ test.describe('S2.2b · readability floor', () => {
 
     await page.getByRole('button', { name: 'View settings' }).click();
     await expectDisabledWithReason(
-      page.getByRole('button', { name: 'Calculate Cost' }),
+      page.getByRole('button', { name: 'Calculate cost' }),
       'Place a Sound on the grid first: the cost needs a finger assignment',
     );
   });

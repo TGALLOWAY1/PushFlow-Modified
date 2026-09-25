@@ -62,6 +62,8 @@ import { padKey } from '../../../types/padGrid';
 import { useMeasuredPadSize } from './gridSizing';
 import { DrawerSplitter } from './DrawerSplitter';
 import { CENTER_MIN_WIDTH, fitSidePanels, maxPanelWidth } from './panelSizing';
+import { GridStartCard, NothingPlacedHint } from './GridEmptyState';
+import { useLaneImport } from '../../hooks/useLaneImport';
 import {
   DRAWER_TAB_BAR_HEIGHT,
   drawerHeightFor,
@@ -583,6 +585,11 @@ function PerformanceWorkspaceInner() {
     ? debuggerIteration.stateBefore.layout
     : selectedCandidate?.layout;
 
+  // Sounds but nothing on the grid: the state bar says how to place them (T44).
+  const { importFiles } = useLaneImport();
+  const displayedPadCount = Object.keys((state.workingLayout ?? state.activeLayout).padToVoice).length;
+  const nothingPlaced = state.soundStreams.length > 0 && displayedPadCount === 0 && !currentLayoutOverride;
+
   // Wrap generateFull to auto-open analysis after generation
   const handleGenerate = useCallback(async (mode?: Parameters<typeof generateFull>[0]) => {
     await generateFull(mode);
@@ -624,6 +631,22 @@ function PerformanceWorkspaceInner() {
     if (compareEnabled) setCompareModalOpen(true);
   }, [compareEnabled]);
 
+  // A saved variant is shown straight away (T29): the Layouts tab opens and
+  // its card scrolls into view once it has rendered.
+  const [revealVariantId, setRevealVariantId] = useState<string | null>(null);
+  const handleVariantSaved = useCallback((variantId: string) => {
+    setRightCollapsed(false);
+    setRightTab('layouts');
+    setRevealVariantId(variantId);
+  }, []);
+  useEffect(() => {
+    if (!revealVariantId) return;
+    const card = document.querySelector(`[data-variant-id="${revealVariantId}"]`);
+    if (!card) return;
+    card.scrollIntoView({ block: 'nearest' });
+    setRevealVariantId(null);
+  }, [revealVariantId, state.savedVariants, rightTab]);
+
   return (
     <div className="h-full flex flex-col bg-[var(--bg-app)] overflow-hidden">
       {/* ─── Top Toolbar ──────────────────────────────────────── */}
@@ -642,6 +665,7 @@ function PerformanceWorkspaceInner() {
         saveStatus={saveStatus}
         onSave={saveNow}
         onExport={handleExport}
+        onVariantSaved={handleVariantSaved}
       />
 
       {/* ─── Error Banner ─────────────────────────────────────── */}
@@ -748,9 +772,12 @@ function PerformanceWorkspaceInner() {
         {/* Center Column: Grid, splitter and the Timeline | Composer drawer */}
         <div ref={setCenterEl} className="flex-1 flex flex-col min-w-0 min-h-0 px-0.5 overflow-hidden">
           {/* Grid region: measured, and the pads sized to fit it (T04) */}
-          <div ref={gridRegionRef} data-testid="grid-region" className="flex-1 min-h-0 overflow-hidden">
+          <div ref={gridRegionRef} data-testid="grid-region" className="relative flex-1 min-h-0 overflow-hidden">
             <InteractiveGrid
               padSize={padSize}
+              stateBarHint={nothingPlaced
+                ? <NothingPlacedHint soundCount={state.soundStreams.length} onSuggest={() => dispatch({ type: 'SUGGEST_STARTING_LAYOUT' })} />
+                : undefined}
               assignments={assignments}
               layoutOverride={currentLayoutOverride}
               selectedEventIndex={state.selectedEventIndex}
@@ -765,6 +792,14 @@ function PerformanceWorkspaceInner() {
               onGridDragLeave={handleGridDragLeave}
               debuggerIteration={debuggerIteration}
             />
+            {/* The staged empty state (T44): the ways in, at the grid. */}
+            {state.soundStreams.length === 0 && (
+              <GridStartCard
+                onImportFiles={files => { void importFiles(files); }}
+                onBuildPattern={() => openDrawerTab('composer')}
+                onRejectedFiles={names => toast.show({ message: `Only MIDI files (.mid, .midi) can be imported: ${names.join(', ')}` })}
+              />
+            )}
           </div>
 
           <DrawerSplitter

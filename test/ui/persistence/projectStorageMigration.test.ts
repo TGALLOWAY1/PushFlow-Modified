@@ -57,7 +57,7 @@ describe('loadProjectAsync migrates behind a backup', () => {
 
     const state = await loadProjectAsync(saved.id);
     expect(state?.recoveredDrafts).toEqual([]);
-    expect(log).toEqual(['putBackup v1', 'putProject v3']);
+    expect(log).toEqual(['putBackup v1', 'putProject v4']);
 
     const backup = await getLatestBackup(saved.id);
     expect(backup?.key).toBe(`${saved.id}@v1`);
@@ -78,7 +78,7 @@ describe('loadProjectAsync migrates behind a backup', () => {
     projects.set(saved.id, saved);
 
     const state = await loadProjectAsync(saved.id);
-    expect(log).toEqual(['putBackup v2', 'putProject v3']);
+    expect(log).toEqual(['putBackup v2', 'putProject v4']);
     const backup = await getLatestBackup(saved.id);
     expect(backup?.key).toBe(`${saved.id}@v2`);
     // The backup is the untouched record, ghost locks and all.
@@ -94,7 +94,7 @@ describe('loadProjectAsync migrates behind a backup', () => {
       }
     }
     expect(state!.activeLayout.placementLocks).toEqual({ 'lane_1790212333742_q33d4p': '3,3' });
-    expect((projects.get(saved.id) as { schemaVersion: number }).schemaVersion).toBe(3);
+    expect((projects.get(saved.id) as { schemaVersion: number }).schemaVersion).toBe(4);
 
     log.length = 0;
     const again = await loadProjectAsync(saved.id);

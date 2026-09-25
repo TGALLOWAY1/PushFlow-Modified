@@ -11,7 +11,7 @@ import { test, expect } from './fixtures';
 
 test('axe runs on the Library', async ({ page }, testInfo) => {
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'New Project' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New project', exact: true })).toBeVisible();
 
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
   const summary = results.violations.map(v => `${v.impact ?? 'unknown'} · ${v.id} (${v.nodes.length})`);

@@ -36,6 +36,7 @@ import { createDefaultPose0, getPose0PadsWithOffset } from '../../engine/prior/n
 import { formatFingerConstraint, parseFingerConstraint } from '../../utils/fingerConstraints';
 import { type RehearsalAudioOptions, DEFAULT_REHEARSAL_AUDIO } from '../audio/rehearsalAudio';
 import { gmDrumRenames } from '../../utils/gmDrumMap';
+import { uniqueName } from '../../utils/uniqueName';
 
 // ============================================================================
 // Sound Stream Model
@@ -149,6 +150,8 @@ export interface ProjectDocument {
 export interface ProjectSession {
   /** Last change to anything saved; drives autosave. Undo and Redo bump it. */
   updatedAt: string;
+  /** When the project was last opened in the editor (saved; the Library's "Opened"). */
+  lastOpenedAt: string;
 
   // Analysis cache
   analysisResult: CandidateSolution | null;
@@ -388,9 +391,9 @@ export type ProjectAction =
   | { type: 'DELETE_CANDIDATE'; payload: { candidateId: string } }
   | { type: 'PROMOTE_VARIANT'; payload: { variantId: string } }
   | { type: 'DELETE_VARIANT'; payload: { variantId: string } }
-  | { type: 'SAVE_AS_VARIANT'; payload: { name: string; source: 'working' | 'candidate'; candidateId?: string } }
+  | { type: 'SAVE_AS_VARIANT'; payload: { name: string; source: 'working' | 'candidate'; candidateId?: string; /** The new variant's id, so the caller can show it. */ variantId?: string } }
   | { type: 'LOAD_SAVED_VARIANT'; payload: { variantId: string } }
-  | { type: 'RENAME_LAYOUT'; payload: { target: 'active' | 'working'; name: string } }
+  | { type: 'RENAME_LAYOUT'; payload: { target: 'active' | 'working'; name: string } | { target: 'variant'; variantId: string; name: string } }
   | { type: 'RESTORE_RECOVERED_DRAFT'; payload: { layoutId: string } }
   | { type: 'DELETE_RECOVERED_DRAFT'; payload: { layoutId: string } }
 
@@ -1237,7 +1240,13 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
       if (!sourceLayout) return state;
 
-      const variant = cloneLayout(sourceLayout, generateId(), name, 'variant');
+      // No two variants share a name (T29): a taken name gets " (2)".
+      const variant = cloneLayout(
+        sourceLayout,
+        action.payload.variantId ?? generateId(),
+        uniqueName(name, state.savedVariants.map(v => v.name)),
+        'variant',
+      );
 
       return {
         ...state,
@@ -1315,6 +1324,17 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
     case 'RENAME_LAYOUT': {
       const { target, name: newName } = action.payload;
+      if (action.payload.target === 'variant') {
+        const { variantId } = action.payload;
+        const others = state.savedVariants.filter(v => v.id !== variantId).map(v => v.name);
+        const trimmed = newName.trim();
+        if (!trimmed || !state.savedVariants.some(v => v.id === variantId)) return state;
+        return {
+          ...state,
+          savedVariants: state.savedVariants.map(v => (v.id === variantId ? { ...v, name: uniqueName(trimmed, others) } : v)),
+          updatedAt: new Date().toISOString(),
+        };
+      }
       if (target === 'active') {
         return {
           ...state,
@@ -1612,6 +1632,7 @@ export function createEmptyProjectState(): ProjectState {
     name: '',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    lastOpenedAt: new Date().toISOString(),
     soundStreams: [],
     tempo: DEFAULT_PROJECT_TEMPO,
     instrumentConfig: {

@@ -66,6 +66,8 @@ interface InteractiveGridProps {
   debuggerIteration?: import('../../engine/optimization/optimizerInterface').OptimizationIteration;
   /** Pad edge in px, measured by the workspace (T04); labels keep their sizes. */
   padSize?: number;
+  /** Guidance shown in the state bar (the "nothing placed yet" hint, T44). */
+  stateBarHint?: React.ReactNode;
 }
 
 /** Abbreviated finger names for display (numbered: thumb=1 through pinky=5) */
@@ -106,7 +108,7 @@ function safeColorAlpha(color: string | null | undefined, alpha: number, fallbac
 /** Physical reach threshold: pads farther apart than this are flagged as impossible. */
 const IMPOSSIBLE_REACH_THRESHOLD = 5;
 
-export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave, debuggerIteration, padSize = 56 }: InteractiveGridProps) {
+export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave, debuggerIteration, padSize = 56, stateBarHint }: InteractiveGridProps) {
   const { state, dispatch } = useProject();
   // Overlay geometry follows the measured pad size (T04).
   const gridStep = padSize + PAD_GAP;
@@ -891,6 +893,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             Analysis outdated
           </span>
         )}
+        {stateBarHint}
         <span className="flex-1" />
         {selectedTransition?.next && (
           <>

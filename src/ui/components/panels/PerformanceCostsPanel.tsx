@@ -172,7 +172,7 @@ export function PerformanceCostsPanel() {
                   onClick={() => setChartOpen(!chartOpen)}
                 >
                   <span className="text-pf-micro" aria-hidden="true">{chartOpen ? '\u25BE' : '\u25B8'}</span>
-                  Event Difficulty Chart
+                  Event difficulty chart
                 </button>
                 {chartOpen && (
                   <EventCostChart

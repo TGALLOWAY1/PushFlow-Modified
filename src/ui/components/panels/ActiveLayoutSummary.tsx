@@ -193,21 +193,13 @@ export function ActiveLayoutSummary() {
               {mappedCount > 0 && <FeasibilityBadge pending={state.isProcessing} scope={scope} />}
 
               {/* An empty grid is not an unplayable layout — it is an unfinished one.
-                  Say so, and offer a starting point the user explicitly asks for. */}
+                  Say so; the grid's state bar offers the starting point (T44). */}
               {mappedCount === 0 && activeStreams.length > 0 && (
-                <div className="rounded-pf-sm border border-[var(--border-default)] bg-bg-card/60 p-2.5 space-y-2">
+                <div data-testid="summary-nothing-placed" className="rounded-pf-sm border border-[var(--border-default)] bg-bg-card/60 p-2.5">
                   <p className="text-pf-xs text-[var(--text-secondary)] leading-relaxed">
-                    No sounds are on the grid yet, so there is nothing to analyse.
-                    Drag {activeStreams.length === 1 ? 'your sound' : `your ${activeStreams.length} sounds`} onto
-                    pads, or start from a comfortable two-hand shape and adjust.
+                    No Sounds are on the grid yet, so there is nothing to analyse. Drag {activeStreams.length === 1 ? 'your Sound' : `your ${activeStreams.length} Sounds`} onto
+                    pads, or use Suggest a starting layout above the grid.
                   </p>
-                  <button
-                    className="w-full px-2 py-1.5 rounded-pf-sm bg-accent-primary/15 text-accent-primary-soft border border-accent-primary/30 text-pf-xs font-semibold hover:bg-accent-primary/25 transition-colors"
-                    onClick={() => dispatch({ type: 'SUGGEST_STARTING_LAYOUT' })}
-                    title="Places your sounds in a natural hand position as a Working/Test Layout you can edit, discard, or promote"
-                  >
-                    Suggest a starting layout
-                  </button>
                 </div>
               )}
             </div>
@@ -254,7 +246,7 @@ export function ActiveLayoutSummary() {
                 onClick={() => setChartOpen(!chartOpen)}
               >
                 <span className="text-pf-micro" aria-hidden="true">{chartOpen ? '\u25BE' : '\u25B8'}</span>
-                Event Difficulty Chart
+                Event difficulty chart
               </button>
               {chartOpen && (
                 <EventCostChart
@@ -374,7 +366,7 @@ export function ActiveLayoutSummary() {
           {/* Empty state */}
           {!currentPlan && !state.isProcessing && (
             <div className="text-pf-xs text-[var(--text-tertiary)] py-4 text-center">
-              Assign sounds to pads, then <strong className="text-[var(--text-secondary)]">Generate</strong> to analyze.
+              Analysis updates automatically as you place Sounds · <strong className="text-[var(--text-secondary)]">Generate</strong> proposes alternatives.
             </div>
           )}
         </div>

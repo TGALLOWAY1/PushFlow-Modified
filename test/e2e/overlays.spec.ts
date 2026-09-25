@@ -66,7 +66,7 @@ test.describe('Overlays (Dialog primitive)', () => {
   });
 
   test('the enlarged chart', async ({ page }) => {
-    await page.getByRole('button', { name: /Event Difficulty Chart/ }).click();
+    await page.getByRole('button', { name: /Event difficulty chart/i }).click();
     const trigger = page.getByRole('button', { name: 'Enlarge' }).first();
     await trigger.click();
     const dialog = page.getByTestId('chart-dialog');

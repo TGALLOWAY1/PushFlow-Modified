@@ -172,6 +172,37 @@ describe('useAutoSave', () => {
     expect(fire()).toBe(true);
   });
 
+  // S2.3: "← Library" saves and then unmounts the editor; the state already
+  // being written is not written (and re-stamped) a second time.
+  it('leaving while that very state is being saved writes it once', async () => {
+    const write = deferred();
+    saveProjectAsync.mockReturnValue(write.promise);
+    const { result, rerender, unmount } = renderSave(stateAt('t0'));
+    rerender(stateAt('t1'));
+    let saving!: Promise<void>;
+    act(() => { saving = result.current.saveNow(); });
+    await flushMicrotasks();
+    expect(saveProjectAsync).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(saveProjectAsync).toHaveBeenCalledTimes(1);
+    write.resolve();
+    await act(async () => { await saving; });
+  });
+
+  it('leaving with an edit newer than the write in flight still saves it', async () => {
+    const write = deferred();
+    saveProjectAsync.mockReturnValueOnce(write.promise).mockResolvedValue(undefined);
+    const { result, rerender, unmount } = renderSave(stateAt('t0'));
+    rerender(stateAt('t1'));
+    act(() => { void result.current.saveNow(); });
+    await flushMicrotasks();
+    rerender(stateAt('t2'));
+    unmount();
+    expect(saveProjectAsync).toHaveBeenCalledTimes(2);
+    expect(saveProjectAsync).toHaveBeenLastCalledWith(expect.objectContaining({ updatedAt: 't2' }));
+    write.resolve();
+  });
+
   it('flushes a pending save on pagehide', async () => {
     saveProjectAsync.mockResolvedValue(undefined);
     const { rerender } = renderSave(stateAt('t0'));

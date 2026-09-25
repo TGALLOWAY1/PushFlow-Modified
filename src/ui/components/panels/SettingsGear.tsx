@@ -1,14 +1,13 @@
 /**
  * SettingsGear.
  *
- * Popover for grid view options and layout display settings.
- * Two sections matching the Push-style settings panel:
- * - View Options: note labels, position labels, finger assignment
- * - Layout Options: organize by 4x4 banks, duplicate layout
+ * Popover for the grid's view options (note, position and finger labels,
+ * hand colours) and the cost toggles. The dead "Organize by 4x4 Banks" and the
+ * hidden second Save Variant ("Duplicate Layout") are gone (S2.3, T39).
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { type GridLabelSettings, type LayoutDisplaySettings } from '../../state/viewSettings';
+import { type GridLabelSettings } from '../../state/viewSettings';
 import { type CostToggles, TOGGLE_CATEGORIES, isExperimentalMode } from '../../../types/costToggles';
 import { COST_FAMILY_FACTOR, FACTOR_META } from '../../analysis/factorMeta';
 import { DisabledReason, useDisabledReason } from '../shared/DisabledReason';
@@ -21,10 +20,7 @@ const CALCULATE_DISABLED_REASON = 'Place a Sound on the grid first: the cost nee
 
 interface SettingsGearProps {
   gridLabels: GridLabelSettings;
-  layoutDisplay: LayoutDisplaySettings;
   onToggleGridLabel: (key: keyof GridLabelSettings) => void;
-  onToggleLayoutDisplay: (key: keyof LayoutDisplaySettings) => void;
-  onDuplicateLayout?: () => void;
   costToggles?: CostToggles;
   onCostToggleChange?: (toggles: CostToggles) => void;
   onCalculateCost?: () => void;
@@ -41,10 +37,7 @@ const VIEW_OPTIONS: Array<{ key: keyof GridLabelSettings; label: string }> = [
 
 export function SettingsGear({
   gridLabels,
-  layoutDisplay,
   onToggleGridLabel,
-  onToggleLayoutDisplay,
-  onDuplicateLayout,
   costToggles,
   onCostToggleChange,
   onCalculateCost,
@@ -110,41 +103,6 @@ export function SettingsGear({
                 <span className="text-pf-base text-[var(--text-primary)]">{label}</span>
               </button>
             ))}
-          </div>
-
-          {/* Divider */}
-          <div className="pf-divider-h mx-3" />
-
-          {/* Layout Options section */}
-          <div className="px-4 pt-3 pb-1">
-            <div className="section-header">
-              Layout Options
-            </div>
-          </div>
-          <div className="px-2 pb-2">
-            <button
-              className="w-full flex items-center gap-3 px-2 py-2.5 text-left hover:bg-[var(--bg-hover)] rounded-pf-lg transition-colors"
-              onClick={() => onToggleLayoutDisplay('organize4x4Banks')}
-            >
-              <span className={`text-pf-base ${layoutDisplay.organize4x4Banks ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
-                Organize by 4x4 Banks
-              </span>
-            </button>
-            {onDuplicateLayout && (
-              <button
-                className="w-full flex items-center justify-between px-2 py-2.5 text-left hover:bg-[var(--bg-hover)] rounded-pf-lg transition-colors"
-                onClick={() => {
-                  onDuplicateLayout();
-                  setOpen(false);
-                }}
-              >
-                <span className="text-pf-base text-[var(--text-secondary)]">Duplicate Layout</span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--text-tertiary)]">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                </svg>
-              </button>
-            )}
           </div>
 
           {/* Cost Toggles section */}
@@ -239,7 +197,7 @@ function CostTogglesSection({
             aria-describedby={calculateReason.describedBy}
             title={hasAssignment ? 'Evaluate with active cost toggles' : CALCULATE_DISABLED_REASON}
           >
-            Calculate Cost
+            Calculate cost
           </button>
           <DisabledReason id={calculateReason.id} reason={hasAssignment ? null : CALCULATE_DISABLED_REASON} className="block" />
         </div>

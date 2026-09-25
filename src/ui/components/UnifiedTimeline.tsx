@@ -578,26 +578,11 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
+  // One staged empty state, at the grid (T44): the timeline only says what it will show.
   if (state.soundStreams.length === 0) {
     return (
-      <div className="px-6 py-12 text-center text-[var(--text-tertiary)] text-pf-sm">
-        Import MIDI files or open the Pattern Composer to generate timeline material.
-        <div className="mt-3">
-          <button
-            className="pf-btn pf-btn-primary text-pf-sm"
-            onClick={handleImportClick}
-          >
-            Import MIDI Files
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".mid,.midi"
-            multiple
-            className="hidden"
-            onChange={handleFileChange}
-          />
-        </div>
+      <div data-testid="timeline-empty" className="px-6 py-12 text-center text-[var(--text-tertiary)] text-pf-sm">
+        Your Sounds' notes appear here once you import MIDI or build a pattern in the Composer.
       </div>
     );
   }

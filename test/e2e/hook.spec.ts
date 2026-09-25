@@ -7,7 +7,7 @@ import { test, expect } from './fixtures';
 
 test('window.__pf exposes project state, layout hash and undo depth in the editor', async ({ page, pf }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'New Project' }).click();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   await pf.ready();
   await expect(page.getByTestId('pad-0-0')).toBeVisible();
   await expect(page.getByTestId('pad-7-7')).toBeVisible();
