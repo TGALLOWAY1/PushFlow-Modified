@@ -315,7 +315,7 @@ export function getSelectedCandidate(state: ProjectState): CandidateSolution | n
  * The pad map is unchanged by promotion, so the plan is still valid; only its
  * binding needs to follow the layout.
  */
-function rebindAnalysisToLayout(
+export function rebindAnalysisToLayout(
   candidate: CandidateSolution,
   layout: Layout,
 ): CandidateSolution {
@@ -609,7 +609,7 @@ function prunePlacementLocks(
  * Sound is on this pad"; one pointing elsewhere is invisible in the UI and
  * would silently drag the Sound back on the next Generate.
  */
-function withDerivedLayoutState(
+export function withDerivedLayoutState(
   layout: Layout,
   voiceConstraints: ProjectState['voiceConstraints'],
 ): Layout {

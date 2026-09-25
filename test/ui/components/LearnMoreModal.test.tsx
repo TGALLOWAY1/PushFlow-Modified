@@ -18,8 +18,10 @@ import {
   CONSTRAINT_RULE_NAMES,
   OPTIMIZER_METHOD_KEYS,
   OPTIMIZER_METHOD_LABELS,
+  PLAN_SCORE_WEIGHTS,
   getAvailableMethodKeys,
 } from '../../../src/engine';
+import { PLAYABILITY_TOOLTIP } from '../../../src/ui/analysis/planScore';
 import { VERDICT_TIERS } from '../../../src/ui/analysis/verdictTiers';
 import { FACTOR_KEYS, FACTOR_META } from '../../../src/ui/analysis/factorMeta';
 import { FeasibilityBadge } from '../../../src/ui/components/panels/CostBreakdownBars';
@@ -114,6 +116,21 @@ describe('Learn More sync (P1b-8)', () => {
       expect(row.textContent).toContain(meta.label);
       expect(row.textContent).toContain(meta.description);
     });
+  });
+
+  it('explains the Score as one yardstick, from the engine’s own weights (S3.1)', () => {
+    openTab('Cost Factors');
+    const text = screen.getByTestId('learn-score').textContent ?? '';
+    expect(text).toContain('Score is its Playability, from 0 to 100: higher is easier');
+    expect(text).toContain('canonical evaluator');
+    expect(text).toContain(`minus ${PLAN_SCORE_WEIGHTS.hardEvent} for each hard event`);
+    expect(text).toContain(`minus ${PLAN_SCORE_WEIGHTS.unplayableEvent} for each event that can’t be played`);
+    expect(text).toContain(`minus up to ${PLAN_SCORE_WEIGHTS.ergonomicCap} for the average cost per event`);
+    for (const key of FACTOR_KEYS) expect(text).toContain(FACTOR_META[key].label);
+    expect(text).toContain('the same layout scores the same wherever it appears');
+    expect(text).toContain('whichever optimizer proposed it');
+    // The tooltip on every displayed Score names the same yardstick.
+    expect(PLAYABILITY_TOOLTIP).toBe('Playability · canonical evaluator · higher = easier');
   });
 
   it('explains per-event cost with the Selected event card’s factor labels', () => {

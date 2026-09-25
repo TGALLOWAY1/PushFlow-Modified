@@ -108,7 +108,14 @@ export {
 // Structure analysis
 export { groupEventsByTime, getPolyphonyTimeline, getMaxPolyphony } from './structure/eventGrouping';
 export { buildPerformanceMoments, extractPadOwnership, validatePadOwnershipConsistency } from './structure/momentBuilder';
-export { computePlanScore, COMFORTABLE_PLAN_SCORE } from './evaluation/planScore';
+export { computePlanScore, COMFORTABLE_PLAN_SCORE, PLAN_SCORE_WEIGHTS } from './evaluation/planScore';
+export {
+  scoreLayoutPlayability,
+  evaluationConfigFor,
+  PLAYABILITY_EVALUATOR_ID,
+  type LayoutScore,
+  type ScoreLayoutPlayabilityInput,
+} from './evaluation/playability';
 export {
   groupIntoMoments,
   momentKey,

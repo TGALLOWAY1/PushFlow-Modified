@@ -9,7 +9,7 @@
 import { useState } from 'react';
 import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { InputTableSections } from '../shared/ShortcutSheet';
-import { CONSTRAINT_RULE_NAMES, OPTIMIZER_METHOD_KEYS, OPTIMIZER_METHOD_LABELS } from '@/engine';
+import { CONSTRAINT_RULE_NAMES, OPTIMIZER_METHOD_KEYS, OPTIMIZER_METHOD_LABELS, PLAN_SCORE_WEIGHTS } from '@/engine';
 import { VERDICT_TIERS } from '../../analysis/verdictTiers';
 import { FACTOR_KEYS, FACTOR_META, type FactorKey } from '../../analysis/factorMeta';
 
@@ -469,7 +469,32 @@ function CostFactorsSection() {
         );
       })}
 
+      <ScoreSection />
       <VerdictsSection />
+    </div>
+  );
+}
+
+/**
+ * The Score every layout shows (S3.1, one yardstick), explained from the
+ * engine's own weights so the text can't drift from the number (invariant 2).
+ */
+function ScoreSection() {
+  const { hardEvent, unplayableEvent, ergonomicCap } = PLAN_SCORE_WEIGHTS;
+  return (
+    <div className="space-y-3 pt-2 border-t border-[var(--border-subtle)]">
+      <h4 className="text-pf-base font-medium text-[var(--text-primary)]">Score</h4>
+      <p data-testid="learn-score" className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
+        Every layout&rsquo;s Score is its Playability, from 0 to 100: higher is easier. PushFlow plays the layout with
+        its own fingering (the same analysis for the Active Layout, your draft, each candidate and each saved variant),
+        and the canonical evaluator scores that fingering: 100, minus {hardEvent} for each hard event, minus{' '}
+        {unplayableEvent} for each event that can&rsquo;t be played, and minus up to {ergonomicCap} for the average cost
+        per event of the {listNames(FACTOR_KEYS.map(k => FACTOR_META[k].label))} factors above (a cost family you switch
+        off adds nothing). A hard event needs a grip beyond the strict hand-geometry limits; an event can&rsquo;t be
+        played when a note has no pad, one finger would strike two pads at once, or a hand would have to move faster
+        than it can. So the same layout scores the same wherever it appears (its row, the Analysis panel and Compare),
+        whichever optimizer proposed it. &lsquo;Scoring&hellip;&rsquo; shows while a layout is being scored.
+      </p>
     </div>
   );
 }

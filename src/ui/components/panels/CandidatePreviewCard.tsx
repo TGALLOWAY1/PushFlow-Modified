@@ -9,7 +9,8 @@ import { useState } from 'react';
 import { type CandidateSolution } from '../../../types/candidateSolution';
 import { type SoundStream } from '../../state/projectState';
 import { MiniGridPreview } from './MiniGridPreview';
-import { formatPlanScore, getPlanScoreSummary } from '../../analysis/planScore';
+import { formatPlanScore, playabilityTooltip, PLAYABILITY_TOOLTIP, SCORE_FAILED_TEXT, SCORING_TEXT } from '../../analysis/planScore';
+import { useLayoutAnalysis } from '../../analysis/layoutAnalysis';
 import { FACTOR_KEYS, FACTOR_META, factorsFromBreakdown } from '../../analysis/factorMeta';
 import { strategyLabel } from '../../analysis/strategyLabels';
 import { type V1CostBreakdown } from '../../../types/diagnostics';
@@ -38,6 +39,24 @@ function difficultyColor(score: number): string {
   if (score <= 0.45) return '#eab308';
   if (score <= 0.7) return '#f97316';
   return '#ef4444';
+}
+
+function CandidateScore({ candidate }: { candidate: CandidateSolution }) {
+  const scored = useLayoutAnalysis(candidate.layout);
+  if (scored.status === 'ready') {
+    return (
+      <span data-testid="candidate-score" title={playabilityTooltip(scored.score.playability)}>
+        Score: {formatPlanScore(scored.score.playability)}
+      </span>
+    );
+  }
+  if (scored.status === 'error') {
+    return <span data-testid="candidate-score" className="text-red-300" title={scored.message}>{SCORE_FAILED_TEXT}</span>;
+  }
+  if (scored.status === 'empty') {
+    return <span data-testid="candidate-score" title={PLAYABILITY_TOOLTIP}>Score: —</span>;
+  }
+  return <span data-testid="candidate-score" className="animate-pulse" title={PLAYABILITY_TOOLTIP}>{SCORING_TEXT}</span>;
 }
 
 /** The factor that costs this plan most, by its FACTOR_META label (T20). */
@@ -166,9 +185,11 @@ export function CandidatePreviewCard({
           </div>
         )}
 
-        {/* Summary metadata */}
+        {/* Summary metadata. The Score is the layout's Playability on the one
+            yardstick (S3.1), not the optimizer's own plan score, so it reads
+            the same here, on the draft, in Compare and on a variant. */}
         <div className="flex justify-between text-pf-xs text-[var(--text-tertiary)] mb-2 px-0.5">
-          <span title={getPlanScoreSummary(candidate.executionPlan.score)}>Score: {formatPlanScore(candidate.executionPlan.score)}</span>
+          <CandidateScore candidate={candidate} />
           <span>Top: {topDriver}</span>
         </div>
 

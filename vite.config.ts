@@ -10,6 +10,10 @@ export default defineConfig(({ command }) => ({
   plugins: [
     react(),
   ],
+  // The scoring worker (src/ui/analysis/scoring.worker.ts) is a module worker.
+  worker: {
+    format: 'es',
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
