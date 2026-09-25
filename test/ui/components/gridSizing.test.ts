@@ -76,6 +76,12 @@ describe('drawerHeightFor', () => {
     expect(drawerHeightFor(900, timelineContentHeight(20), DEFAULT_DRAWER_PREFS)).toBe(Math.round(900 * DRAWER_CAP_RATIO));
   });
 
+  it('gives the Composer (no natural height) the 40%, whatever the Sound count (S2.4, T69)', () => {
+    expect(drawerHeightFor(900, Number.POSITIVE_INFINITY, DEFAULT_DRAWER_PREFS)).toBe(Math.round(900 * DRAWER_CAP_RATIO));
+    expect(drawerHeightFor(900, Number.POSITIVE_INFINITY, { height: 300, collapsed: false })).toBe(300);
+    expect(drawerHeightFor(500, Number.POSITIVE_INFINITY, DEFAULT_DRAWER_PREFS)).toBe(maxDrawerHeight(500));
+  });
+
   it("uses the viewer's height, but never takes the grid's minimum room", () => {
     expect(drawerHeightFor(900, 100, { height: 300, collapsed: false })).toBe(300);
     expect(drawerHeightFor(900, 100, { height: 2000, collapsed: false })).toBe(maxDrawerHeight(900));

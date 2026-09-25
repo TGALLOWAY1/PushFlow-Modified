@@ -8,6 +8,7 @@
 
 import { useState } from 'react';
 import { Dialog, useOverlayTitleId } from '../shared/Overlay';
+import { InputTableSections } from '../shared/ShortcutSheet';
 import { CONSTRAINT_RULE_NAMES, OPTIMIZER_METHOD_KEYS, OPTIMIZER_METHOD_LABELS } from '@/engine';
 import { VERDICT_TIERS } from '../../analysis/verdictTiers';
 import { FACTOR_KEYS, FACTOR_META, type FactorKey } from '../../analysis/factorMeta';
@@ -17,7 +18,7 @@ interface LearnMoreModalProps {
   onClose: () => void;
 }
 
-type LearnMoreTab = 'overview' | 'workflow' | 'costs' | 'optimizers' | 'constraints';
+type LearnMoreTab = 'overview' | 'workflow' | 'costs' | 'optimizers' | 'constraints' | 'keyboard';
 
 /**
  * How each factor is computed: the detail under FACTOR_META's one-line
@@ -53,7 +54,7 @@ const OPTIMIZER_METHODS = [
 // Analysis is automatic and Generate only proposes (T44): the flow says so.
 const WORKFLOW_STEPS = [
   { step: '1', title: 'Import', description: 'Import a MIDI file (the Library starts a project from one) or build a pattern in the Composer' },
-  { step: '2', title: 'Place', description: 'Drag Sounds onto pads, or Suggest a starting layout' },
+  { step: '2', title: 'Place', description: 'Click a Sound, then a pad (or drag it), or Suggest a starting layout' },
   { step: '3', title: 'Analyze', description: 'Analysis updates automatically as you place Sounds: costs and difficulty per event' },
   { step: '4', title: 'Generate', description: 'Generate proposes alternative layouts; your draft stays as it is' },
   { step: '5', title: 'Compare', description: 'Compare candidates side by side' },
@@ -96,6 +97,7 @@ export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
             { id: 'costs' as const, label: 'Cost Factors' },
             { id: 'optimizers' as const, label: 'Optimizers' },
             { id: 'constraints' as const, label: 'Constraints' },
+            { id: 'keyboard' as const, label: 'Keyboard & mouse' },
           ]).map(t => (
             <button
               key={t.id}
@@ -118,6 +120,8 @@ export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
           {tab === 'costs' && <CostFactorsSection />}
           {tab === 'optimizers' && <OptimizersSection />}
           {tab === 'constraints' && <ConstraintsSection />}
+          {/* The same list as the '?' sheet, from the one input table (T61). */}
+          {tab === 'keyboard' && <InputTableSections />}
         </div>
     </Dialog>
   );

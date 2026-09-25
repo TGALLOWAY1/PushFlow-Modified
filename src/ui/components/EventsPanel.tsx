@@ -11,7 +11,7 @@
  * - exposes selection state for downstream grid/onion-view consumers
  *
  * Reuses V1 event-analysis patterns: epsilon-based temporal grouping,
- * keyboard navigation (ArrowUp/Down, j/k), auto-scroll selected row.
+ * keyboard navigation (↑/↓ and j/k while focus is in the list), auto-scroll selected row.
  */
 
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react';
@@ -19,7 +19,7 @@ import { useProject } from '../state/ProjectContext';
 import { getActiveStreams, getDisplayedExecutionPlan, type SoundStream } from '../state/projectState';
 import { groupIntoMoments, summarizeMomentCost, type MomentCost } from '@/engine';
 import { MOMENT_EPSILON } from '../../types/performanceEvent';
-import { isOverlayOpen } from './shared/Overlay';
+import { useInputHandler } from '../input/inputRegistry';
 import { formatBarBeat } from '../../utils/musicalTime';
 import { FACTOR_KEYS, FACTOR_META, factorsFromBreakdown } from '../analysis/factorMeta';
 
@@ -124,30 +124,18 @@ export function EventsPanel({
     dispatch({ type: 'SET_CURRENT_TIME', payload: moment.startTime });
   }, [state, dispatch]);
 
-  // Keyboard navigation (V1 pattern: ArrowUp/Down, j/k)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
-      if (moments.length === 0) return;
-      // Nothing while playing (T61 slice), and nothing under an open dialog or menu.
-      if (state.isPlaying || isOverlayOpen()) return;
-
-      const currentIdx = selectedMomentIdx ?? -1;
-
-      if (e.key === 'ArrowDown' || e.key === 'j') {
-        e.preventDefault();
-        const nextIdx = Math.min(currentIdx + 1, moments.length - 1);
-        handleMomentClick(moments[nextIdx]);
-      } else if (e.key === 'ArrowUp' || e.key === 'k') {
-        e.preventDefault();
-        const prevIdx = Math.max(currentIdx - 1, 0);
-        handleMomentClick(moments[prevIdx]);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [moments, selectedMomentIdx, handleMomentClick, state.isPlaying]);
+  // ↑/↓ and j/k step through the list while focus is in it (the input table's
+  // events-list-keys row; the listener skips selects, text fields and menus).
+  useInputHandler('events-list-keys', e => {
+    // Nothing while playing (T61 slice).
+    if (state.isPlaying || moments.length === 0) return false;
+    const currentIdx = selectedMomentIdx ?? -1;
+    if (e.key === 'ArrowDown' || e.key === 'j') {
+      handleMomentClick(moments[Math.min(currentIdx + 1, moments.length - 1)]);
+    } else {
+      handleMomentClick(moments[Math.max(currentIdx - 1, 0)]);
+    }
+  });
 
   // Auto-scroll selected moment row into view (V1 pattern)
   useEffect(() => {
@@ -220,7 +208,7 @@ export function EventsPanel({
         <span className="flex-shrink-0 w-8 text-right">Notes</span>
       </div>
 
-      <div ref={listRef} className="overflow-y-auto space-y-0.5" style={{ maxHeight: 'calc(100vh - 310px)' }}>
+      <div ref={listRef} data-input-scope="events" className="overflow-y-auto space-y-0.5" style={{ maxHeight: 'calc(100vh - 310px)' }}>
         {moments.map((moment) => (
           <MomentRow
             key={moment.momentIndex}

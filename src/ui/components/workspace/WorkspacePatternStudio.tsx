@@ -33,6 +33,7 @@ import {
   voiceForLane,
 } from './composerLaneIdentity';
 import { useToast } from '../shared/Toast';
+import { useInputHandler } from '../../input/inputRegistry';
 
 const LANE_COLORS = ['#ef4444', '#f97316', '#22c55e', '#eab308', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6'];
 const DEFAULT_MIDI_NOTES = [36, 38, 42, 46, 48, 60, 62, 64];
@@ -40,6 +41,8 @@ const WORKSPACE_PATTERN_SOURCE_ID = 'workspace_pattern_source';
 const WORKSPACE_PATTERN_GROUP_ID = 'workspace_pattern_group';
 const WORKSPACE_PATTERN_NAME = 'Workspace Pattern';
 const CLEAR_LABEL = 'Clear Composer';
+/** Fixed control widths (px), so the toolbar never reflows (T69). */
+const COMPOSER_TOOLBAR_WIDTHS = { bars: 30, grid: 36, play: 56, tempo: 64, savePreset: 92, clear: 60 } as const;
 
 interface ProjectPatternMeta {
   existingGroupOrder: number;
@@ -357,6 +360,10 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
     if (stopping) flushPending();
   }, [loopState.isPlaying, flushPending]);
 
+  // Space plays and stops the pattern while this tab is shown (the input
+  // table's space row; it outranks the workspace transport here).
+  useInputHandler('space', () => handleTogglePlay(), { enabled: isActive, priority: 1 });
+
   // Clear undone (from its toast or with Undo anywhere): the Sounds are back in
   // the project, so the Composer gets its pattern back from memory (F9-08).
   // Clear redone: the Sounds are gone again, so the Composer clears again.
@@ -535,24 +542,28 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3 flex-wrap px-3 py-2 rounded-pf-lg bg-bg-panel/50 border border-[var(--border-default)]">
-        <div>
-          <div className="text-pf-md font-semibold text-[var(--text-primary)]">Pattern Composer</div>
-          <div className="text-pf-xs text-[var(--text-secondary)]">Changes sync directly into the shared performance timeline.</div>
-        </div>
-
-        <div className="pf-divider-v h-6" />
-
-        <div className="flex items-center gap-1">
-          <span className="text-pf-xs text-[var(--text-secondary)]">Bars</span>
+      {/* One row of fixed-width controls (T69): enabling Save Preset or a
+          count changing never reflows it, so the step grid below never moves.
+          A narrow drawer scrolls the row instead of wrapping it. */}
+      <div
+        role="toolbar"
+        aria-label="Pattern Composer"
+        data-testid="composer-toolbar"
+        className="flex items-center flex-nowrap gap-2 px-3 py-1.5 rounded-pf-lg bg-bg-panel/50 border border-[var(--border-default)] overflow-x-auto overflow-y-hidden"
+      >
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <span className="text-pf-xs text-[var(--text-secondary)] mr-0.5">Bars</span>
           {([4, 8, 16] as const).map(bars => (
             <button
               key={bars}
-              className={`px-2 py-1 text-pf-sm rounded-pf-sm transition-colors ${
+              type="button"
+              aria-pressed={loopState.config.barCount === bars}
+              className={`flex-shrink-0 h-7 text-pf-sm rounded-pf-sm transition-colors ${
                 loopState.config.barCount === bars
                   ? 'bg-[var(--bg-hover)] text-[var(--text-primary)]'
                   : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               }`}
+              style={{ width: COMPOSER_TOOLBAR_WIDTHS.bars }}
               onClick={() => dispatchComposer({ type: 'SET_BAR_COUNT', payload: bars })}
             >
               {bars}
@@ -560,16 +571,19 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
           ))}
         </div>
 
-        <div className="flex items-center gap-1">
-          <span className="text-pf-xs text-[var(--text-secondary)]">Grid</span>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <span className="text-pf-xs text-[var(--text-secondary)] mr-0.5">Grid</span>
           {(['1/8', '1/4', '1/2', '1/1'] as const).map(subdivision => (
             <button
               key={subdivision}
-              className={`px-2 py-1 text-pf-sm rounded-pf-sm transition-colors ${
+              type="button"
+              aria-pressed={loopState.config.subdivision === subdivision}
+              className={`flex-shrink-0 h-7 text-pf-sm rounded-pf-sm transition-colors ${
                 loopState.config.subdivision === subdivision
                   ? 'bg-[var(--bg-hover)] text-[var(--text-primary)]'
                   : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               }`}
+              style={{ width: COMPOSER_TOOLBAR_WIDTHS.grid }}
               onClick={() => handleSubdivisionChange(subdivision)}
             >
               {subdivision}
@@ -578,34 +592,39 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
         </div>
 
         <button
-          className={`px-2 py-1 text-pf-sm rounded-pf-sm transition-colors ${
+          type="button"
+          className={`flex-shrink-0 h-7 text-pf-sm rounded-pf-sm border transition-colors ${
             loopState.isPlaying
-              ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-              : 'bg-[var(--bg-hover)] text-[var(--text-primary)]'
+              ? 'bg-red-500/20 text-red-300 border-red-500/30'
+              : 'bg-[var(--bg-hover)] text-[var(--text-primary)] border-transparent'
           }`}
+          style={{ width: COMPOSER_TOOLBAR_WIDTHS.play }}
           onClick={handleTogglePlay}
+          title={loopState.isPlaying ? 'Stop the pattern (Space)' : 'Play the pattern (Space)'}
         >
           {loopState.isPlaying ? 'Stop' : 'Play'}
         </button>
 
-        {/* BPM display (read-only, uses project tempo) */}
-        <div className="flex items-center gap-1">
-          <span className="text-pf-sm text-[var(--text-secondary)] font-mono">{projectState.tempo}</span>
+        {/* The project tempo, read-only (invariant 8) */}
+        <span
+          className="flex-shrink-0 flex items-center gap-1 whitespace-nowrap"
+          style={{ width: COMPOSER_TOOLBAR_WIDTHS.tempo }}
+          title="The Composer plays at the project tempo"
+        >
+          <span className="text-pf-sm text-[var(--text-secondary)] font-mono tabular-nums">{projectState.tempo}</span>
           <span className="text-pf-xs text-[var(--text-tertiary)]">BPM</span>
-        </div>
-
-        <div className="flex-1" />
-
-        <span className="text-pf-xs text-emerald-300/80">
-          {loopState.lanes.length} lanes · {loopState.events.size} events · live sync
         </span>
 
+        <span className="flex-1" />
+
         <button
-          className={`px-2 py-1 text-pf-sm rounded-pf-sm transition-colors ${
+          type="button"
+          className={`flex-shrink-0 h-7 text-pf-sm rounded-pf-sm border transition-colors ${
             loopState.events.size > 0 && loopState.lanes.length > 0
-              ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30 hover:bg-violet-600/30'
-              : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] cursor-not-allowed'
+              ? 'bg-violet-600/20 text-violet-300 border-violet-500/30 hover:bg-violet-600/30'
+              : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border-transparent cursor-not-allowed'
           }`}
+          style={{ width: COMPOSER_TOOLBAR_WIDTHS.savePreset }}
           onClick={handleSaveComposerPreset}
           disabled={loopState.events.size === 0 || loopState.lanes.length === 0}
           title="Save as Composer Preset (captures pad layout + finger assignments + events)"
@@ -614,7 +633,9 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
         </button>
 
         <button
-          className="pf-btn pf-btn-subtle text-pf-sm"
+          type="button"
+          className="pf-btn pf-btn-subtle text-pf-sm flex-shrink-0 justify-center"
+          style={{ width: COMPOSER_TOOLBAR_WIDTHS.clear }}
           onClick={handleResetComposer}
           disabled={loopState.lanes.length === 0 && loopState.events.size === 0}
         >
@@ -625,6 +646,7 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
       <div className="flex gap-3 items-start">
         <div className="flex-1 min-w-0 flex rounded-pf-lg bg-bg-card/20 border border-[var(--border-default)] overflow-hidden" style={{ minHeight: 260 }}>
           <LoopLaneSidebar
+            noteCount={loopState.events.size}
             lanes={displayLanes}
             dispatch={laneDispatch}
             fingerAssignments={laneFingerAssignments}

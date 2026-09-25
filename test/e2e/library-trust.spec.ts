@@ -89,7 +89,7 @@ test.describe('S2.3 · the Library', () => {
     expect(imported.workingLayout).toBeNull();
     expect(imported.instrumentConfig.bottomLeftNote).toBe(36);
     // The grid says how to place them, and places nothing by itself.
-    await expect(page.getByTestId('grid-place-hint')).toContainText('Drag your 7 Sounds onto pads');
+    await expect(page.getByTestId('grid-place-hint')).toContainText('Place your 7 Sounds: click one, then a pad');
 
     await backToLibrary(page);
     await page.getByRole('button', { name: 'Open the demo' }).click();

@@ -71,7 +71,10 @@ test.describe('C1 · pad context menu', () => {
       const axisOk = (pos: number, cur: number, size: number, limit: number) =>
         Math.abs(pos - cur) <= 4 || (cur + size > limit - 12 && pos + size <= limit && pos + size >= limit - 12);
       const inside = m.left >= 0 && m.top >= 0 && m.right <= viewport.width && m.bottom <= viewport.height;
-      if (!inside || !axisOk(m.left, cursor.x, w, viewport.width) || !axisOk(m.top, cursor.y, h, viewport.height)) {
+      // A sensible width too: the portalled menu once stretched to the viewport
+      // edge (630-884 px) while every position check passed (P1b audit).
+      const narrow = w < 320;
+      if (!inside || !narrow || !axisOk(m.left, cursor.x, w, viewport.width) || !axisOk(m.top, cursor.y, h, viewport.height)) {
         misplaced.push(`[${padKey}] cursor ${cursor.x},${cursor.y} menu ${Math.round(m.left)},${Math.round(m.top)} ${Math.round(w)}x${Math.round(h)}`);
       }
       await closeMenu(page);

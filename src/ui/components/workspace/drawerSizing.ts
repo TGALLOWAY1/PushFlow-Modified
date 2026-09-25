@@ -45,7 +45,8 @@ export function minDrawerHeight(centerHeight: number): number {
  * The drawer's height in px: the tab bar alone when collapsed; otherwise the
  * viewer's height, or the content's (at most 40% of the centre column), kept
  * between DRAWER_MIN_HEIGHT and what leaves the grid its minimum. When both
- * can't hold, the grid's minimum wins.
+ * can't hold, the grid's minimum wins. Content with no natural height (the
+ * Composer, POSITIVE_INFINITY) gets the 40%.
  */
 export function drawerHeightFor(centerHeight: number, contentHeight: number, prefs: DrawerPrefs): number {
   if (prefs.collapsed) return DRAWER_TAB_BAR_HEIGHT;

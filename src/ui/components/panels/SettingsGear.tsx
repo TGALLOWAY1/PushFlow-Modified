@@ -25,6 +25,8 @@ interface SettingsGearProps {
   onCostToggleChange?: (toggles: CostToggles) => void;
   onCalculateCost?: () => void;
   hasAssignment?: boolean;
+  /** Opens the keyboard and mouse sheet (also on '?'). */
+  onOpenShortcuts?: () => void;
 }
 
 const VIEW_OPTIONS: Array<{ key: keyof GridLabelSettings; label: string }> = [
@@ -42,9 +44,11 @@ export function SettingsGear({
   onCostToggleChange,
   onCalculateCost,
   hasAssignment,
+  onOpenShortcuts,
 }: SettingsGearProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -60,6 +64,7 @@ export function SettingsGear({
   return (
     <div className="relative" ref={ref}>
       <button
+        ref={buttonRef}
         className={`w-8 h-8 flex items-center justify-center rounded-pf-lg transition-colors ${
           open ? 'bg-[var(--bg-active)] text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
         }`}
@@ -75,7 +80,20 @@ export function SettingsGear({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-64 rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-lg z-50 overflow-hidden">
+        // A dialog to the input table: keys pressed in it are its own (Space
+        // toggles the focused option), and Escape closes it.
+        <div
+          role="dialog"
+          aria-label="View settings"
+          data-testid="settings-popover"
+          className="absolute right-0 top-full mt-1 w-64 rounded-pf-lg border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-lg z-50 overflow-hidden"
+          onKeyDown={e => {
+            if (e.key !== 'Escape') return;
+            e.stopPropagation();
+            setOpen(false);
+            buttonRef.current?.focus();
+          }}
+        >
           {/* View Options section */}
           <div className="px-4 pt-3 pb-1">
             <div className="section-header">
@@ -120,6 +138,27 @@ export function SettingsGear({
                 onCalculate={onCalculateCost}
                 hasAssignment={hasAssignment ?? false}
               />
+            </>
+          )}
+
+          {/* The keyboard and mouse sheet (T61) */}
+          {onOpenShortcuts && (
+            <>
+              <div className="pf-divider-h mx-3" />
+              <div className="px-2 py-2">
+                <button
+                  type="button"
+                  data-testid="open-shortcuts"
+                  className="w-full flex items-center justify-between gap-3 px-2 py-2 text-left hover:bg-[var(--bg-hover)] rounded-pf-lg transition-colors"
+                  onClick={() => {
+                    setOpen(false);
+                    onOpenShortcuts();
+                  }}
+                >
+                  <span className="text-pf-base text-[var(--text-primary)]">Keyboard and mouse</span>
+                  <kbd className="px-1.5 py-0.5 rounded-pf-sm bg-[var(--bg-card)] border border-[var(--border-default)] font-mono text-pf-xs text-[var(--text-secondary)]">?</kbd>
+                </button>
+              </div>
             </>
           )}
         </div>

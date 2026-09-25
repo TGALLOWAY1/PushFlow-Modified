@@ -1,16 +1,17 @@
 /**
- * One staged empty state, at the grid (S2.3, T44).
+ * One staged empty state, at the grid (S2.3, T44), and the placing hint (S2.4).
  *
  * With no Sounds, a card in the grid's centre offers the two ways in, Import
  * MIDI or build a pattern in the Composer, and takes .mid files dropped on
  * it. With Sounds but nothing placed, a line in the state bar above the grid
  * says how to place them and offers "Suggest a starting layout"; it stays off
- * the pads, so Sounds and presets can be dropped anywhere. Nothing is placed
+ * the pads, so Sounds and presets can be dropped anywhere. While a Sound is
+ * armed (click-to-place, T62) the state bar names it instead. Nothing is placed
  * without a click (invariant 7).
  */
 
 import { useRef, useState } from 'react';
-import { Music, Upload, Wand2 } from 'lucide-react';
+import { Music, Upload, Wand2, X } from 'lucide-react';
 
 const isMidiFile = (file: File) => /\.(mid|midi)$/i.test(file.name);
 const carriesFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files');
@@ -78,7 +79,7 @@ export function GridStartCard({ onImportFiles, onBuildPattern, onRejectedFiles }
           </button>
         </div>
         <p className="text-pf-xs text-[var(--text-tertiary)]">
-          Then drag Sounds onto pads, or let PushFlow suggest a starting layout. Analysis updates as you place them.
+          Then click a Sound and a pad (or drag it there), or let PushFlow suggest a starting layout. Analysis updates as you place them.
         </p>
         <input
           ref={inputRef}
@@ -101,7 +102,7 @@ export function NothingPlacedHint({ soundCount, onSuggest }: { soundCount: numbe
   return (
     <span data-testid="grid-place-hint" className="flex items-center gap-2 min-w-0">
       <span className="text-pf-xs text-[var(--text-secondary)] truncate">
-        Drag your {soundCount === 1 ? 'Sound' : `${soundCount} Sounds`} onto pads, or
+        Place your {soundCount === 1 ? 'Sound' : `${soundCount} Sounds`}: click one, then a pad (or drag it), or
       </span>
       <button
         type="button"
@@ -111,6 +112,35 @@ export function NothingPlacedHint({ soundCount, onSuggest }: { soundCount: numbe
       >
         <Wand2 size={12} aria-hidden="true" />
         Suggest a starting layout
+      </button>
+    </span>
+  );
+}
+
+/** For the state bar while a Sound is armed: which one, what a click does, and how to stop. */
+export function ArmedSoundHint({ name, color, placed, onStop }: {
+  name: string;
+  color: string;
+  /** Already on the grid, so a click moves it. */
+  placed: boolean;
+  onStop: () => void;
+}) {
+  return (
+    <span data-testid="grid-armed-hint" className="flex items-center gap-2 min-w-0">
+      <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} aria-hidden="true" />
+      <span className="text-pf-xs text-[var(--text-secondary)] truncate">
+        <span className="font-semibold text-[var(--text-primary)]">{name}</span>
+        {placed ? ' · click an empty pad to move it there' : ' · click an empty pad to place it'}
+      </span>
+      <button
+        type="button"
+        data-testid="grid-armed-stop"
+        className="pf-btn pf-btn-subtle text-pf-xs px-2 py-0.5 flex-shrink-0"
+        onClick={onStop}
+        title="Stop placing (Esc)"
+      >
+        <X size={12} aria-hidden="true" />
+        Stop placing
       </button>
     </span>
   );

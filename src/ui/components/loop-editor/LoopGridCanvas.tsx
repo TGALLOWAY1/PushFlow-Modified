@@ -4,6 +4,11 @@
  * Step-sequencer grid for the Loop Editor.
  * Horizontal axis = time (steps), vertical axis = lanes.
  * Click to toggle events on/off.
+ *
+ * One geometry (T69): a single whole-pixel cellWidth places the cells, the bar
+ * and beat headers, the grid lines and the playhead. Cells never shrink below
+ * it; when the steps don't fit at MIN_CELL_WIDTH the grid scrolls sideways,
+ * and the lane column (outside this scroller) stays put.
  */
 
 import { useRef, useCallback, useEffect, useState } from 'react';
@@ -29,7 +34,8 @@ interface LoopGridCanvasProps {
   activeStepIndex?: number | null;
 }
 
-const MIN_CELL_WIDTH = 12;
+/** Narrowest readable, clickable step (T69). */
+export const MIN_CELL_WIDTH = 16;
 const CELL_HEIGHT = 32;
 const HEADER_HEIGHT = 40;
 const SUB_HEADER_HEIGHT = 20;
@@ -67,9 +73,7 @@ export function LoopGridCanvas({
     return () => observer.disconnect();
   }, [hasLanes]);
 
-  const cellWidth = containerWidth > 0
-    ? Math.max(MIN_CELL_WIDTH, containerWidth / steps)
-    : MIN_CELL_WIDTH;
+  const cellWidth = composerCellWidth(containerWidth, steps);
   const gridWidth = cellWidth * steps;
   const gridHeight = sortedLanes.length * CELL_HEIGHT;
 
@@ -97,14 +101,15 @@ export function LoopGridCanvas({
   }
 
   const renderGrid = () => (
-    <div className="relative w-full">
+    <div className="relative" style={{ width: gridWidth }}>
       {/* Bar number headers */}
       <div className="sticky top-0 z-10 bg-[var(--bg-app)]" style={{ height: HEADER_HEIGHT }}>
         <div className="flex" style={{ height: HEADER_HEIGHT }}>
           {Array.from({ length: config.barCount }, (_, bar) => (
             <div
               key={bar}
-              className="text-center text-pf-sm font-medium text-[var(--text-secondary)] border-l border-[var(--border-default)] flex items-end justify-center pb-1"
+              data-testid={`composer-bar-${bar + 1}`}
+              className="flex-shrink-0 text-center text-pf-sm font-medium text-[var(--text-secondary)] border-l border-[var(--border-default)] flex items-end justify-center pb-1"
               style={{ width: spb * cellWidth }}
             >
               {bar + 1}
@@ -124,7 +129,7 @@ export function LoopGridCanvas({
             return (
               <div
                 key={step}
-                className="text-center text-pf-xs text-[var(--text-secondary)] flex items-center justify-center"
+                className="flex-shrink-0 text-center text-pf-xs text-[var(--text-secondary)] flex items-center justify-center"
                 style={{ width: cellWidth }}
               >
                 {isBeat ? beatNum : ''}
@@ -145,6 +150,7 @@ export function LoopGridCanvas({
           return (
             <div
               key={`line-${step}`}
+              data-testid={isBarLine ? `composer-bar-line-${step / spb + 1}` : undefined}
               className={`absolute top-0 bottom-0 ${
                 isBarLine
                   ? 'border-l border-[var(--border-strong)]'
@@ -161,8 +167,9 @@ export function LoopGridCanvas({
         {sortedLanes.map((lane, laneIndex) => (
           <div
             key={lane.id}
-            className="flex absolute left-0 right-0"
+            className="flex absolute left-0"
             style={{
+              width: gridWidth,
               top: laneIndex * CELL_HEIGHT,
               height: CELL_HEIGHT,
               opacity: lane.isMuted ? 0.3 : 1,
@@ -182,7 +189,7 @@ export function LoopGridCanvas({
                   key={step}
                   data-testid={`composer-cell-${laneIndex}-${step}`}
                   data-on={hasEvent ? 'true' : undefined}
-                  className="relative cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
+                  className="relative flex-shrink-0 cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
                   style={{ width: cellWidth, height: CELL_HEIGHT }}
                   onClick={() => handleCellClick(lane.id, step)}
                 >
@@ -222,11 +229,11 @@ export function LoopGridCanvas({
         )}
       </div>
 
-      {/* Right edge bar line */}
+      {/* Right edge bar line, inside the grid so a grid that exactly fits never scrolls */}
       <div
         className="absolute border-l border-[var(--border-strong)]"
         style={{
-          left: gridWidth,
+          left: gridWidth - 1,
           top: HEADER_HEIGHT,
           bottom: 0,
         }}
@@ -235,8 +242,17 @@ export function LoopGridCanvas({
   );
 
   return (
-    <div ref={containerRef} className="flex-1 min-w-0 overflow-hidden overflow-y-auto relative">
+    <div ref={containerRef} data-testid="composer-grid-scroller" className="flex-1 min-w-0 overflow-x-auto overflow-y-hidden relative">
       {renderGrid()}
     </div>
   );
+}
+
+/**
+ * The one step width (T69): the container split evenly across the steps, in
+ * whole pixels so every line lands on a pixel, and never under MIN_CELL_WIDTH.
+ */
+export function composerCellWidth(containerWidth: number, steps: number): number {
+  if (containerWidth <= 0 || steps <= 0) return MIN_CELL_WIDTH;
+  return Math.max(MIN_CELL_WIDTH, Math.floor(containerWidth / steps));
 }

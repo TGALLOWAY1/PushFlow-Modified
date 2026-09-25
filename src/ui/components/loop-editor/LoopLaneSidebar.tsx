@@ -19,12 +19,14 @@ interface LoopLaneSidebarProps {
   onAddLane?: () => void;
   /** Per-lane pad positions (e.g. "3,5"), keyed by lane ID. */
   padPositions?: Record<string, string>;
+  /** Notes in the pattern, shown in the header (out of the toolbar, so it can't reflow it: T69). */
+  noteCount?: number;
 }
 
 const HEADER_HEIGHT = 40;
 const SUB_HEADER_HEIGHT = 20;
 
-export function LoopLaneSidebar({ lanes, dispatch, fingerAssignments, onFingerAssignmentChange, onAddLane, padPositions }: LoopLaneSidebarProps) {
+export function LoopLaneSidebar({ lanes, dispatch, fingerAssignments, onFingerAssignmentChange, onAddLane, padPositions, noteCount }: LoopLaneSidebarProps) {
   const sortedLanes = [...lanes].sort((a, b) => a.orderIndex - b.orderIndex);
 
   return (
@@ -35,6 +37,15 @@ export function LoopLaneSidebar({ lanes, dispatch, fingerAssignments, onFingerAs
         style={{ height: HEADER_HEIGHT }}
       >
         Lanes
+        {noteCount !== undefined && (
+          <span
+            data-testid="composer-note-count"
+            className="ml-1.5 min-w-0 text-pf-xs font-normal text-emerald-300/80 truncate"
+            title="Changes sync directly into the shared performance timeline"
+          >
+            · {noteCount} {noteCount === 1 ? 'note' : 'notes'} · live sync
+          </span>
+        )}
         {onAddLane && (
           <button
             className="ml-auto text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-pf-sm leading-none px-1"

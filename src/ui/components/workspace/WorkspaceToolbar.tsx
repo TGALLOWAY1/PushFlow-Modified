@@ -37,6 +37,8 @@ interface WorkspaceToolbarProps {
   compareDisabledReason?: string | null;
   onCompare: () => void;
   onCalculateCost?: () => void;
+  /** Opens the '?' shortcut sheet. */
+  onOpenShortcuts?: () => void;
   hasAssignment?: boolean;
   saveStatus?: SaveStatus;
   onSave?: () => void;
@@ -57,6 +59,7 @@ export function WorkspaceToolbar({
   compareDisabledReason = null,
   onCompare,
   onCalculateCost,
+  onOpenShortcuts,
   hasAssignment,
   saveStatus = 'saved',
   onSave,
@@ -441,6 +444,7 @@ export function WorkspaceToolbar({
         onCostToggleChange={(toggles) => dispatch({ type: 'SET_COST_TOGGLES', payload: toggles })}
         onCalculateCost={onCalculateCost}
         hasAssignment={hasAssignment}
+        onOpenShortcuts={onOpenShortcuts}
       />
     </div>
   );

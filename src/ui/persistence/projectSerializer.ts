@@ -183,6 +183,8 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
     selectedEventIndex: null,
     selectedMomentIndex: null,
     selectedStreamId: null,
+    armedStreamId: null,
+    selectedPadKey: null,
     compareCandidateId: null,
     isProcessing: false,
     error: null,

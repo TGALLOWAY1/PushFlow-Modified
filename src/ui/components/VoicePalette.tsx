@@ -7,8 +7,9 @@
  */
 
 import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
-import { Pencil } from 'lucide-react';
+import { Crosshair, Pencil } from 'lucide-react';
 import { useProject } from '../state/ProjectContext';
+import { useInputHandler } from '../input/inputRegistry';
 import { gmDrumName, gmDrumRenames } from '../../utils/gmDrumMap';
 import { DisabledReason, useDisabledReason } from './shared/DisabledReason';
 import { getDisplayedCandidate, getDisplayedLayout, type SoundStream } from '../state/projectState';
@@ -41,48 +42,53 @@ export function VoicePalette() {
     [state.soundStreams],
   );
 
-  // Cmd+G to group/ungroup selected streams
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'g' && selectedStreamIds.size > 0) {
-        e.preventDefault();
-        // Check if all selected streams are in the same group → ungroup
-        const groupIds = new Set<string | null>();
-        for (const streamId of selectedStreamIds) {
-          const lane = state.performanceLanes.find(l => l.id === streamId);
-          groupIds.add(lane?.groupId ?? null);
-        }
-        const allInSameGroup = groupIds.size === 1 && !groupIds.has(null);
+  // Mod+G groups the selected Sounds, or ungroups them if they are all in one
+  // group (the input table's group-sounds row).
+  useInputHandler('group-sounds', () => {
+    const groupIds = new Set<string | null>();
+    for (const streamId of selectedStreamIds) {
+      const lane = state.performanceLanes.find(l => l.id === streamId);
+      groupIds.add(lane?.groupId ?? null);
+    }
+    const allInSameGroup = groupIds.size === 1 && !groupIds.has(null);
 
-        if (allInSameGroup) {
-          // Ungroup: remove streams from their group
-          transact('Ungroup', () => {
-            for (const streamId of selectedStreamIds) {
-              dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: streamId, groupId: null } });
-            }
-          });
-        } else {
-          // Group: create a new group and assign all selected streams
-          const group: LaneGroup = {
-            groupId: generateId('grp'),
-            name: `Group ${state.laneGroups.length + 1}`,
-            color: COLOR_PALETTE[state.laneGroups.length % COLOR_PALETTE.length],
-            orderIndex: state.laneGroups.length,
-            isCollapsed: false,
-          };
-          transact('Group', () => {
-            dispatch({ type: 'CREATE_LANE_GROUP', payload: group });
-            for (const streamId of selectedStreamIds) {
-              dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: streamId, groupId: group.groupId } });
-            }
-          });
+    if (allInSameGroup) {
+      // Ungroup: remove streams from their group
+      transact('Ungroup', () => {
+        for (const streamId of selectedStreamIds) {
+          dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: streamId, groupId: null } });
         }
-        setSelectedStreamIds(new Set());
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedStreamIds, state.laneGroups.length, state.performanceLanes, dispatch, transact]);
+      });
+    } else {
+      // Group: create a new group and assign all selected streams
+      const group: LaneGroup = {
+        groupId: generateId('grp'),
+        name: `Group ${state.laneGroups.length + 1}`,
+        color: COLOR_PALETTE[state.laneGroups.length % COLOR_PALETTE.length],
+        orderIndex: state.laneGroups.length,
+        isCollapsed: false,
+      };
+      transact('Group', () => {
+        dispatch({ type: 'CREATE_LANE_GROUP', payload: group });
+        for (const streamId of selectedStreamIds) {
+          dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: streamId, groupId: group.groupId } });
+        }
+      });
+    }
+    setSelectedStreamIds(new Set());
+  }, { enabled: selectedStreamIds.size > 0 });
+
+  // A one-Sound selection made by an arming click follows the armed Sound: it
+  // moves on with the auto-advance and ends when placing ends (Escape), so the
+  // grouping hint never lingers on a Sound the user has moved past.
+  const lastArmedRef = useRef<string | null>(state.armedStreamId);
+  useEffect(() => {
+    const was = lastArmedRef.current;
+    const armed = state.armedStreamId;
+    lastArmedRef.current = armed;
+    if (was === null || was === armed) return;
+    setSelectedStreamIds(prev => (prev.size === 1 && prev.has(was) ? new Set(armed ? [armed] : []) : prev));
+  }, [state.armedStreamId]);
 
   // Drag-to-reorder state
   const [reorderTarget, setReorderTarget] = useState<string | null>(null);
@@ -91,8 +97,17 @@ export function VoicePalette() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
 
   const handleStreamSelect = useCallback((streamId: string, e: React.MouseEvent) => {
-    // Always dispatch global selection for cross-panel highlighting
-    dispatch({ type: 'SELECT_STREAM', payload: state.selectedStreamId === streamId ? null : streamId });
+    const multiSelect = e.metaKey || e.ctrlKey || (e.shiftKey && selectedStreamIds.size > 0);
+    if (multiSelect) {
+      // Selecting several Sounds (for Mod+G) is not placing: disarm, and
+      // toggle the cross-panel highlight as before.
+      if (state.armedStreamId !== null) dispatch({ type: 'ARM_SOUND', payload: null });
+      dispatch({ type: 'SELECT_STREAM', payload: state.selectedStreamId === streamId ? null : streamId });
+    } else {
+      // A plain click arms the Sound for click-to-place (T62), and selects it.
+      // Clicking it again keeps it armed, so it never undoes the auto-advance.
+      dispatch({ type: 'ARM_SOUND', payload: streamId });
+    }
 
     if (e.metaKey || e.ctrlKey) {
       setSelectedStreamIds(prev => {
@@ -111,9 +126,9 @@ export function VoicePalette() {
       for (let i = start; i <= end; i++) next.add(allIds[i]);
       setSelectedStreamIds(next);
     } else {
-      setSelectedStreamIds(prev => prev.has(streamId) && prev.size === 1 ? new Set() : new Set([streamId]));
+      setSelectedStreamIds(new Set([streamId]));
     }
-  }, [selectedStreamIds, state.soundStreams, state.selectedStreamId, dispatch]);
+  }, [selectedStreamIds, state.soundStreams, state.selectedStreamId, state.armedStreamId, dispatch]);
 
   // Build a map of which pads each stream occupies
   const streamPadLocations = useMemo(() => {
@@ -246,6 +261,7 @@ export function VoicePalette() {
       currentGroupId={streamGroupMap.get(stream.id) ?? null}
       isSelected={selectedStreamIds.has(stream.id)}
       isGlobalSelected={state.selectedStreamId === stream.id}
+      isArmed={state.armedStreamId === stream.id}
       onSelect={handleStreamSelect}
       onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: stream.id })}
       onSolo={() => dispatch({ type: 'SOLO_STREAM', payload: stream.id })}
@@ -424,7 +440,7 @@ function GroupHeader({
           title="Change group color"
         />
         {showGroupColor && (
-          <div className="absolute left-0 top-full mt-1 p-1.5 rounded-pf-md border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl z-50 grid grid-cols-4 gap-1" style={{ width: 88 }}>
+          <div role="dialog" aria-label="Group color" className="absolute left-0 top-full mt-1 p-1.5 rounded-pf-md border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl z-50 grid grid-cols-4 gap-1" style={{ width: 88 }}>
             {COLOR_PALETTE.map(c => (
               <button
                 key={c}
@@ -482,6 +498,7 @@ function StreamRow({
   currentGroupId,
   isSelected,
   isGlobalSelected,
+  isArmed,
   isGrouped,
   onSelect,
   onToggleMute,
@@ -504,6 +521,8 @@ function StreamRow({
   solverAssignment?: { label: string; hand: string; finger: string };
   isSelected: boolean;
   isGlobalSelected: boolean;
+  /** Armed for click-to-place: the next click on an empty pad places it. */
+  isArmed: boolean;
   isGrouped: boolean;
   onSelect: (streamId: string, e: React.MouseEvent) => void;
   groups: LaneGroup[];
@@ -562,13 +581,16 @@ function StreamRow({
     <div
       data-testid="sound-row"
       data-sound-id={stream.id}
+      data-armed={isArmed ? 'true' : undefined}
       className={`
         group flex items-center gap-1.5 py-1.5 rounded-pf-sm text-pf-sm
         border transition-all duration-fast
         cursor-grab active:cursor-grabbing active:scale-[0.98]
         ${isGrouped ? 'pl-6 pr-2' : 'px-2'}
         ${stream.muted ? 'opacity-35' : ''}
-        ${isGlobalSelected
+        ${isArmed
+          ? 'border-accent-primary bg-[var(--accent-muted)] ring-1 ring-accent-primary/60'
+          : isGlobalSelected
           ? 'border-accent-primary/40 bg-[var(--accent-muted)] ring-1 ring-accent-primary/20'
           : isSelected
             ? 'border-accent-primary/25 bg-[var(--accent-muted)]'
@@ -594,7 +616,7 @@ function StreamRow({
           title="Color & group"
         />
         {showColorPicker && (
-          <div className="absolute left-0 top-full mt-1 rounded-pf-md border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl z-50" style={{ width: 120 }}>
+          <div role="dialog" aria-label="Color and group" className="absolute left-0 top-full mt-1 rounded-pf-md border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl z-50" style={{ width: 120 }}>
             {/* Colors */}
             <div className="p-1.5 grid grid-cols-4 gap-1">
               {COLOR_PALETTE.map(c => (
@@ -683,6 +705,18 @@ function StreamRow({
             <Pencil size={11} aria-hidden="true" />
           </button>
         </>
+      )}
+
+      {/* Armed for click-to-place (T62) */}
+      {isArmed && (
+        <span
+          data-testid="sound-armed"
+          className="flex-shrink-0 flex items-center text-accent-primary-soft"
+          title={padKeys.length > 0 ? 'Armed · click an empty pad to move it there' : 'Armed · click an empty pad to place it'}
+        >
+          <Crosshair size={12} aria-hidden="true" />
+          <span className="sr-only">Armed for placing</span>
+        </span>
       )}
 
       {/* Pad location(s) + lock indicator */}

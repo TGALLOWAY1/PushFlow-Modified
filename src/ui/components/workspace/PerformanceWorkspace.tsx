@@ -62,7 +62,8 @@ import { padKey } from '../../../types/padGrid';
 import { useMeasuredPadSize } from './gridSizing';
 import { DrawerSplitter } from './DrawerSplitter';
 import { CENTER_MIN_WIDTH, fitSidePanels, maxPanelWidth } from './panelSizing';
-import { GridStartCard, NothingPlacedHint } from './GridEmptyState';
+import { ArmedSoundHint, GridStartCard, NothingPlacedHint } from './GridEmptyState';
+import { ShortcutSheet } from '../shared/ShortcutSheet';
 import { useLaneImport } from '../../hooks/useLaneImport';
 import {
   DRAWER_TAB_BAR_HEIGHT,
@@ -130,7 +131,10 @@ function PerformanceWorkspaceInner() {
   const { generateFull, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason } = useAutoAnalysis();
   useIdentityMatchingNotice(state);
   const { saveStatus, saveNow } = useAutoSave(state);
-  useKeyboardShortcuts({ onSave: saveNow });
+  // The '?' sheet, generated from the input table (T61).
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
+  useKeyboardShortcuts({ onSave: saveNow, onOpenShortcuts: openShortcuts });
   const toast = useToast();
   // "Export a copy": the way out when saving keeps failing. Until P8 moves the
   // Composer's pattern into the project it lives in localStorage, and the file
@@ -203,7 +207,7 @@ function PerformanceWorkspaceInner() {
     return keys;
   }, [composerWorkspace.selectedInstanceId, composerWorkspace.placedInstances]);
 
-  // Dragging preset state (for ghost preview + mirror-during-drag)
+  // Dragging preset state (for the ghost preview; the Mirror toggle sets isMirrored)
   const [draggingPreset, setDraggingPreset] = useState<{ preset: ComposerPreset; isMirrored: boolean } | null>(null);
   const [dragPreview, setDragPreview] = useState<PresetDragPreview | null>(null);
 
@@ -219,21 +223,6 @@ function PerformanceWorkspaceInner() {
     setDraggingPreset(null);
     setDragPreview(null);
   }, []);
-
-  // M key toggles mirror during drag
-  useEffect(() => {
-    if (!draggingPreset) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'm' || e.key === 'M') {
-        setDraggingPreset(prev => {
-          if (!prev) return prev;
-          return { ...prev, isMirrored: !prev.isMirrored };
-        });
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [draggingPreset]);
 
   // Update ghost preview when dragging preset mirror state changes
   const handleGridDragOver = useCallback((anchorRow: number, anchorCol: number) => {
@@ -373,8 +362,16 @@ function PerformanceWorkspaceInner() {
     setDrawerPrefs(next);
     saveDrawerPrefs(next);
   }, []);
+  // The drawer fits the timeline's content while the timeline is shown. The
+  // Composer gets the full default height instead: its lanes need the room, and
+  // the height must not follow the Sound count there, because a first note on
+  // a new lane adds a Sound and re-fitting then moved the whole Composer up one
+  // lane under the pointer (T69).
+  const drawerContentHeight = timelineTab === 'composer'
+    ? Number.POSITIVE_INFINITY
+    : timelineContentHeight(state.soundStreams.length);
   const drawerHeight = centerHeight > 0
-    ? drawerHeightFor(centerHeight, timelineContentHeight(state.soundStreams.length), drawerPrefs)
+    ? drawerHeightFor(centerHeight, drawerContentHeight, drawerPrefs)
     : undefined;
   const drawerCollapsed = drawerPrefs.collapsed;
   const setDrawerCollapsed = useCallback((collapsed: boolean) => {
@@ -589,6 +586,10 @@ function PerformanceWorkspaceInner() {
   const { importFiles } = useLaneImport();
   const displayedPadCount = Object.keys((state.workingLayout ?? state.activeLayout).padToVoice).length;
   const nothingPlaced = state.soundStreams.length > 0 && displayedPadCount === 0 && !currentLayoutOverride;
+  // The Sound armed for click-to-place (T62), and whether a click would move it.
+  const armedStream = state.armedStreamId ? state.soundStreams.find(s => s.id === state.armedStreamId) ?? null : null;
+  const armedStreamPlaced = !!armedStream
+    && Object.values((state.workingLayout ?? state.activeLayout).padToVoice).some(v => v.id === armedStream.id);
 
   // Wrap generateFull to auto-open analysis after generation
   const handleGenerate = useCallback(async (mode?: Parameters<typeof generateFull>[0]) => {
@@ -666,6 +667,7 @@ function PerformanceWorkspaceInner() {
         onSave={saveNow}
         onExport={handleExport}
         onVariantSaved={handleVariantSaved}
+        onOpenShortcuts={openShortcuts}
       />
 
       {/* ─── Error Banner ─────────────────────────────────────── */}
@@ -775,13 +777,21 @@ function PerformanceWorkspaceInner() {
           <div ref={gridRegionRef} data-testid="grid-region" className="relative flex-1 min-h-0 overflow-hidden">
             <InteractiveGrid
               padSize={padSize}
-              stateBarHint={nothingPlaced
+              stateBarHint={armedStream
+                ? (
+                  <ArmedSoundHint
+                    name={armedStream.name}
+                    color={armedStream.color}
+                    placed={armedStreamPlaced}
+                    onStop={() => dispatch({ type: 'ARM_SOUND', payload: null })}
+                  />
+                )
+                : nothingPlaced
                 ? <NothingPlacedHint soundCount={state.soundStreams.length} onSuggest={() => dispatch({ type: 'SUGGEST_STARTING_LAYOUT' })} />
                 : undefined}
               assignments={assignments}
               layoutOverride={currentLayoutOverride}
               selectedEventIndex={state.selectedEventIndex}
-              onEventClick={idx => dispatch({ type: 'SELECT_EVENT', payload: idx })}
               onionSkin={onionSkin}
               voiceConstraints={state.voiceConstraints}
               gridLabels={viewSettings.gridLabels}
@@ -963,6 +973,9 @@ function PerformanceWorkspaceInner() {
           onClose={() => setCompareModalOpen(false)}
         />
       )}
+
+      {/* ─── Keyboard and mouse ('?') ─────────────────────────── */}
+      {shortcutsOpen && <ShortcutSheet onClose={() => setShortcutsOpen(false)} />}
     </div>
   );
 }

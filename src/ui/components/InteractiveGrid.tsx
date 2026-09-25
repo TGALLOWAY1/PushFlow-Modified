@@ -1,19 +1,22 @@
 /**
  * InteractiveGrid.
  *
- * Wraps the 8x8 Push 3 grid with interactive editing capabilities:
- * - Click empty pad to assign selected sound
- * - Drag sound from VoicePalette onto a pad
- * - Drag between pads to swap
- * - Click assigned pad to select/inspect
- * - Drop-target highlighting
+ * Wraps the 8x8 Push 3 grid with interactive editing capabilities. What a pad
+ * click means comes from the input table (src/ui/input/inputTable.ts):
+ * - with a Sound armed, a click on an empty pad places it (T62);
+ * - otherwise a click selects the pad and its Sound, keeping any selected event;
+ * - drag a Sound from VoicePalette onto a pad, or a pad onto another to swap;
+ * - right-click opens the pad menu.
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import chroma from 'chroma-js';
 import { Lock } from 'lucide-react';
 import { useProject } from '../state/ProjectContext';
-import { getDisplayedLayout, getDisplayedLayoutRole, isPadLocked } from '../state/projectState';
+import { getDisplayedLayout, getDisplayedLayoutRole, isPadLocked, type SoundStream } from '../state/projectState';
+import { padClickMeaning, PAD_TAKEN_MESSAGE } from '../input/inputTable';
+import { useToast } from './shared/Toast';
+import { type Layout } from '../../types/layout';
 import { LOCKED_SOUND_DRAG_TYPE } from './dragTypes';
 import { PadContextMenu } from './PadContextMenu';
 import { useRemovePadWithUndo } from '../hooks/useRemovePadWithUndo';
@@ -42,7 +45,6 @@ import {
 interface InteractiveGridProps {
   assignments?: FingerAssignment[];
   selectedEventIndex?: number | null;
-  onEventClick?: (idx: number | null) => void;
   /** When provided, display this layout instead of the global active layout.
    *  Used when viewing a candidate solution whose layout differs from the user's. */
   layoutOverride?: import('../../types/layout').Layout;
@@ -108,8 +110,9 @@ function safeColorAlpha(color: string | null | undefined, alpha: number, fallbac
 /** Physical reach threshold: pads farther apart than this are flagged as impossible. */
 const IMPOSSIBLE_REACH_THRESHOLD = 5;
 
-export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave, debuggerIteration, padSize = 56, stateBarHint }: InteractiveGridProps) {
+export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave, debuggerIteration, padSize = 56, stateBarHint }: InteractiveGridProps) {
   const { state, dispatch } = useProject();
+  const toast = useToast();
   // Overlay geometry follows the measured pad size (T04).
   const gridStep = padSize + PAD_GAP;
   const toGridX = (col: number) => col * gridStep + padSize / 2;
@@ -555,22 +558,60 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
     setDragSourcePad(padKey);
   }, []);
 
-  const handlePadClick = useCallback((row: number, col: number) => {
+  // The armed Sound (click-to-place, T62), if it still exists.
+  const armedStream = useMemo(
+    () => (state.armedStreamId ? state.soundStreams.find(s => s.id === state.armedStreamId) ?? null : null),
+    [state.armedStreamId, state.soundStreams],
+  );
+
+  const handlePadClick = useCallback((row: number, col: number, e: React.MouseEvent) => {
     const padKey = `${row},${col}`;
     const voice = livePadToVoice[padKey];
+    // A pad is taken if it holds a Sound in the layout shown or in the layout
+    // edits go to (they differ while a candidate is shown).
+    const editable = state.workingLayout ?? state.activeLayout;
+    const occupant = voice ?? editable.padToVoice[padKey];
+    const occupantId = occupant ? soundStreamLookup.forVoice(occupant)?.id ?? occupant.id : null;
+    const meaning = padClickMeaning({
+      armed: !!armedStream,
+      occupied: !!occupant,
+      holdsArmed: !!armedStream && occupantId === armedStream.id,
+      eventSelected: selectedEventIndex !== null && selectedEventIndex !== undefined,
+      altKey: e.altKey,
+    });
 
-    if (!voice) {
-      // Empty pad — if there's a selected event, find its assignment
-      if (onEventClick) onEventClick(null);
-      return;
+    switch (meaning.action) {
+      case 'none':
+        return;
+      case 'disarm':
+        dispatch({ type: 'ARM_SOUND', payload: null });
+        return;
+      case 'taken':
+        toast.show({ message: PAD_TAKEN_MESSAGE, durationMs: 3000 });
+        return;
+      case 'place': {
+        const stream = armedStream!;
+        const lockedAt = editable.placementLocks[stream.id];
+        if (lockedAt && lockedAt !== padKey) {
+          toast.show({ message: `${stream.name} is locked to ${formatPadPosition(lockedAt)} · Unlock it to move it`, durationMs: 4000 });
+          return;
+        }
+        const placedAlready = Object.values(editable.padToVoice)
+          .some(v => (soundStreamLookup.forVoice(v)?.id ?? v.id) === stream.id);
+        // One dispatch, so one undo step ("Place Sound").
+        dispatch({ type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey, stream } });
+        // Placing arms the next unplaced Sound; moving a placed one ends placing.
+        dispatch({ type: 'ARM_SOUND', payload: placedAlready ? null : nextUnplacedSound(state.soundStreams, editable, soundStreamLookup, stream.id) });
+        return;
+      }
+      case 'select-pad':
+        dispatch({ type: 'SELECT_PAD', payload: { padKey, streamId: occupantId } });
+        return;
+      case 'clear-pad':
+        dispatch({ type: 'SELECT_PAD', payload: { padKey: null, streamId: null } });
+        return;
     }
-
-    // Pad has a voice — find an assignment for this pad and select it
-    if (assignments && onEventClick) {
-      const a = assignments.find(fa => fa.row === row && fa.col === col);
-      onEventClick(a?.eventIndex ?? null);
-    }
-  }, [livePadToVoice, assignments, onEventClick]);
+  }, [livePadToVoice, state.workingLayout, state.activeLayout, state.soundStreams, soundStreamLookup, armedStream, selectedEventIndex, dispatch, toast]);
 
   // The pad's ×: removes with an Undo toast (T28).
   const handleRemovePad = useRemovePadWithUndo();
@@ -599,12 +640,16 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
       const isDragOver = padKey === dragOverPad;
       const isDragSource = padKey === dragSourcePad;
       const isInstanceHighlighted = highlightedInstancePads?.has(padKey) ?? false;
+      // The pad selection (T28 slice): an outline, kept while an event is shown.
+      const isPadSelected = !!voice && state.selectedPadKey === padKey;
+      // While a Sound is armed, an empty pad previews it on hover (T62).
+      const previewsArmed = !!armedStream && !voice;
       const ghostInfo = ghostPads?.get(padKey);
       const constraint = layout?.fingerConstraints[padKey];
       const isLocked = !!voice && layout?.placementLocks[voice.id] === padKey;
       // Uninvolved pads dim to about 45% without desaturating (T09 slice);
       // the selected, next and (with onion skin) previous events stay readable.
-      const isGreyedOut = hasEventSelected && !isSelected && !isNext && !isPrevious;
+      const isGreyedOut = hasEventSelected && !isSelected && !isNext && !isPrevious && !isPadSelected;
       const selectedFingerInfo = selectedPadFingers.get(padKey);
 
       // Determine colors
@@ -713,7 +758,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             ${isGreyedOut ? 'opacity-[0.45]' : ''}
             ${isDragSource ? 'opacity-40' : ''}
             ${!voice ? 'hover:brightness-110' : 'hover:scale-[1.02]'}
-            ${isMuted ? 'cursor-default' : voice ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
+            ${isMuted ? 'cursor-default' : voice ? 'cursor-grab active:cursor-grabbing' : previewsArmed ? 'cursor-copy' : 'cursor-pointer'}
           `}
           style={{
             width: padSize,
@@ -734,7 +779,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
             // Rings are part of this one box-shadow, so no state's glow can
             // hide another's ring; opacity comes from classes only (T09 slice).
             boxShadow: [
-              ...padRings({ isShared, isImpossible, isInstanceHighlighted, isDragOver, isDragSource }),
+              ...padRings({ isShared, isImpossible, isInstanceHighlighted, isDragOver, isDragSource, isPadSelected }),
               isStreamHighlighted && !isSelected
                 ? '0 0 8px rgba(96, 165, 250, 0.5), inset 0 0 4px rgba(96, 165, 250, 0.2)'
                 : isSelected && selectedFingerInfo
@@ -742,7 +787,8 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
                 : boxGlow,
             ].filter(v => v && v !== 'none').join(', ') || 'none',
           }}
-          onClick={() => !isMuted && handlePadClick(row, col)}
+          onClick={e => !isMuted && handlePadClick(row, col, e)}
+          data-selected={isPadSelected ? 'true' : undefined}
           onContextMenu={e => {
             e.preventDefault();
             if (!isMuted) setContextMenu({ padKey, x: e.clientX, y: e.clientY, pad: e.currentTarget });
@@ -755,8 +801,18 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
           onDragEnd={() => { setDragSourcePad(null); setDragOverPad(null); }}
           title={voice
             ? `${formatPadPosition(padKey)} · ${voice.name}${summary ? ` · ${summary.hitCount} hits` : ''}${constraint ? ` · Finger preference ${constraint}` : ''}${isLocked ? ' · Locked · Unlock to move' : ''}`
-            : `${formatPadPosition(padKey)} · empty · drop a Sound here`}
+            : armedStream
+              ? `${formatPadPosition(padKey)} · empty · click to place ${armedStream.name}`
+              : `${formatPadPosition(padKey)} · empty · drop a Sound here`}
         >
+          {/* The armed Sound, previewed on the empty pad under the pointer (T62) */}
+          {previewsArmed && (
+            <div
+              data-testid="pad-armed-preview"
+              className="absolute inset-1 rounded-md border-2 border-dashed pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ borderColor: armedStream!.color, backgroundColor: safeColorAlpha(armedStream!.color, 0.15, 'transparent') }}
+            />
+          )}
           {/* Ghost preview for preset drag */}
           {ghostInfo && (
             <div
@@ -1039,11 +1095,33 @@ export function InteractiveGrid({ assignments, selectedEventIndex, onEventClick,
 }
 
 /** Ring outlines for a pad's states, as box-shadow layers. */
-function padRings(f: { isShared: boolean; isImpossible: boolean; isInstanceHighlighted: boolean; isDragOver: boolean; isDragSource: boolean }): string[] {
+function padRings(f: { isShared: boolean; isImpossible: boolean; isInstanceHighlighted: boolean; isDragOver: boolean; isDragSource: boolean; isPadSelected: boolean }): string[] {
   const rings: string[] = [];
+  // The selected pad: a neutral outline outside the pad, clear of the hand colours.
+  if (f.isPadSelected) rings.push('0 0 0 2px var(--bg-app), 0 0 0 4px rgba(226, 232, 240, 0.9)');
   if (f.isImpossible) rings.push('0 0 0 2px rgba(239, 68, 68, 0.8)');
   if (f.isInstanceHighlighted) rings.push('0 0 0 2px rgba(167, 139, 250, 0.6)');
   if (f.isDragOver || f.isDragSource) rings.push('0 0 0 2px rgba(96, 165, 250, 0.7)');
   if (f.isShared) rings.push('0 0 0 1px rgba(52, 211, 153, 0.5)');
   return rings;
+}
+
+/**
+ * The Sound to arm after `placedId` is placed: the next one in the Sounds list
+ * (wrapping round) that no pad holds, or null when every Sound is placed.
+ */
+function nextUnplacedSound(
+  streams: SoundStream[],
+  layout: Layout,
+  lookup: ReturnType<typeof buildSoundStreamLookup>,
+  placedId: string,
+): string | null {
+  const placed = new Set(Object.values(layout.padToVoice).map(v => lookup.forVoice(v)?.id ?? v.id));
+  placed.add(placedId);
+  const start = streams.findIndex(s => s.id === placedId);
+  for (let i = 1; i <= streams.length; i++) {
+    const candidate = streams[(start + i) % streams.length];
+    if (candidate && !placed.has(candidate.id)) return candidate.id;
+  }
+  return null;
 }

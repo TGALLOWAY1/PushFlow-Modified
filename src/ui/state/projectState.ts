@@ -178,6 +178,13 @@ export interface ProjectSession {
   selectedMomentIndex: number | null;
   /** Currently selected sound stream (for cross-panel highlighting). */
   selectedStreamId: string | null;
+  /**
+   * The Sound armed for click-to-place (T62): a click on an empty pad places it.
+   * Set by clicking a Sound; cleared by Escape. See src/ui/input/inputTable.ts.
+   */
+  armedStreamId: string | null;
+  /** The pad selected by a click (T28 slice): Delete removes its Sound. */
+  selectedPadKey: string | null;
   compareCandidateId: string | null;
   isProcessing: boolean;
   error: string | null;
@@ -370,6 +377,10 @@ export type ProjectAction =
   | { type: 'SET_SOUND_COLOR'; payload: { streamId: string; color: string } }
   | { type: 'SET_VOICE_CONSTRAINT'; payload: { streamId: string; hand?: 'left' | 'right' | null; finger?: string | null } }
   | { type: 'SELECT_STREAM'; payload: string | null }
+  /** Arms a Sound for click-to-place (null disarms); it is also the selected Sound. */
+  | { type: 'ARM_SOUND'; payload: string | null }
+  /** Selects a pad and the Sound on it (null clears both). */
+  | { type: 'SELECT_PAD'; payload: { padKey: string | null; streamId: string | null } }
   | { type: 'REORDER_STREAMS'; payload: { streamId: string; newIndex: number } }
 
   // Layout editing (targets working layout, auto-creates if needed)
@@ -661,6 +672,8 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         workingLayout: null, // Session-scoped: strip working layout on load
         selectedEventIndex: null,
         selectedMomentIndex: null,
+        armedStreamId: null,
+        selectedPadKey: null,
         compareCandidateId: null,
         isProcessing: false,
         error: null,
@@ -872,6 +885,26 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
     case 'SELECT_STREAM':
       return { ...state, selectedStreamId: action.payload };
+
+    case 'ARM_SOUND': {
+      const armed = action.payload;
+      if (armed === null) {
+        if (state.armedStreamId === null) return state;
+        // Disarming also drops the Sound selection that came with arming.
+        const selectedStreamId = state.selectedStreamId === state.armedStreamId ? null : state.selectedStreamId;
+        return { ...state, armedStreamId: null, selectedStreamId };
+      }
+      // Arming selects the Sound and ends any pad selection, so Delete can't
+      // act on a pad the user has moved on from.
+      if (armed === state.armedStreamId && armed === state.selectedStreamId && state.selectedPadKey === null) return state;
+      return { ...state, armedStreamId: armed, selectedStreamId: armed, selectedPadKey: null };
+    }
+
+    case 'SELECT_PAD': {
+      const { padKey, streamId } = action.payload;
+      if (padKey === state.selectedPadKey && streamId === state.selectedStreamId) return state;
+      return { ...state, selectedPadKey: padKey, selectedStreamId: streamId };
+    }
 
     case 'REORDER_STREAMS': {
       const { streamId: reorderId, newIndex } = action.payload;
@@ -1671,6 +1704,8 @@ export function createEmptyProjectState(): ProjectState {
     selectedEventIndex: null,
     selectedMomentIndex: null,
     selectedStreamId: null,
+    armedStreamId: null,
+    selectedPadKey: null,
     compareCandidateId: null,
     isProcessing: false,
     error: null,

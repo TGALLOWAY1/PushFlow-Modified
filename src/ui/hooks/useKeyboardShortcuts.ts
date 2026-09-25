@@ -1,109 +1,107 @@
 /**
  * useKeyboardShortcuts.
  *
- * Global keyboard shortcuts for the project editor:
- * - Ctrl+S / Cmd+S: Save now
- * - Ctrl+Z / Cmd+Z: Undo
- * - Ctrl+Y / Cmd+Shift+Z: Redo
- * - Escape: Deselect event
- * - Arrow Left/Right: previous/next event, only while stopped
- *
- * Delete/Backspace no longer remove the selected event's pad (T28): a pad is
- * removed through its menu, its × or by dragging it off.
+ * The editor's handlers for the input table's key rows (src/ui/input/
+ * inputTable.ts), bound through the one listener (inputRegistry.ts):
+ * - Mod+S saves now; Mod+Z undoes; Mod+Shift+Z or Mod+Y redoes;
+ * - Space plays and stops (the Composer binds its own while its tab is open);
+ * - ←/→ select the previous or next event while stopped, stopping at the ends;
+ * - Escape steps back one layer: the armed Sound, then the pad selection, then
+ *   the event (an open overlay closes itself first);
+ * - Delete/Backspace take the selected pad's Sound off the grid, with Undo;
+ *   with no pad selected they do nothing (T28);
+ * - '?' opens the shortcut sheet.
  */
 
-import { useEffect } from 'react';
+import { useRef } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getDisplayedExecutionPlan } from '../state/projectState';
-import { isOverlayOpen } from '../components/shared/Overlay';
+import { getDisplayedExecutionPlan, getDisplayedLayout, isPadLocked } from '../state/projectState';
+import { useInputHandler } from '../input/inputRegistry';
+import { useRemovePadWithUndo } from './useRemovePadWithUndo';
+import { useToast } from '../components/shared/Toast';
 
 export interface KeyboardShortcutOptions {
   /** Cmd/Ctrl+S: save now (T57). Without it the browser offers to save the page as HTML. */
   onSave?: () => void;
+  /** '?': the shortcut sheet. */
+  onOpenShortcuts?: () => void;
 }
 
-export function useKeyboardShortcuts({ onSave }: KeyboardShortcutOptions = {}) {
+export function useKeyboardShortcuts({ onSave, onOpenShortcuts }: KeyboardShortcutOptions = {}) {
   const { state, dispatch, undo, redo } = useProject();
+  const removePad = useRemovePadWithUndo();
+  const toast = useToast();
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const isMod = e.metaKey || e.ctrlKey;
+  useInputHandler('save', () => {
+    // Handled even without onSave, so the browser never offers to save the page.
+    onSave?.();
+  });
 
-      // Save: Ctrl+S / Cmd+S, from an input too (the browser's own dialog
-      // would otherwise open there as well).
-      if (isMod && !e.shiftKey && !e.altKey && (e.key === 's' || e.key === 'S')) {
-        e.preventDefault();
-        onSave?.();
-        return;
-      }
+  useInputHandler('undo', () => undo());
+  useInputHandler('redo', () => redo());
 
-      // Don't intercept when typing in inputs
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable) {
-        return;
-      }
+  useInputHandler('space', () => {
+    dispatch({ type: 'TOGGLE_PLAYING' });
+  });
 
-      // Undo: Ctrl+Z / Cmd+Z
-      if (isMod && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        undo();
-        return;
-      }
+  useInputHandler('step-events', e => {
+    const s = stateRef.current;
+    // While playing, the arrows do nothing for now (T10/T61 slice; P4 makes
+    // them seek by event).
+    if (s.isPlaying) return false;
+    const assignments = getDisplayedExecutionPlan(s)?.fingerAssignments;
+    if (!assignments || assignments.length === 0) return false;
 
-      // Redo: Ctrl+Y / Cmd+Shift+Z
-      if ((isMod && e.key === 'y') || (isMod && e.shiftKey && e.key === 'z') || (isMod && e.shiftKey && e.key === 'Z')) {
-        e.preventDefault();
-        redo();
-        return;
-      }
+    // Events are the distinct start times (everything struck at one instant).
+    const times = [...new Set(assignments.map(a => a.startTime))].sort((a, b) => a - b);
+    const selected = s.selectedEventIndex !== null
+      ? assignments.find(a => a.eventIndex === s.selectedEventIndex)
+      : undefined;
+    const position = selected ? times.indexOf(selected.startTime) : -1;
+    const forward = e.key === 'ArrowRight';
+    const target = position < 0
+      ? (forward ? 0 : times.length - 1)
+      : Math.min(times.length - 1, Math.max(0, position + (forward ? 1 : -1)));
+    // At the first or last event the selection stays put: no wrapping.
+    const first = assignments.find(a => a.startTime === times[target]);
+    dispatch({ type: 'SELECT_EVENT', payload: first?.eventIndex ?? null });
+  });
 
-      // Escape: Deselect
-      if (e.key === 'Escape') {
-        dispatch({ type: 'SELECT_EVENT', payload: null });
-        return;
-      }
+  useInputHandler('escape', () => {
+    const s = stateRef.current;
+    if (s.armedStreamId !== null) {
+      dispatch({ type: 'ARM_SOUND', payload: null });
+      return;
+    }
+    if (s.selectedPadKey !== null || s.selectedStreamId !== null) {
+      dispatch({ type: 'SELECT_PAD', payload: { padKey: null, streamId: null } });
+      return;
+    }
+    if (s.selectedEventIndex !== null) {
+      dispatch({ type: 'SELECT_EVENT', payload: null });
+      return;
+    }
+    return false;
+  });
 
-      // Arrow Left/Right: Navigate through time steps (groups of simultaneous events)
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-        // While playing, the arrows do nothing for now (T10/T61 slice; P4 makes
-        // them seek by event). They used to jump the selection back to t=0.
-        if (state.isPlaying || isOverlayOpen()) return;
-        const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
-        if (!assignments || assignments.length === 0) return;
-        e.preventDefault();
+  useInputHandler('delete', () => {
+    const s = stateRef.current;
+    const padKey = s.selectedPadKey;
+    const layout = getDisplayedLayout(s);
+    const voice = padKey ? layout?.padToVoice[padKey] : undefined;
+    if (!padKey || !layout || !voice) return false;
+    if (isPadLocked(layout, padKey)) {
+      toast.show({ message: `${voice.name} is locked · Unlock it to remove it`, durationMs: 4000 });
+      return;
+    }
+    removePad(padKey);
+    dispatch({ type: 'SELECT_PAD', payload: { padKey: null, streamId: null } });
+  });
 
-        // Build sorted unique start times (time steps)
-        const uniqueTimes = [...new Set(assignments.map(a => a.startTime))].sort((a, b) => a - b);
-        if (uniqueTimes.length === 0) return;
-
-        // Find the current time step from the selected event
-        const selectedAssignment = state.selectedEventIndex !== null
-          ? assignments.find(a => a.eventIndex === state.selectedEventIndex)
-          : null;
-        const currentTime = selectedAssignment?.startTime ?? null;
-
-        let targetTime: number;
-        if (currentTime === null) {
-          targetTime = e.key === 'ArrowRight' ? uniqueTimes[0]! : uniqueTimes[uniqueTimes.length - 1]!;
-        } else {
-          const currentPos = uniqueTimes.indexOf(currentTime);
-          if (e.key === 'ArrowRight') {
-            const nextIdx = currentPos < uniqueTimes.length - 1 ? currentPos + 1 : 0;
-            targetTime = uniqueTimes[nextIdx]!;
-          } else {
-            const prevIdx = currentPos > 0 ? currentPos - 1 : uniqueTimes.length - 1;
-            targetTime = uniqueTimes[prevIdx]!;
-          }
-        }
-
-        // Select the first event at the target time step
-        const firstAtTime = assignments.find(a => a.startTime === targetTime);
-        dispatch({ type: 'SELECT_EVENT', payload: firstAtTime?.eventIndex ?? null });
-        return;
-      }
-    };
-
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [state, dispatch, undo, redo, onSave]);
+  useInputHandler('shortcut-sheet', () => {
+    if (!onOpenShortcuts) return false;
+    onOpenShortcuts();
+  });
 }

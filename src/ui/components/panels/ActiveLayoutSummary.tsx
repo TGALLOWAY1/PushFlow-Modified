@@ -197,8 +197,8 @@ export function ActiveLayoutSummary() {
               {mappedCount === 0 && activeStreams.length > 0 && (
                 <div data-testid="summary-nothing-placed" className="rounded-pf-sm border border-[var(--border-default)] bg-bg-card/60 p-2.5">
                   <p className="text-pf-xs text-[var(--text-secondary)] leading-relaxed">
-                    No Sounds are on the grid yet, so there is nothing to analyse. Drag {activeStreams.length === 1 ? 'your Sound' : `your ${activeStreams.length} Sounds`} onto
-                    pads, or use Suggest a starting layout above the grid.
+                    No Sounds are on the grid yet, so there is nothing to analyse. Place {activeStreams.length === 1 ? 'your Sound' : `your ${activeStreams.length} Sounds`} by
+                    clicking one and then a pad, or by dragging, or use Suggest a starting layout above the grid.
                   </p>
                 </div>
               )}
