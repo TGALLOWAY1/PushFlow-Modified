@@ -15,9 +15,7 @@ import { type SoundStream, RECOVERED_DRAFTS_CAP } from '../../state/projectState
 import { describeDroppedForLocks, describePinnedPlacements } from '@/engine';
 import { CandidatePreviewCard } from './CandidatePreviewCard';
 import { MiniGridPreview } from './MiniGridPreview';
-import { useLayoutAnalysis } from '../../analysis/layoutAnalysis';
-import { momentDifficultyCounts } from '../../analysis/momentCounts';
-import { formatPlanScore, getPlanScoreQuality } from '../../analysis/planScore';
+import { LayoutScoreLine } from './LayoutScoreLine';
 
 interface LayoutOptionsPanelProps {
   selectedForCompare: Set<string>;
@@ -193,8 +191,11 @@ export function LayoutOptionsPanel({
                   highlighted={!state.selectedCandidateId}
                 />
               </div>
-              <div className="text-pf-xs text-[var(--text-tertiary)] px-0.5">
-                {Object.keys(state.activeLayout.padToVoice).length} pads assigned
+              <div className="px-0.5 space-y-0.5">
+                <LayoutScoreLine layout={state.activeLayout} testId="active-score" />
+                <div className="text-pf-xs text-[var(--text-tertiary)]">
+                  {Object.keys(state.activeLayout.padToVoice).length} pads assigned
+                </div>
               </div>
             </div>
           </div>
@@ -443,7 +444,7 @@ function SavedVariantCard({
               </button>
             </div>
           )}
-          <VariantScore variant={variant} />
+          <LayoutScoreLine layout={variant} testId="variant-score" />
           <div className="text-pf-xs text-[var(--text-tertiary)]">
             {Object.keys(variant.padToVoice).length} pads assigned
             {variant.savedAt ? ` · Saved ${new Date(variant.savedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
@@ -493,29 +494,6 @@ function SavedVariantCard({
           </button>
         )}
       </div>
-    </div>
-  );
-}
-
-/** A variant's score and difficulty, from the per-layout analysis cache (T29): "Scoring..." until it's in. */
-function VariantScore({ variant }: { variant: Layout }) {
-  const analysis = useLayoutAnalysis(variant);
-  if (analysis.status === 'empty') return null;
-  if (analysis.status === 'analysing') {
-    return <div data-testid="variant-score" className="text-pf-xs text-[var(--text-tertiary)] animate-pulse">Scoring...</div>;
-  }
-  if (analysis.status === 'error') {
-    return <div data-testid="variant-score" className="text-pf-xs text-red-300" title={analysis.message}>Couldn't score</div>;
-  }
-  const plan = analysis.analysis.executionPlan;
-  const counts = momentDifficultyCounts(plan.fingerAssignments);
-  const quality = getPlanScoreQuality(plan.score);
-  return (
-    <div data-testid="variant-score" className="text-pf-xs text-[var(--text-secondary)]">
-      <span className={`font-semibold ${quality === 'good' ? 'text-emerald-300' : quality === 'ok' ? 'text-amber-300' : 'text-red-300'}`}>
-        Score {formatPlanScore(plan.score)}
-      </span>
-      {' · '}{counts.hard} hard · {counts.unplayable} unplayable
     </div>
   );
 }

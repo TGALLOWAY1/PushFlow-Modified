@@ -34,6 +34,13 @@ const ERGONOMIC_SCORE_WEIGHT = 6;
 /** Maximum points the ergonomic term may remove — never dominates hard/unplayable. */
 const ERGONOMIC_SCORE_CAP = 25;
 
+/** The weights above, so Learn More explains the score from the numbers it uses (invariant 2). */
+export const PLAN_SCORE_WEIGHTS = {
+  hardEvent: HARD_MOMENT_PENALTY,
+  unplayableEvent: UNPLAYABLE_MOMENT_PENALTY,
+  ergonomicCap: ERGONOMIC_SCORE_CAP,
+} as const;
+
 export interface PlanScoreInput {
   /** Number of hard (but playable) moments. */
   hardCount: number;

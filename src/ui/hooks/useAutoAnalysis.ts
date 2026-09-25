@@ -29,9 +29,8 @@ import { evaluatePerformance } from '../../engine/evaluation/canonicalEvaluator'
 import { generateCandidates } from '../../engine/optimization/multiCandidateGenerator';
 import { generateGreedyCandidates } from '../../engine/optimization/greedyCandidatePipeline';
 import { pinnedPlacements } from '../../engine/mapping/placementLocks';
-import { analyzeLayout, buildSolverConstraints, constraintsToManualAssignments } from '../analysis/analyzeLayout';
-import { rememberAnalysis } from '../analysis/analysisCache';
-import { analysisKeyFor } from '../analysis/layoutAnalysis';
+import { buildSolverConstraints, constraintsToManualAssignments } from '../analysis/analyzeLayout';
+import { analyseLayoutCached } from '../analysis/layoutAnalysis';
 // Import adapters to ensure they self-register
 import '../../engine/optimization/beamOptimizerAdapter';
 import '../../engine/optimization/annealingOptimizerAdapter';
@@ -94,13 +93,10 @@ export function useAutoAnalysis() {
         setAnalysisPhase('analyzing');
         dispatch({ type: 'SET_PROCESSING', payload: true });
 
-        const candidate = await analyzeLayout({
-          performance,
-          layout,
-          instrumentConfig: state.instrumentConfig,
-          engineConfig: state.engineConfig,
-          sections: state.sections,
-        });
+        // The same path as every other layout on screen (S3.1): the per-layout
+        // cache, solved and scored in the scoring worker. A candidate already
+        // scored for these pads is served without re-solving.
+        const { analysis } = await analyseLayoutCached(state, layout);
 
         if (abortRef.current) {
           // The effect cleanup aborted this run mid-solve. The re-run effect is
@@ -111,9 +107,7 @@ export function useAutoAnalysis() {
           return;
         }
 
-        // Also serves Compare and later inspection of this exact layout (T08).
-        rememberAnalysis(analysisKeyFor(state, layout), candidate);
-        dispatch({ type: 'SET_ANALYSIS_RESULT', payload: candidate });
+        dispatch({ type: 'SET_ANALYSIS_RESULT', payload: analysis });
         dispatch({ type: 'SET_PROCESSING', payload: false });
         setAnalysisPhase('idle');
       } catch (err) {
@@ -129,7 +123,7 @@ export function useAutoAnalysis() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       abortRef.current = true;
     };
-  }, [state.analysisStale, state.isProcessing, state.soundStreams, state.activeLayout, state.workingLayout, state.instrumentConfig, state.sections, state.engineConfig, dispatch]);
+  }, [state.analysisStale, state.isProcessing, state.soundStreams, state.activeLayout, state.workingLayout, state.instrumentConfig, state.sections, state.engineConfig, state.voiceConstraints, state.costToggles, dispatch]);
 
   // Full generation (manual trigger) — routes to selected optimizer method
   const generateFull = useCallback(async (mode: GenerationMode = 'fast') => {

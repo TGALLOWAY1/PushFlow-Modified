@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useProject } from '../../state/ProjectContext';
-import { getDisplayedExecutionPlan, getDisplayedLayout } from '../../state/projectState';
+import { getDisplayedExecutionPlan, getDisplayedLayout, getSelectedCandidate } from '../../state/projectState';
 import { CostBreakdownBars, FeasibilityBadge } from './CostBreakdownBars';
 import { SelectedEventCard } from './SelectedEventCard';
 import { findSelectedMoment } from '../../analysis/selectedMoment';
 import { analysisScopeLine, planSoundIds } from '../../analysis/analysisScope';
 import { EventCostChart } from './EventCostChart';
-import { formatPlanScore, getPlanScoreQuality, getPlanScoreSummary } from '../../analysis/planScore';
+import { scoreTile } from '../../analysis/planScore';
+import { useLayoutAnalysis } from '../../analysis/layoutAnalysis';
 import { momentDifficultyCounts } from '../../analysis/momentCounts';
 import { COST_FAMILY_FACTOR, FACTOR_META } from '../../analysis/factorMeta';
 import { type CostToggles } from '../../../types/costToggles';
@@ -15,6 +16,8 @@ export function PerformanceCostsPanel() {
   const { state, dispatch } = useProject();
   const [chartOpen, setChartOpen] = useState(false);
   const currentPlan = getDisplayedExecutionPlan(state);
+  // The Score is the Playability of the layout the grid shows (S3.1).
+  const layoutScore = useLayoutAnalysis(getSelectedCandidate(state)?.layout ?? getDisplayedLayout(state));
 
   // The selected event's whole moment, costed once (never summed per note).
   const selectedMoment = useMemo(
@@ -124,12 +127,7 @@ export function PerformanceCostsPanel() {
         {currentPlan ? (
           <>
             <div className="grid grid-cols-4 gap-1.5">
-              <QuickStat
-                label="Score"
-                value={formatPlanScore(currentPlan.score)}
-                quality={getPlanScoreQuality(currentPlan.score)}
-                subtitle={getPlanScoreSummary(currentPlan.score)}
-              />
+              <QuickStat label="Score" testId="costs-score" {...scoreTile(layoutScore)} />
               <QuickStat
                 label="Events"
                 value={String(counts.events)}
@@ -191,11 +189,14 @@ export function PerformanceCostsPanel() {
   );
 }
 
-function QuickStat({ label, value, quality, subtitle }: {
+function QuickStat({ label, value, quality, subtitle, wording = false, testId }: {
   label: string;
   value: string;
   quality?: 'good' | 'ok' | 'bad';
   subtitle?: string;
+  /** The value is words ("Scoring…"), not a number: smaller, so it fits the tile. */
+  wording?: boolean;
+  testId?: string;
 }) {
   const colors = {
     good: 'text-green-400 border-green-500/15 bg-green-500/5',
@@ -205,9 +206,9 @@ function QuickStat({ label, value, quality, subtitle }: {
   const style = quality ? colors[quality] : 'text-[var(--text-primary)] border-[var(--border-default)] bg-[var(--bg-card)]';
 
   return (
-    <div className={`px-2 py-1.5 rounded-pf-md border text-center ${style}`} title={subtitle}>
+    <div className={`px-2 py-1.5 rounded-pf-md border text-center ${style}`} title={subtitle} data-testid={testId}>
       <div className="text-pf-micro text-[var(--text-tertiary)] uppercase tracking-wider">{label}</div>
-      <div className="text-pf-sm font-mono font-medium tabular-nums">{value}</div>
+      <div className={wording ? 'text-pf-micro leading-[18px] text-[var(--text-secondary)] whitespace-nowrap' : 'text-pf-sm font-mono font-medium tabular-nums'}>{value}</div>
     </div>
   );
 }

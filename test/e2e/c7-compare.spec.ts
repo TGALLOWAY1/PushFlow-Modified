@@ -23,7 +23,8 @@ const compareButton = (page: Page) => page.getByTestId('toolbar-compare');
 /**
  * Suggest → Promote (so Active is analysed) → Generate with Beam → Preview #1,
  * which leaves a differing draft (Generate itself only proposes, from S1a.2).
- * Returns Active's standalone score.
+ * Returns Active's standalone score: its Playability on the Analysis panel
+ * (S3.1: every displayed score is the layout's Playability, not a plan's own).
  */
 async function activeThenCandidates(page: Page, pf: PfHandle): Promise<number> {
   await openTestMidi1(page, pf);
@@ -31,9 +32,11 @@ async function activeThenCandidates(page: Page, pf: PfHandle): Promise<number> {
   await waitForAnalysis(pf);
   await page.getByTitle('Make this layout the new Active Layout').click();
   await waitForAnalysis(pf);
-  const s = await pf.call('state');
-  expect(s.workingLayout).toBeNull();
-  const standalone = s.analysisResult!.executionPlan.score;
+  const s = await pf.call('status');
+  expect(s.hasWorkingLayout).toBe(false);
+  const tile = page.getByTestId('analysis-score');
+  await expect(tile).toHaveText(/^Score\d+%$/, { timeout: 30_000 });
+  const standalone = Number(/(\d+)%/.exec(await tile.innerText())![1]);
   await chooseMethod(page, 'Beam');
   await generateAndWait(page, pf);
   await page.getByTestId('candidate-row').first().getByRole('button', { name: 'Preview' }).click();
@@ -50,10 +53,18 @@ async function openActiveVsFirst(page: Page) {
   await expect(page.getByTestId('compare-dialog')).toBeVisible();
 }
 
+/** The Active card's text and score, once it shows one or says it couldn't analyse ("Scoring…" before that). */
 async function activeCardScore(page: Page): Promise<{ text: string; score: number | null }> {
-  const text = (await page.getByTestId('compare-card').and(page.locator('[data-candidate-id="__active__"]')).innerText()).replace(/\s+/g, ' ');
-  const m = /SCORE ([\d.]+)/i.exec(text);
-  return { text, score: m ? Number(m[1]) : null };
+  const read = async () => {
+    const text = (await page.getByTestId('compare-card').and(page.locator('[data-candidate-id="__active__"]')).innerText()).replace(/\s+/g, ' ');
+    const m = /SCORE ([\d.]+)/i.exec(text);
+    return { text, score: m ? Number(m[1]) : null };
+  };
+  await expect.poll(async () => {
+    const { text, score } = await read();
+    return score !== null || /Couldn.t analyse/i.test(text);
+  }, { timeout: 30_000 }).toBe(true);
+  return read();
 }
 
 test.describe('C7 · Compare with the Active Layout', () => {
@@ -100,6 +111,6 @@ test.describe('C7 · Compare with the Active Layout', () => {
     const standalone = await activeThenCandidates(page, pf);
     await openActiveVsFirst(page);
     const { score } = await activeCardScore(page);
-    expect(score).toBeCloseTo(standalone, 0);
+    expect(score).toBe(standalone);
   });
 });

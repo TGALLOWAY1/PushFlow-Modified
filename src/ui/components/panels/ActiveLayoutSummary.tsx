@@ -13,6 +13,7 @@ import {
   getDisplayedLayout,
   getDisplayedLayoutRole,
   getActiveStreams,
+  getSelectedCandidate,
 } from '../../state/projectState';
 import { type FingerType, ALL_FINGERS } from '../../../types/fingerModel';
 import { type ConstraintRelaxationSummary } from '../../../types/executionPlan';
@@ -23,7 +24,8 @@ import { analysisScopeLine, planSoundIds } from '../../analysis/analysisScope';
 import { EventCostChart } from './EventCostChart';
 import { LearnMoreModal } from './LearnMoreModal';
 import { buildSelectedTransitionModel } from '../../analysis/selectionModel';
-import { formatPlanScore, getPlanScoreQuality, getPlanScoreSummary } from '../../analysis/planScore';
+import { scoreTile } from '../../analysis/planScore';
+import { useLayoutAnalysis } from '../../analysis/layoutAnalysis';
 import { formatFingerConstraint, parseFingerConstraint } from '../../../utils/fingerConstraints';
 import { formatPadLocator, formatPadPosition } from '../../../utils/padPosition';
 import { formatBarBeat, formatMilliseconds, formatSeconds } from '../../../utils/musicalTime';
@@ -43,6 +45,9 @@ export function ActiveLayoutSummary() {
   const activeStreams = getActiveStreams(state);
   const currentPlan = displayedCandidate?.executionPlan;
   const assignments = currentPlan?.fingerAssignments;
+  // The Score is the Playability of the layout the grid shows (S3.1), from the
+  // one yardstick, whichever plan the panel is showing.
+  const layoutScore = useLayoutAnalysis(getSelectedCandidate(state)?.layout ?? displayedLayout);
 
   // Selected event data
   const assignment = useMemo(() => {
@@ -158,12 +163,7 @@ export function ActiveLayoutSummary() {
           {/* Quick stats */}
           {currentPlan ? (
             <div className="grid grid-cols-4 gap-1.5">
-              <QuickStat
-                label="Score"
-                value={formatPlanScore(currentPlan.score)}
-                quality={getPlanScoreQuality(currentPlan.score)}
-                subtitle={getPlanScoreSummary(currentPlan.score)}
-              />
+              <QuickStat label="Score" testId="analysis-score" {...scoreTile(layoutScore)} />
               <QuickStat
                 label="Events"
                 value={String(counts.events)}
@@ -377,11 +377,14 @@ export function ActiveLayoutSummary() {
   );
 }
 
-function QuickStat({ label, value, quality, subtitle }: {
+function QuickStat({ label, value, quality, subtitle, wording = false, testId }: {
   label: string;
   value: string;
   quality?: 'good' | 'ok' | 'bad';
   subtitle?: string;
+  /** The value is words ("Scoring…"), not a number: smaller, so it fits the tile. */
+  wording?: boolean;
+  testId?: string;
 }) {
   const colors = {
     good: 'text-green-400 border-green-500/15 bg-green-500/5',
@@ -391,9 +394,9 @@ function QuickStat({ label, value, quality, subtitle }: {
   const style = quality ? colors[quality] : 'text-[var(--text-primary)] border-[var(--border-default)] bg-[var(--bg-card)]';
 
   return (
-    <div className={`px-2 py-1.5 rounded-pf-md border text-center ${style}`} title={subtitle}>
+    <div className={`px-2 py-1.5 rounded-pf-md border text-center ${style}`} title={subtitle} data-testid={testId}>
       <div className="text-pf-micro text-[var(--text-tertiary)] uppercase tracking-wider">{label}</div>
-      <div className="text-pf-sm font-mono font-medium tabular-nums">{value}</div>
+      <div className={wording ? 'text-pf-micro leading-[18px] text-[var(--text-secondary)] whitespace-nowrap' : 'text-pf-sm font-mono font-medium tabular-nums'}>{value}</div>
     </div>
   );
 }

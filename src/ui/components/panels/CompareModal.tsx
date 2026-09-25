@@ -18,6 +18,7 @@ import { type CandidateSolution } from '../../../types/candidateSolution';
 import { strategyLabel } from '../../analysis/strategyLabels';
 import { momentDifficultyCounts } from '../../analysis/momentCounts';
 import { TRADEOFF_DIMENSIONS } from '../../analysis/factorMeta';
+import { formatPlanScore, playabilityTooltip, PLAYABILITY_TOOLTIP, SCORE_FAILED_TEXT, SCORING_TEXT } from '../../analysis/planScore';
 
 interface CompareModalProps {
   candidateIds: string[];
@@ -31,9 +32,9 @@ export function CompareModal({ candidateIds, onClose }: CompareModalProps) {
   const toast = useToast();
   const titleId = useOverlayTitleId();
 
-  // The Active side is analysed for real: its own fresh plan, the per-layout
-  // cache, or a solve through the cache ('Analysing Active…'). Never a zero
-  // stub (T08); a failed solve reads "Couldn't analyse".
+  // The Active side is analysed for real: its plan and score from the
+  // per-layout cache, or a solve through it ('Analysing Active…'). Never a
+  // zero stub (T08); a failed solve reads "Couldn't analyse".
   const wantsActive = candidateIds.includes(ACTIVE_COMPARE_ID);
   const activeAnalysis = useLayoutAnalysis(wantsActive ? state.activeLayout : null);
   const activeCandidate: CandidateSolution | null = activeAnalysis.status === 'ready'
@@ -253,6 +254,9 @@ function ComparisonCard({
   const diff = candidate.difficultyAnalysis;
   // Events are moments for both solvers (T23).
   const counts = momentDifficultyCounts(plan.fingerAssignments);
+  // The Score is the layout's Playability on the one yardstick (S3.1): the
+  // number its row, the draft and a variant of it show.
+  const scored = useLayoutAnalysis(candidate.layout);
 
   return (
     <div
@@ -274,9 +278,18 @@ function ComparisonCard({
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-pf-xs">
-        <div className="rounded-pf-sm bg-[var(--bg-panel)] px-2 py-1.5">
+        <div
+          className="rounded-pf-sm bg-[var(--bg-panel)] px-2 py-1.5"
+          title={scored.status === 'ready' ? playabilityTooltip(scored.score.playability) : scored.status === 'error' ? scored.message : PLAYABILITY_TOOLTIP}
+        >
           <div className="text-pf-micro text-[var(--text-tertiary)] uppercase">Score</div>
-          <div className="text-[var(--text-primary)] font-mono">{plan.score.toFixed(1)}</div>
+          <div data-testid="compare-score" className="text-[var(--text-primary)] font-mono">
+            {scored.status === 'ready'
+              ? formatPlanScore(scored.score.playability)
+              : scored.status === 'error'
+                ? SCORE_FAILED_TEXT
+                : scored.status === 'empty' ? '—' : SCORING_TEXT}
+          </div>
         </div>
         <div className="rounded-pf-sm bg-[var(--bg-panel)] px-2 py-1.5">
           <div className="text-pf-micro text-[var(--text-tertiary)] uppercase">Unplayable events</div>

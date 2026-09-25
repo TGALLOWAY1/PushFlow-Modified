@@ -10,6 +10,7 @@
 
 import { hashLayout } from '@/engine';
 import type { ProjectAction, ProjectState } from '../state/projectState';
+import { scoringCounts, type ScoringCounts } from '../analysis/scoringClient';
 
 export interface E2EHookSource {
   state: ProjectState;
@@ -51,6 +52,8 @@ export interface PfTestHook {
   dispatch(action: ProjectAction): void;
   undo(): void;
   redo(): void;
+  /** How many layouts were scored in the scoring worker and in-process so far (S3.1). */
+  scoring(): ScoringCounts;
 }
 
 declare global {
@@ -92,6 +95,7 @@ export function installE2EHook(get: () => E2EHookSource): () => void {
     dispatch: action => get().dispatch(action),
     undo: () => get().undo(),
     redo: () => get().redo(),
+    scoring: () => scoringCounts(),
   };
   window.__pf = hook;
   return () => {

@@ -1,83 +1,179 @@
 /**
- * Analysis of any layout through the per-layout cache (T08 slice).
+ * One yardstick for every layout on screen (S3.1, T21 slice), through the
+ * per-layout analysis cache (T08).
  *
- * `analysisKeyFor(state, layout)` keys a layout against the project's current
- * performance and settings. `useLayoutAnalysis(layout)` gives a component that
- * layout's analysis: the project's own fresh analysis when it describes the
- * layout, else a cached one, else a solve through the cache
- * ('Analysing…'), or 'error' when the solve fails. Nothing here is written to
- * project state (analysis-only, never persisted).
+ * `analyseLayoutCached(state, layout)` gives any layout of this project (the
+ * Active Layout, the draft, a candidate, a variant) its own analysis plan and
+ * its Playability, solved and scored in the scoring worker. The draft's
+ * auto-analysis takes the same path, so a layout scores the same wherever it is
+ * shown and whichever optimizer proposed it.
+ *
+ * `useLayoutAnalysis(layout)` is the hook form: 'analysing' ("Scoring…"), then
+ * `{ analysis, score }` (the plan, bound to `layout`, and its LayoutScore), or
+ * 'error' ("Couldn't score"). Any surface that shows a layout it isn't editing
+ * (Compare, the Layouts list, S3.2's inspected layout) renders it with this
+ * plan and this score. Nothing here is written to project state
+ * (analysis-only, never persisted, never in undo history).
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { hashLayout, PLAYABILITY_EVALUATOR_ID, type LayoutScore } from '@/engine';
 import { useProject } from '../state/ProjectContext';
-import { getActivePerformance, getAnalysisForLayout as getProjectAnalysisForLayout, type ProjectState } from '../state/projectState';
+import {
+  getActivePerformance,
+  rebindAnalysisToLayout,
+  withDerivedLayoutState,
+  type ProjectState,
+} from '../state/projectState';
 import type { Layout } from '../../types/layout';
+import type { Performance } from '../../types/performance';
 import type { CandidateSolution } from '../../types/candidateSolution';
-import { analyzeLayout } from './analyzeLayout';
+import type { ScoreLayoutRequest, ScoredLayoutAnalysis } from './scoreLayout';
+import { scoreLayoutInBackground } from './scoringClient';
 import {
   getAnalysisForLayout,
-  makeAnalysisKey,
+  hashPerformance,
   peekAnalysis,
   analysisCacheKey,
   type AnalysisKey,
 } from './analysisCache';
 
-export function analysisKeyFor(state: ProjectState, layout: Layout): AnalysisKey {
-  return makeAnalysisKey(layout, getActivePerformance(state), {
-    engineConfig: state.engineConfig,
-    instrumentConfig: state.instrumentConfig,
-    sections: state.sections,
-    costToggles: state.costToggles,
-  });
+/**
+ * The layout as it is scored: its pad finger preferences re-derived from each
+ * Sound's own (voiceConstraints, invariant 6) and its locks pruned to Sounds on
+ * their pads, exactly as applying it as the draft leaves it. A candidate and
+ * the same pads applied as the draft therefore share one key and one score,
+ * even when the candidate carries preferences keyed to pads its Sounds have left.
+ */
+export function scoringLayoutFor(state: ProjectState, layout: Layout): Layout {
+  return withDerivedLayoutState(layout, state.voiceConstraints);
 }
 
-/** Analyses a layout of this project through the cache (one solve per key). */
-export function analyseLayoutCached(state: ProjectState, layout: Layout): Promise<CandidateSolution> {
+/** The project's performance and its hash, reused while nothing they depend on changes. */
+let lastPerformance: {
+  from: readonly unknown[];
+  performance: Performance;
+  performanceHash: string;
+} | null = null;
+
+function performanceFor(state: ProjectState): { performance: Performance; performanceHash: string } {
+  const from = [state.soundStreams, state.tempo, state.name, state.engineConfig, state.instrumentConfig, state.sections];
+  if (lastPerformance && from.every((part, i) => part === lastPerformance!.from[i])) return lastPerformance;
   const performance = getActivePerformance(state);
-  return getAnalysisForLayout(analysisKeyFor(state, layout), () => analyzeLayout({
-    performance,
-    layout,
-    instrumentConfig: state.instrumentConfig,
+  const performanceHash = hashPerformance(performance, {
     engineConfig: state.engineConfig,
+    instrumentConfig: state.instrumentConfig,
     sections: state.sections,
-  }));
+  });
+  lastPerformance = { from, performance, performanceHash };
+  return lastPerformance;
+}
+
+/** The cache key and the worker request for one layout of this project. */
+export function scoringRequestFor(state: ProjectState, layout: Layout): { key: AnalysisKey; request: ScoreLayoutRequest } {
+  const scored = scoringLayoutFor(state, layout);
+  const { performance, performanceHash } = performanceFor(state);
+  return {
+    key: {
+      layoutHash: hashLayout(scored),
+      performanceHash,
+      costToggles: state.costToggles,
+      evaluatorId: PLAYABILITY_EVALUATOR_ID,
+    },
+    request: {
+      performance,
+      layout: scored,
+      instrumentConfig: state.instrumentConfig,
+      engineConfig: state.engineConfig,
+      sections: state.sections,
+      costToggles: state.costToggles,
+    },
+  };
+}
+
+/** The cache key for a layout of this project. */
+export function analysisKeyFor(state: ProjectState, layout: Layout): AnalysisKey {
+  return scoringRequestFor(state, layout).key;
+}
+
+/** A cached entry with its plan bound to the layout it was asked for (same hash, that layout's id and role). */
+function boundTo(scored: ScoredLayoutAnalysis, layout: Layout): ScoredLayoutAnalysis {
+  return { analysis: rebindAnalysisToLayout(scored.analysis, layout), score: scored.score };
+}
+
+/** Plan and Playability of a layout of this project: one solve per key, in the worker. */
+export async function analyseLayoutCached(state: ProjectState, layout: Layout): Promise<ScoredLayoutAnalysis> {
+  const { key, request } = scoringRequestFor(state, layout);
+  return boundTo(await getAnalysisForLayout(key, () => scoreLayoutInBackground(request)), layout);
+}
+
+/** The cached plan and Playability of a layout, or null when it hasn't been scored. */
+export function peekLayoutAnalysis(state: ProjectState, layout: Layout): ScoredLayoutAnalysis | null {
+  const hit = peekAnalysis(analysisKeyFor(state, layout));
+  return hit ? boundTo(hit, layout) : null;
 }
 
 export type LayoutAnalysisState =
-  | { status: 'ready'; analysis: CandidateSolution }
+  | { status: 'ready'; analysis: CandidateSolution; score: LayoutScore }
   | { status: 'analysing' }
   | { status: 'error'; message: string }
   | { status: 'empty' };
 
+/**
+ * A layout's plan and Playability for a component: from the cache, or
+ * scored through it. A result this component already has is kept for as long
+ * as its key holds, even after the cache drops the entry, so a row never flips
+ * back to "Scoring…" or re-solves because other rows filled the cache.
+ */
 export function useLayoutAnalysis(layout: Layout | null): LayoutAnalysisState {
   const { state } = useProject();
-  const own = layout ? getProjectAnalysisForLayout(state, layout) : null;
-  const key = useMemo(() => (layout ? analysisKeyFor(state, layout) : null), [
-    layout, state.soundStreams, state.engineConfig, state.instrumentConfig, state.sections, state.costToggles, // eslint-disable-line react-hooks/exhaustive-deps
+  const isEmpty = !layout
+    || Object.keys(layout.padToVoice).length === 0
+    || !state.soundStreams.some(s => !s.muted && s.events.length > 0);
+  const scoring = useMemo(() => (layout && !isEmpty ? scoringRequestFor(state, layout) : null), [
+    layout, isEmpty, state.soundStreams, state.tempo, state.engineConfig, state.instrumentConfig, state.sections, // eslint-disable-line react-hooks/exhaustive-deps
+    state.costToggles, state.voiceConstraints,
   ]);
-  const keyString = key ? analysisCacheKey(key) : null;
-  const [result, setResult] = useState<{ key: string; state: LayoutAnalysisState } | null>(null);
+  const keyString = scoring ? analysisCacheKey(scoring.key) : null;
 
-  const isEmpty = !layout || Object.keys(layout.padToVoice).length === 0 || getActivePerformance(state).events.length === 0;
-  const cached = key && !own && !isEmpty ? peekAnalysis(key) : null;
+  const held = useRef<{ key: string; value: ScoredLayoutAnalysis } | null>(null);
+  const [failure, setFailure] = useState<{ key: string; message: string } | null>(null);
+  const [, settled] = useReducer((n: number) => n + 1, 0);
+
+  let value = held.current && held.current.key === keyString ? held.current.value : null;
+  if (!value && scoring && keyString) {
+    const hit = peekAnalysis(scoring.key);
+    if (hit) {
+      value = hit;
+      held.current = { key: keyString, value: hit };
+    }
+  }
 
   useEffect(() => {
-    if (!layout || !key || !keyString || own || cached || isEmpty) return;
+    if (!scoring || !keyString || held.current?.key === keyString) return;
     let cancelled = false;
-    setResult({ key: keyString, state: { status: 'analysing' } });
-    analyseLayoutCached(state, layout).then(
-      analysis => { if (!cancelled) setResult({ key: keyString, state: { status: 'ready', analysis } }); },
-      err => { if (!cancelled) setResult({ key: keyString, state: { status: 'error', message: err instanceof Error ? err.message : String(err) } }); },
+    getAnalysisForLayout(scoring.key, () => scoreLayoutInBackground(scoring.request)).then(
+      result => {
+        if (cancelled) return;
+        held.current = { key: keyString, value: result };
+        settled();
+      },
+      err => {
+        if (!cancelled) setFailure({ key: keyString, message: err instanceof Error ? err.message : String(err) });
+      },
     );
     return () => { cancelled = true; };
-    // Re-run only when the key changes; `state` is read at that moment.
+    // Re-run only when the key changes; `scoring` is read at that moment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyString, !!own, !!cached, isEmpty]);
+  }, [keyString]);
+
+  const analysis = useMemo(
+    () => (value && layout ? rebindAnalysisToLayout(value.analysis, layout) : null),
+    [value, layout],
+  );
 
   if (isEmpty) return { status: 'empty' };
-  if (own) return { status: 'ready', analysis: own };
-  if (cached) return { status: 'ready', analysis: cached };
-  if (result && result.key === keyString) return result.state;
+  if (value && analysis) return { status: 'ready', analysis, score: value.score };
+  if (failure && failure.key === keyString) return { status: 'error', message: failure.message };
   return { status: 'analysing' };
 }
