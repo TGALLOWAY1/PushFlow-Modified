@@ -592,9 +592,11 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
     const padKey = `${row},${col}`;
     const voice = livePadToVoice[padKey];
     // A pad is taken if it holds a Sound in the layout shown or in the layout
-    // edits go to (they differ while a candidate is shown).
+    // edits go to. A read-only layout takes no edits (S3.2), so there only what
+    // it shows counts: a placing click on a pad that looks empty is refused with
+    // the hint, never read as the armed Sound's own pad in the draft behind it.
     const editable = state.workingLayout ?? state.activeLayout;
-    const occupant = voice ?? editable.padToVoice[padKey];
+    const occupant = voice ?? (readOnly ? undefined : editable.padToVoice[padKey]);
     const occupantId = occupant ? soundStreamLookup.forVoice(occupant)?.id ?? occupant.id : null;
     const meaning = padClickMeaning({
       armed: !!armedStream,
@@ -638,7 +640,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
         dispatch({ type: 'SELECT_PAD', payload: { padKey: null, streamId: null } });
         return;
     }
-  }, [livePadToVoice, state.workingLayout, state.activeLayout, state.soundStreams, soundStreamLookup, armedStream, selectedEventIndex, dispatch, toast, refuseEdit]);
+  }, [livePadToVoice, state.workingLayout, state.activeLayout, state.soundStreams, soundStreamLookup, armedStream, selectedEventIndex, dispatch, toast, refuseEdit, readOnly]);
 
   // The pad's ×: removes with an Undo toast (T28).
   const handleRemovePad = useRemovePadWithUndo();

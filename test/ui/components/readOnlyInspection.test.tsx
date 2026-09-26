@@ -96,6 +96,12 @@ const pad = (key: string) => screen.getByTestId(`pad-${key.replace(',', '-')}`);
 const shownPads = () => resolveInspectedLayout(api.state).layout.padToVoice;
 const occupiedPad = () => Object.keys(shownPads())[0]!;
 const emptyPad = () => ['7,7', '7,6', '6,7', '6,6'].find(k => !shownPads()[k])!;
+/** A pad that looks empty but holds a Sound in the draft: the candidate moved that Sound off it. */
+const hiddenDraftPad = () => {
+  const key = Object.keys(api.state.workingLayout!.padToVoice).find(k => !shownPads()[k]);
+  expect(key).toBeDefined();
+  return key!;
+};
 const soundRow = (i: number) => screen.getAllByTestId('sound-row')[i]!;
 
 function dataTransfer(data: Record<string, string>) {
@@ -141,6 +147,29 @@ describe('while a candidate is inspected, each edit path is refused with the hin
     fireEvent.click(pad(occupiedPad()));
     expect(screen.queryByText('Pad taken · drag to swap')).toBeNull();
     expectRefused(before, draftHash);
+  });
+
+  it('click-to-place on a pad that looks empty but holds the armed Sound in the draft: the hint, not a silent disarm', async () => {
+    const { before, draftHash } = mount(await inspectingCandidate());
+    const key = hiddenDraftPad();
+    const i = api.state.soundStreams.findIndex(s => s.id === api.state.workingLayout!.padToVoice[key]!.id);
+    fireEvent.click(soundRow(i));
+    const armed = api.state.soundStreams[i]!.id;
+    expect(api.state.armedStreamId).toBe(armed);
+    fireEvent.click(pad(key));
+    // Still armed, as after any refused click-to-place.
+    expect(api.state.armedStreamId).toBe(armed);
+    expectRefused(before, draftHash);
+  });
+
+  it('with nothing armed, a click on that pad clears the selection, as on any empty pad', async () => {
+    mount(await inspectingCandidate());
+    const key = hiddenDraftPad();
+    fireEvent.click(pad(occupiedPad()));
+    expect(api.state.selectedPadKey).toBe(occupiedPad());
+    fireEvent.click(pad(key));
+    expect(api.state.selectedPadKey).toBeNull();
+    expect(api.state.selectedStreamId).toBeNull();
   });
 
   it('Delete on a selected pad removes nothing, and says so instead of "Removed"', async () => {
