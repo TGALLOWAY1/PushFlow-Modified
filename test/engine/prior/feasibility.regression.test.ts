@@ -6,7 +6,7 @@
  *
  * Pattern: Start feasible → move one pad → confirm failure + expected rule.
  *
- * Fixture data shared with src/ui/fixtures/feasibilityDemos.ts.
+ * Fixture data lives in test/golden/feasibilityFixtures.ts.
  */
 
 import { describe, it, expect } from 'vitest';

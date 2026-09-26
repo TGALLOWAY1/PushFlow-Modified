@@ -1,13 +1,13 @@
 /**
  * Feasibility Fixture Data.
  *
- * Shared fixture definitions for both:
- *   1. vitest unit tests (test/engine/prior/feasibility.*.test.ts)
- *   2. Loadable demo projects (src/ui/fixtures/feasibilityDemos.ts)
+ * Fixture definitions for the feasibility unit tests
+ * (test/engine/prior/feasibility.*.test.ts).
  *
  * Each scenario defines a set of pad positions, a hand assignment, and
- * the expected feasibility outcome. The same data drives automated tests
- * and the interactive grid-editor demos the user can visually verify.
+ * the expected feasibility outcome. The same data once fed grid-editor demo
+ * projects (src/ui/fixtures/feasibilityDemos.ts), which nothing loaded; that
+ * file is archived (docs/ARCHIVE.md).
  */
 
 import { type PadCoord } from '../../src/types/padGrid';

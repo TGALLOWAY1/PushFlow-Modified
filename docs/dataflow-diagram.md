@@ -34,7 +34,7 @@ flowchart TD
         LS[("localStorage\n(fallback mirror)")]
         SERIALIZER["projectSerializer.ts\nserialize / deserialize"]
         LOOP_STORE["loopStorage.ts"]
-        PRESET_STORE["presetStorage.ts"]
+        PRESET_STORE["composerPresetStorage.ts"]
     end
 
     LIBRARY -->|"listProjectsAsync()"| STORAGE
@@ -189,7 +189,7 @@ flowchart TD
 
         subgraph Prior["Prior / Biomechanics"]
             FEASIBILITY["feasibilityCheck\n(Strict/Relaxed/Fallback tiers)"]
-            ERGONOMICS["ergonomicConstants"]
+            ERGONOMICS["biomechanicalModel\n(span, reach, speed limits)"]
             HAND_ZONE["handZone\ngetPreferredHand()"]
         end
 
