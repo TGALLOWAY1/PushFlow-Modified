@@ -6,6 +6,7 @@
  * - Mod+S saves now; Mod+Z undoes; Mod+Shift+Z or Mod+Y redoes;
  * - Space plays and stops (the Composer binds its own while its tab is open);
  * - ←/→ select the previous or next event while stopped, stopping at the ends;
+ * - Shift+←/→ select the previous or next Hard event (Prev/Next hard, T27);
  * - Escape steps back one layer: a trace replay, then the armed Sound, then
  *   the pad selection, then the event (an open overlay closes itself first);
  * - Delete/Backspace take the selected pad's Sound off the grid, with Undo;
@@ -18,6 +19,7 @@ import { useRef } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { getDisplayedLayout, isPadLocked, isReplayingTrace } from '../state/projectState';
 import { getEventTimeline, resolveEventKey } from '../analysis/eventTimeline';
+import { hardEventSteps } from '../analysis/eventDifficulty';
 import { useInputHandler } from '../input/inputRegistry';
 import { useRemovePadWithUndo } from './useRemovePadWithUndo';
 import { useReadOnlyHint } from './useReadOnlyHint';
@@ -67,6 +69,16 @@ export function useKeyboardShortcuts({ onSave, onOpenShortcuts }: KeyboardShortc
       : Math.min(events.length - 1, Math.max(0, position + (forward ? 1 : -1)));
     // At the first or last event the selection stays put: no wrapping.
     const event = events[target]!;
+    dispatch({ type: 'SELECT_EVENT', payload: { key: event.key, startTime: event.startTime } });
+  });
+
+  // Shift+←/→: Prev and Next hard (T27), stopping at the first and last.
+  useInputHandler('step-hard-events', e => {
+    const s = stateRef.current;
+    if (s.isPlaying) return false;
+    const steps = hardEventSteps(s);
+    const event = e.key === 'ArrowRight' ? steps.next : steps.previous;
+    if (!event) return false;
     dispatch({ type: 'SELECT_EVENT', payload: { key: event.key, startTime: event.startTime } });
   });
 

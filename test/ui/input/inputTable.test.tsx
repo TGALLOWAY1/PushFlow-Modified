@@ -31,6 +31,7 @@ import { EventsPanel } from '../../../src/ui/components/EventsPanel';
 import { ShortcutSheet } from '../../../src/ui/components/shared/ShortcutSheet';
 import { Popover } from '../../../src/ui/components/shared/Overlay';
 import { analyzeLayout } from '../../../src/ui/analysis/analyzeLayout';
+import { eventCostsOf, filterEvents } from '../../../src/ui/analysis/eventDifficulty';
 import {
   INPUT_TABLE,
   PAD_TAKEN_MESSAGE,
@@ -87,7 +88,19 @@ function mount(state: ProjectState, children?: ReactNode) {
 
 /** TEST MIDI 1 with the suggested layout, analysed, so events exist. */
 async function analysedProject(): Promise<ProjectState> {
-  const state = await suggestedTestMidi1();
+  return analysed(await suggestedTestMidi1());
+}
+
+/** TEST MIDI 1 with its Sounds spread over the grid (the C1 layout), analysed: many Hard events. */
+async function spreadProject(): Promise<ProjectState> {
+  let state = await importTestMidi1();
+  ['0,0', '7,0', '4,3', '3,7', '7,7', '0,7', '5,5'].forEach((padKey, i) => {
+    state = projectReducer(state, { type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey, stream: state.soundStreams[i]! } });
+  });
+  return analysed(state);
+}
+
+async function analysed(state: ProjectState): Promise<ProjectState> {
   const layout = getDisplayedLayout(state)!;
   const analysis = await analyzeLayout({
     performance: getActivePerformance(state), layout,
@@ -395,6 +408,31 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     act(() => api.dispatch({ type: 'SET_IS_PLAYING', payload: true }));
     press('ArrowLeft');
     expect(selectedTime()).toBe(times[times.length - 1]);
+  },
+
+  'step-hard-events': async () => {
+    // S4.2 (T27): Shift+←/→ select the previous or next Hard event, in time order, stopping at the ends.
+    mount(await spreadProject());
+    const timeline = getEventTimeline(api.state);
+    const hard = filterEvents(timeline, eventCostsOf(timeline, getDisplayedExecutionPlan(api.state)!.fingerAssignments), 'hard')
+      .map(e => e.startTime);
+    expect(hard.length).toBeGreaterThan(2);
+    const seen: Array<number | null> = [];
+    for (let i = 0; i < hard.length; i++) {
+      press('ArrowRight', { shiftKey: true });
+      seen.push(selectedTime());
+    }
+    expect(seen).toEqual(hard);
+    // At the last Hard event, Shift+→ means nothing (no wrapping).
+    expect(press('ArrowRight', { shiftKey: true })).toBe(true);
+    expect(selectedTime()).toBe(hard[hard.length - 1]);
+    press('ArrowLeft', { shiftKey: true });
+    expect(selectedTime()).toBe(hard[hard.length - 2]);
+    // Not from a text field, and not while playing.
+    expect(press('ArrowLeft', { shiftKey: true }, screen.getByTestId('plain-input'))).toBe(true);
+    act(() => api.dispatch({ type: 'SET_IS_PLAYING', payload: true }));
+    press('ArrowLeft', { shiftKey: true });
+    expect(selectedTime()).toBe(hard[hard.length - 2]);
   },
 
   'events-list-keys': async () => {

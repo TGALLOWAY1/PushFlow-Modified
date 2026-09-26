@@ -78,6 +78,8 @@ import {
   type DrawerPrefs,
 } from './drawerSizing';
 import { timelineContentHeight } from '../timelineLayout';
+import { EventsNavigationProvider, type EventsNavigation } from './eventsNavigation';
+import { type EventsFilter } from '../../analysis/eventDifficulty';
 
 type LeftPanelTab = 'sounds' | 'events' | 'presets';
 type RightPanelTab = 'costs' | 'layouts';
@@ -167,6 +169,19 @@ function PerformanceWorkspaceInner() {
   const [rightCollapsed, setRightCollapsed] = useState(initialView === 'presets');
   const [onionSkin, setOnionSkin] = useState(false);
   const [timelineTab, setTimelineTab] = useState<TimelineTab>(initialView === 'presets' ? 'composer' : 'timeline');
+
+  // The Events list's filter (T27): the Analysis panel's "N need attention"
+  // applies one and brings the Events tab up.
+  const [eventsFilter, setEventsFilter] = useState<EventsFilter>('all');
+  const showEvents = useCallback((filter: EventsFilter) => {
+    setEventsFilter(filter);
+    setLeftTab('events');
+    setLeftCollapsed(false);
+  }, []);
+  const eventsNavigation = useMemo<EventsNavigation>(
+    () => ({ filter: eventsFilter, setFilter: setEventsFilter, showEvents }),
+    [eventsFilter, showEvents],
+  );
 
   // Composer preset library state
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
@@ -662,6 +677,7 @@ function PerformanceWorkspaceInner() {
   }, [revealVariantId, state.savedVariants, rightTab]);
 
   return (
+    <EventsNavigationProvider value={eventsNavigation}>
     <div className="h-full flex flex-col bg-[var(--bg-app)] overflow-hidden">
       {/* ─── Top Toolbar ──────────────────────────────────────── */}
       <WorkspaceToolbar
@@ -999,5 +1015,6 @@ function PerformanceWorkspaceInner() {
       {/* ─── Keyboard and mouse ('?') ─────────────────────────── */}
       {shortcutsOpen && <ShortcutSheet onClose={() => setShortcutsOpen(false)} />}
     </div>
+    </EventsNavigationProvider>
   );
 }

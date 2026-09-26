@@ -44,7 +44,12 @@ interface EventBar {
   event: TimelineEvent;
   segments: Array<{ key: string; value: number; color: string; label: string }>;
   total: number;
+  /** "2 of 3 notes can't be played", for an event the plan can't play; null otherwise. */
+  unplayable: string | null;
 }
+
+/** An unplayable event's bar (S4.2): full height, hatched in the unplayable colour, so it is never an empty gap. */
+const UNPLAYABLE_BAR = 'repeating-linear-gradient(45deg, var(--difficulty-unplayable) 0 3px, transparent 3px 6px)';
 
 export function EventCostChart({ fingerAssignments, timeline, subject, selectedMomentKey, onSelectEvent, tempo = 120 }: EventCostChartProps) {
   const [enabledLayers, setEnabledLayers] = useState<Set<FactorKey>>(
@@ -71,8 +76,12 @@ export function EventCostChart({ fingerAssignments, timeline, subject, selectedM
   const eventBars: EventBar[] = useMemo(() => {
     const byEvent = planNotesByEvent(timeline, fingerAssignments);
     return timeline.events.filter(event => byEvent.has(event.index)).map(event => {
-      const { breakdown } = summarizeMomentCost(byEvent.get(event.index)!);
-      const factors = breakdown ? factorsFromBreakdown(breakdown) : null;
+      const summary = summarizeMomentCost(byEvent.get(event.index)!);
+      const { breakdown } = summary;
+      const unplayable = summary.difficulty === 'Unplayable'
+        ? `${summary.unplayableNoteCount} of ${summary.noteCount} ${summary.noteCount === 1 ? 'note' : 'notes'} can’t be played`
+        : null;
+      const factors = breakdown && !unplayable ? factorsFromBreakdown(breakdown) : null;
       const segments = factors
         ? COST_LAYERS
             .filter(l => enabledLayers.has(l.key))
@@ -84,7 +93,7 @@ export function EventCostChart({ fingerAssignments, timeline, subject, selectedM
             }))
             .filter(s => s.value > 0)
         : [];
-      return { event, segments, total: segments.reduce((sum, s) => sum + s.value, 0) };
+      return { event, segments, total: segments.reduce((sum, s) => sum + s.value, 0), unplayable };
     });
   }, [timeline, fingerAssignments, enabledLayers]);
   const selectedIndex = resolveEventKey(timeline, selectedMomentKey)?.index ?? null;
@@ -114,7 +123,7 @@ export function EventCostChart({ fingerAssignments, timeline, subject, selectedM
         {/* Bars */}
         <div className="absolute inset-0 flex items-end gap-px overflow-hidden">
           {eventBars.map((bar, idx) => {
-            const barHeight = bar.total > 0 ? (bar.total / maxTotal) * height : 0;
+            const barHeight = bar.unplayable ? height : bar.total > 0 ? (bar.total / maxTotal) * height : 0;
             const isHovered = hoveredEvent === idx;
             const isSelected = bar.event.index === selectedIndex;
 
@@ -124,6 +133,7 @@ export function EventCostChart({ fingerAssignments, timeline, subject, selectedM
                 data-testid="event-bar"
                 data-event-index={bar.event.index}
                 data-selected={isSelected ? 'true' : undefined}
+                data-unplayable={bar.unplayable ? 'true' : undefined}
                 className={`relative flex flex-col-reverse transition-opacity cursor-pointer ${
                   isSelected ? 'opacity-100' : isHovered ? 'opacity-100' : hoveredEvent !== null || selectedIndex !== null ? 'opacity-40' : 'opacity-90'
                 }`}
@@ -134,6 +144,7 @@ export function EventCostChart({ fingerAssignments, timeline, subject, selectedM
                   outline: isSelected ? '2px solid #60a5fa' : undefined,
                   outlineOffset: '1px',
                   borderRadius: '2px',
+                  background: bar.unplayable ? UNPLAYABLE_BAR : undefined,
                 }}
                 onMouseEnter={() => setHoveredEvent(idx)}
                 onMouseLeave={() => setHoveredEvent(null)}
@@ -164,6 +175,9 @@ export function EventCostChart({ fingerAssignments, timeline, subject, selectedM
             <div className="text-[var(--text-primary)] font-medium mb-0.5" title={formatSeconds(eventBars[hoveredEvent].event.startTime)}>
               {formatEventLabel(eventBars[hoveredEvent].event, tempo)}
             </div>
+            {eventBars[hoveredEvent].unplayable && (
+              <div className="text-[var(--status-bad)]">Unplayable: {eventBars[hoveredEvent].unplayable}</div>
+            )}
             {eventBars[hoveredEvent].segments.map(seg => (
               <div key={seg.key} className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: seg.color }} />
@@ -171,9 +185,11 @@ export function EventCostChart({ fingerAssignments, timeline, subject, selectedM
                 <span className="text-[var(--text-primary)]">{seg.value.toFixed(2)}</span>
               </div>
             ))}
-            <div className="text-[var(--text-secondary)] border-t border-[var(--border-subtle)] mt-0.5 pt-0.5">
-              Total: {eventBars[hoveredEvent].total.toFixed(2)}
-            </div>
+            {!eventBars[hoveredEvent].unplayable && (
+              <div className="text-[var(--text-secondary)] border-t border-[var(--border-subtle)] mt-0.5 pt-0.5">
+                Total: {eventBars[hoveredEvent].total.toFixed(2)}
+              </div>
+            )}
           </div>
         )}
       </div>

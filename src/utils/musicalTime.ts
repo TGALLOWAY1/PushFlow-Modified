@@ -30,6 +30,11 @@ export function formatBarBeat(time: number, tempo: number): string {
   return `${bar}.${beat}.${sixteenth}`;
 }
 
+/** The bar (1-based) a time falls in. */
+export function barNumber(time: number, tempo: number): number {
+  return Math.floor(Math.max(0, time) / barSeconds(tempo) + 1e-6) + 1;
+}
+
 /** "Bars 3–4" (or "Bar 3") for a region from `start` to `end` seconds; the end is exclusive. */
 export function formatBarRange(start: number, end: number, tempo: number): string {
   const bar = barSeconds(tempo);

@@ -47,9 +47,13 @@ export function padLabelCharsPerLine(padSize: number): number {
   return Math.max(2, Math.floor((padSize - 6) / 6.5));
 }
 
+/** A Sound's name without the words every Sound's name starts with ("TEST MIDI 1 A" → "A"). */
+export function withoutSharedPrefix(name: string, prefix: string): string {
+  const trimmed = prefix && name.startsWith(prefix) ? name.slice(prefix.length) : name;
+  return trimmed.trim() || name;
+}
+
 /** The label a pad shows for a Sound, on at most `lines` lines. */
 export function padLabel(name: string, prefix: string, padSize: number, lines: number = padLabelLines(padSize)): string {
-  const trimmed = prefix && name.startsWith(prefix) ? name.slice(prefix.length) : name;
-  const label = trimmed.trim() || name;
-  return middleTruncate(label, padLabelCharsPerLine(padSize) * lines);
+  return middleTruncate(withoutSharedPrefix(name, prefix), padLabelCharsPerLine(padSize) * lines);
 }

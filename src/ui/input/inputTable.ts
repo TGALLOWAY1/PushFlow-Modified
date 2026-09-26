@@ -25,6 +25,7 @@ export type InputRowId =
   | 'empty-space-click'
   | 'space'
   | 'step-events'
+  | 'step-hard-events'
   | 'events-list-keys'
   | 'exit-replay'
   | 'escape'
@@ -152,6 +153,12 @@ export const INPUT_TABLE: readonly InputRow[] = [
     input: ['←', '→'], when: 'Stopped',
     does: 'Selects the previous or next event, stopping at the first and last. In a row of tabs they move between the tabs instead.',
     keys: e => plain(e) && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'),
+  },
+  {
+    id: 'step-hard-events', group: 'Playback and events',
+    input: ['Shift+←', 'Shift+→'], when: 'Stopped',
+    does: 'Selects the previous or next Hard event, stopping at the first and last (Prev hard and Next hard in the Events list).',
+    keys: e => noModifiers(e) && e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'),
   },
   {
     id: 'events-list-keys', group: 'Playback and events',
