@@ -48,6 +48,7 @@ import { FeasibilityBadge } from '../../../src/ui/components/panels/CostBreakdow
 import { ROLE_META, ROLE_ORDER } from '../../../src/ui/state/layoutSubject';
 import { USE_AS_DRAFT_HINT } from '../../../src/ui/hooks/useReadOnlyHint';
 import { LIFECYCLE_ACTIONS } from '../../../src/ui/state/lifecycleActions';
+import { MOMENT_VIEWS } from '../../../src/ui/state/viewSettings';
 
 afterEach(cleanup);
 
@@ -312,5 +313,19 @@ describe('Learn More · the layout lifecycle (S3.4, P3-10b)', () => {
     });
     for (const example of Object.values(names)) expect(text).toContain(`“${example}”`);
     expect(text).toContain('its role is shown beside it, never written into it');
+  });
+});
+
+describe('the moment view (S4.2, invariant 2)', () => {
+  it('lists the views from the list the grid’s control uses, and how strikes, moves and playback look', () => {
+    openTab('Overview');
+    const views = screen.getByTestId('learn-more-moment-views');
+    expect([...views.querySelectorAll<HTMLElement>('li')].map(li => li.dataset.view)).toEqual(MOMENT_VIEWS.map(v => v.id));
+    for (const view of MOMENT_VIEWS) expect(views.textContent).toContain(`${view.label}: ${view.description}`);
+    expect(screen.getByTestId('learn-more-moment-view').textContent).toMatch(/keep their Sound.s colour and name/);
+    expect(screen.getByTestId('learn-more-moment-marks').textContent).toMatch(/\+1.*−1.*last pad/s);
+    expect(screen.getByTestId('learn-more-moment-playback').textContent).toMatch(/playhead drives the same view.*nothing dims/s);
+    // The onion-skin wording is gone with its toggle.
+    expect(document.body.textContent).not.toMatch(/[Oo]nion/);
   });
 });

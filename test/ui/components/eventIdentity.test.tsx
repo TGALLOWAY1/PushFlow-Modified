@@ -52,7 +52,7 @@ function Surfaces() {
   return (
     <>
       <InteractiveGrid padSize={48} assignments={getDisplayedExecutionPlan(api.state)?.fingerAssignments} layoutOverride={shown.readOnly ? shown.layout : undefined} />
-      <EventsPanel onionSkin={false} onToggleOnionSkin={() => {}} />
+      <EventsPanel />
       <UnifiedTimeline />
       <PerformanceCostsPanel />
     </>

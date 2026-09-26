@@ -10,6 +10,11 @@
 
 import { GRID_REGION_MIN_HEIGHT } from './gridSizing';
 
+/*
+ * `gridMin` is the grid region's minimum height (gridRegionMinHeight): more
+ * when the moment dock sits under the frame (S4.2).
+ */
+
 /** The drawer's tab bar (Timeline, Composer and the collapse control). */
 export const DRAWER_TAB_BAR_HEIGHT = 36;
 /** The smallest open drawer: the tab bar plus a few lanes. */
@@ -32,13 +37,13 @@ export const DEFAULT_DRAWER_PREFS: DrawerPrefs = { height: null, collapsed: fals
  * In a short centre column that is less than an open drawer's minimum, down
  * to the tab bar alone: the grid's minimum wins.
  */
-export function maxDrawerHeight(centerHeight: number): number {
-  return Math.max(DRAWER_TAB_BAR_HEIGHT, centerHeight - SPLITTER_HEIGHT - GRID_REGION_MIN_HEIGHT);
+export function maxDrawerHeight(centerHeight: number, gridMin = GRID_REGION_MIN_HEIGHT): number {
+  return Math.max(DRAWER_TAB_BAR_HEIGHT, centerHeight - SPLITTER_HEIGHT - gridMin);
 }
 
 /** The smallest the viewer can drag the drawer to: its open minimum, or less when the grid needs the room. */
-export function minDrawerHeight(centerHeight: number): number {
-  return Math.min(DRAWER_MIN_HEIGHT, maxDrawerHeight(centerHeight));
+export function minDrawerHeight(centerHeight: number, gridMin = GRID_REGION_MIN_HEIGHT): number {
+  return Math.min(DRAWER_MIN_HEIGHT, maxDrawerHeight(centerHeight, gridMin));
 }
 
 /**
@@ -48,11 +53,11 @@ export function minDrawerHeight(centerHeight: number): number {
  * can't hold, the grid's minimum wins. Content with no natural height (the
  * Composer, POSITIVE_INFINITY) gets the 40%.
  */
-export function drawerHeightFor(centerHeight: number, contentHeight: number, prefs: DrawerPrefs): number {
+export function drawerHeightFor(centerHeight: number, contentHeight: number, prefs: DrawerPrefs, gridMin = GRID_REGION_MIN_HEIGHT): number {
   if (prefs.collapsed) return DRAWER_TAB_BAR_HEIGHT;
   const fit = DRAWER_TAB_BAR_HEIGHT + contentHeight;
   const wanted = prefs.height ?? Math.min(fit, Math.round(centerHeight * DRAWER_CAP_RATIO));
-  return Math.round(Math.min(maxDrawerHeight(centerHeight), Math.max(DRAWER_MIN_HEIGHT, wanted)));
+  return Math.round(Math.min(maxDrawerHeight(centerHeight, gridMin), Math.max(DRAWER_MIN_HEIGHT, wanted)));
 }
 
 const STORAGE_KEY = 'pushflow:drawer';

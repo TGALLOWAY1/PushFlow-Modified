@@ -35,7 +35,8 @@ const VIEW_OPTIONS: Array<{ key: keyof GridLabelSettings; label: string }> = [
   { key: 'showPositionLabels', label: 'Show Position Labels' },
   { key: 'showFingerAssignment', label: 'Show Finger Assignment' },
   { key: 'showHandColors', label: 'Color Pads by Hand' },
-  { key: 'showTransitionArrows', label: 'Show Transition Arrows' },
+  // The next-move arrows are part of the moment view (Now + Next), set by its
+  // control beside the grid (S4.2), not here.
 ];
 
 export function SettingsGear({

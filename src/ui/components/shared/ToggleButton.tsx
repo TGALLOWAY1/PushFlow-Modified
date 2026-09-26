@@ -19,6 +19,8 @@ export interface ToggleButtonProps
   icon?: ReactNode;
   /** Show the icon alone; the label becomes the accessible name and tooltip. */
   hideLabel?: boolean;
+  /** 'sm': 11 px text and tighter padding, for a segmented control in a narrow panel (still 24 px tall). */
+  size?: 'md' | 'sm';
   testId?: string;
 }
 
@@ -26,7 +28,7 @@ const PRESSED = 'bg-accent-primary/25 border-accent-primary-soft/70 text-[var(--
 const RELEASED = 'bg-transparent border-[var(--border-default)] text-[var(--text-secondary)] enabled:hover:text-[var(--text-primary)] enabled:hover:bg-[var(--bg-hover)]';
 
 export const ToggleButton = forwardRef<HTMLButtonElement, ToggleButtonProps>(function ToggleButton(
-  { pressed, onPressedChange, label, icon, hideLabel = false, testId, className, title, ...rest },
+  { pressed, onPressedChange, label, icon, hideLabel = false, size = 'md', testId, className, title, ...rest },
   ref,
 ) {
   return (
@@ -38,7 +40,7 @@ export const ToggleButton = forwardRef<HTMLButtonElement, ToggleButtonProps>(fun
       aria-label={hideLabel ? label : undefined}
       title={title ?? (hideLabel ? label : undefined)}
       data-testid={testId}
-      className={`focus-ring inline-flex items-center justify-center gap-1 min-h-[24px] ${hideLabel ? 'min-w-[24px] px-1' : 'px-2'} rounded-pf-sm border text-pf-xs font-semibold whitespace-nowrap transition-colors disabled:opacity-[0.35] disabled:cursor-not-allowed ${pressed ? PRESSED : RELEASED} ${className ?? ''}`}
+      className={`focus-ring inline-flex items-center justify-center gap-1 min-h-[24px] ${hideLabel ? 'min-w-[24px] px-1' : size === 'sm' ? 'px-1.5' : 'px-2'} rounded-pf-sm border ${size === 'sm' ? 'text-pf-micro' : 'text-pf-xs'} font-semibold whitespace-nowrap transition-colors disabled:opacity-[0.35] disabled:cursor-not-allowed ${pressed ? PRESSED : RELEASED} ${className ?? ''}`}
       onClick={() => onPressedChange(!pressed)}
     >
       {icon && <span aria-hidden="true" className="inline-flex">{icon}</span>}

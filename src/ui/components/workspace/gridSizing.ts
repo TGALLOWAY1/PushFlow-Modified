@@ -4,8 +4,16 @@
  * The pad grid is sized by measurement, never by CSS transform: a
  * ResizeObserver on the grid region picks an integer pad size between 32 and
  * 72 px that fits the 8x8 matrix, its axes, its hand-zone labels, the hardware
- * frame and the state-bar slot above it. Label sizes stay fixed; only the pads
- * grow or shrink. Desktop-only: no breakpoints, just the measured box.
+ * frame, the state-bar slot above it and the moment dock (S4.2). Label sizes
+ * stay fixed; only the pads grow or shrink. Desktop-only: no breakpoints, just
+ * the measured box.
+ *
+ * The dock (the moment and pad inspectors, and the moment view's control)
+ * sits beside the frame whenever the region is wide enough for it next to
+ * 32 px pads, which it is in every window about 1140 px wide or more: there it
+ * uses width the height-bound pads leave empty, so it costs neither pad size
+ * nor timeline lanes. In a narrower region it sits under the frame, and the
+ * region's minimum height (and so the drawer's maximum) makes room for it.
  */
 
 import { useCallback, useLayoutEffect, useState } from 'react';
@@ -32,38 +40,66 @@ export const STATE_BAR_HEIGHT = 36;
 export const STATE_BAR_GAP = 6;
 /** Below this pad size, secondary labels (note, position, empty-pad coordinates) hide. */
 export const SECONDARY_LABEL_MIN_PAD = 40;
+/** The moment dock beside the frame (S4.2), and the gap between them. */
+export const DOCK_WIDTH = 248;
+export const DOCK_GAP = 12;
+/** The dock under the frame instead, in a region too narrow for it beside. */
+export const DOCK_BELOW_HEIGHT = 136;
+
+export type DockPlacement = 'side' | 'below';
 
 /** Width of the frame (matrix, axis and frame inset) for a pad size. */
 export function gridFrameWidth(pad: number): number {
   return AXIS_WIDTH + 8 * pad + 7 * PAD_GAP + 2 * FRAME_INSET;
 }
 
-/** Height of everything in the grid region for a pad size: state-bar slot, frame, labels. */
-export function gridRegionHeight(pad: number): number {
-  return STATE_BAR_HEIGHT + STATE_BAR_GAP + 2 * FRAME_INSET
-    + 8 * pad + 8 * PAD_GAP + COLUMN_LABELS_HEIGHT + ZONE_LABELS_HEIGHT;
+/** Height of the frame (matrix, column numbers, hand-zone labels and inset) for a pad size. */
+export function gridFrameHeight(pad: number): number {
+  return 2 * FRAME_INSET + 8 * pad + 8 * PAD_GAP + COLUMN_LABELS_HEIGHT + ZONE_LABELS_HEIGHT;
+}
+
+/** Beside the frame when the region fits it next to 32 px pads; under the frame otherwise. */
+export function dockPlacementFor(width: number): DockPlacement {
+  return width >= gridFrameWidth(PAD_MIN) + DOCK_GAP + DOCK_WIDTH ? 'side' : 'below';
+}
+
+/** Width of the frame and, beside it, the dock. */
+export function gridRegionWidth(pad: number, placement: DockPlacement): number {
+  return gridFrameWidth(pad) + (placement === 'side' ? DOCK_GAP + DOCK_WIDTH : 0);
+}
+
+/** Height of everything in the grid region for a pad size: state-bar slot, frame, labels, and a dock under the frame. */
+export function gridRegionHeight(pad: number, placement: DockPlacement = 'side'): number {
+  return STATE_BAR_HEIGHT + STATE_BAR_GAP + gridFrameHeight(pad)
+    + (placement === 'below' ? DOCK_GAP + DOCK_BELOW_HEIGHT : 0);
 }
 
 /** The grid region's height at the smallest pad size: the drawer never takes more than this leaves. */
-export const GRID_REGION_MIN_HEIGHT = gridRegionHeight(PAD_MIN);
+export function gridRegionMinHeight(placement: DockPlacement = 'side'): number {
+  return gridRegionHeight(PAD_MIN, placement);
+}
 
-/** The largest integer pad size, from 32 to 72 px, whose grid fits a region of this size. */
-export function padSizeFor(width: number, height: number): number {
-  const byWidth = (width - gridFrameWidth(0)) / 8;
-  const byHeight = (height - gridRegionHeight(0)) / 8;
+export const GRID_REGION_MIN_HEIGHT = gridRegionMinHeight('side');
+
+/** The largest integer pad size, from 32 to 72 px, whose grid (and dock) fits a region of this size. */
+export function padSizeFor(width: number, height: number, placement: DockPlacement = dockPlacementFor(width)): number {
+  const byWidth = (width - gridRegionWidth(0, placement)) / 8;
+  const byHeight = (height - gridRegionHeight(0, placement)) / 8;
   const fit = Math.floor(Math.min(byWidth, byHeight));
   return Math.max(PAD_MIN, Math.min(PAD_MAX, fit));
 }
 
 /**
- * Measures an element and returns the pad size for its content box. Returns a
- * callback ref, so the observer attaches whenever the element mounts. The size
- * is an integer and only changes state when it changes, so the grid can never
- * feed back into its own measurement.
+ * Measures an element and returns the pad size for its content box, and where
+ * the dock goes (by the region's width alone, so the drawer's height, which
+ * follows it, can't feed back into it). Returns a callback ref, so the
+ * observer attaches whenever the element mounts. The size is an integer and
+ * only changes state when it changes, so the grid can never feed back into its
+ * own measurement.
  */
-export function useMeasuredPadSize(initial = 56): [(el: HTMLElement | null) => void, number] {
+export function useMeasuredPadSize(initial = 56): [(el: HTMLElement | null) => void, number, DockPlacement] {
   const [el, setEl] = useState<HTMLElement | null>(null);
-  const [padSize, setPadSize] = useState(initial);
+  const [layout, setLayout] = useState<{ pad: number; dock: DockPlacement }>({ pad: initial, dock: 'side' });
   const ref = useCallback((node: HTMLElement | null) => setEl(node), []);
   // Layout effect: the first paint already has the measured size.
   useLayoutEffect(() => {
@@ -72,13 +108,14 @@ export function useMeasuredPadSize(initial = 56): [(el: HTMLElement | null) => v
       const { clientWidth, clientHeight } = el;
       // A hidden or not-yet-laid-out region reports 0; keep the last size.
       if (clientWidth <= 0 || clientHeight <= 0) return;
-      const next = padSizeFor(clientWidth, clientHeight);
-      setPadSize(prev => (prev === next ? prev : next));
+      const dock = dockPlacementFor(clientWidth);
+      const pad = padSizeFor(clientWidth, clientHeight, dock);
+      setLayout(prev => (prev.pad === pad && prev.dock === dock ? prev : { pad, dock }));
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
   }, [el]);
-  return [ref, padSize];
+  return [ref, layout.pad, layout.dock];
 }

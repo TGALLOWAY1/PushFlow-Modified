@@ -27,6 +27,7 @@ export type InputRowId =
   | 'step-events'
   | 'step-hard-events'
   | 'events-list-keys'
+  | 'moment-view'
   | 'exit-replay'
   | 'escape'
   | 'delete'
@@ -166,6 +167,12 @@ export const INPUT_TABLE: readonly InputRow[] = [
     does: 'Selects the previous or next event.',
     keys: e => plain(e) && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'j' || e.key === 'k'),
     within: EVENTS_LIST_SCOPE,
+  },
+  {
+    id: 'moment-view', group: 'Playback and events',
+    input: ['O'], when: 'Outside text fields',
+    does: 'Cycles the moment view on the grid: Now, Now + Next (the next event\'s strikes and the moves to them), Prev · Now · Next.',
+    keys: e => plain(e) && letter(e, 'o'),
   },
   // Before 'escape': while a step is replayed, Esc leaves the replay first.
   {

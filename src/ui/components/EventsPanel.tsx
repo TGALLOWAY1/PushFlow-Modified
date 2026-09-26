@@ -42,13 +42,7 @@ import { StrikeChip, type StrikeSound } from './shared/StrikeChip';
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function EventsPanel({
-  onionSkin,
-  onToggleOnionSkin,
-}: {
-  onionSkin?: boolean;
-  onToggleOnionSkin?: () => void;
-} = {}) {
+export function EventsPanel() {
   const { state, dispatch } = useProject();
   const listRef = useRef<HTMLDivElement>(null);
   // The filter is the workspace's when there is one ("N need attention" sets it).
@@ -128,42 +122,8 @@ export function EventsPanel({
   return (
     <div className="space-y-1.5">
       {/* Whose costs these are (S3.2). */}
-      <div className="px-1">
+      <div className="flex items-center justify-between gap-2 px-1">
         <SubjectChip subject={inspectedSubject(state)} testId="events-subject" />
-      </div>
-
-      {/* Filter chips, with how many events each shows. */}
-      <div role="group" aria-label="Show events" data-testid="events-filters" className="flex flex-wrap gap-1 px-1">
-        {EVENTS_FILTERS.map(f => (
-          <ToggleButton
-            key={f.id}
-            pressed={filter === f.id}
-            onPressedChange={() => setFilter(f.id)}
-            label={`${f.label} ${counts[f.id]}`}
-            title={f.description}
-            testId={`events-filter-${f.id}`}
-          />
-        ))}
-      </div>
-
-      <div className="flex items-center justify-between gap-1 px-1">
-        <HardEventStepper testIdPrefix="events" />
-        {onToggleOnionSkin && (
-          <button
-            type="button"
-            className={`w-5 h-5 flex items-center justify-center rounded-pf-sm transition-colors ${
-              onionSkin ? 'text-sky-300 bg-sky-500/15' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
-            }`}
-            onClick={onToggleOnionSkin}
-            title={onionSkin ? 'Disable onion skin' : 'Show previous/next event layers on grid'}
-          >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <circle cx="8" cy="8" r="3" />
-              <circle cx="8" cy="8" r="5.5" opacity="0.5" />
-              <circle cx="8" cy="8" r="7.5" opacity="0.25" />
-            </svg>
-          </button>
-        )}
         {selectedIdx !== null && (
           <button
             type="button"
@@ -173,6 +133,25 @@ export function EventsPanel({
             Deselect
           </button>
         )}
+      </div>
+
+      {/* Filter chips, with how many events each shows. */}
+      <div role="group" aria-label="Show events" data-testid="events-filters" className="flex flex-wrap gap-1 px-1">
+        {EVENTS_FILTERS.map(f => (
+          <ToggleButton
+            key={f.id}
+            size="sm"
+            pressed={filter === f.id}
+            onPressedChange={() => setFilter(f.id)}
+            label={`${f.label} ${counts[f.id]}`}
+            title={f.description}
+            testId={`events-filter-${f.id}`}
+          />
+        ))}
+      </div>
+
+      <div className="px-1">
+        <HardEventStepper testIdPrefix="events" />
       </div>
 
       <div ref={listRef} data-input-scope="events" data-testid="events-list" className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 330px)' }}>

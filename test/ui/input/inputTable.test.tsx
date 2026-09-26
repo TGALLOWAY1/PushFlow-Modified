@@ -29,6 +29,8 @@ import { VoicePalette } from '../../../src/ui/components/VoicePalette';
 import { InteractiveGrid } from '../../../src/ui/components/InteractiveGrid';
 import { EventsPanel } from '../../../src/ui/components/EventsPanel';
 import { ShortcutSheet } from '../../../src/ui/components/shared/ShortcutSheet';
+import { MomentViewControl } from '../../../src/ui/components/workspace/MomentViewControl';
+import { ViewSettingsProvider, useViewSettings } from '../../../src/ui/state/viewSettings';
 import { Popover } from '../../../src/ui/components/shared/Overlay';
 import { analyzeLayout } from '../../../src/ui/analysis/analyzeLayout';
 import { eventCostsOf, filterEvents } from '../../../src/ui/analysis/eventDifficulty';
@@ -57,17 +59,21 @@ beforeEach(() => {
   onSave.mockReset();
   onOpenShortcuts.mockReset();
   buttonClick.mockReset();
+  // The moment view is remembered per viewer; every test starts from the default.
+  localStorage.removeItem('pushflow:view-settings');
 });
 
 /** The editor's input surfaces: the Sounds list, the grid and the key handlers, plus a few plain controls. */
 function Editor({ children }: { children?: ReactNode }) {
   api = useProject();
   useKeyboardShortcuts({ onSave, onOpenShortcuts });
+  const { settings } = useViewSettings();
   const plan = getDisplayedExecutionPlan(api.state);
   return (
     <>
       <VoicePalette />
-      <InteractiveGrid padSize={48} assignments={plan?.fingerAssignments} />
+      <InteractiveGrid padSize={48} assignments={plan?.fingerAssignments} momentView={settings.momentView} />
+      <MomentViewControl />
       <button type="button" data-testid="plain-button" onClick={buttonClick}>Loop</button>
       <select data-testid="plain-select" defaultValue="1"><option value="1">1</option><option value="2">2</option></select>
       <input data-testid="plain-input" />
@@ -79,9 +85,11 @@ function Editor({ children }: { children?: ReactNode }) {
 function mount(state: ProjectState, children?: ReactNode) {
   return render(
     <ToastProvider>
-      <ProjectProvider initialState={state}>
-        <Editor>{children}</Editor>
-      </ProjectProvider>
+      <ViewSettingsProvider>
+        <ProjectProvider initialState={state}>
+          <Editor>{children}</Editor>
+        </ProjectProvider>
+      </ViewSettingsProvider>
     </ToastProvider>,
   );
 }
@@ -436,7 +444,7 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
   },
 
   'events-list-keys': async () => {
-    mount(await analysedProject(), <EventsPanel onionSkin={false} onToggleOnionSkin={() => {}} />);
+    mount(await analysedProject(), <EventsPanel />);
     const rows = document.querySelectorAll<HTMLElement>('[data-input-scope="events"] [data-moment-index]');
     expect(rows.length).toBeGreaterThan(2);
     // Outside the list, ↓ means nothing to the list.
@@ -456,6 +464,33 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     // ArrowDown on a focused select changes the select, not the event (P2-10).
     expect(press('ArrowDown', {}, screen.getByTestId('plain-select'))).toBe(true);
     expect(selectedTime()).toBe(t1);
+  },
+
+  'moment-view': async () => {
+    // S4.2 (T09): O cycles the moment view, which the grid follows.
+    const state = await analysedProject();
+    const event = getEventTimeline(state).events[4]!;
+    mount({ ...state, selectedMomentKey: event.key });
+    const pressed = () => screen.getAllByRole('button', { pressed: true })
+      .map(b => b.dataset.testid).filter(id => id?.startsWith('moment-view-'));
+    const layered = (attr: 'next' | 'prev') => document.querySelectorAll(`[data-${attr}="true"]`).length;
+    expect(pressed()).toEqual(['moment-view-now-next']);
+    expect(layered('next')).toBeGreaterThan(0);
+    expect(layered('prev')).toBe(0);
+    press('o');
+    expect(pressed()).toEqual(['moment-view-prev-now-next']);
+    expect(layered('prev')).toBeGreaterThan(0);
+    press('o');
+    expect(pressed()).toEqual(['moment-view-now']);
+    expect(layered('next')).toBe(0);
+    press('o');
+    expect(pressed()).toEqual(['moment-view-now-next']);
+    // Not while typing an "o".
+    expect(press('o', {}, screen.getByTestId('plain-input'))).toBe(true);
+    expect(pressed()).toEqual(['moment-view-now-next']);
+    // A click on a view picks it too.
+    fireEvent.click(screen.getByTestId('moment-view-now'));
+    expect(pressed()).toEqual(['moment-view-now']);
   },
 
   'exit-replay': async () => {
@@ -701,7 +736,7 @@ describe('the registry', () => {
   });
 
   it('the editor binds every bound key row, and nothing reserved', async () => {
-    mount(await importTestMidi1(), <EventsPanel onionSkin={false} onToggleOnionSkin={() => {}} />);
+    mount(await importTestMidi1(), <EventsPanel />);
     const keyRows = INPUT_TABLE.filter(r => r.keys && !r.from).map(r => r.id);
     // group-sounds binds only while Sounds are selected.
     fireEvent.click(soundRow(0), { ctrlKey: true });

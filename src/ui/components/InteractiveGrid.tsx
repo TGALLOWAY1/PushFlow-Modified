@@ -26,9 +26,10 @@ import { useRemovePadWithUndo } from '../hooks/useRemovePadWithUndo';
 import { useReadOnlyHint } from '../hooks/useReadOnlyHint';
 import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
-import { type GridLabelSettings } from '../state/viewSettings';
-import { buildSelectedTransitionModel } from '../analysis/selectionModel';
-import { findSelectedEvent, getEventTimeline } from '../analysis/eventTimeline';
+import { type GridLabelSettings, type MomentView } from '../state/viewSettings';
+import { playheadEventIndex } from '../analysis/selectionModel';
+import { playbackOverlayAt, selectionOverlay, type PadStrike } from '../analysis/momentOverlay';
+import { getEventTimeline } from '../analysis/eventTimeline';
 import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
 import { padLabel, padLabelLines, sharedNamePrefix } from '../analysis/padLabels';
 import { midiNoteToName } from '../../utils/midiNotes';
@@ -39,12 +40,17 @@ import { type PresetDragPreview } from '../../types/composerPreset';
 import {
   AXIS_WIDTH,
   COLUMN_LABELS_HEIGHT,
+  DOCK_BELOW_HEIGHT,
+  DOCK_GAP,
+  DOCK_WIDTH,
   FRAME_INSET,
   PAD_GAP,
   SECONDARY_LABEL_MIN_PAD,
   STATE_BAR_GAP,
   STATE_BAR_HEIGHT,
   ZONE_LABELS_HEIGHT,
+  gridFrameHeight,
+  type DockPlacement,
 } from './workspace/gridSizing';
 
 interface InteractiveGridProps {
@@ -52,8 +58,11 @@ interface InteractiveGridProps {
   /** When provided, display this layout instead of the one edits go to: an
    *  inspected read-only layout (S3.2) or a replayed trace step. */
   layoutOverride?: import('../../types/layout').Layout;
-  /** Show onion skin overlay: previous/current/next event layers. */
-  onionSkin?: boolean;
+  /**
+   * The moment view (S4.2, T09): the current event's strikes only, also the
+   * next event's (with each finger's move to them), or also the previous one's.
+   */
+  momentView?: MomentView;
   /** Voice-level hand/finger constraints from SOUNDS panel (keyed by stream ID). */
   voiceConstraints?: Record<string, { hand?: 'left' | 'right'; finger?: string }>;
   /** Grid label settings controlling what info is shown on pads. */
@@ -74,6 +83,9 @@ interface InteractiveGridProps {
   padSize?: number;
   /** The layout-state bar (S3.2), in the fixed slot above the frame. */
   stateBar?: React.ReactNode;
+  /** The moment dock (S4.2): the view control and the inspectors, beside the frame or under it. */
+  dock?: React.ReactNode;
+  dockPlacement?: DockPlacement;
 }
 
 /** Hands in their tokens (T42), plus the colours for an unplayable pad and one both hands play. */
@@ -115,7 +127,7 @@ function safeColorAlpha(color: string | null | undefined, alpha: number, fallbac
 /** Physical reach threshold: pads farther apart than this are flagged as impossible. */
 const IMPOSSIBLE_REACH_THRESHOLD = 5;
 
-export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave, debuggerIteration, padSize = 56, stateBar }: InteractiveGridProps) {
+export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now-next', voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave, debuggerIteration, padSize = 56, stateBar, dock, dockPlacement = 'side' }: InteractiveGridProps) {
   const { state, dispatch } = useProject();
   const toast = useToast();
   // Looking never writes (S3.2): `refuse()` says how to edit and blocks the gesture.
@@ -139,8 +151,6 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
   const [dragSourcePad, setDragSourcePad] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ padKey: string; x: number; y: number; pad: HTMLElement } | null>(null);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
-  // The arrows are a grid overlay like the finger labels: on by default, in the gear (S3.2).
-  const showTransitionArrows = gridLabels?.showTransitionArrows ?? true;
 
   const soundStreamLookup = useMemo(
     () => buildSoundStreamLookup(state.soundStreams),
@@ -214,55 +224,40 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
     return map;
   }, [assignments, soundStreamLookup, voiceConstraints, showFingerLabels]);
 
-  // The selected event (S4.1), whole: every note the plan plays at that
-  // instant, by eventKey, so a chord played a few ms apart lights every pad.
+  // The moment view (S4.2, T09): the current event's strikes and, as the view
+  // asks, the next and previous events'. The current event is the selected
+  // one while stopped (whole: every note the plan plays at that instant, by
+  // eventKey, S4.1); while playing it is the event at the playhead, so the
+  // same overlay runs with the music and a selection never freezes the grid
+  // (T10). The playhead's event is found every frame; the overlay only
+  // changes when it does.
   const timeline = getEventTimeline(state);
-  const selectedEvent = useMemo(
-    () => findSelectedEvent(timeline, assignments, state.selectedMomentKey),
-    [timeline, assignments, state.selectedMomentKey],
+  const playing = state.isPlaying;
+  const playheadIndex = playing ? playheadEventIndex(timeline, assignments, state.currentTime) : null;
+  const overlay = useMemo(
+    () => playing
+      ? playbackOverlayAt(timeline, assignments, playheadIndex, momentView)
+      : selectionOverlay(timeline, assignments, state.selectedMomentKey, momentView),
+    [playing, playheadIndex, timeline, assignments, state.selectedMomentKey, momentView],
   );
 
-  // Selected pads, and padKey → finger label, for the selected event.
-  const { selectedPadKeys, selectedPadFingers } = useMemo(() => {
-    const keys = new Set<string>();
-    const fingers = new Map<string, { label: string; hand: string; color: string }>();
-    for (const a of selectedEvent?.notes ?? []) {
-      if (a.row !== undefined && a.col !== undefined) {
-        const key = `${a.row},${a.col}`;
-        keys.add(key);
-        fingers.set(key, { label: fingerLabel(a.assignedHand, a.finger) || '?', hand: a.assignedHand, color: handColor(a.assignedHand) ?? HAND_COLORS.Unplayable });
-      }
-    }
-    return { selectedPadKeys: keys, selectedPadFingers: fingers };
-  }, [selectedEvent]);
-
-  const selectedTransition = useMemo(
-    () => buildSelectedTransitionModel(timeline, assignments, state.selectedMomentKey),
-    [timeline, assignments, state.selectedMomentKey],
-  );
-
-  const nextPadKeys = selectedTransition?.nextPadKeys ?? new Set<string>();
-  const previousPadKeys = selectedTransition?.previousPadKeys ?? new Set<string>();
-  const sharedPadKeys = selectedTransition?.sharedPadKeys ?? new Set<string>();
-
-  // Check for impossible moves (distance > physical reach)
+  // A finger that must jump farther than a hand reaches between two strikes in a row.
   const impossibleMoveTargets = useMemo(() => {
     const targets = new Set<string>();
-    if (!selectedTransition || !onionSkin) return targets;
-    for (const move of selectedTransition.fingerMoves) {
-      if (move.rawDistance !== undefined && move.rawDistance > IMPOSSIBLE_REACH_THRESHOLD) {
-        if (move.toPad) targets.add(move.toPad);
+    for (const move of overlay?.moves ?? []) {
+      if (move.fromCurrent && move.toPad && move.rawDistance !== undefined && move.rawDistance > IMPOSSIBLE_REACH_THRESHOLD) {
+        targets.add(move.toPad);
       }
     }
     return targets;
-  }, [selectedTransition, onionSkin]);
+  }, [overlay]);
 
+  // Next-move arrows (the Now + Next views, while stopped): from each finger's
+  // last pad (else its hand's) to its next strike (T09).
   const transitionPaths = useMemo(() => {
-    if (!selectedTransition || !showTransitionArrows || state.isPlaying) return [];
+    if (!overlay || playing) return [];
 
-    const movesWithDistance = selectedTransition.fingerMoves
-      .filter(move => move.fromPad && move.toPad && !move.isHold)
-      .map(move => ({ move, distance: move.rawDistance ?? 0 }));
+    const movesWithDistance = overlay.moves.map(move => ({ move, distance: move.rawDistance ?? 0 }));
 
     // Filter to best 3 (shortest) and worst 3 (longest) by distance
     let filteredMoves: typeof movesWithDistance;
@@ -291,13 +286,13 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
         return {
           id: `${move.hand}-${move.finger}-${move.fromPad}-${move.toPad}`,
           color: HAND_COLORS[move.hand],
-          label: fingerLabel(move.hand, move.finger),
+          label: move.label,
           d: `M ${startX} ${startY} Q ${controlX} ${controlY} ${endX} ${endY}`,
           endX,
           endY,
         };
       });
-  }, [selectedTransition, showTransitionArrows, state.isPlaying, padSize]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [overlay, playing, padSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Visual Debugger Overlays: Candidate Moves
   const debuggerPaths = useMemo(() => {
@@ -652,10 +647,9 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
     }
   }, [state.armedStreamId, state.selectedPadKey, state.selectedStreamId, dispatch]);
 
-  // The selection overlay is suspended while playing and comes back on Stop
-  // (T10 slice): struck pads then look exactly as they do with nothing selected.
-  const showSelection = !state.isPlaying;
-  const hasEventSelected = showSelection && selectedEvent !== null && selectedPadKeys.size > 0;
+  // Finger badges: 11 px while inspecting, 16 px during playback so they read
+  // at a glance (T09).
+  const badgeFontSize = playing ? 16 : 11;
 
   // Render grid rows (row 7 at top, row 0 at bottom — Push 3 orientation)
   const rows = [];
@@ -668,13 +662,21 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
       // The selected Sound (a pad click, or its row in the Sounds panel): a neutral
       // outline, never the hand or next-event colours (T42).
       const isSoundSelected = !!voice && !!state.selectedStreamId && voice.id === state.selectedStreamId;
-      const isSelected = showSelection && selectedPadKeys.has(padKey);
-      const isActivePlaying = activePadKeys.has(padKey);
+      // The moment view's layers (T09): struck now, next, before. A struck pad
+      // keeps its Sound's colour and name and gains a hand ring and a finger badge.
+      const isNow = overlay?.now.has(padKey) ?? false;
+      const nowStrike: PadStrike = overlay?.now.get(padKey) ?? null;
+      const isNext = overlay?.next.has(padKey) ?? false;
+      const nextStrike: PadStrike = overlay?.next.get(padKey) ?? null;
+      const isPrev = !isNow && (overlay?.prev.has(padKey) ?? false);
+      const prevStrike: PadStrike = overlay?.prev.get(padKey) ?? null;
+      // The selected event's strikes, while stopped: lifted out of the grid.
+      const isInspected = isNow && !playing;
+      // Struck at the playhead. Selecting an event moves the playhead to it, so
+      // while stopped its pads are struck there too: the inspected look wins.
+      const isActivePlaying = activePadKeys.has(padKey) && !isInspected;
       const isBlinking = blinkingPads.has(padKey);
-      const isNext = showSelection && nextPadKeys.has(padKey);
-      const isPrevious = showSelection && onionSkin && previousPadKeys.has(padKey) && !isSelected;
-      const isShared = showSelection && sharedPadKeys.has(padKey);
-      const isImpossible = showSelection && impossibleMoveTargets.has(padKey);
+      const isImpossible = impossibleMoveTargets.has(padKey);
       const isDragOver = padKey === dragOverPad;
       const isDragSource = padKey === dragSourcePad;
       const isInstanceHighlighted = highlightedInstancePads?.has(padKey) ?? false;
@@ -686,10 +688,13 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
       const ghostInfo = ghostPads?.get(padKey);
       const constraint = layout?.fingerConstraints[padKey];
       const isLocked = !!voice && layout?.placementLocks[voice.id] === padKey;
-      // Uninvolved pads dim to about 45% without desaturating (T09 slice);
-      // the selected, next and (with onion skin) previous events stay readable.
-      const isGreyedOut = hasEventSelected && !isSelected && !isNext && !isPrevious && !isPadSelected;
-      const selectedFingerInfo = selectedPadFingers.get(padKey);
+      // Uninvolved pads dim to about 45% without desaturating (T09), while an
+      // event is inspected; never during playback, so flashes stay at full
+      // intensity (T10).
+      const isGreyedOut = !!overlay?.dimOthers && !isNow && !isNext && !isPrev && !isPadSelected;
+      const nowColor = isNow ? handColor(nowStrike?.hand) ?? HAND_COLORS.Unplayable : null;
+      const nextColor = isNext ? handColor(nextStrike?.hand) ?? HAND_COLORS.Unplayable : null;
+      const prevColor = isPrev ? handColor(prevStrike?.hand) ?? HAND_COLORS.Unplayable : null;
 
       // Determine colors
       let bgColor = 'var(--bg-panel)';
@@ -769,11 +774,15 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
       const displayGlowColor = glowColor ?? borderColor;
       const boxGlow = isBlinking
         ? `inset 0 0 25px ${displayGlowColor}, 0 0 18px ${displayGlowColor}, 0 0 4px rgba(255,255,255,0.6)`
-        : isSelected || isActivePlaying
+        : isActivePlaying
           ? `inset 0 0 15px ${displayGlowColor}, 0 0 10px ${displayGlowColor}`
-          : isGlowActive
-            ? `inset 0 0 8px ${tint(displayGlowColor, 30)}`
-            : 'none';
+          : isInspected && nowColor
+            ? `0 0 12px ${nowColor}`
+            : isGlowActive
+              ? `inset 0 0 8px ${tint(displayGlowColor, 30)}`
+              : 'none';
+      // A struck pad's name gives a line to its finger badge.
+      const hasMomentBadge = voice !== undefined && (isNow || isNext);
 
       cells.push(
         <div
@@ -786,11 +795,9 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
             group relative flex flex-col items-center justify-center flex-shrink-0
             rounded-lg text-[11px] font-mono leading-tight
             border transition-[transform,box-shadow,background-color,border-color,filter] duration-100 select-none outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400
-            ${isSelected ? 'z-10 scale-105 brightness-125 bg-[var(--bg-card)]' : ''}
-            ${isBlinking && !isSelected ? 'z-10 scale-110 brightness-200 bg-[var(--bg-card)]' : ''}
-            ${isActivePlaying && !isSelected && !isBlinking ? 'z-10 scale-105 brightness-150 bg-[var(--bg-card)]' : ''}
-            ${isNext && !isSelected ? 'border-dashed brightness-110' : ''}
-            ${isPrevious ? 'opacity-60' : ''}
+            ${isInspected ? 'z-10 scale-105 brightness-110' : ''}
+            ${isBlinking ? 'z-10 scale-110 brightness-200 bg-[var(--bg-card)]' : ''}
+            ${isActivePlaying && !isBlinking ? 'z-10 scale-105 brightness-150 bg-[var(--bg-card)]' : ''}
             ${isDragOver ? 'scale-105 bg-[var(--bg-card)]' : ''}
             ${isDragSource ? 'opacity-30' : ''}
             ${isMuted ? 'opacity-30 pointer-events-none' : ''}
@@ -802,30 +809,29 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
           style={{
             width: padSize,
             height: padSize,
-            backgroundColor: isSelected && selectedFingerInfo
-              ? selectedFingerInfo.color
-              : isSelected || isActivePlaying
-                ? 'var(--bg-card)'
-                : isNext && !voice
-                  ? 'rgba(59, 130, 246, 0.08)'
-                  : bgColor,
-            borderColor: isSelected && selectedFingerInfo
-              ? selectedFingerInfo.color
-              : isDragOver ? '#3b82f6' : isNext && !isSelected ? '#60a5fa' : borderColor,
-            color: isSelected && selectedFingerInfo ? '#ffffff' : textColor,
+            // A struck pad keeps its Sound's colour, a little stronger while inspected.
+            backgroundColor: isActivePlaying
+              ? 'var(--bg-card)'
+              : isInspected && voice?.color && !gridLabels?.showHandColors
+                ? safeColorAlpha(voice.color, 0.45, voice.color)
+                : bgColor,
+            borderColor: isDragOver ? '#3b82f6' : borderColor,
+            color: textColor,
             // Rings are part of this one box-shadow, so no state's glow can
             // hide another's ring; opacity comes from classes only (T09 slice).
+            // The hand ring of a struck pad is innermost.
             boxShadow: [
-              ...padRings({ isShared, isImpossible, isInstanceHighlighted, isDragOver, isDragSource, isPadSelected, isSoundSelected }),
-              isSelected && selectedFingerInfo
-                ? `0 0 12px ${selectedFingerInfo.color}, inset 0 0 8px rgba(255,255,255,0.15)`
-                : boxGlow,
+              nowColor ? `0 0 0 2px ${nowColor}` : '',
+              ...padRings({ isImpossible, isInstanceHighlighted, isDragOver, isDragSource, isPadSelected, isSoundSelected }),
+              boxGlow,
             ].filter(v => v && v !== 'none').join(', ') || 'none',
           }}
           onClick={e => !isMuted && handlePadClick(row, col, e)}
           data-selected={isPadSelected ? 'true' : undefined}
           data-sound-selected={isSoundSelected ? 'true' : undefined}
-          data-struck={isSelected ? 'true' : undefined}
+          data-struck={isNow ? 'true' : undefined}
+          data-next={isNext ? 'true' : undefined}
+          data-prev={isPrev ? 'true' : undefined}
           onContextMenu={e => {
             e.preventDefault();
             // The pad menu edits (lock, finger, remove): not on a read-only layout (S3.2).
@@ -860,39 +866,57 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
               className="absolute inset-0 rounded-lg pointer-events-none z-20"
               style={{
                 backgroundColor: ghostInfo.valid
-                  ? ghostInfo.hand === 'left' ? 'rgba(0,136,255,0.25)' : ghostInfo.hand === 'right' ? 'rgba(255,68,0,0.25)' : 'rgba(148,163,184,0.25)'
+                  ? tint(handColor(ghostInfo.hand) ?? 'rgb(148,163,184)', 25)
                   : 'rgba(255,50,50,0.3)',
                 border: ghostInfo.valid
-                  ? `2px solid ${ghostInfo.hand === 'left' ? 'rgba(0,136,255,0.6)' : ghostInfo.hand === 'right' ? 'rgba(255,68,0,0.6)' : 'rgba(148,163,184,0.7)'}`
+                  ? `2px solid ${tint(handColor(ghostInfo.hand) ?? 'rgb(148,163,184)', 65)}`
                   : '2px solid rgba(255,50,50,0.6)',
               }}
             />
           )}
-          {/* Previous event ghost (onion skin), on empty and occupied pads alike */}
-          {isPrevious && (
-            <div
-              data-testid="onion-previous"
-              className="absolute inset-0 rounded-lg pointer-events-none"
-              style={{ backgroundColor: 'rgba(100, 130, 255, 0.12)', border: '2px dotted rgba(140, 160, 255, 0.75)' }}
-            />
+          {/* The next event's strike: a dashed outline in its hand's colour and "+1" (T09) */}
+          {isNext && (
+            <>
+              <div
+                data-testid="moment-next-outline"
+                aria-hidden="true"
+                className="absolute -inset-[4px] rounded-[11px] border-2 border-dashed pointer-events-none"
+                style={{ borderColor: nextColor! }}
+              />
+              <MomentTag text="+1" color={nextColor!} title={`Next event${nextStrike ? `: ${nextStrike.name}` : ': can’t be played'}`} />
+            </>
+          )}
+          {/* The previous event's strike (Prev · Now · Next): a faint outline and "-1" */}
+          {isPrev && (
+            <>
+              <div
+                data-testid="moment-prev-outline"
+                aria-hidden="true"
+                className="absolute -inset-[4px] rounded-[11px] border border-dotted pointer-events-none opacity-70"
+                style={{ borderColor: prevColor! }}
+              />
+              <MomentTag text="−1" color={prevColor!} faint title={`Previous event${prevStrike ? `: ${prevStrike.name}` : ''}`} />
+            </>
           )}
           {voice ? (
-            isSelected && selectedFingerInfo ? (
-              /* Event-selected pad: solid color + prominent finger label only */
-              <span className="text-[16px] font-bold text-white drop-shadow-md">
-                {selectedFingerInfo.label}
-              </span>
-            ) : (
-              <>
-                {/* Voice name (togglable) */}
+            <>
+                {/* Voice name (togglable); a struck pad keeps it (T09) */}
                 {(gridLabels?.showSoundNames ?? true) && (
                   <span
                     data-testid="pad-label"
                     className="block w-full px-0.5 text-center text-[11px] font-semibold text-white/95 leading-[13px] overflow-hidden [overflow-wrap:anywhere]"
-                    style={{ display: '-webkit-box', WebkitLineClamp: nameLines, WebkitBoxOrient: 'vertical' }}
+                    style={{ display: '-webkit-box', WebkitLineClamp: hasMomentBadge ? 1 : nameLines, WebkitBoxOrient: 'vertical' }}
                   >
-                    {padLabel(voice.name, namePrefix, padSize)}
+                    {padLabel(voice.name, namePrefix, padSize, hasMomentBadge ? 1 : nameLines)}
                   </span>
+                )}
+                {/* The finger that strikes it now, else the one that strikes it next (T09) */}
+                {hasMomentBadge && (
+                  <FingerBadge
+                    strike={isNow ? nowStrike : nextStrike}
+                    next={!isNow}
+                    fontSize={badgeFontSize}
+                  />
                 )}
                 {/* Note label — the pad's Ableton Drum Rack note, by position (e.g. C1, C#1) */}
                 {gridLabels?.showNoteLabels && showSecondaryLabels && (
@@ -907,7 +931,7 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
                   </span>
                 )}
                 {/* Fingers (from analysis) */}
-                {(gridLabels?.showFingerAssignment ?? true) && fingerList.length > 0 && (
+                {!hasMomentBadge && (gridLabels?.showFingerAssignment ?? true) && fingerList.length > 0 && (
                   <span className="block text-[11px] font-medium leading-none mt-0.5" style={{ color: textColor }}>
                     {fingerList.join(' ')}
                   </span>
@@ -940,8 +964,7 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
                     ×
                   </button>
                 )}
-              </>
-            )
+            </>
           ) : showSecondaryLabels && (gridLabels?.showNoteLabels || gridLabels?.showPositionLabels) ? (
             <span className="text-[11px] leading-none text-gray-500">
               {gridLabels?.showNoteLabels ? midiNoteToName(padDrumRackNote(row, col)) : `${row + 1}·${col + 1}`}
@@ -966,8 +989,8 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
     // region ("safe" keeps the top visible if the pads are at their minimum).
     <div data-testid="grid-area" className="h-full w-full flex flex-col items-center" style={{ justifyContent: 'safe center' }} onClick={handleBackgroundClick}>
       {/* State-bar slot: fixed height, never scaled. Holds the layout-state bar
-          (S3.2): the transition preview moved to the selected-event card, so
-          selecting an event never changes the grid's size. */}
+          (S3.2); the event's details are in the dock, whose size never
+          changes with the selection, so selecting never resizes the grid. */}
       <div
         data-testid="state-bar-slot"
         className="w-full flex items-center flex-shrink-0 min-w-0 overflow-hidden"
@@ -976,6 +999,12 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
         {stateBar}
       </div>
 
+      {/* The frame and the moment dock (S4.2): the dock beside the frame, as
+          tall as it, or under it in a narrow region; both sized by gridSizing. */}
+      <div
+        className={`flex flex-shrink-0 ${dockPlacement === 'side' ? 'flex-row items-start' : 'flex-col items-center w-full'}`}
+        style={{ gap: dock ? DOCK_GAP : 0 }}
+      >
       {/* Hardware frame, fitted to the matrix (no invisible blur layers). */}
       <div
         data-testid="grid-frame"
@@ -1077,6 +1106,20 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
         </div>
       </div>
       </div>
+      {dock && (
+        <div
+          data-grid-dock=""
+          data-testid="grid-dock"
+          data-placement={dockPlacement}
+          className="flex-shrink-0 min-h-0"
+          style={dockPlacement === 'side'
+            ? { width: DOCK_WIDTH, height: gridFrameHeight(padSize) }
+            : { width: '100%', height: DOCK_BELOW_HEIGHT }}
+        >
+          {dock}
+        </div>
+      )}
+      </div>
 
       {/* Context menu */}
       {contextMenu && (
@@ -1092,8 +1135,41 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
   );
 }
 
+/**
+ * A struck pad's finger badge (T09): filled in its hand's colour for the
+ * current event, dashed for the next; "✗" for a strike that can't be played.
+ */
+function FingerBadge({ strike, next, fontSize }: { strike: PadStrike; next: boolean; fontSize: number }) {
+  const color = handColor(strike?.hand) ?? HAND_COLORS.Unplayable;
+  return (
+    <span
+      data-testid="moment-finger"
+      data-layer={next ? 'next' : 'now'}
+      title={strike ? `${next ? 'Next: ' : ''}${strike.name}` : 'Can’t be played'}
+      className={`mt-0.5 px-1 rounded-sm font-bold leading-none whitespace-nowrap ${next ? 'border border-dashed text-[var(--text-primary)] bg-bg-app/70' : 'text-[#111827]'}`}
+      style={{ fontSize, paddingTop: 1, paddingBottom: 1, ...(next ? { borderColor: color } : { backgroundColor: color }) }}
+    >
+      {strike?.label ?? '✗'}
+    </span>
+  );
+}
+
+/** "+1" or "−1" on a pad's corner: the next or the previous event strikes it. */
+function MomentTag({ text, color, title, faint = false }: { text: string; color: string; title: string; faint?: boolean }) {
+  return (
+    <span
+      data-testid="moment-tag"
+      title={title}
+      className={`absolute -top-2 -right-2 z-30 px-1 rounded-sm border bg-[var(--bg-panel)] text-[11px] font-bold leading-[13px] pointer-events-none text-[var(--text-primary)] ${faint ? 'opacity-80 border-dotted' : ''}`}
+      style={{ borderColor: color }}
+    >
+      {text}
+    </span>
+  );
+}
+
 /** Ring outlines for a pad's states, as box-shadow layers. */
-function padRings(f: { isShared: boolean; isImpossible: boolean; isInstanceHighlighted: boolean; isDragOver: boolean; isDragSource: boolean; isPadSelected: boolean; isSoundSelected: boolean }): string[] {
+function padRings(f: { isImpossible: boolean; isInstanceHighlighted: boolean; isDragOver: boolean; isDragSource: boolean; isPadSelected: boolean; isSoundSelected: boolean }): string[] {
   const rings: string[] = [];
   // The selected pad: a neutral outline outside the pad, clear of the hand colours.
   if (f.isPadSelected) rings.push('0 0 0 2px var(--bg-app), 0 0 0 4px rgba(226, 232, 240, 0.9)');
@@ -1102,7 +1178,6 @@ function padRings(f: { isShared: boolean; isImpossible: boolean; isInstanceHighl
   if (f.isImpossible) rings.push('0 0 0 2px rgba(239, 68, 68, 0.8)');
   if (f.isInstanceHighlighted) rings.push('0 0 0 2px rgba(167, 139, 250, 0.6)');
   if (f.isDragOver || f.isDragSource) rings.push('0 0 0 2px rgba(96, 165, 250, 0.7)');
-  if (f.isShared) rings.push('0 0 0 1px rgba(52, 211, 153, 0.5)');
   return rings;
 }
 
