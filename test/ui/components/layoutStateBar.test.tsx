@@ -6,7 +6,9 @@
  * Discard; a candidate's Use as my draft, Promote, Keep as variant and Back to
  * my draft; Active over the draft's "Viewing Active · your draft is kept". A
  * one-time note explains "Use as my draft" on the first candidate shown.
- * S3.4: a trace replay reads "Replaying step 3/92 · Esc to exit".
+ * S3.4: its buttons take their words from LIFECYCLE_ACTIONS (the list Learn
+ * More's Lifecycle section is rendered from), and a trace replay reads
+ * "Replaying step 3/92 · Esc to exit".
  */
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
@@ -25,6 +27,7 @@ import { hashLayout } from '../../../src/engine/mapping/mappingResolver';
 import { type Layout } from '../../../src/types/layout';
 import { type CandidateSolution } from '../../../src/types/candidateSolution';
 import { importTestMidi1, suggestedTestMidi1 } from '../../helpers/testMidi1';
+import { lifecycleLabel } from '../../../src/ui/state/lifecycleActions';
 
 let api: ReturnType<typeof useProject>;
 function Spy() {
@@ -242,6 +245,17 @@ describe('the layout-state bar', () => {
     expect(screen.getByTestId('toast').textContent).toContain('Draft discarded');
     fireEvent.click(within(screen.getByTestId('toast')).getByRole('button', { name: 'Undo' }));
     expect(api.state.workingLayout).not.toBeNull();
+  });
+
+  it('takes its buttons’ words from the lifecycle list Learn More renders (S3.4)', async () => {
+    const state = await project();
+    // The role's own actions, after the dismissible first-candidate note.
+    const roleActions = () => actionNames().filter(name => name !== 'Got it');
+    mount(state);
+    expect(roleActions()).toEqual([lifecycleLabel('promote'), lifecycleLabel('save-variant'), lifecycleLabel('discard')]);
+    cleanup();
+    mount(reduce(state, { type: 'INSPECT_LAYOUT', payload: { kind: 'candidate', id: 'cand-a' } }));
+    expect(roleActions()).toEqual([lifecycleLabel('use-as-draft'), lifecycleLabel('promote'), lifecycleLabel('keep'), lifecycleLabel('back')]);
   });
 
   it('a trace replay reads "Replaying step 2/3 · Esc to exit", read-only, and Exit replay leaves it (S3.4, T33)', async () => {

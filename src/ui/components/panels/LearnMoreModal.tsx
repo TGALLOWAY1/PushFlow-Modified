@@ -20,7 +20,11 @@ import {
 import { DEEP_ANNEALING_CONFIG } from '@/types';
 import { VERDICT_TIERS } from '../../analysis/verdictTiers';
 import { FACTOR_KEYS, FACTOR_META, type FactorKey } from '../../analysis/factorMeta';
-import { ROLE_META, ROLE_ORDER } from '../../state/layoutSubject';
+import { ROLE_META, ROLE_ORDER, candidateLetter } from '../../state/layoutSubject';
+import { LIFECYCLE_ACTIONS } from '../../state/lifecycleActions';
+import { layoutLabel } from '../../state/layoutLabels';
+import { suggestVariantName } from '../../state/variantNames';
+import { strategyLabel } from '../../analysis/strategyLabels';
 import { RoleChip } from '../shared/SubjectChip';
 import { stopReasonText } from '../../analysis/stopReason';
 import { formatDuration } from '../../hooks/generationProgress';
@@ -441,8 +445,72 @@ function WorkflowSection() {
           </div>
         ))}
       </div>
-      <LayoutRolesSection />
+      <LifecycleSection />
     </div>
+  );
+}
+
+/** The date the naming examples use: fixed, so the text doesn't change with the clock. */
+const NAMING_EXAMPLE_DATE = new Date(2026, 8, 23, 14, 2);
+
+/**
+ * How the layouts, and the names you see, are made from one another (T32).
+ * Every example is built by the functions the app names layouts with.
+ */
+export function namingExamples() {
+  const base = { name: 'Default', role: 'working' as const };
+  const replaced = suggestVariantName('Default', [], NAMING_EXAMPLE_DATE);
+  return {
+    draft: layoutLabel(base),
+    recovered: layoutLabel({ ...base, provenance: 'recovered' }, { role: 'recovered', withRole: true }),
+    replaced,
+    replacedAgain: suggestVariantName('Default', [replaced], NAMING_EXAMPLE_DATE),
+    candidate: `Candidate ${candidateLetter(1)} · ${strategyLabel('pose0-offset-1')}`,
+  };
+}
+
+/**
+ * The layout lifecycle (invariant 2): the roles a layout can have (ROLE_META,
+ * as the state bar's chips draw them), the actions that move a layout between
+ * them (LIFECYCLE_ACTIONS, the state bar's own button words) and how their
+ * names are made.
+ */
+function LifecycleSection() {
+  const names = namingExamples();
+  return (
+    <section data-testid="learn-lifecycle" className="pt-4 space-y-3">
+      <h3 className="text-pf-base font-semibold text-[var(--text-primary)]">Layout lifecycle</h3>
+      <p className="text-pf-sm text-[var(--text-tertiary)]">
+        The Active Layout is your committed baseline. Your edits go to your draft, the Working/Test Layout; Generate
+        proposes candidates; saved variants keep the layouts you want to come back to. Nothing moves between them
+        unless you ask, and every step below that changes a layout is one Undo.
+      </p>
+      <LayoutRolesSection />
+      <div data-testid="learn-lifecycle-actions" className="space-y-2">
+        <h4 className="text-pf-sm font-semibold text-[var(--text-primary)]">What you can do with a layout</h4>
+        <ul className="space-y-1.5">
+          {LIFECYCLE_ACTIONS.map(action => (
+            <li key={action.id} data-testid="learn-lifecycle-action" data-action={action.id} className="text-pf-sm text-[var(--text-secondary)]">
+              <span className="inline-block px-1.5 mr-1.5 rounded-pf-sm border border-[var(--border-default)] bg-[var(--bg-card)] text-[var(--text-primary)] font-semibold">
+                {action.label}
+              </span>
+              <span className="text-[var(--text-tertiary)]">{action.on}.</span> {action.description}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div data-testid="learn-lifecycle-names" className="space-y-1.5">
+        <h4 className="text-pf-sm font-semibold text-[var(--text-primary)]">How layouts are named</h4>
+        <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
+          A layout keeps a plain name, such as &ldquo;Default&rdquo;; its role is shown beside it, never written into it.
+          Your draft reads &ldquo;{names.draft}&rdquo;: a draft of the layout it started from. A draft that an action replaced is
+          kept as &ldquo;{names.recovered}&rdquo;. When Promote replaces the Active Layout, the old one is saved as a variant
+          named with when it was replaced, &ldquo;{names.replaced}&rdquo;, and a second one in the same minute gets
+          &ldquo;{names.replacedAgain}&rdquo;. Candidates are lettered A, B, C in the order Generate ranks them and named after
+          how they were made: &ldquo;{names.candidate}&rdquo;.
+        </p>
+      </div>
+    </section>
   );
 }
 
@@ -452,8 +520,8 @@ function WorkflowSection() {
  */
 function LayoutRolesSection() {
   return (
-    <div data-testid="learn-more-roles" className="pt-4 space-y-2">
-      <h3 className="text-pf-base font-semibold text-[var(--text-primary)]">Which layout is on screen</h3>
+    <div data-testid="learn-more-roles" className="space-y-2">
+      <h4 className="text-pf-sm font-semibold text-[var(--text-primary)]">Which layout is on screen</h4>
       <p className="text-pf-sm text-[var(--text-tertiary)]">
         The bar above the grid names the layout the grid, the timeline and the Analysis and Events panels describe, how many
         pads it differs from the Active Layout by, and whether its analysis is up to date. Only your draft can be edited:
