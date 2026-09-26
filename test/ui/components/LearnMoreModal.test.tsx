@@ -68,6 +68,10 @@ describe('Learn More · Constraints', () => {
     expect(text).toContain('a candidate that would break a lock is dropped');
     expect(text).toContain('a locked Sound cannot be dragged off its pad, and nothing can be dropped onto a locked pad');
     expect(text).toContain('Locked · Unlock to move');
+    // S2.4's gestures (P2 audit follow-up): click-to-place and the Delete key refuse too, with their reasons.
+    expect(text).toContain('Click-to-place won’t put a locked Sound on another pad');
+    expect(text).toContain('Remove from pad or the Delete key won’t take it off');
+    expect(text).toContain('“Unlock it to move it”, “Unlock it to remove it”');
   });
 
   it('states that Sounds are matched by identity, never by pitch', () => {

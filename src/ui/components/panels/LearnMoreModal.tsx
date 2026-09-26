@@ -773,7 +773,7 @@ export const HARD_CONSTRAINTS = [
       {
         name: 'Placement Locks',
         key: 'placementLock',
-        description: `A lock pins a Sound to one pad, and it is the one hard placement rule you set. ${listNames(LOCK_ENFORCING_METHODS)} all place locked Sounds first, on their locked pads, and never move them; a candidate that would break a lock is dropped, and the candidate list says so. Manual edits enforce locks too: a locked Sound cannot be dragged off its pad, and nothing can be dropped onto a locked pad (Locked \u00b7 Unlock to move); Remove from pad is refused too until the Sound is unlocked, and a Composer preset is never placed or mirrored over a locked Sound.`,
+        description: `A lock pins a Sound to one pad, and it is the one hard placement rule you set. ${listNames(LOCK_ENFORCING_METHODS)} all place locked Sounds first, on their locked pads, and never move them; a candidate that would break a lock is dropped, and the candidate list says so. Manual edits enforce locks too: a locked Sound cannot be dragged off its pad, and nothing can be dropped onto a locked pad (Locked \u00b7 Unlock to move). Click-to-place won\u2019t put a locked Sound on another pad, and Remove from pad or the Delete key won\u2019t take it off; each says why (\u201cUnlock it to move it\u201d, \u201cUnlock it to remove it\u201d). A Composer preset is never placed or mirrored over a locked Sound.`,
       },
       {
         name: 'Sound Identity',
