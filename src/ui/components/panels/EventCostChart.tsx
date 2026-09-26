@@ -14,20 +14,24 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { type FingerAssignment } from '../../../types/executionPlan';
-import { groupIntoMoments, summarizeMomentCost } from '@/engine';
+import { summarizeMomentCost } from '@/engine';
 import { FACTOR_KEYS, FACTOR_META, factorsFromBreakdown, type FactorKey } from '../../analysis/factorMeta';
-import { formatBarBeat, formatSeconds } from '../../../utils/musicalTime';
+import { formatSeconds } from '../../../utils/musicalTime';
+import { formatEventLabel, planNotesByEvent, resolveEventKey, type EventTimeline, type TimelineEvent } from '../../analysis/eventTimeline';
+import { type SelectEventPayload } from '../../state/projectState';
 import { type LayoutSubject } from '../../state/layoutSubject';
 import { SubjectChip } from '../shared/SubjectChip';
 
 interface EventCostChartProps {
   fingerAssignments: FingerAssignment[];
+  /** The project's events (S4.1): each bar is one, numbered as on every surface. */
+  timeline: EventTimeline;
   /** The layout whose plan this is (S3.2), named in the header and the enlarged dialog. */
   subject?: LayoutSubject;
-  /** Currently selected event index (highlights the corresponding bar) */
-  selectedEventIndex?: number | null;
-  /** Callback when a bar is clicked */
-  onEventClick?: (eventIndex: number | null) => void;
+  /** The selected event's momentKey (highlights its bar). */
+  selectedMomentKey?: string | null;
+  /** A bar click selects its event; a click on the selected bar clears it. */
+  onSelectEvent?: (selection: SelectEventPayload | null) => void;
   /** Project tempo, for bar.beat.sixteenth positions. */
   tempo?: number;
 }
@@ -37,15 +41,12 @@ interface EventCostChartProps {
 const COST_LAYERS = FACTOR_KEYS.map(key => FACTOR_META[key]);
 
 interface EventBar {
-  eventIndex: number;
-  /** Every event index in this moment (a beam plan indexes notes, greedy moments). */
-  eventIndices: Set<number>;
-  startTime: number;
+  event: TimelineEvent;
   segments: Array<{ key: string; value: number; color: string; label: string }>;
   total: number;
 }
 
-export function EventCostChart({ fingerAssignments, subject, selectedEventIndex, onEventClick, tempo = 120 }: EventCostChartProps) {
+export function EventCostChart({ fingerAssignments, timeline, subject, selectedMomentKey, onSelectEvent, tempo = 120 }: EventCostChartProps) {
   const [enabledLayers, setEnabledLayers] = useState<Set<FactorKey>>(
     new Set(COST_LAYERS.map(l => l.key))
   );
@@ -63,12 +64,14 @@ export function EventCostChart({ fingerAssignments, subject, selectedEventIndex,
     });
   };
 
-  // One bar per moment (shared grouping), costed once per moment: every note of
-  // a moment carries the whole moment's cost, so summing them made each bar grow
-  // with the chord's size.
+  // One bar per event the plan plays, costed once per event: every note of an
+  // event carries the whole event's cost, so summing them made each bar grow
+  // with the chord's size. Events are the timeline's (S4.1), so "Event 12"
+  // here is Event 12 in the Events list even when only some Sounds are placed.
   const eventBars: EventBar[] = useMemo(() => {
-    return groupIntoMoments(fingerAssignments).map(moment => {
-      const { breakdown } = summarizeMomentCost(moment.items);
+    const byEvent = planNotesByEvent(timeline, fingerAssignments);
+    return timeline.events.filter(event => byEvent.has(event.index)).map(event => {
+      const { breakdown } = summarizeMomentCost(byEvent.get(event.index)!);
       const factors = breakdown ? factorsFromBreakdown(breakdown) : null;
       const segments = factors
         ? COST_LAYERS
@@ -81,21 +84,10 @@ export function EventCostChart({ fingerAssignments, subject, selectedEventIndex,
             }))
             .filter(s => s.value > 0)
         : [];
-
-      const eventIndices = moment.items
-        .map(a => a.eventIndex)
-        .filter((i): i is number => i !== undefined);
-      return {
-        // A real event index from this moment, not the bar's position, so a
-        // click selects the moment that was clicked.
-        eventIndex: eventIndices[0] ?? moment.index,
-        eventIndices: new Set(eventIndices),
-        startTime: moment.startTime,
-        segments,
-        total: segments.reduce((sum, s) => sum + s.value, 0),
-      };
+      return { event, segments, total: segments.reduce((sum, s) => sum + s.value, 0) };
     });
-  }, [fingerAssignments, enabledLayers]);
+  }, [timeline, fingerAssignments, enabledLayers]);
+  const selectedIndex = resolveEventKey(timeline, selectedMomentKey)?.index ?? null;
 
   const maxTotal = useMemo(() => Math.max(...eventBars.map(b => b.total), 0.1), [eventBars]);
 
@@ -124,13 +116,16 @@ export function EventCostChart({ fingerAssignments, subject, selectedEventIndex,
           {eventBars.map((bar, idx) => {
             const barHeight = bar.total > 0 ? (bar.total / maxTotal) * height : 0;
             const isHovered = hoveredEvent === idx;
-            const isSelected = selectedEventIndex !== undefined && selectedEventIndex !== null && bar.eventIndices.has(selectedEventIndex);
+            const isSelected = bar.event.index === selectedIndex;
 
             return (
               <div
-                key={idx}
+                key={bar.event.key}
+                data-testid="event-bar"
+                data-event-index={bar.event.index}
+                data-selected={isSelected ? 'true' : undefined}
                 className={`relative flex flex-col-reverse transition-opacity cursor-pointer ${
-                  isSelected ? 'opacity-100' : isHovered ? 'opacity-100' : hoveredEvent !== null || (selectedEventIndex !== undefined && selectedEventIndex !== null) ? 'opacity-40' : 'opacity-90'
+                  isSelected ? 'opacity-100' : isHovered ? 'opacity-100' : hoveredEvent !== null || selectedIndex !== null ? 'opacity-40' : 'opacity-90'
                 }`}
                 style={{
                   width: barWidth,
@@ -142,7 +137,7 @@ export function EventCostChart({ fingerAssignments, subject, selectedEventIndex,
                 }}
                 onMouseEnter={() => setHoveredEvent(idx)}
                 onMouseLeave={() => setHoveredEvent(null)}
-                onClick={() => onEventClick?.(isSelected ? null : bar.eventIndex)}
+                onClick={() => onSelectEvent?.(isSelected ? null : { key: bar.event.key, startTime: bar.event.startTime })}
               >
                 {bar.segments.map(seg => {
                   const segHeight = bar.total > 0 ? (seg.value / bar.total) * barHeight : 0;
@@ -166,8 +161,8 @@ export function EventCostChart({ fingerAssignments, subject, selectedEventIndex,
         {/* Hover tooltip */}
         {hoveredEvent !== null && eventBars[hoveredEvent] && (
           <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-[var(--bg-panel)] border border-[var(--border-default)] rounded-pf-sm px-2 py-1 text-pf-xs z-10 pointer-events-none shadow-lg whitespace-nowrap">
-            <div className="text-[var(--text-primary)] font-medium mb-0.5" title={formatSeconds(eventBars[hoveredEvent].startTime)}>
-              Event {hoveredEvent + 1} · {formatBarBeat(eventBars[hoveredEvent].startTime, tempo)}
+            <div className="text-[var(--text-primary)] font-medium mb-0.5" title={formatSeconds(eventBars[hoveredEvent].event.startTime)}>
+              {formatEventLabel(eventBars[hoveredEvent].event, tempo)}
             </div>
             {eventBars[hoveredEvent].segments.map(seg => (
               <div key={seg.key} className="flex items-center gap-1.5">
@@ -230,12 +225,13 @@ export function EventCostChart({ fingerAssignments, subject, selectedEventIndex,
         {/* Chart */}
         {chartContent(120)}
 
-        {/* X-axis labels */}
+        {/* X-axis labels: the first, middle and last bars' own event numbers (a
+            partly placed layout has no bar for an event nothing placed strikes). */}
         {eventBars.length > 0 && (
-          <div className="flex justify-between text-pf-micro text-[var(--text-tertiary)] px-px">
-            <span>Event 1</span>
-            <span>{Math.floor(eventBars.length / 2) + 1}</span>
-            <span>{eventBars.length}</span>
+          <div data-testid="event-axis" className="flex justify-between text-pf-micro text-[var(--text-tertiary)] px-px">
+            <span>Event {eventBars[0]!.event.index + 1}</span>
+            <span>{eventBars[Math.floor(eventBars.length / 2)]!.event.index + 1}</span>
+            <span>{eventBars[eventBars.length - 1]!.event.index + 1}</span>
           </div>
         )}
       </div>
@@ -291,9 +287,9 @@ export function EventCostChart({ fingerAssignments, subject, selectedEventIndex,
               {chartContent(400)}
               {eventBars.length > 0 && (
                 <div className="flex justify-between text-pf-xs text-[var(--text-tertiary)] mt-1 px-px">
-                  <span>Event 1 · {formatBarBeat(eventBars[0]!.startTime, tempo)}</span>
-                  <span>Event {Math.floor(eventBars.length / 2) + 1}</span>
-                  <span>Event {eventBars.length} · {formatBarBeat(eventBars[eventBars.length - 1]!.startTime, tempo)}</span>
+                  <span>{formatEventLabel(eventBars[0]!.event, tempo)}</span>
+                  <span>Event {eventBars[Math.floor(eventBars.length / 2)]!.event.index + 1}</span>
+                  <span>{formatEventLabel(eventBars[eventBars.length - 1]!.event, tempo)}</span>
                 </div>
               )}
             </div>

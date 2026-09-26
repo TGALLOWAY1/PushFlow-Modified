@@ -208,6 +208,9 @@ function OverviewInfographic() {
             <p className="text-[9px] text-gray-600 text-center">
               Each event = everything played at one moment in time
             </p>
+            <p data-testid="learn-event-identity" className="text-[9px] text-gray-600 text-center leading-snug">
+              Events are numbered once for the whole song (Event 12 &middot; 3.2.3), placed or not, so the Events list, the chart, the timeline and the grid always mean the same event.
+            </p>
           </div>
         </InfoCard>
 

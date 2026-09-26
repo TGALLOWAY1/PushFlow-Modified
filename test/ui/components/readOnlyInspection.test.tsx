@@ -26,6 +26,7 @@ import { ActiveLayoutSummary } from '../../../src/ui/components/panels/ActiveLay
 import { COMPOSER_PRESET_DRAG_TYPE } from '../../../src/ui/components/composer/PresetCard';
 import { analyzeLayout } from '../../../src/ui/analysis/analyzeLayout';
 import { hashLayout } from '../../../src/engine/mapping/mappingResolver';
+import { eventOfNote, getEventTimeline } from '../../../src/ui/analysis/eventTimeline';
 import { type Layout } from '../../../src/types/layout';
 import { type CandidateSolution } from '../../../src/types/candidateSolution';
 import { suggestedTestMidi1 } from '../../helpers/testMidi1';
@@ -48,7 +49,6 @@ function Editor() {
       <InteractiveGrid
         padSize={48}
         assignments={plan?.fingerAssignments}
-        selectedEventIndex={api.state.selectedEventIndex}
         layoutOverride={shown.readOnly ? shown.layout : undefined}
         onPresetDrop={() => { presetDrops++; }}
       />
@@ -193,7 +193,8 @@ describe('while a candidate is inspected, each edit path is refused with the hin
     expect(within(pad(occupiedPad())).queryByTitle('Remove from pad')).toBeNull();
     // The selected note's finger controls are disabled and say how to edit.
     const note = getDisplayedExecutionPlan(api.state)!.fingerAssignments.find(a => a.row !== undefined)!;
-    act(() => api.dispatch({ type: 'SELECT_EVENT', payload: note.eventIndex! }));
+    const event = eventOfNote(getEventTimeline(api.state), note)!;
+    act(() => api.dispatch({ type: 'SELECT_EVENT', payload: { key: event.key, startTime: event.startTime, noteKey: note.eventKey } }));
     const controls = screen.getByTestId('selected-note-fingers');
     const buttons = within(controls).getAllByRole('button');
     expect(buttons.length).toBeGreaterThan(0);

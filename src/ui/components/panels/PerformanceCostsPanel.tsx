@@ -6,7 +6,7 @@ import { buildSelectedTransitionModel } from '../../analysis/selectionModel';
 import { SubjectChip } from '../shared/SubjectChip';
 import { CostBreakdownBars, FeasibilityBadge } from './CostBreakdownBars';
 import { SelectedEventCard } from './SelectedEventCard';
-import { findSelectedMoment } from '../../analysis/selectedMoment';
+import { findSelectedEvent, getEventTimeline } from '../../analysis/eventTimeline';
 import { analysisScope, analysisScopeLine, planSoundIds, scopeLineOf } from '../../analysis/analysisScope';
 import { EventCostChart } from './EventCostChart';
 import { scoreTile } from '../../analysis/planScore';
@@ -26,15 +26,16 @@ export function PerformanceCostsPanel() {
   const subject = inspectedSubject(state);
   const { candidate: shownCandidate, score: layoutScore, updating } = useShownAnalysis();
   const currentPlan = shownCandidate?.executionPlan ?? null;
+  const timeline = getEventTimeline(state);
   const transition = useMemo(
-    () => buildSelectedTransitionModel(currentPlan?.fingerAssignments ?? null, state.selectedEventIndex),
-    [currentPlan, state.selectedEventIndex],
+    () => buildSelectedTransitionModel(timeline, currentPlan?.fingerAssignments ?? null, state.selectedMomentKey),
+    [timeline, currentPlan, state.selectedMomentKey],
   );
 
-  // The selected event's whole moment, costed once (never summed per note).
-  const selectedMoment = useMemo(
-    () => findSelectedMoment(currentPlan?.fingerAssignments, state.selectedEventIndex),
-    [currentPlan, state.selectedEventIndex],
+  // The selected event, whole (S4.1), costed once (never summed per note).
+  const selectedEvent = useMemo(
+    () => findSelectedEvent(timeline, currentPlan?.fingerAssignments, state.selectedMomentKey),
+    [timeline, currentPlan, state.selectedMomentKey],
   );
   // The plan's own scope (the Sounds it analysed), so a mute made since it was
   // computed never relabels an old verdict; the live scope when there is no
@@ -182,8 +183,8 @@ export function PerformanceCostsPanel() {
 
             <UnplacedSounds />
 
-            {selectedMoment && (
-              <SelectedEventCard selected={selectedMoment} tempo={state.tempo} scope={scope} subject={subject} transition={transition} />
+            {selectedEvent && (
+              <SelectedEventCard selected={selectedEvent} tempo={state.tempo} scope={scope} subject={subject} transition={transition} />
             )}
 
             {currentPlan.fingerAssignments.length > 0 && (
@@ -198,10 +199,11 @@ export function PerformanceCostsPanel() {
                 {chartOpen && (
                   <EventCostChart
                     fingerAssignments={currentPlan.fingerAssignments}
+                    timeline={timeline}
                     subject={subject}
                     tempo={state.tempo}
-                    selectedEventIndex={state.selectedEventIndex}
-                    onEventClick={(idx) => dispatch({ type: 'SELECT_EVENT', payload: idx })}
+                    selectedMomentKey={state.selectedMomentKey}
+                    onSelectEvent={selection => dispatch({ type: 'SELECT_EVENT', payload: selection })}
                   />
                 )}
               </div>

@@ -77,7 +77,7 @@ test.describe('C8 · selected event during playback', () => {
     await page.mouse.click(2, 300);
     await page.keyboard.press('ArrowRight');
     const s = await pf.call('status');
-    expect({ selectedEventIndex: s.selectedEventIndex, playing: s.isPlaying, seekedBack: s.currentTime < before })
-      .toEqual({ selectedEventIndex: null, playing: true, seekedBack: false });
+    expect({ selectedMomentKey: s.selectedMomentKey, playing: s.isPlaying, seekedBack: s.currentTime < before })
+      .toEqual({ selectedMomentKey: null, playing: true, seekedBack: false });
   });
 });

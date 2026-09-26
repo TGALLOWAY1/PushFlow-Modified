@@ -6,7 +6,7 @@
  * plan (that stays on the CandidateSolution, for its trace).
  *
  * The plan is mirrored into state.inspectedAnalysis, so the pure selectors the
- * timeline, the Events list, the arrow keys and SELECT_EVENT's playhead read
+ * grid, the timeline, the Events list and the costs panels read
  * (getDisplayedExecutionPlan) see it too. The mirror is session state (no undo,
  * never saved) and is ignored unless it is fresh for the layout on screen.
  * Mounted once, by the workspace.

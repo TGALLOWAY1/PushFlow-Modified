@@ -174,8 +174,8 @@ export interface ProjectSession {
   inspectedLayout: InspectedLayoutRef | null;
   /**
    * The read-only inspected layout's own plan, mirrored from the per-layout
-   * analysis cache (useInspectedAnalysis) so the pure selectors the timeline,
-   * the Events list and SELECT_EVENT's playhead use can read it. Bound to its
+   * analysis cache (useInspectedAnalysis) so the pure selectors the grid, the
+   * timeline and the Events list use can read it. Bound to its
    * layout, and ignored unless it is fresh for the layout shown.
    */
   inspectedAnalysis: CandidateSolution | null;
@@ -195,9 +195,14 @@ export interface ProjectSession {
   costToggles: CostToggles;
 
   // Ephemeral UI state (not persisted)
-  selectedEventIndex: number | null;
-  /** Moment-level selection index (indexes into ExecutionPlanResult.momentAssignments). */
-  selectedMomentIndex: number | null;
+  /**
+   * The selected Performance Event, by its momentKey (S4.1, T24): the same
+   * event on every surface under any plan, and still that event after
+   * re-analysis. Resolved by src/ui/analysis/eventTimeline.ts.
+   */
+  selectedMomentKey: string | null;
+  /** The note a timeline click named within the selected event (its eventKey), else null. */
+  selectedNoteKey: string | null;
   /** Currently selected sound stream (for cross-panel highlighting). */
   selectedStreamId: string | null;
   /**
@@ -317,6 +322,16 @@ export interface InspectedLayoutRef {
   kind: InspectedLayoutKind;
   /** The layout's id (a candidate's id for a candidate). */
   id: string;
+}
+
+/** A Performance Event to select (S4.1): see src/ui/analysis/eventTimeline.ts. */
+export interface SelectEventPayload {
+  /** The event's momentKey. */
+  key: string;
+  /** Its start time, where the playhead goes while stopped. */
+  startTime: number;
+  /** The note clicked within it (its eventKey), when a timeline note was clicked. */
+  noteKey?: string;
 }
 
 // ============================================================================
@@ -695,8 +710,11 @@ export type ProjectAction =
   | { type: 'SET_INSTRUMENT_CONFIG'; payload: Partial<InstrumentConfig> }
 
   // Ephemeral UI
-  | { type: 'SELECT_EVENT'; payload: number | null }
-  | { type: 'SELECT_MOMENT'; payload: number | null }
+  /**
+   * Selects a Performance Event by its momentKey (S4.1), with its start time
+   * for the playhead; a timeline click also names the note clicked. Null clears.
+   */
+  | { type: 'SELECT_EVENT'; payload: SelectEventPayload | null }
   | { type: 'SET_COMPARE_CANDIDATE'; payload: string | null }
   | { type: 'SET_PROCESSING'; payload: boolean }
   | { type: 'SET_ERROR'; payload: string | null }
@@ -1205,8 +1223,8 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
         workingLayout: null, // Session-scoped: strip working layout on load
         inspectedLayout: null,
         inspectedAnalysis: null,
-        selectedEventIndex: null,
-        selectedMomentIndex: null,
+        selectedMomentKey: null,
+        selectedNoteKey: null,
         armedStreamId: null,
         selectedPadKey: null,
         compareCandidateId: null,
@@ -1690,8 +1708,8 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
         ),
         updatedAt: new Date().toISOString(),
         analysisStale: true,
-        selectedEventIndex: null,
-        selectedMomentIndex: null,
+        selectedMomentKey: null,
+        selectedNoteKey: null,
         // Preserve candidates — discarding working layout doesn't invalidate them
         inspectedLayout: null,
         compareCandidateId: null,
@@ -1771,8 +1789,8 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
         ),
         inspectedLayout: null,
         compareCandidateId: null,
-        selectedEventIndex: null,
-        selectedMomentIndex: null,
+        selectedMomentKey: null,
+        selectedNoteKey: null,
         analysisStale: true,
       };
     }
@@ -1845,8 +1863,8 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
         analysisStale: true,
         inspectedLayout: null,
         compareCandidateId: null,
-        selectedEventIndex: null,
-        selectedMomentIndex: null,
+        selectedMomentKey: null,
+        selectedNoteKey: null,
       };
     }
 
@@ -1998,25 +2016,26 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
 
     // -- Ephemeral UI --
 
-    case 'SELECT_EVENT':
-      // Clearing an already-empty selection changes nothing (T06: an Escape
-      // that closes an overlay must not also re-render the whole editor).
-      if (action.payload === null && state.selectedEventIndex === null) return state;
+    case 'SELECT_EVENT': {
+      const selection = action.payload;
+      if (selection === null) {
+        // Clearing an already-empty selection changes nothing (T06: an Escape
+        // that closes an overlay must not also re-render the whole editor).
+        if (state.selectedMomentKey === null && state.selectedNoteKey === null) return state;
+        return { ...state, selectedMomentKey: null, selectedNoteKey: null };
+      }
+      const noteKey = selection.noteKey ?? null;
+      const same = selection.key === state.selectedMomentKey && noteKey === state.selectedNoteKey;
       // Selecting an event while stopped moves the playhead to it, so Play
       // starts there (T10 slice); selecting it again seeks back to it. While
       // playing, the playhead is left alone.
-      if (action.payload !== null && !state.isPlaying) {
-        const hit = getDisplayedExecutionPlan(state)?.fingerAssignments.find(a => a.eventIndex === action.payload);
-        if (hit) {
-          if (action.payload === state.selectedEventIndex && state.currentTime === hit.startTime) return state;
-          return { ...state, selectedEventIndex: action.payload, currentTime: hit.startTime };
-        }
+      if (!state.isPlaying) {
+        if (same && state.currentTime === selection.startTime) return state;
+        return { ...state, selectedMomentKey: selection.key, selectedNoteKey: noteKey, currentTime: selection.startTime };
       }
-      if (action.payload === state.selectedEventIndex) return state;
-      return { ...state, selectedEventIndex: action.payload };
-
-    case 'SELECT_MOMENT':
-      return { ...state, selectedMomentIndex: action.payload };
+      if (same) return state;
+      return { ...state, selectedMomentKey: selection.key, selectedNoteKey: noteKey };
+    }
 
     case 'SET_COMPARE_CANDIDATE':
       return { ...state, compareCandidateId: action.payload };
@@ -2158,8 +2177,8 @@ export function createEmptyProjectState(): ProjectState {
     performanceLanes: [],
     laneGroups: [],
     sourceFiles: [],
-    selectedEventIndex: null,
-    selectedMomentIndex: null,
+    selectedMomentKey: null,
+    selectedNoteKey: null,
     selectedStreamId: null,
     armedStreamId: null,
     selectedPadKey: null,

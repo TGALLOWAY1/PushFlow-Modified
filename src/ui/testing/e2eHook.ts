@@ -18,6 +18,7 @@ import {
   type ProjectState,
 } from '../state/projectState';
 import { scoringCounts, type ScoringCounts } from '../analysis/scoringClient';
+import { getEventTimeline, resolveEventKey } from '../analysis/eventTimeline';
 import { peekLayoutAnalysis } from '../analysis/layoutAnalysis';
 import type { Layout } from '../../types/layout';
 import type { ExecutionPlanResult } from '../../types/executionPlan';
@@ -46,8 +47,9 @@ export interface PfStatus {
   hasWorkingLayout: boolean;
   isPlaying: boolean;
   currentTime: number;
-  selectedEventIndex: number | null;
-  selectedMomentIndex: number | null;
+  /** The selected event's momentKey (S4.1), and the event it resolves to (0-based), null when none. */
+  selectedMomentKey: string | null;
+  selectedEvent: number | null;
   /** The Sound armed for click-to-place, and the selected pad (S2.4). */
   armedStreamId: string | null;
   selectedPadKey: string | null;
@@ -68,6 +70,18 @@ export interface PfFingering {
   voiceId: string | null;
   startTime: number;
   finger: string;
+  /** The pad it is struck on ("row,col"), null when it has none. */
+  pad: string | null;
+}
+
+/** One Performance Event of the project (S4.1): what every surface numbers and selects. */
+export interface PfEvent {
+  index: number;
+  key: string;
+  startTime: number;
+  endTime: number;
+  /** The eventKeys of its notes. */
+  noteKeys: string[];
 }
 
 /** A layout of this project: the one on screen, or one by role and id. */
@@ -135,6 +149,8 @@ export interface PfTestHook {
    * per-layout analysis cache (null until it has been scored).
    */
   fingering(which?: PfLayoutRef): PfFingering[] | null;
+  /** The project's events in time order (src/ui/analysis/eventTimeline.ts). */
+  events(): PfEvent[];
   /** Number of undo and redo steps currently available. */
   history(): { undo: number; redo: number };
   dispatch(action: ProjectAction): void;
@@ -224,8 +240,8 @@ export function installE2EHook(get: () => E2EHookSource): () => void {
         hasWorkingLayout: s.workingLayout !== null,
         isPlaying: s.isPlaying,
         currentTime: s.currentTime,
-        selectedEventIndex: s.selectedEventIndex,
-        selectedMomentIndex: s.selectedMomentIndex,
+        selectedMomentKey: s.selectedMomentKey,
+        selectedEvent: resolveEventKey(getEventTimeline(s), s.selectedMomentKey)?.index ?? null,
         armedStreamId: s.armedStreamId,
         selectedPadKey: s.selectedPadKey,
         loopEnabled: s.loopEnabled,
@@ -250,6 +266,11 @@ export function installE2EHook(get: () => E2EHookSource): () => void {
       if (which === 'shown') return fingeringOf(getDisplayedExecutionPlan(state));
       const layout = layoutByRef(state, which);
       return layout ? fingeringOf(peekLayoutAnalysis(state, layout)?.analysis.executionPlan ?? null) : null;
+    },
+    events() {
+      return getEventTimeline(get().state).events.map(e => ({
+        index: e.index, key: e.key, startTime: e.startTime, endTime: e.endTime, noteKeys: [...e.noteKeys],
+      }));
     },
     history: () => ({ undo: get().undoDepth, redo: get().redoDepth }),
     dispatch: action => get().dispatch(action),
@@ -287,6 +308,7 @@ function fingeringOf(plan: ExecutionPlanResult | null): PfFingering[] | null {
       voiceId: a.voiceId ?? null,
       startTime: a.startTime,
       finger: label ? `${hand}${label}` : '',
+      pad: a.row !== undefined && a.col !== undefined ? `${a.row},${a.col}` : null,
     };
   });
 }

@@ -88,7 +88,8 @@ test.describe('S2.1 · measured grid (P2-1)', () => {
     expect(transformed).toBeNull();
 
     const before = await page.getByTestId('pad-0-0').boundingBox();
-    await pf.call('dispatch', { type: 'SELECT_EVENT', payload: 0 });
+    const [first] = await pf.call('events');
+    await pf.call('dispatch', { type: 'SELECT_EVENT', payload: { key: first!.key, startTime: first!.startTime } });
     // The transition preview moved from the state-bar slot to the selected-event card (S3.2).
     await expect(page.getByTestId('transition-preview').first()).toContainText('Transition preview');
     expect(await page.getByTestId('pad-0-0').boundingBox()).toEqual(before);

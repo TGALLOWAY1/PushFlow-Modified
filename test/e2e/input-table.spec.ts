@@ -50,7 +50,7 @@ test.describe('S2.4 · keys (P2-10)', () => {
     await waitForAnalysis(pf);
     await page.mouse.click(2, 300);
     await page.keyboard.press('ArrowRight');
-    const selected = (await pf.call('status')).selectedEventIndex;
+    const selected = (await pf.call('status')).selectedMomentKey;
     expect(selected).not.toBeNull();
 
     const speed = page.getByTestId('transport-speed');
@@ -60,7 +60,7 @@ test.describe('S2.4 · keys (P2-10)', () => {
     await expect.poll(async () => (await pf.call('status')).playbackRate).not.toBe(rateBefore);
     // Neither ↓ nor → on the select moves the event.
     await page.keyboard.press('ArrowRight');
-    expect((await pf.call('status')).selectedEventIndex).toBe(selected);
+    expect((await pf.call('status')).selectedMomentKey).toBe(selected);
   });
 
   test('"?" opens the sheet generated from the table; Escape closes it', async ({ page, pf }) => {

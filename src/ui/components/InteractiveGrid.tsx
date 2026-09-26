@@ -28,6 +28,7 @@ import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { type GridLabelSettings } from '../state/viewSettings';
 import { buildSelectedTransitionModel } from '../analysis/selectionModel';
+import { findSelectedEvent, getEventTimeline } from '../analysis/eventTimeline';
 import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
 import { padLabel, padLabelLines, sharedNamePrefix } from '../analysis/padLabels';
 import { midiNoteToName } from '../../utils/midiNotes';
@@ -47,7 +48,6 @@ import {
 
 interface InteractiveGridProps {
   assignments?: FingerAssignment[];
-  selectedEventIndex?: number | null;
   /** When provided, display this layout instead of the one edits go to: an
    *  inspected read-only layout (S3.2) or a replayed trace step. */
   layoutOverride?: import('../../types/layout').Layout;
@@ -113,7 +113,7 @@ function safeColorAlpha(color: string | null | undefined, alpha: number, fallbac
 /** Physical reach threshold: pads farther apart than this are flagged as impossible. */
 const IMPOSSIBLE_REACH_THRESHOLD = 5;
 
-export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave, debuggerIteration, padSize = 56, stateBar }: InteractiveGridProps) {
+export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false, voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave, debuggerIteration, padSize = 56, stateBar }: InteractiveGridProps) {
   const { state, dispatch } = useProject();
   const toast = useToast();
   // Looking never writes (S3.2): `refuse()` says how to edit and blocks the gesture.
@@ -218,17 +218,20 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
     return map;
   }, [assignments, soundStreamLookup, voiceConstraints, showFingerLabels]);
 
-  // Selected pads: all assignments at the same start time as the selected event
-  // Also builds a map of padKey → finger label for the selected event
+  // The selected event (S4.1), whole: every note the plan plays at that
+  // instant, by eventKey, so a chord played a few ms apart lights every pad.
+  const timeline = getEventTimeline(state);
+  const selectedEvent = useMemo(
+    () => findSelectedEvent(timeline, assignments, state.selectedMomentKey),
+    [timeline, assignments, state.selectedMomentKey],
+  );
+
+  // Selected pads, and padKey → finger label, for the selected event.
   const { selectedPadKeys, selectedPadFingers } = useMemo(() => {
     const keys = new Set<string>();
     const fingers = new Map<string, { label: string; hand: string; color: string }>();
-    if (selectedEventIndex === null || !assignments) return { selectedPadKeys: keys, selectedPadFingers: fingers };
-    const selectedAssignment = assignments.find(a => a.eventIndex === selectedEventIndex);
-    if (!selectedAssignment) return { selectedPadKeys: keys, selectedPadFingers: fingers };
-    const targetTime = selectedAssignment.startTime;
-    for (const a of assignments) {
-      if (a.startTime === targetTime && a.row !== undefined && a.col !== undefined) {
+    for (const a of selectedEvent?.notes ?? []) {
+      if (a.row !== undefined && a.col !== undefined) {
         const key = `${a.row},${a.col}`;
         keys.add(key);
         const handChar = a.assignedHand === 'Unplayable' ? '?' : a.assignedHand[0].toUpperCase();
@@ -240,11 +243,11 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
       }
     }
     return { selectedPadKeys: keys, selectedPadFingers: fingers };
-  }, [assignments, selectedEventIndex]);
+  }, [selectedEvent]);
 
   const selectedTransition = useMemo(
-    () => buildSelectedTransitionModel(assignments, selectedEventIndex),
-    [assignments, selectedEventIndex],
+    () => buildSelectedTransitionModel(timeline, assignments, state.selectedMomentKey),
+    [timeline, assignments, state.selectedMomentKey],
   );
 
   const nextPadKeys = selectedTransition?.nextPadKeys ?? new Set<string>();
@@ -602,7 +605,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
       armed: !!armedStream,
       occupied: !!occupant,
       holdsArmed: !!armedStream && occupantId === armedStream.id,
-      eventSelected: selectedEventIndex !== null && selectedEventIndex !== undefined,
+      eventSelected: state.selectedMomentKey !== null,
       altKey: e.altKey,
     });
 
@@ -640,7 +643,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
         dispatch({ type: 'SELECT_PAD', payload: { padKey: null, streamId: null } });
         return;
     }
-  }, [livePadToVoice, state.workingLayout, state.activeLayout, state.soundStreams, soundStreamLookup, armedStream, selectedEventIndex, dispatch, toast, refuseEdit, readOnly]);
+  }, [livePadToVoice, state.workingLayout, state.activeLayout, state.soundStreams, soundStreamLookup, armedStream, state.selectedMomentKey, dispatch, toast, refuseEdit, readOnly]);
 
   // The pad's ×: removes with an Undo toast (T28).
   const handleRemovePad = useRemovePadWithUndo();
@@ -648,7 +651,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
   // The selection overlay is suspended while playing and comes back on Stop
   // (T10 slice): struck pads then look exactly as they do with nothing selected.
   const showSelection = !state.isPlaying;
-  const hasEventSelected = showSelection && selectedEventIndex !== null && selectedPadKeys.size > 0;
+  const hasEventSelected = showSelection && selectedEvent !== null && selectedPadKeys.size > 0;
 
   // Render grid rows (row 7 at top, row 0 at bottom — Push 3 orientation)
   const rows = [];
@@ -819,6 +822,7 @@ export function InteractiveGrid({ assignments, selectedEventIndex, layoutOverrid
           }}
           onClick={e => !isMuted && handlePadClick(row, col, e)}
           data-selected={isPadSelected ? 'true' : undefined}
+          data-struck={isSelected ? 'true' : undefined}
           onContextMenu={e => {
             e.preventDefault();
             // The pad menu edits (lock, finger, remove): not on a read-only layout (S3.2).

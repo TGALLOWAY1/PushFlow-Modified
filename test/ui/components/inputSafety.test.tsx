@@ -13,6 +13,7 @@ import { FingerAssignmentInput } from '../../../src/ui/components/shared/FingerA
 import { ProjectProvider, useProject } from '../../../src/ui/state/ProjectContext';
 import { useKeyboardShortcuts } from '../../../src/ui/hooks/useKeyboardShortcuts';
 import { getDisplayedLayout, type ProjectState } from '../../../src/ui/state/projectState';
+import { getEventTimeline } from '../../../src/ui/analysis/eventTimeline';
 import { suggestedTestMidi1 } from '../../helpers/testMidi1';
 import { analyzeLayout } from '../../../src/ui/analysis/analyzeLayout';
 import { getActivePerformance } from '../../../src/ui/state/projectState';
@@ -93,13 +94,13 @@ describe('Delete scoping (T28)', () => {
       return null;
     }
     render(<ProjectProvider initialState={state}><Probe /></ProjectProvider>);
-    const firstPlayed = analysis.executionPlan.fingerAssignments.find(a => a.row !== undefined)!;
-    act(() => api!.dispatch({ type: 'SELECT_EVENT', payload: firstPlayed.eventIndex! }));
+    const first = getEventTimeline(state).events[0]!;
+    act(() => api!.dispatch({ type: 'SELECT_EVENT', payload: { key: first.key, startTime: first.startTime } }));
     const padsBefore = JSON.stringify(getDisplayedLayout(api!.state)!.padToVoice);
     fireEvent.keyDown(document.body, { key: 'Delete' });
     fireEvent.keyDown(document.body, { key: 'Backspace' });
     expect(JSON.stringify(getDisplayedLayout(api!.state)!.padToVoice)).toBe(padsBefore);
-    expect(api!.state.selectedEventIndex).toBe(firstPlayed.eventIndex);
+    expect(api!.state.selectedMomentKey).toBe(first.key);
   });
 });
 
@@ -144,7 +145,7 @@ describe('Arrow keys under an open overlay (Codex review)', () => {
     }
     render(<ProjectProvider initialState={state}><Probe /></ProjectProvider>);
     fireEvent.keyDown(screen.getByRole('menuitem'), { key: 'ArrowRight' });
-    expect(api!.state.selectedEventIndex).toBeNull();
+    expect(api!.state.selectedMomentKey).toBeNull();
     expect(api!.state.currentTime).toBe(0);
   });
 });

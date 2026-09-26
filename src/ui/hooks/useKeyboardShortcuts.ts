@@ -16,7 +16,8 @@
 
 import { useRef } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getDisplayedExecutionPlan, getDisplayedLayout, isPadLocked, isReplayingTrace } from '../state/projectState';
+import { getDisplayedLayout, isPadLocked, isReplayingTrace } from '../state/projectState';
+import { getEventTimeline, resolveEventKey } from '../analysis/eventTimeline';
 import { useInputHandler } from '../input/inputRegistry';
 import { useRemovePadWithUndo } from './useRemovePadWithUndo';
 import { useReadOnlyHint } from './useReadOnlyHint';
@@ -54,22 +55,19 @@ export function useKeyboardShortcuts({ onSave, onOpenShortcuts }: KeyboardShortc
     // While playing, the arrows do nothing for now (T10/T61 slice; P4 makes
     // them seek by event).
     if (s.isPlaying) return false;
-    const assignments = getDisplayedExecutionPlan(s)?.fingerAssignments;
-    if (!assignments || assignments.length === 0) return false;
-
-    // Events are the distinct start times (everything struck at one instant).
-    const times = [...new Set(assignments.map(a => a.startTime))].sort((a, b) => a - b);
-    const selected = s.selectedEventIndex !== null
-      ? assignments.find(a => a.eventIndex === s.selectedEventIndex)
-      : undefined;
-    const position = selected ? times.indexOf(selected.startTime) : -1;
+    // The project's events (S4.1): the same events, in the same order, as the
+    // Events list, each everything struck at one instant.
+    const timeline = getEventTimeline(s);
+    const { events } = timeline;
+    if (events.length === 0) return false;
+    const position = resolveEventKey(timeline, s.selectedMomentKey)?.index ?? -1;
     const forward = e.key === 'ArrowRight';
     const target = position < 0
-      ? (forward ? 0 : times.length - 1)
-      : Math.min(times.length - 1, Math.max(0, position + (forward ? 1 : -1)));
+      ? (forward ? 0 : events.length - 1)
+      : Math.min(events.length - 1, Math.max(0, position + (forward ? 1 : -1)));
     // At the first or last event the selection stays put: no wrapping.
-    const first = assignments.find(a => a.startTime === times[target]);
-    dispatch({ type: 'SELECT_EVENT', payload: first?.eventIndex ?? null });
+    const event = events[target]!;
+    dispatch({ type: 'SELECT_EVENT', payload: { key: event.key, startTime: event.startTime } });
   });
 
   // A trace replay (T33): "Replaying step 3/92 · Esc to exit".
@@ -88,7 +86,7 @@ export function useKeyboardShortcuts({ onSave, onOpenShortcuts }: KeyboardShortc
       dispatch({ type: 'SELECT_PAD', payload: { padKey: null, streamId: null } });
       return;
     }
-    if (s.selectedEventIndex !== null) {
+    if (s.selectedMomentKey !== null) {
       dispatch({ type: 'SELECT_EVENT', payload: null });
       return;
     }
