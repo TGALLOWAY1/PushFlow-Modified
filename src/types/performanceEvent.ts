@@ -80,6 +80,11 @@ export interface NoteInstance {
   duration?: number;
   /** Deterministic unique ID for stable identification. */
   noteKey?: string;
+  /**
+   * The note's own start time in seconds (S4.1). It can lie up to MOMENT_EPSILON
+   * after its moment's startTime, which is the first note's.
+   */
+  startTime?: number;
 }
 
 /**

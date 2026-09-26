@@ -86,6 +86,19 @@ export function groupIntoMoments<T extends MomentItem>(
   return moments;
 }
 
+/**
+ * Stamps each note of a plan with its moment's index (S4.1, T24). Every
+ * solver's plan goes through this one grouping, so momentIndex means the same
+ * whichever solver produced the plan. Returns new objects, in the same order.
+ */
+export function withMomentIndices(assignments: readonly FingerAssignment[]): FingerAssignment[] {
+  const momentOf = new Map<FingerAssignment, number>();
+  for (const moment of groupIntoMoments(assignments)) {
+    for (const a of moment.items) momentOf.set(a, moment.index);
+  }
+  return assignments.map(a => ({ ...a, momentIndex: momentOf.get(a) }));
+}
+
 /** A moment's cost, read once per moment. */
 export interface MomentCost {
   noteCount: number;

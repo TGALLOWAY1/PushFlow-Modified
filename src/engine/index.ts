@@ -119,6 +119,7 @@ export {
 export {
   groupIntoMoments,
   momentKey,
+  withMomentIndices,
   summarizeMomentCost,
   type Moment,
   type MomentItem,
