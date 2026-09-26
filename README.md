@@ -6,7 +6,7 @@ PushFlow helps you map sounds onto the Push 3's 8x8 pad grid and analyze whether
 
 The product promise is: **converge on a Layout plus Execution Plan that is playable, understandable, and worth keeping.**
 
-![Project Library](docs/screenshots/01-project-library.png)
+![Project Library](docs/screenshots/readme/project-library.png)
 
 ---
 
@@ -25,7 +25,7 @@ The product promise is: **converge on a Layout plus Execution Plan that is playa
 - Placement lock icons on locked pads
 - Finger assignment overlay per event
 
-![Editor Workspace](docs/screenshots/02-editor-workspace.png)
+![Editor Workspace](docs/screenshots/readme/editor-workspace.png)
 
 ### Layout Workflow
 PushFlow uses a three-tier layout lifecycle:
@@ -49,7 +49,7 @@ PushFlow uses a three-tier layout lifecycle:
 - **Cost Toggles** — Selectively enable/disable cost families for diagnostic auditing
 - **Calculate Cost** — Instantly evaluate any layout against the cost model
 
-![Generated Layout](docs/screenshots/03-generated-layout.png)
+![Generated Layouts](docs/screenshots/readme/generated-layouts.png)
 
 ### Analysis & Diagnostics
 - **Three-layer cost breakdown** — Feasibility verdict, ergonomic factor bars, difficulty summary
@@ -165,18 +165,16 @@ fingers and forced pads to share one — manufacturing simultaneity conflicts.
 ```
 src/
   engine/
-    solvers/           # Beam solver (finger assignment)
-    optimization/      # Annealing solver, greedy optimizer, multi-candidate generator
-    evaluation/        # Canonical evaluator, cost functions, difficulty scoring
-    analysis/          # Baseline compare, candidate comparison, constraint explainer
-    prior/             # Biomechanical model, feasibility checking
-    mapping/           # Pad-to-finger resolution
-    structure/         # Performance structure analysis, moment builder
-    rudiment/          # Drumming rudiment library
-    pattern/           # Pattern generation pipeline
-    diagnostics/       # Fatigue model
+    solvers/           # Beam solver (finger assignment), structural lookahead
+    optimization/      # Annealing solver, greedy optimizer, multi-candidate generator, optimizer registry
+    evaluation/        # Canonical evaluator, Playability score, cost functions, difficulty scoring
+    analysis/          # Baseline compare, candidate comparison, diversity, event explainer
+    prior/             # Biomechanical model, feasibility checking, hand poses
+    mapping/           # Pad resolution, voice map, placement locks
+    structure/         # Performance structure analysis, moments, sections, roles
+    rudiment/          # Drumming rudiment library and pattern generation
     surface/           # Hand zone, pad grid
-    debug/             # Debug utilities, sanity checks
+    debug/             # Debug utilities, sanity checks, constraint validator
   types/
     layout.ts          # Layout, LayoutRole, cloneLayout, hashLayout
     voice.ts           # Voice (Sound identity)
@@ -186,19 +184,25 @@ src/
     engineConfig.ts    # EngineConfiguration, AnnealingPreset
     performance.ts     # Performance, PerformanceEvent
   ui/
-    components/        # React components (Grid, Timeline, Panels, Candidates, etc.)
-    pages/             # ProjectLibraryPage, ProjectEditorPage
-    state/             # ProjectContext, reducer, actions, undo/redo
-    hooks/             # useAutoAnalysis, useKeyboardShortcuts, useLaneImport
-    persistence/       # localStorage with migration support
-    fixtures/          # Demo projects
-  import/              # MIDI file import
-  utils/               # ID generation, MIDI note names, seeded RNG
+    components/        # Grid and timeline at the top level; panels/, workspace/, shared/, composer/, loop-editor/, Homepage/
+    pages/             # ProjectLibraryPage, ProjectEditorPage, and the optimizer, validator and temporal debug pages
+    state/             # ProjectContext, reducers, undo/redo
+    hooks/             # useAutoAnalysis, useAutoSave, useKeyboardShortcuts, useLaneImport
+    analysis/          # Scoring worker, per-layout analysis cache, selection model
+    persistence/       # IndexedDB project store (localStorage for loops and presets), migrations
+    audio/ input/      # Rehearsal audio; keyboard and pointer input table
+    temporal/ validator/  # Temporal evaluator and constraint validator pages
+    testing/           # window.__pf e2e hook (only when VITE_E2E is set)
+  import/              # MIDI file import, Sound naming
+  utils/               # ID generation, MIDI note names, seeded RNG, Sound palette
 test/
   types/               # Voice identity round-trip, layout role validation
   engine/              # Solver, optimization, evaluation, feasibility tests
-  ui/state/            # Lanes reducer, streams conversion
+  ui/                  # Reducers, persistence, hooks and component tests
   golden/              # End-to-end golden scenario tests
+  e2e/                 # Playwright specs
+  nightly/             # Deep-annealing checks (npm run test:nightly)
+  fixtures/            # TEST MIDI 1 and other MIDI and project fixtures
 ```
 
 ### Pipeline and Dataflow
@@ -297,14 +301,11 @@ That progression is the core contract of the product: PushFlow starts with music
 ### GitHub Pages Deployment (one-time setup)
 1. Go to your repo **Settings > Pages**
 2. Under **Source**, select **GitHub Actions** (not "Deploy from a branch")
-3. Merge the PWA branch to `main` — the workflow will auto-build and deploy
+3. Push to `main` — `.github/workflows/deploy.yml` builds and deploys `dist/`
 4. Visit `https://tgalloway1.github.io/pushflow-modified/`
 
-### Install as Desktop App
-Once deployed, open the site in Chrome or Edge and click the **install icon** (in the address bar or browser menu). PushFlow will appear as a standalone app in your dock/taskbar — no browser chrome, no terminal.
-
-### Replace Placeholder App Icons
-The current PWA icons (`public/pwa-192x192.png`, `public/pwa-512x512.png`) are auto-generated placeholders. Replace them with proper designed icons when ready. The favicon (`public/favicon.svg`) can also be updated.
+### Replace Placeholder Favicon
+The favicon (`public/favicon.svg`) can be replaced with a designed icon when ready. (The PWA icons that used to sit beside it went with the PWA service worker, removed in March.)
 
 ---
 
@@ -336,7 +337,6 @@ The test suite validates critical invariants:
 - **Execution Plan Binding** — Plans are layout-bound, staleness detection works
 - **Baseline Compare** — Candidate comparison produces correct diffs
 - **Event Explainer** — Per-event difficulty explanations are accurate
-- **Constraint Explanation** — Constraint violations produce meaningful diagnostics
 - **Solver Determinism** — Same input produces consistent output
 - **Feasibility Boundaries** — Strict feasibility boundaries are correct
 - **Candidate Diversity** — Generated candidates differ meaningfully from baseline
@@ -353,6 +353,8 @@ PushFlow's product canon lives in `docs/canonical/`:
 4. `PUSHFLOW_TERMINOLOGY.md` — Stable term definitions
 
 These four files are the only planning source of truth.
+
+Material removed from the working tree in the September 2026 cleanup (the V1 reference codebase, the V2-era planning archive, superseded docs and screenshots) is listed in [docs/ARCHIVE.md](docs/ARCHIVE.md), with the commands to browse or restore any of it.
 
 ---
 
