@@ -549,12 +549,12 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
 
 #### S4.1 — One identity for each performance event
 
-- **Status:** Done (this PR)
+- **Status:** Done (PR #111)
 - **Prerequisites:** S1a.3, S1b.1; Q7 (recorded above).
 - **Decisions:** Q7 (labels read "Event 12 · 3.2.3").
 
 **Deliverables**
-- [x] Single moment identity (T24) · *PR / verified by:* this PR.
+- [x] Single moment identity (T24) · *PR / verified by:* PR #111.
   - **Engine.** `eventIndex` is a note's index in the analysed performance in both solvers. Beam already numbered notes that way; greedy numbered moments and now counts notes across its moments, which walk every event in order (`greedyOptimizer.buildExecutionPlan`). Every plan note gains `momentIndex` from the one shared grouping (`withMomentIndices` in `momentGrouping.ts`, exported from `@/engine`). Beam's `momentAssignments` now come from the same grouping; they grouped by exact millisecond, so a chord played a few ms apart was several moments there and one moment everywhere else. Greedy notes carry their own start time (`NoteInstance.startTime`), as beam's do, instead of their moment's.
   - **The event timeline.** `src/ui/analysis/eventTimeline.ts` groups the analysed performance's notes once (groupIntoMoments), placed or not, and numbers and keys each event by its momentKey. A plan's notes join their event by eventKey; a note the plan doesn't cover (a muted Sound's placeholder pill) joins by time.
   - **The selection.** It is `state.selectedMomentKey`, resolved against the timeline on every render, so it survives re-analysis and never changes meaning with the solver. A key whose Sounds changed (after a mute) resolves to the event at its time. `selectedNoteKey` keeps the note a timeline click named, for the Selected note card. `SELECT_EVENT` carries the key and the start time; `SELECT_MOMENT` and `selectedMomentIndex` are gone.
@@ -566,18 +566,18 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
   - **Screenshots** in `docs/screenshots/S4.1/`, before (main) and after, at 1366 and 1600: `01-played-in-chord`, `02-unplaced-event`, and `03-event-12-everywhere` (after only).
 
 **Exit criteria**
-- [x] **P4-1** For all 32 moments of TEST MIDI 1, under both a beam plan and a greedy plan, selecting on any surface highlights the same pads and notes on the grid, list, timeline and chart. The selection survives re-analysis, and clicking any timeline note highlights its whole moment. · *PR / verified by:* this PR.
+- [x] **P4-1** For all 32 moments of TEST MIDI 1, under both a beam plan and a greedy plan, selecting on any surface highlights the same pads and notes on the grid, list, timeline and chart. The selection survives re-analysis, and clicking any timeline note highlights its whole moment. · *PR / verified by:* PR #111.
   - `event-identity.spec.ts` (Chromium 1366 and 1600): each of the 32 events is selected on a different surface in turn (an Events row, a chart bar, a timeline note, →). Each time, the grid's struck pads equal the plan's pads for that event's notes; exactly its Events row and its chart bar are selected; every one of its notes, and no other, is ringed in the timeline; and the card reads "Event n · bar.beat.sub". This runs under the beam plan of the suggested layout and of a Greedy candidate's layout.
   - Re-analysis: with a chord selected, one of its pads is dragged to an empty pad. After re-analysis the same event is selected and the grid lights the new pad, not the old one.
   - A click on each of the 48 notes rings its whole event.
   - The greedy optimizer's own plan, which the workspace never shows since S3.2 (see Deviations): `eventIdentity.test.tsx` mounts the real grid, Events list, timeline and Costs panel with it and runs the same 32-event check. It then re-analyses it with beam and keeps the selection. The same file checks the beam plan, the whole-event note clicks, and a chord played 0/2/4 ms apart, which is one event with every pad and note lit (on main it lit one pad; screenshot 01).
-- [x] **P4-13** testMidi1Integration.test.ts reports 0 unplayable events after the eventIndex change, with seed-0 snapshots updated only for the index field. MoveTracePanel, CandidatePreviewCard and PerformanceAnalysisPanel are updated and render (PerformanceAnalysisPanel no longer exists; say so in the PR). · *PR / verified by:* this PR.
+- [x] **P4-13** testMidi1Integration.test.ts reports 0 unplayable events after the eventIndex change, with seed-0 snapshots updated only for the index field. MoveTracePanel, CandidatePreviewCard and PerformanceAnalysisPanel are updated and render (PerformanceAnalysisPanel no longer exists; say so in the PR). · *PR / verified by:* PR #111.
   - `testMidi1Integration.test.ts`: 37 passed, 4 skips, with 0 unplayable events for Greedy, Beam and Annealing Quick, with and without the lock. The seed-0 snapshots are unchanged: they hold no index field, and TEST MIDI 1's chords are exactly simultaneous, so beam's moment counts didn't change.
   - `eventIdentity.test.ts` (engine): greedy and beam plans give every note the same eventIndex (its index) and momentIndex (its moment), on TEST MIDI 1's 32 moments and on a chord played 0/2/4 ms apart. Greedy keeps each note's own time, and both list one moment assignment per moment. All 4 tests fail on main.
   - MoveTracePanel and CandidatePreviewCard read no event index, so they are unchanged; their component tests pass (19 and 5). PerformanceAnalysisPanel no longer exists.
 
 **Session checks**
-- [x] Solver Change Checklist recorded in the PR. · *PR / verified by:* this PR's description.
+- [x] Solver Change Checklist recorded in the PR. · *PR / verified by:* PR #111's description.
   - (1) Outputs: greedy plans' eventIndex is the note index (it was the moment index), and their notes carry their own start time (it was the moment's). Every plan note gains momentIndex. Beam's momentAssignments group by the shared 25 ms rule (it was exact ms), which can change its moment counts, and so its plan score, only for chords played apart; TEST MIDI 1 is unchanged. Layouts, fingering, costs and diagnostics are unchanged.
   - (2) Trace shapes (`OptimizerMove`, `AnnealingIterationSnapshot`) and stopReason are unchanged.
   - (3) UI consumers are updated (above).
