@@ -40,7 +40,7 @@ Copy-paste prompts for the agent sessions that implement the roadmap. Each promp
 
 - Run `npm run typecheck` and `npm run test:run`. From S0.1 on, also run `npx playwright test` at 1366×768 and 1600×1000. In a cloud session, prefix the command with `PW_CHROMIUM=/opt/pw-browsers/chromium`, because the preinstalled browser differs from Playwright's default. If Playwright still can't launch, say so in the PR and rely on the CI run. Never skip specs.
 - If your fix makes any expected-fail test pass, remove its marker in the same PR. That covers C1–C9 cases, the FeasibilityBadge component test, and the TEST MIDI 1 lock or strict-0-unplayable cases. Never weaken, skip or quarantine a test to get green.
-- UI changes need before/after screenshots at 1366×768 and 1600×1000. Save them as the Playwright CI artifact, or commit them under `docs/screenshots/<session-id>/` if small, and link them from the PR description.
+- UI changes need before/after screenshots at 1366×768 and 1600×1000. Save them as the Playwright CI artifact, or commit them under `docs/screenshots/<session-id>/` if small, and link them from the PR description. Committed screenshots are review evidence, not permanent docs: once a phase's audit has merged, the next session's first PR moves that phase's session folders and its `audit-<phase>/` folder out of the tree, as described in [docs/ARCHIVE.md](../ARCHIVE.md#keeping-the-tree-lean).
 - Re-read your diff for anything that would break CI or an invariant.
 
 **Finish**

@@ -11,6 +11,7 @@ This is the shared record of the roadmap's implementation: the decisions every s
 - **Criterion IDs** follow the roadmap's order: `P1a-5b` is part b of phase P1a's fifth exit criterion. Parts are the roadmap's sub-bullets, or clauses that different sessions own. [Section 3](#3-criterion--session) gives every ID exactly one owner; a session owns only the criteria listed in its own section.
 - **Session checks** are checks a session's prompt requires that are not roadmap exit criteria.
 - Work found outside a session's scope goes under [Follow-ups](#6-follow-ups). Anything done differently from the roadmap or the session prompt goes under [Deviations](#5-deviations).
+- **Screenshots.** The P0–P3 evidence folders (`docs/screenshots/S0.1/` … `S3.4/` and `audit-P1a/` … `audit-P3/`) left the working tree on 2026-09-26. Every screenshot path in this file still resolves at commit `fa04025f`: browse [docs/screenshots at fa04025f](https://github.com/TGALLOWAY1/PushFlow-Modified/tree/fa04025f6ecbd90ffd14689ad9a31778370836dc/docs/screenshots), or restore a folder with `git checkout fa04025f -- docs/screenshots/<folder>`. Later phases' folders leave the tree the same way once their audit merges; see [docs/ARCHIVE.md](../ARCHIVE.md).
 
 ## 1. Decisions
 
