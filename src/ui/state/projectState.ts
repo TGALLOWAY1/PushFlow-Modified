@@ -19,15 +19,21 @@
 
 import { type Performance, type InstrumentConfig } from '../../types/performance';
 import { type EngineConfiguration } from '../../types/engineConfig';
-import { type CandidateSolution, type CandidateGenerationSummary } from '../../types/candidateSolution';
+import { type BeamSearchSummary, type CandidateSolution, type CandidateGenerationSummary } from '../../types/candidateSolution';
 import { type Layout, type LayoutProvenance, cloneLayout, createEmptyLayout, reconcileLayoutVoices } from '../../types/layout';
-import { type ExecutionPlanResult } from '../../types/executionPlan';
+import { type AnnealingIterationSnapshot, type ExecutionPlanResult } from '../../types/executionPlan';
 import { type Section, type VoiceProfile } from '../../types/performanceStructure';
 import { type PerformanceLane, type LaneGroup, type SourceFile } from '../../types/performanceLane';
 import { type LaneAction, isLaneAction, lanesReducer } from './lanesReducer';
 import { type CostToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
 import { type PerformanceCostBreakdown } from '../../types/costBreakdown';
-import { type OptimizerMethodKey, type OptimizerMove, type OptimizationIteration, type StopReason } from '../../engine/optimization/optimizerInterface';
+import {
+  type OptimizerMethodKey,
+  type OptimizerMove,
+  type OptimizationIteration,
+  type OptimizerTelemetry,
+  type StopReason,
+} from '../../engine/optimization/optimizerInterface';
 import { type GreedyLayoutStrategy } from '../../engine/optimization/greedyCandidatePipeline';
 import { checkPlanFreshness } from '../../engine/evaluation/executionPlanValidation';
 import { hashLayout } from '../../engine/mapping/mappingResolver';
@@ -38,6 +44,9 @@ import { type RehearsalAudioOptions, DEFAULT_REHEARSAL_AUDIO } from '../audio/re
 import { gmDrumRenames } from '../../utils/gmDrumMap';
 import { uniqueName } from '../../utils/uniqueName';
 import { suggestVariantName } from './variantNames';
+// A cycle (layoutSubject reads this module's selectors), used only inside
+// functions: a candidate's letter is taken with its trace (T33).
+import { candidateLetterFor } from './layoutSubject';
 
 // ============================================================================
 // Sound Stream Model
@@ -204,6 +213,10 @@ export interface ProjectSession {
 
   /** Manual cost evaluation result (from Calculate Cost button). */
   manualCostResult: PerformanceCostBreakdown | null;
+  // The trace on screen (T33): the inspected candidate's, else restingTrace.
+  // The reducer keeps moveHistory, iterationTrace, moveHistoryStopReason and
+  // traceSubject on it (withTraceOnScreen); MoveTracePanel reads them.
+
   /** Move history from interpretable optimizers (greedy). */
   moveHistory: OptimizerMove[] | null;
   /** Detailed iteration traces for the visual debugger. */
@@ -212,6 +225,13 @@ export interface ProjectSession {
   moveHistoryStopReason: string | null;
   /** Current index in move history for step-through replay. */
   moveHistoryIndex: number | null;
+  /** Whose trace is on screen, and the rest of it (annealing snapshots, a beam summary). */
+  traceSubject: TraceSubject | null;
+  /**
+   * The trace shown while no candidate is inspected: the latest run's
+   * candidate A, or the candidate promoted since (traces survive promotion).
+   */
+  restingTrace: CandidateTrace | null;
   /**
    * How the last Generate ended (T35). A cancelled run commits nothing else
    * (no candidates, summary or trace), so its 'cancelled' lives here: the
@@ -253,6 +273,29 @@ export interface GenerationRunRecord {
   /** Candidates the run committed: 0 unless it completed. */
   candidateCount: number;
   elapsedMs: number;
+}
+
+/** Whose trace is on screen (T33), and what its method keeps besides moves. */
+export interface TraceSubject {
+  /** The candidate it describes; null for a trace set without one (SET_MOVE_HISTORY). */
+  candidateId: string | null;
+  /** Its letter when the trace was taken ("B"): the title still names it once it has left the list. */
+  letter: string | null;
+  /** Annealing: one snapshot per iteration (the candidate's annealingTrace). */
+  annealing: AnnealingIterationSnapshot[] | null;
+  /** Beam: what the search did. */
+  beam: BeamSearchSummary | null;
+  /** The run's telemetry: time, iterations, budgets. */
+  telemetry: OptimizerTelemetry | null;
+  /** It was promoted, so it stays when it leaves the candidate list. */
+  promoted: boolean;
+}
+
+/** A candidate's whole trace, as the trace panel shows it (T33). */
+export interface CandidateTrace extends TraceSubject {
+  moves: OptimizerMove[] | null;
+  iterations: OptimizationIteration[] | null;
+  stopReason: string | null;
 }
 
 /**
@@ -402,14 +445,100 @@ export function getInspectedCandidate(state: ProjectState): CandidateSolution | 
 
 /**
  * The optimizer trace the trace panel and its step-through replay use: the
- * inspected candidate's own trace (it follows Inspect), else the run's, else
- * the top-ranked candidate's.
+ * one on screen. The reducer keeps state.iterationTrace on the inspected
+ * candidate's trace, else the run's candidate A's or the promoted one's
+ * (withTraceOnScreen), so this reads state as MoveTracePanel does.
  */
 export function getActiveTrace(state: ProjectState): OptimizationIteration[] | null {
-  return getInspectedCandidate(state)?.iterationTrace
-    ?? state.iterationTrace
-    ?? state.candidates[0]?.iterationTrace
-    ?? null;
+  return state.iterationTrace;
+}
+
+/** A candidate's trace, taken now: its letter is its place in `candidates` (T33). */
+export function candidateTrace(
+  candidates: readonly CandidateSolution[],
+  candidate: CandidateSolution,
+  promoted = false,
+): CandidateTrace {
+  return {
+    candidateId: candidate.id,
+    letter: candidateLetterFor(candidates, candidate.id),
+    moves: candidate.moveHistory ?? null,
+    iterations: candidate.iterationTrace ?? null,
+    stopReason: candidate.stopReason ?? null,
+    annealing: candidate.annealingTrace ?? null,
+    beam: candidate.beamSummary ?? null,
+    telemetry: candidate.telemetry ?? null,
+    promoted,
+  };
+}
+
+/** Whether a trace is on screen: moves, iterations, annealing snapshots or a beam summary. */
+export function hasTraceOnScreen(state: ProjectState): boolean {
+  return !!state.moveHistory?.length || !!state.iterationTrace?.length
+    || !!state.traceSubject?.annealing?.length || !!state.traceSubject?.beam;
+}
+
+/** The trace to show: the inspected candidate's, else the resting one while it applies. */
+function traceToShow(state: ProjectState): CandidateTrace | null {
+  const ref = state.inspectedLayout;
+  const inspected = ref?.kind === 'candidate' ? getCandidateById(state, ref.id) : null;
+  if (inspected) return candidateTrace(state.candidates, inspected);
+  const resting = state.restingTrace;
+  // A candidate deleted from the list takes its trace with it, unless it was promoted.
+  if (resting?.candidateId && !resting.promoted && !state.candidates.some(c => c.id === resting.candidateId)) return null;
+  return resting;
+}
+
+function showsTrace(state: ProjectState, trace: CandidateTrace | null): boolean {
+  const subject = state.traceSubject;
+  return state.moveHistory === (trace?.moves ?? null)
+    && state.iterationTrace === (trace?.iterations ?? null)
+    && state.moveHistoryStopReason === (trace?.stopReason ?? null)
+    && (subject?.candidateId ?? null) === (trace?.candidateId ?? null)
+    && (subject?.letter ?? null) === (trace?.letter ?? null)
+    && (subject?.annealing ?? null) === (trace?.annealing ?? null)
+    && (subject?.beam ?? null) === (trace?.beam ?? null);
+}
+
+/**
+ * Keeps the trace fields on the trace on screen (T33): whenever the
+ * inspection, the candidate list or the resting trace changes, moveHistory,
+ * iterationTrace, moveHistoryStopReason and traceSubject take the inspected
+ * candidate's trace, else the resting one (a new trace starts with no replay
+ * step). Every reducer step and every Undo/Redo goes through it, so the panel,
+ * bound to state.moveHistory, always describes the candidate on screen.
+ */
+export function withTraceOnScreen(prev: ProjectState, next: ProjectState): ProjectState {
+  if (next === prev) return next;
+  if (next.inspectedLayout === prev.inspectedLayout && next.candidates === prev.candidates
+    && next.restingTrace === prev.restingTrace) return next;
+  const trace = traceToShow(next);
+  if (showsTrace(next, trace)) return next;
+  return {
+    ...next,
+    moveHistory: trace?.moves ?? null,
+    iterationTrace: trace?.iterations ?? null,
+    moveHistoryStopReason: trace?.stopReason ?? null,
+    moveHistoryIndex: null,
+    traceSubject: trace && {
+      candidateId: trace.candidateId,
+      letter: trace.letter,
+      annealing: trace.annealing,
+      beam: trace.beam,
+      telemetry: trace.telemetry,
+      promoted: trace.promoted,
+    },
+  };
+}
+
+/**
+ * Traces survive promotion (T33): the promoted candidate's trace becomes the
+ * one shown while no candidate is inspected, so MoveTracePanel still renders
+ * it, named by the candidate's letter, after the candidate leaves the list.
+ * Every reducer path that promotes a candidate returns through it.
+ */
+export function withPromotedTrace(before: ProjectState, after: ProjectState, candidate: CandidateSolution): ProjectState {
+  return { ...after, restingTrace: candidateTrace(before.candidates, candidate, true) };
 }
 
 /** Whether the grid shows a step of the optimizer trace (the replay is read-only too). */
@@ -871,6 +1000,10 @@ function keepReplacedDraft(state: ProjectState, incoming: Layout | null, now: st
 // ============================================================================
 
 export function projectReducer(state: ProjectState, action: ProjectAction): ProjectState {
+  return withTraceOnScreen(state, reduceProject(state, action));
+}
+
+function reduceProject(state: ProjectState, action: ProjectAction): ProjectState {
   // Delegate lane/group actions to the dedicated lanes reducer
   if (isLaneAction(action.type)) {
     return lanesReducer(state, action as LaneAction);
@@ -1432,7 +1565,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       // Keep non-promoted candidates so the user can still compare or promote others
       const remainingCandidates = state.candidates.filter(c => c.id !== action.payload.candidateId);
 
-      return {
+      return withPromotedTrace(state, {
         ...state,
         activeLayout: promoted,
         workingLayout: null,
@@ -1446,7 +1579,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         candidates: remainingCandidates,
         inspectedLayout: null,
         compareCandidateId: null,
-      };
+      }, candidate);
     }
 
     case 'DELETE_CANDIDATE': {
@@ -1637,14 +1770,16 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       // Candidates are proposals (decision Q4): a run's first candidate, A,
       // is shown read-only, even on an empty grid, and nothing is written. The
       // draft stays as it was until "Use as my draft".
+      const first = action.payload[0];
       const next: ProjectState = {
         ...state,
         candidates: action.payload,
         generationSummary: null,
         compareCandidateId: null,
         isProcessing: false,
+        // The run's candidate A: its trace shows whenever no candidate is inspected (T33).
+        restingTrace: first ? candidateTrace(action.payload, first) : null,
       };
-      const first = action.payload[0];
       if (first) return inspecting(next, { kind: 'candidate', id: first.id });
       return state.inspectedLayout?.kind === 'candidate' ? inspecting(next, null) : next;
     }
@@ -1862,12 +1997,21 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return { ...state, manualCostResult: action.payload };
 
     case 'SET_MOVE_HISTORY':
+      // A trace with no candidate (Generate installs its run's through
+      // SET_CANDIDATES): it shows while no candidate is inspected.
       return {
         ...state,
-        moveHistory: action.payload.moves,
-        iterationTrace: action.payload.trace,
-        moveHistoryStopReason: action.payload.stopReason ?? null,
-        moveHistoryIndex: null,
+        restingTrace: {
+          candidateId: null,
+          letter: null,
+          moves: action.payload.moves,
+          iterations: action.payload.trace,
+          stopReason: action.payload.stopReason ?? null,
+          annealing: null,
+          beam: null,
+          telemetry: null,
+          promoted: false,
+        },
       };
 
     case 'SET_MOVE_HISTORY_INDEX':
@@ -1943,6 +2087,8 @@ export function createEmptyProjectState(): ProjectState {
     iterationTrace: null,
     moveHistoryStopReason: null,
     moveHistoryIndex: null,
+    traceSubject: null,
+    restingTrace: null,
     lastGenerationRun: null,
     currentTime: 0,
     isPlaying: false,

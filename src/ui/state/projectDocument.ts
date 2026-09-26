@@ -8,7 +8,7 @@
  * ProjectDocument and ProjectSession types in projectState.ts are the other half.
  */
 
-import { type ProjectDocument, type ProjectState, resolveInspectedLayout } from './projectState';
+import { type ProjectDocument, type ProjectState, resolveInspectedLayout, withTraceOnScreen } from './projectState';
 import { type CandidateSolution } from '../../types/candidateSolution';
 import { deepEqual } from '../../utils/deepEqual';
 
@@ -96,7 +96,9 @@ export function restoreDocument(
   const returnedCandidates = (returned as CandidateSolution[] | undefined)
     ?.filter(c => !restored.candidates.some(existing => existing.id === c.id)) ?? [];
   const inspectionGone = !!state.inspectedLayout && !resolveInspectedLayout(restored).readOnly;
-  return {
+  // The trace follows the inspection like any reducer step (T33): ending an
+  // inspection shows the resting trace again.
+  return withTraceOnScreen(state, {
     ...restored,
     ...(returnedCandidates.length > 0 ? { candidates: [...restored.candidates, ...returnedCandidates] } : {}),
     updatedAt: new Date().toISOString(),
@@ -105,7 +107,7 @@ export function restoreDocument(
     ...(layoutsChanged ? { selectedPadKey: null } : {}),
     ...(soundsChanged ? { selectedEventIndex: null, selectedMomentIndex: null } : {}),
     ...(soundsChanged && !restored.soundStreams.some(s => s.id === state.armedStreamId) ? { armedStreamId: null } : {}),
-  };
+  });
 }
 
 /**

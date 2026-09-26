@@ -251,20 +251,12 @@ export function useAutoAnalysis(options: AutoAnalysisOptions = {}) {
       // Generate only proposes: the candidates fill the list, and the draft,
       // the grid and the draft's analysis are left alone (invariant 7). The
       // list, its summary, the trace and the run record land together, in one
-      // synchronous batch. The trace panel starts on the top candidate's own
-      // trace and stop reason (T33; every candidate carries its own).
+      // synchronous batch. SET_CANDIDATES shows candidate A read-only and puts
+      // its own trace and stop reason in the trace fields (T33; every
+      // candidate carries its own).
       const { candidates, summary } = generationResult;
-      const top = candidates[0];
       dispatch({ type: 'SET_CANDIDATES', payload: candidates });
       dispatch({ type: 'SET_GENERATION_SUMMARY', payload: summary });
-      dispatch({
-        type: 'SET_MOVE_HISTORY',
-        payload: {
-          moves: top?.moveHistory ?? null,
-          trace: top?.iterationTrace ?? null,
-          stopReason: top?.stopReason,
-        },
-      });
       recordRun({ outcome: 'completed', stopReason: completedRunStopReason(candidates), candidateCount: candidates.length });
       return candidates.length;
     } catch (err) {

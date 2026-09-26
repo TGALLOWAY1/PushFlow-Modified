@@ -22,6 +22,11 @@ test('window.__pf exposes project state, layout hash and undo depth in the edito
   expect(await pf.call('inspected')).toEqual({ kind: 'active', id: state.activeLayout.id, readOnly: false });
   expect(await pf.call('layoutHash', 'shown')).toBe(await pf.call('layoutHash', 'active'));
   expect(await pf.call('fingering')).toBeNull();
+  // No run yet, so no trace on screen (S3.4).
+  expect(await pf.call('trace')).toEqual({
+    candidateId: null, letter: null, stopReason: null, moveCount: 0, iterationCount: 0,
+    annealingSteps: 0, hasBeamSummary: false, replayStep: null, resting: null,
+  });
 
   // The snapshot is a copy: mutating it in the page does not touch app state.
   const unchanged = await page.evaluate(() => {

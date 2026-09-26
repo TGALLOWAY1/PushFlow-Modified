@@ -86,18 +86,37 @@ export interface PfGeneration {
   }>;
 }
 
+/** The trace on screen (T33): whose it is and its sizes, as the trace panel shows it. */
+export interface PfTrace {
+  candidateId: string | null;
+  /** The letter in its title, "How candidate B was found". */
+  letter: string | null;
+  stopReason: string | null;
+  moveCount: number;
+  iterationCount: number;
+  annealingSteps: number;
+  hasBeamSummary: boolean;
+  /** The replay step (state.moveHistoryIndex), null when none is replayed. */
+  replayStep: number | null;
+  /** The trace shown with no candidate inspected: the run's candidate A's, or the promoted one's. */
+  resting: { candidateId: string | null; letter: string | null; promoted: boolean } | null;
+}
+
 export interface PfTestHook {
   /**
    * Deep copy of the current project state, without the optimizer traces
-   * (candidates' iterationTrace and annealingTrace, and the session's
-   * iterationTrace), which can be hundreds of MB after a greedy run; read those
-   * through generation(). Mutating the copy changes nothing.
+   * (candidates' iterationTrace and annealingTrace, the session's
+   * iterationTrace and the resting and on-screen traces' iterations and
+   * annealing snapshots), which can be hundreds of MB after a greedy run; read
+   * those through generation() and trace(). Mutating the copy changes nothing.
    */
   state(): ProjectState;
   /** Small status summary for polling; prefer it to state() in expect.poll loops. */
   status(): PfStatus;
   /** The last Generate: its record, the trace panel's source and each candidate's trace sizes. */
   generation(): PfGeneration;
+  /** The trace on screen (S3.4): whose it is, its sizes and the replay step. */
+  trace(): PfTrace;
   /**
    * Layout hash of the Active Layout, the Working/Test Layout (null if none),
    * the layout on screen (the inspected one, S3.2), or a layout by role and id
@@ -147,6 +166,8 @@ export function installE2EHook(get: () => E2EHookSource): () => void {
         candidates: s.candidates.map(withoutBulkyTraces),
         analysisResult: s.analysisResult ? withoutBulkyTraces(s.analysisResult) : null,
         inspectedAnalysis: s.inspectedAnalysis ? withoutBulkyTraces(s.inspectedAnalysis) : null,
+        traceSubject: s.traceSubject ? { ...s.traceSubject, annealing: null } : null,
+        restingTrace: s.restingTrace ? { ...s.restingTrace, iterations: null, annealing: null } : null,
       });
     },
     generation() {
@@ -169,6 +190,22 @@ export function installE2EHook(get: () => E2EHookSource): () => void {
           hasBeamSummary: !!c.beamSummary,
         })),
       });
+    },
+    trace() {
+      const s = get().state;
+      const subject = s.traceSubject;
+      const resting = s.restingTrace;
+      return {
+        candidateId: subject?.candidateId ?? null,
+        letter: subject?.letter ?? null,
+        stopReason: s.moveHistoryStopReason,
+        moveCount: s.moveHistory?.length ?? 0,
+        iterationCount: s.iterationTrace?.length ?? 0,
+        annealingSteps: subject?.annealing?.length ?? 0,
+        hasBeamSummary: !!subject?.beam,
+        replayStep: s.moveHistoryIndex,
+        resting: resting ? { candidateId: resting.candidateId, letter: resting.letter, promoted: resting.promoted } : null,
+      };
     },
     status() {
       const s = get().state;
