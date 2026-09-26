@@ -97,8 +97,8 @@ function makeTestProject(): ProjectState {
     ],
     inspectedLayout: { kind: 'candidate', id: 'candidate-1' },
     // Ephemeral state
-    selectedEventIndex: 5,
-    selectedMomentIndex: 3,
+    selectedMomentKey: '1500:a',
+    selectedNoteKey: 'n1',
     isProcessing: true,
     error: 'some error',
   };
@@ -130,7 +130,7 @@ describe('serializeProject', () => {
     expect(serialized).not.toContain('"inspectedAnalysis"');
     expect(serialized).not.toContain('"manualCostResult"');
     expect(serialized).not.toContain('"isProcessing"');
-    expect(serialized).not.toContain('"selectedEventIndex"');
+    expect(serialized).not.toContain('"selectedMomentKey"');
   });
 
   it('does NOT include ephemeral UI state', () => {
@@ -138,8 +138,8 @@ describe('serializeProject', () => {
     const persisted = serializeProject(state);
     const keys = Object.keys(persisted);
 
-    expect(keys).not.toContain('selectedEventIndex');
-    expect(keys).not.toContain('selectedMomentIndex');
+    expect(keys).not.toContain('selectedMomentKey');
+    expect(keys).not.toContain('selectedNoteKey');
     expect(keys).not.toContain('isProcessing');
     expect(keys).not.toContain('error');
     expect(keys).not.toContain('compareCandidateId');
@@ -184,8 +184,8 @@ describe('deserializeProject', () => {
     const restored = deserializeProject(persisted);
 
     expect(restored.workingLayout).toBeNull();
-    expect(restored.selectedEventIndex).toBeNull();
-    expect(restored.selectedMomentIndex).toBeNull();
+    expect(restored.selectedMomentKey).toBeNull();
+    expect(restored.selectedNoteKey).toBeNull();
     expect(restored.isProcessing).toBe(false);
     expect(restored.error).toBeNull();
     expect(restored.analysisStale).toBe(true);

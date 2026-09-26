@@ -161,11 +161,11 @@ describe('INSPECT_LAYOUT writes nothing', () => {
   });
 
   it('drops the pad selection and a replay step, disarms a Sound on a read-only layout, and keeps the event selection', async () => {
-    const state = { ...(await fullProject()), selectedPadKey: '7,0', moveHistoryIndex: 1, selectedEventIndex: 3 };
+    const state = { ...(await fullProject()), selectedPadKey: '7,0', moveHistoryIndex: 1, selectedMomentKey: '1000:a' };
     const armed = projectReducer(state, { type: 'ARM_SOUND', payload: state.soundStreams[2]!.id });
     const next = projectReducer({ ...armed, selectedPadKey: '7,0', moveHistoryIndex: 1 }, inspect({ kind: 'candidate', id: 'cand-a' }));
-    expect({ pad: next.selectedPadKey, replay: next.moveHistoryIndex, armed: next.armedStreamId, sound: next.selectedStreamId, event: next.selectedEventIndex })
-      .toEqual({ pad: null, replay: null, armed: null, sound: null, event: 3 });
+    expect({ pad: next.selectedPadKey, replay: next.moveHistoryIndex, armed: next.armedStreamId, sound: next.selectedStreamId, event: next.selectedMomentKey })
+      .toEqual({ pad: null, replay: null, armed: null, sound: null, event: '1000:a' });
     // Showing what is already shown is no change at all.
     expect(projectReducer(next, inspect({ kind: 'candidate', id: 'cand-a' }))).toBe(next);
   });

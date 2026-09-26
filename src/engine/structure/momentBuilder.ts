@@ -67,6 +67,7 @@ export function buildPerformanceMoments(
       velocity: event.velocity,
       duration: event.duration,
       noteKey: event.eventKey,
+      startTime: event.startTime,
     });
   }
 

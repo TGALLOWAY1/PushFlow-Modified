@@ -31,6 +31,7 @@ import { computePlanScore } from '../evaluation/planScore';
 import { summarizeConstraintRelaxation } from '../evaluation/constraintRelaxation';
 import { isZoneValid } from '../surface/handZone';
 import { buildPerformanceMoments } from '../structure/momentBuilder';
+import { withMomentIndices } from '../structure/momentGrouping';
 import { type Layout } from '../../types/layout';
 import {
   type DifficultyLevel,
@@ -911,6 +912,9 @@ class GreedyOptimizer implements OptimizerMethod {
     let hardMomentCount = 0;
     let totalDrift = 0;
     let driftCount = 0;
+    // Each note's index in the performance (S4.1, T24): the moments hold every
+    // event in order, so counting notes across them gives the index beam uses.
+    let nextEventIndex = 0;
 
     for (const moment of moments) {
       const eventDimensions = diagnostics.eventCosts[moment.momentIndex]?.dimensions;
@@ -937,6 +941,9 @@ class GreedyOptimizer implements OptimizerMethod {
       const noteAssignments: NoteAssignmentInfo[] = [];
 
       for (const note of moment.notes) {
+        const eventIndex = nextEventIndex++;
+        // The note's own time, as in beam plans; the moment's is its first note's.
+        const startTime = note.startTime ?? moment.startTime;
         // Resolve pad from layout when padId is missing (seed layouts don't pre-populate padId)
         let padKeyStr = note.padId;
         if (!padKeyStr) {
@@ -961,13 +968,13 @@ class GreedyOptimizer implements OptimizerMethod {
           fingerAssignments.push({
             noteNumber: note.noteNumber,
             voiceId: note.soundId,
-            startTime: moment.startTime,
+            startTime,
             assignedHand: 'Unplayable',
             finger: null,
             cost: Infinity,
             costBreakdown: { ...momentCostBreakdown, total: Infinity },
             difficulty: 'Unplayable',
-            eventIndex: moment.momentIndex,
+            eventIndex,
             eventKey: note.noteKey,
           });
           unplayableCount++;
@@ -994,7 +1001,7 @@ class GreedyOptimizer implements OptimizerMethod {
         fingerAssignments.push({
           noteNumber: note.noteNumber,
           voiceId: note.soundId,
-          startTime: moment.startTime,
+          startTime,
           assignedHand: owner.hand,
           finger: owner.finger,
           cost: momentCost,
@@ -1003,7 +1010,7 @@ class GreedyOptimizer implements OptimizerMethod {
           row: pad.row,
           col: pad.col,
           padId: padKeyStr,
-          eventIndex: moment.momentIndex,
+          eventIndex,
           eventKey: note.noteKey,
           // One finger per Sound always holds here (the assignment is per pad);
           // hand separation is the rule that can give way, and is flagged.
@@ -1056,7 +1063,8 @@ class GreedyOptimizer implements OptimizerMethod {
       unplayableCount,
       hardCount,
       mediumCount,
-      fingerAssignments,
+      // Each note's moment, from the shared grouping every solver's plan uses (S4.1).
+      fingerAssignments: withMomentIndices(fingerAssignments),
       constraintRelaxation: summarizeConstraintRelaxation(fingerAssignments, new Map(Object.entries(assignment))),
       padFingerOwnership: assignment,
       momentAssignments,

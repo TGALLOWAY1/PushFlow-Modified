@@ -34,7 +34,7 @@ const SESSION_FIELDS = [
   'updatedAt', 'lastOpenedAt',
   'analysisResult', 'candidates', 'candidateRuns', 'inspectedLayout', 'inspectedAnalysis', 'generationSummary',
   'engineConfig', 'optimizerMethod', 'greedyStrategy', 'costToggles',
-  'selectedEventIndex', 'selectedMomentIndex', 'selectedStreamId', 'armedStreamId', 'selectedPadKey', 'compareCandidateId',
+  'selectedMomentKey', 'selectedNoteKey', 'selectedStreamId', 'armedStreamId', 'selectedPadKey', 'compareCandidateId',
   'isProcessing', 'error', 'analysisStale', 'manualCostResult',
   'moveHistory', 'iterationTrace', 'moveHistoryStopReason', 'moveHistoryIndex', 'traceSubject', 'restingTrace',
   'lastGenerationRun',
@@ -93,16 +93,16 @@ describe('restoreDocument', () => {
   it('swaps the document and keeps the session', async () => {
     const before = await importTestMidi1();
     let s: ProjectState = projectReducer(before, { type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey: '3,3', stream: before.soundStreams[0] } });
-    s = { ...s, isPlaying: true, currentTime: 4.2, selectedEventIndex: 7, moveHistory: [], candidates: [], analysisStale: false };
+    s = { ...s, isPlaying: true, currentTime: 4.2, selectedMomentKey: '4200:a', moveHistory: [], candidates: [], analysisStale: false };
 
     const restored = restoreDocument(s, pickDocument(before));
     expect(restored.workingLayout).toBeNull();
     expect({
       isPlaying: restored.isPlaying,
       currentTime: restored.currentTime,
-      selectedEventIndex: restored.selectedEventIndex,
+      selectedMomentKey: restored.selectedMomentKey,
       moveHistory: restored.moveHistory,
-    }).toEqual({ isPlaying: true, currentTime: 4.2, selectedEventIndex: 7, moveHistory: [] });
+    }).toEqual({ isPlaying: true, currentTime: 4.2, selectedMomentKey: '4200:a', moveHistory: [] });
     // The layout changed under the analysis, so it must re-resolve.
     expect(restored.analysisStale).toBe(true);
     expect(restored.updatedAt >= s.updatedAt).toBe(true);
@@ -113,19 +113,19 @@ describe('restoreDocument', () => {
     const placed = projectReducer(before, { type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey: '3,3', stream: before.soundStreams[0] } });
     const candidate = { id: 'cand-a', layout: { ...placed.workingLayout!, id: 'cand-a-layout', padToVoice: {} } } as unknown as CandidateSolution;
     const inspected = { kind: 'candidate' as const, id: 'cand-a' };
-    const selected: ProjectState = { ...placed, candidates: [candidate], inspectedLayout: inspected, selectedEventIndex: 4, selectedMomentIndex: 2 };
+    const selected: ProjectState = { ...placed, candidates: [candidate], inspectedLayout: inspected, selectedMomentKey: '1000:a', selectedNoteKey: 'n1' };
 
     // Undo shows what it undid: the layout edits go to.
     const layoutOnly = restoreDocument(selected, pickDocument(before));
-    expect({ c: layoutOnly.inspectedLayout, e: layoutOnly.selectedEventIndex, m: layoutOnly.selectedMomentIndex })
-      .toEqual({ c: null, e: 4, m: 2 });
+    expect({ c: layoutOnly.inspectedLayout, e: layoutOnly.selectedMomentKey, n: layoutOnly.selectedNoteKey })
+      .toEqual({ c: null, e: '1000:a', n: 'n1' });
 
     const empty = projectReducer(before, { type: 'RESET' });
     const soundsToo = restoreDocument(selected, pickDocument(empty));
-    expect({ e: soundsToo.selectedEventIndex, m: soundsToo.selectedMomentIndex }).toEqual({ e: null, m: null });
+    expect({ e: soundsToo.selectedMomentKey, n: soundsToo.selectedNoteKey }).toEqual({ e: null, n: null });
 
     const unchanged = restoreDocument(selected, pickDocument(selected));
-    expect({ c: unchanged.inspectedLayout, e: unchanged.selectedEventIndex }).toEqual({ c: inspected, e: 4 });
+    expect({ c: unchanged.inspectedLayout, e: unchanged.selectedMomentKey }).toEqual({ c: inspected, e: '1000:a' });
 
     // An inspected variant the restored document no longer has is not inspected either.
     const saved = projectReducer(placed, { type: 'SAVE_AS_VARIANT', payload: { name: 'Kept', source: 'working' } });

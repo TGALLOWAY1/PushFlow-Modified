@@ -1,17 +1,15 @@
 /**
  * EventsPanel.
  *
- * Temporal event navigator for the workspace. Derives PerformanceMoments
- * (polyphonic groups of simultaneous notes) from active SoundStreams and
- * renders them as a scrollable, selectable list.
+ * Temporal event navigator for the workspace: the project's Performance
+ * Events (everything struck at one instant), numbered and keyed by the shared
+ * event timeline (S4.1), so row 12 is Event 12 on the grid, the timeline and
+ * the chart too. Every event is listed and selectable, including one whose
+ * Sounds aren't placed yet (its cost reads "—").
  *
- * Selecting a moment:
- * - dispatches SELECT_EVENT for the first matching FingerAssignment
- * - scrolls the timeline to the event's time position
- * - exposes selection state for downstream grid/onion-view consumers
- *
- * Reuses V1 event-analysis patterns: epsilon-based temporal grouping,
- * keyboard navigation (↑/↓ and j/k while focus is in the list), auto-scroll selected row.
+ * Selecting an event dispatches SELECT_EVENT with its momentKey; the grid, the
+ * timeline and the chart read the same key. ↑/↓ and j/k step through the list
+ * while focus is in it, and the selected row scrolls into view.
  *
  * Costs come from the plan of the layout on screen (S3.2), which the
  * SubjectChip at the top names.
@@ -19,71 +17,14 @@
 
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getActiveStreams, getDisplayedExecutionPlan, type SoundStream } from '../state/projectState';
-import { groupIntoMoments, summarizeMomentCost, type MomentCost } from '@/engine';
-import { MOMENT_EPSILON } from '../../types/performanceEvent';
+import { getDisplayedExecutionPlan } from '../state/projectState';
+import { summarizeMomentCost, type MomentCost } from '@/engine';
 import { useInputHandler } from '../input/inputRegistry';
 import { formatBarBeat } from '../../utils/musicalTime';
 import { FACTOR_KEYS, FACTOR_META, factorsFromBreakdown } from '../analysis/factorMeta';
+import { formatEventLabel, getEventTimeline, planNotesByEvent, resolveEventKey, type TimelineEvent } from '../analysis/eventTimeline';
 import { inspectedSubject } from '../state/layoutSubject';
 import { SubjectChip } from './shared/SubjectChip';
-
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-/** Maximum time gap (seconds) to consider events simultaneous. */
-// Re-declaring this drifted from the canonical value; import the single source.
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-/** A grouped moment in the performance timeline (polyphonic event). */
-export interface PerformanceMomentSummary {
-  momentIndex: number;
-  /** Stable moment identity (momentKey). */
-  momentKey: string;
-  startTime: number;
-  beatPosition: string;
-  sounds: Array<{ name: string; color: string; streamId: string }>;
-  noteCount: number;
-}
-
-// ─── Moment Derivation ──────────────────────────────────────────────────────
-
-/** bar.beat.sixteenth (T43); both branches used to drop the sixteenth, so off-beat events read alike. */
-export const formatBeatPosition = formatBarBeat;
-
-/**
- * Derive PerformanceMoments from active SoundStreams, using the shared moment
- * grouping (groupIntoMoments), so this list, the chart and the inspector agree
- * on what one moment is.
- */
-export function derivePerformanceMoments(
-  streams: SoundStream[],
-  tempo: number,
-): PerformanceMomentSummary[] {
-  const notes: Array<{ startTime: number; voiceId: string; stream: SoundStream }> = [];
-  for (const stream of streams) {
-    for (const event of stream.events) {
-      notes.push({ startTime: event.startTime, voiceId: stream.id, stream });
-    }
-  }
-
-  return groupIntoMoments(notes).map(moment => {
-    const soundMap = new Map<string, { name: string; color: string; streamId: string }>();
-    for (const { stream } of moment.items) {
-      if (!soundMap.has(stream.id)) {
-        soundMap.set(stream.id, { name: stream.name, color: stream.color, streamId: stream.id });
-      }
-    }
-    return {
-      momentIndex: moment.index,
-      momentKey: moment.key,
-      startTime: moment.startTime,
-      beatPosition: formatBeatPosition(moment.startTime, tempo),
-      sounds: Array.from(soundMap.values()),
-      noteCount: moment.items.length,
-    };
-  });
-}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -95,78 +36,46 @@ export function EventsPanel({
   onToggleOnionSkin: () => void;
 }) {
   const { state, dispatch } = useProject();
-  const activeStreams = getActiveStreams(state);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const moments = useMemo(
-    () => derivePerformanceMoments(activeStreams, state.tempo),
-    [activeStreams, state.tempo],
-  );
+  const timeline = getEventTimeline(state);
+  const events = timeline.events;
+  const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
+  const selectedIdx = resolveEventKey(timeline, state.selectedMomentKey)?.index ?? null;
 
-  // Determine which moment is currently selected based on selectedEventIndex
-  const selectedMomentIdx = useMemo(() => {
-    if (state.selectedEventIndex === null) return null;
-    const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
-    if (!assignments) return null;
-    const selected = assignments.find(a => a.eventIndex === state.selectedEventIndex);
-    if (!selected) return null;
-    const idx = moments.findIndex(m => Math.abs(m.startTime - selected.startTime) < MOMENT_EPSILON);
-    return idx >= 0 ? idx : null;
-  }, [state, moments]);
-
-  const handleMomentClick = useCallback((moment: PerformanceMomentSummary) => {
-    const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
-    if (assignments) {
-      const match = assignments.find(
-        a => Math.abs(a.startTime - moment.startTime) < MOMENT_EPSILON
-      );
-      if (match?.eventIndex !== undefined) {
-        dispatch({ type: 'SELECT_EVENT', payload: match.eventIndex });
-        return;
-      }
-    }
-    // Fallback: move playhead to the moment's time for timeline scrolling
-    dispatch({ type: 'SET_CURRENT_TIME', payload: moment.startTime });
-  }, [state, dispatch]);
+  const selectEvent = useCallback((event: TimelineEvent) => {
+    dispatch({ type: 'SELECT_EVENT', payload: { key: event.key, startTime: event.startTime } });
+  }, [dispatch]);
 
   // ↑/↓ and j/k step through the list while focus is in it (the input table's
   // events-list-keys row; the listener skips selects, text fields and menus).
   useInputHandler('events-list-keys', e => {
     // Nothing while playing (T61 slice).
-    if (state.isPlaying || moments.length === 0) return false;
-    const currentIdx = selectedMomentIdx ?? -1;
+    if (state.isPlaying || events.length === 0) return false;
+    const currentIdx = selectedIdx ?? -1;
     if (e.key === 'ArrowDown' || e.key === 'j') {
-      handleMomentClick(moments[Math.min(currentIdx + 1, moments.length - 1)]);
+      selectEvent(events[Math.min(currentIdx + 1, events.length - 1)]!);
     } else {
-      handleMomentClick(moments[Math.max(currentIdx - 1, 0)]);
+      selectEvent(events[Math.max(currentIdx - 1, 0)]!);
     }
   });
 
-  // Auto-scroll selected moment row into view (V1 pattern)
+  // Auto-scroll selected event row into view (V1 pattern)
   useEffect(() => {
-    if (selectedMomentIdx === null || !listRef.current) return;
-    const row = listRef.current.querySelector(`[data-moment-index="${selectedMomentIdx}"]`);
+    if (selectedIdx === null || !listRef.current) return;
+    const row = listRef.current.querySelector(`[data-moment-index="${selectedIdx}"]`);
     row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [selectedMomentIdx]);
+  }, [selectedIdx]);
 
-  // Per-moment cost, read once per moment: every note of a moment carries the
-  // whole moment's cost, so summing them made a chord cost more per note it had.
-  const momentCosts = useMemo(() => {
+  // Per-event cost, read once per event: every note of an event carries the
+  // whole event's cost, so summing them made a chord cost more per note it had.
+  const eventCosts = useMemo(() => {
     const map = new Map<number, MomentCost>();
-    const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
-    if (!assignments || moments.length === 0) return map;
-
-    const planMoments = groupIntoMoments(assignments);
-    const byKey = new Map(planMoments.map(m => [m.key, m]));
-    for (const moment of moments) {
-      const match = byKey.get(moment.momentKey)
-        ?? planMoments.find(m => Math.abs(m.startTime - moment.startTime) <= MOMENT_EPSILON);
-      if (match) map.set(moment.momentIndex, summarizeMomentCost(match.items));
-    }
+    for (const [index, notes] of planNotesByEvent(timeline, assignments)) map.set(index, summarizeMomentCost(notes));
     return map;
-  }, [state, moments]);
+  }, [timeline, assignments]);
 
-  if (moments.length === 0) {
+  if (events.length === 0) {
     return (
       <div className="py-6 text-center text-pf-sm text-[var(--text-tertiary)]">
         No events. Import MIDI or compose a pattern.
@@ -182,7 +91,7 @@ export function EventsPanel({
       </div>
       <div className="flex items-center justify-between px-1">
         <span className="text-pf-xs text-[var(--text-tertiary)]">
-          {moments.length} events
+          {events.length} events
         </span>
         <div className="flex items-center gap-1.5">
           <button
@@ -198,7 +107,7 @@ export function EventsPanel({
               <circle cx="8" cy="8" r="7.5" opacity="0.25" />
             </svg>
           </button>
-          {selectedMomentIdx !== null && (
+          {selectedIdx !== null && (
             <button
               className="text-pf-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
               onClick={() => dispatch({ type: 'SELECT_EVENT', payload: null })}
@@ -218,13 +127,14 @@ export function EventsPanel({
       </div>
 
       <div ref={listRef} data-input-scope="events" className="overflow-y-auto space-y-0.5" style={{ maxHeight: 'calc(100vh - 310px)' }}>
-        {moments.map((moment) => (
-          <MomentRow
-            key={moment.momentIndex}
-            moment={moment}
-            isSelected={selectedMomentIdx === moment.momentIndex}
-            momentCost={momentCosts.get(moment.momentIndex) ?? null}
-            onClick={() => handleMomentClick(moment)}
+        {events.map(event => (
+          <EventRow
+            key={event.key}
+            event={event}
+            tempo={state.tempo}
+            isSelected={selectedIdx === event.index}
+            eventCost={eventCosts.get(event.index) ?? null}
+            onClick={() => selectEvent(event)}
           />
         ))}
       </div>
@@ -234,32 +144,37 @@ export function EventsPanel({
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-function MomentRow({
-  moment,
+function EventRow({
+  event,
+  tempo,
   isSelected,
-  momentCost,
+  eventCost,
   onClick,
 }: {
-  moment: PerformanceMomentSummary;
+  event: TimelineEvent;
+  tempo: number;
   isSelected: boolean;
-  momentCost: MomentCost | null;
+  /** Null when the plan plays no note of this event (none of its Sounds is placed). */
+  eventCost: MomentCost | null;
   onClick: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
-  const costBreakdown = momentCost?.breakdown ?? null;
-  const unplayable = momentCost?.difficulty === 'Unplayable';
+  const costBreakdown = eventCost?.breakdown ?? null;
+  const unplayable = eventCost?.difficulty === 'Unplayable';
 
-  // Cost severity colour, from the moment's own difficulty level.
-  const costColor = !momentCost
+  // Cost severity colour, from the event's own difficulty level.
+  const costColor = !eventCost
     ? 'text-[var(--text-tertiary)]'
-    : momentCost.difficulty === 'Unplayable' || momentCost.difficulty === 'Hard'
+    : eventCost.difficulty === 'Unplayable' || eventCost.difficulty === 'Hard'
       ? 'text-red-400'
-      : momentCost.difficulty === 'Medium' ? 'text-amber-400' : 'text-green-400';
+      : eventCost.difficulty === 'Medium' ? 'text-amber-400' : 'text-green-400';
 
   return (
     <button
-      data-moment-index={moment.momentIndex}
+      data-moment-index={event.index}
+      data-selected={isSelected ? 'true' : undefined}
+      title={formatEventLabel(event, tempo)}
       className={`
         w-full text-left px-2 py-1.5 rounded-pf-md text-pf-sm transition-colors
         ${isSelected
@@ -272,12 +187,12 @@ function MomentRow({
       <div className="flex items-center gap-2">
         {/* Event label */}
         <span className={`text-pf-xs font-mono w-8 flex-shrink-0 ${isSelected ? 'text-blue-300' : 'text-[var(--text-tertiary)]'}`}>
-          {String(moment.momentIndex + 1).padStart(2, '0')}
+          {String(event.index + 1).padStart(2, '0')}
         </span>
 
         {/* Beat position */}
         <span className="text-pf-xs font-mono flex-1 text-[var(--text-secondary)]">
-          {moment.beatPosition}
+          {formatBarBeat(event.startTime, tempo)}
         </span>
 
         {/* Cost badge */}
@@ -285,8 +200,9 @@ function MomentRow({
           className={`text-pf-xs font-mono flex-shrink-0 w-10 text-right ${costBreakdown ? `cursor-pointer ${costColor}` : costColor}`}
           onClick={costBreakdown ? (e => { e.stopPropagation(); setExpanded(!expanded); }) : undefined}
           title={unplayable
-            ? `${momentCost!.unplayableNoteCount} of ${momentCost!.noteCount} notes can't be played`
-            : costBreakdown ? 'Cost of this event (once per event, not per note). Click for the breakdown' : 'No cost data'}
+            ? `${eventCost!.unplayableNoteCount} of ${eventCost!.noteCount} notes can't be played`
+            : costBreakdown ? 'Cost of this event (once per event, not per note). Click for the breakdown'
+              : eventCost ? 'No cost data' : 'Not analysed: none of its Sounds is placed'}
         >
           {unplayable ? '\u2717' : costBreakdown ? costBreakdown.total.toFixed(1) : '\u2014'}
         </span>
@@ -294,11 +210,11 @@ function MomentRow({
         {/* Note count badge */}
         <span
           className={`text-pf-xs flex-shrink-0 w-8 text-right ${
-            moment.noteCount > 3 ? 'text-amber-400' : 'text-[var(--text-tertiary)]'
+            event.noteCount > 3 ? 'text-amber-400' : 'text-[var(--text-tertiary)]'
           }`}
-          title={`${moment.noteCount} ${moment.noteCount === 1 ? 'note' : 'notes'} struck together`}
+          title={`${event.noteCount} ${event.noteCount === 1 ? 'note' : 'notes'} struck together`}
         >
-          {moment.noteCount}
+          {event.noteCount}
         </span>
       </div>
 

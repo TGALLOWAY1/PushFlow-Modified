@@ -268,8 +268,9 @@ export function identifyHardMoments(
 
   // Score each moment
   const reports: HardMomentReport[] = moments.map((moment, idx) => {
+    // A note's eventIndex is its place in plan.fingerAssignments in every solver (S4.1).
     const events = moment.assignments.map((a, aIdx) =>
-      explainEvent(a, moment.eventIndex + aIdx),
+      explainEvent(a, a.eventIndex ?? moment.eventIndex + aIdx),
     );
 
     const incomingTransition = transitions[idx]

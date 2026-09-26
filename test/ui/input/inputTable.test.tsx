@@ -23,6 +23,7 @@ import {
   projectReducer,
   type ProjectState,
 } from '../../../src/ui/state/projectState';
+import { getEventTimeline, resolveEventKey, type TimelineEvent } from '../../../src/ui/analysis/eventTimeline';
 import { useKeyboardShortcuts } from '../../../src/ui/hooks/useKeyboardShortcuts';
 import { VoicePalette } from '../../../src/ui/components/VoicePalette';
 import { InteractiveGrid } from '../../../src/ui/components/InteractiveGrid';
@@ -65,7 +66,7 @@ function Editor({ children }: { children?: ReactNode }) {
   return (
     <>
       <VoicePalette />
-      <InteractiveGrid padSize={48} assignments={plan?.fingerAssignments} selectedEventIndex={api.state.selectedEventIndex} />
+      <InteractiveGrid padSize={48} assignments={plan?.fingerAssignments} />
       <button type="button" data-testid="plain-button" onClick={buttonClick}>Loop</button>
       <select data-testid="plain-select" defaultValue="1"><option value="1">1</option><option value="2">2</option></select>
       <input data-testid="plain-input" />
@@ -104,9 +105,12 @@ const press = (key: string, init: Partial<KeyboardEventInit> = {}, target: Eleme
 /** A pad that holds a Sound, and one that doesn't, in the shown layout. */
 const occupiedPad = () => Object.keys(shownPads())[0]!;
 const emptyPad = () => ['7,7', '7,6', '6,7', '6,6'].find(k => !shownPads()[k])!;
-const eventTimes = () => [...new Set(getDisplayedExecutionPlan(api.state)!.fingerAssignments.map(a => a.startTime))].sort((a, b) => a - b);
-const selectedTime = () => getDisplayedExecutionPlan(api.state)!.fingerAssignments
-  .find(a => a.eventIndex === api.state.selectedEventIndex)?.startTime ?? null;
+/** The project's events' start times (S4.1), and the selected event's. */
+const eventTimes = () => getEventTimeline(api.state).events.map(e => e.startTime);
+const selectedTime = () => resolveEventKey(getEventTimeline(api.state), api.state.selectedMomentKey)?.startTime ?? null;
+/** Selects an event as the surfaces do: by its momentKey. */
+const selectEvent = (event: TimelineEvent) =>
+  act(() => api.dispatch({ type: 'SELECT_EVENT', payload: { key: event.key, startTime: event.startTime } }));
 
 /** Widgets with keys of their own (T63): a checkbox and a row of tabs, from the shared primitives. */
 function WidgetControls() {
@@ -193,12 +197,12 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
 
   'pad-click-moment': async () => {
     mount(await analysedProject());
-    const first = getDisplayedExecutionPlan(api.state)!.fingerAssignments.find(a => a.row !== undefined)!;
-    act(() => api.dispatch({ type: 'SELECT_EVENT', payload: first.eventIndex! }));
-    const key = Object.keys(shownPads()).find(k => k !== `${first.row},${first.col}`)!;
+    const first = getEventTimeline(api.state).events[0]!;
+    selectEvent(first);
+    const key = Object.keys(shownPads()).find(k => pad(k).dataset.struck !== 'true')!;
     fireEvent.click(pad(key));
     // The event stays; the pad and its Sound are selected.
-    expect(api.state.selectedEventIndex).toBe(first.eventIndex);
+    expect(api.state.selectedMomentKey).toBe(first.key);
     expect(api.state.selectedPadKey).toBe(key);
     expect(api.state.selectedStreamId).toBe(shownPads()[key]!.id);
     expect(pad(key).dataset.selected).toBe('true');
@@ -211,7 +215,7 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     expect(api.state.selectedPadKey).toBe(key);
     expect(api.state.selectedStreamId).toBe(shownPads()[key]!.id);
     // Selecting a pad no longer selects that Sound's first hit (T28).
-    expect(api.state.selectedEventIndex).toBeNull();
+    expect(api.state.selectedMomentKey).toBeNull();
     // An empty pad clears the selection.
     fireEvent.click(pad(emptyPad()));
     expect(api.state.selectedPadKey).toBeNull();
@@ -376,7 +380,7 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     expect(rows.length).toBeGreaterThan(2);
     // Outside the list, ↓ means nothing to the list.
     press('ArrowDown');
-    expect(api.state.selectedEventIndex).toBeNull();
+    expect(api.state.selectedMomentKey).toBeNull();
     // Inside it, ↓ and j move down, ↑ and k move up.
     fireEvent.click(rows[0]!);
     rows[0]!.focus();
@@ -419,8 +423,8 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
 
   'escape': async () => {
     const state = await analysedProject();
-    const first = getDisplayedExecutionPlan(state)!.fingerAssignments.find(a => a.row !== undefined)!;
-    mount({ ...state, selectedEventIndex: first.eventIndex! });
+    const first = getEventTimeline(state).events[0]!;
+    mount({ ...state, selectedMomentKey: first.key });
     const key = Object.keys(shownPads())[1]!;
     fireEvent.click(pad(key));
     fireEvent.click(soundRow(0));
@@ -437,9 +441,9 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     expect(api.state.selectedPadKey).toBe(key);
     press('Escape');
     expect(api.state.selectedPadKey).toBeNull();
-    expect(api.state.selectedEventIndex).toBe(first.eventIndex);
+    expect(api.state.selectedMomentKey).toBe(first.key);
     press('Escape');
-    expect(api.state.selectedEventIndex).toBeNull();
+    expect(api.state.selectedMomentKey).toBeNull();
     // Nothing left: the key is left alone.
     expect(press('Escape')).toBe(true);
   },

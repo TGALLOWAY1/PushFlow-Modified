@@ -810,7 +810,6 @@ function PerformanceWorkspaceInner() {
               )}
               assignments={assignments}
               layoutOverride={currentLayoutOverride}
-              selectedEventIndex={state.selectedEventIndex}
               onionSkin={onionSkin}
               voiceConstraints={state.voiceConstraints}
               gridLabels={viewSettings.gridLabels}

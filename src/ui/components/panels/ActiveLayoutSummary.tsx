@@ -24,7 +24,7 @@ import { type FingerType, ALL_FINGERS } from '../../../types/fingerModel';
 import { type ConstraintRelaxationSummary } from '../../../types/executionPlan';
 import { CostBreakdownBars, FeasibilityBadge } from './CostBreakdownBars';
 import { SelectedEventCard } from './SelectedEventCard';
-import { findSelectedMoment } from '../../analysis/selectedMoment';
+import { findSelectedEvent, getEventTimeline } from '../../analysis/eventTimeline';
 import { analysisScope, planSoundIds, scopeLineOf } from '../../analysis/analysisScope';
 import { EventCostChart } from './EventCostChart';
 import { LearnMoreModal } from './LearnMoreModal';
@@ -57,17 +57,16 @@ export function ActiveLayoutSummary() {
   const editHint = readOnlyHint(state);
   const fingerReason = useDisabledReason(editHint);
 
-  // Selected event data
-  const assignment = useMemo(() => {
-    if (state.selectedEventIndex === null || !assignments) return null;
-    return assignments.find(a => a.eventIndex === state.selectedEventIndex) ?? null;
-  }, [state.selectedEventIndex, assignments]);
-
-  // The selected event's whole moment, costed once (never summed per note).
-  const selectedMoment = useMemo(
-    () => findSelectedMoment(assignments, state.selectedEventIndex),
-    [assignments, state.selectedEventIndex],
+  // The selected event, whole (S4.1), costed once (never summed per note).
+  const timeline = getEventTimeline(state);
+  const selectedEvent = useMemo(
+    () => findSelectedEvent(timeline, assignments, state.selectedMomentKey),
+    [timeline, assignments, state.selectedMomentKey],
   );
+  // The selected note: the one a timeline click named, else the event's first.
+  const assignment = selectedEvent
+    ? selectedEvent.notes.find(a => a.eventKey !== undefined && a.eventKey === state.selectedNoteKey) ?? selectedEvent.notes[0] ?? null
+    : null;
   // The plan's own scope (see analysisScope.ts); the live scope when there is
   // no plan. Its placement makes a partly placed layout "Unfinished" (S3.3).
   const scoped = analysisScope(
@@ -79,8 +78,8 @@ export function ActiveLayoutSummary() {
 
   // Transition data
   const transition = useMemo(
-    () => buildSelectedTransitionModel(assignments ?? null, state.selectedEventIndex),
-    [assignments, state.selectedEventIndex],
+    () => buildSelectedTransitionModel(timeline, assignments ?? null, state.selectedMomentKey),
+    [timeline, assignments, state.selectedMomentKey],
   );
 
   // Event detail helpers
@@ -246,8 +245,8 @@ export function ActiveLayoutSummary() {
           {/* A partly placed layout: what is left to place, and "Place remaining N Sounds" (T25, T37). */}
           <UnplacedSounds />
 
-          {currentPlan && selectedMoment && (
-            <SelectedEventCard selected={selectedMoment} tempo={state.tempo} scope={scope} subject={subject} transition={transition} />
+          {currentPlan && selectedEvent && (
+            <SelectedEventCard selected={selectedEvent} tempo={state.tempo} scope={scope} subject={subject} transition={transition} />
           )}
 
           {/* Event difficulty chart (collapsible) */}
@@ -263,10 +262,11 @@ export function ActiveLayoutSummary() {
               {chartOpen && (
                 <EventCostChart
                   fingerAssignments={currentPlan.fingerAssignments}
+                  timeline={timeline}
                   subject={subject}
                   tempo={state.tempo}
-                  selectedEventIndex={state.selectedEventIndex}
-                  onEventClick={(idx) => dispatch({ type: 'SELECT_EVENT', payload: idx })}
+                  selectedMomentKey={state.selectedMomentKey}
+                  onSelectEvent={selection => dispatch({ type: 'SELECT_EVENT', payload: selection })}
                 />
               )}
             </div>

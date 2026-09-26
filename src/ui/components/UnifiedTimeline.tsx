@@ -19,6 +19,7 @@ import { inspectedSubject } from '../state/layoutSubject';
 import { SubjectChip } from './shared/SubjectChip';
 import { useLaneImport } from '../hooks/useLaneImport';
 import { type FingerAssignment } from '../../types/executionPlan';
+import { eventAtTime, eventOfNote, getEventTimeline, resolveEventKey } from '../analysis/eventTimeline';
 import { RehearsalAudio, type RehearsalHit } from '../audio/rehearsalAudio';
 import { TimelineToolbar } from './TimelineToolbar';
 import { formatBarBeat, formatBarRange, formatSeconds } from '../../utils/musicalTime';
@@ -408,8 +409,8 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
       // Render unassigned streams: streams with events but no solver assignments
       // (muted streams, and since S3.3 unplaced ones, which the analysis never
       // scores) get "unassigned" pills so they remain visible in the timeline.
-      // Their index is negative: they are no event of the plan (a click selects
-      // the planned event at the same time, if any).
+      // Their index is negative: they are no note of the plan. A click still
+      // selects the whole event they belong to (S4.1).
       for (const s of visibleStreams) {
         if (!map.has(s.id) && s.events.length > 0) {
           const constraint = state.voiceConstraints[s.id];
@@ -515,25 +516,41 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
     : totalDuration * zoom + 100;
   const totalHeight = visibleStreams.length * TRACK_HEIGHT;
 
+  // ─── The selected event (S4.1) ─────────────────────────────────────────
+  // Its notes light up by eventKey; a muted Sound's notes, which belong to no
+  // event, light up with the event struck at their time.
+  const timeline = getEventTimeline(state);
+  const selectedEvent = resolveEventKey(timeline, state.selectedMomentKey);
+  const mutedNotesAtSelection = useMemo(() => {
+    const keys = new Set<string>();
+    if (!selectedEvent) return keys;
+    for (const list of streamAssignments.values()) {
+      for (const a of list) {
+        if (a.eventKey === undefined || timeline.byNoteKey.has(a.eventKey)) continue;
+        if (eventAtTime(timeline, a.startTime) === selectedEvent) keys.add(a.eventKey);
+      }
+    }
+    return keys;
+  }, [timeline, selectedEvent, streamAssignments]);
+  const inSelectedEvent = (a: FingerAssignment) => !!selectedEvent && (a.eventKey !== undefined
+    ? selectedEvent.noteKeys.has(a.eventKey) || mutedNotesAtSelection.has(a.eventKey)
+    : eventAtTime(timeline, a.startTime) === selectedEvent);
+
   // ─── Auto-scroll to selected event ────────────────────────────────────
-  const prevSelectedRef = useRef(state.selectedEventIndex);
+  const selectedStart = selectedEvent?.startTime ?? null;
+  const prevSelectedRef = useRef(state.selectedMomentKey);
   useEffect(() => {
     if (
-      state.selectedEventIndex === null ||
-      state.selectedEventIndex === prevSelectedRef.current ||
+      selectedStart === null ||
+      state.selectedMomentKey === prevSelectedRef.current ||
       !scrollContainerRef.current
     ) {
-      prevSelectedRef.current = state.selectedEventIndex;
+      prevSelectedRef.current = state.selectedMomentKey;
       return;
     }
-    prevSelectedRef.current = state.selectedEventIndex;
+    prevSelectedRef.current = state.selectedMomentKey;
 
-    // Find the startTime of the selected event from assignments
-    const allAssignments = Array.from(streamAssignments.values()).flat();
-    const selected = allAssignments.find(a => a.eventIndex === state.selectedEventIndex);
-    if (!selected) return;
-
-    const x = (selected.startTime - minTime) * zoom;
+    const x = (selectedStart - minTime) * zoom;
     const container = scrollContainerRef.current;
     const viewWidth = container.clientWidth;
 
@@ -542,15 +559,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
     if (x < scrollLeft || x > scrollLeft + viewWidth - 40) {
       container.scrollTo({ left: Math.max(0, x - viewWidth / 3), behavior: 'smooth' });
     }
-  }, [state.selectedEventIndex, streamAssignments, minTime, zoom]);
-
-  // ─── Selected moment time (for multi-note highlighting) ─────────────────
-  const selectedMomentTime = useMemo(() => {
-    if (state.selectedEventIndex === null) return null;
-    const allA = Array.from(streamAssignments.values()).flat();
-    const sel = allA.find(a => a.eventIndex === state.selectedEventIndex);
-    return sel?.startTime ?? null;
-  }, [state.selectedEventIndex, streamAssignments]);
+  }, [state.selectedMomentKey, selectedStart, minTime, zoom]);
 
   // ─── Handlers ────────────────────────────────────────────────────────────
 
@@ -573,27 +582,18 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
     }
   }, []);
 
-  const handleEventClick = useCallback((clickedIndex: number, startTime: number) => {
-    // A note the plan doesn't cover (unplaced or muted) selects the planned
-    // event at the same time, so its whole moment still highlights; with none
-    // there is nothing to select.
-    const eventIndex = clickedIndex >= 0 ? clickedIndex
-      : assignments?.find(a => a.eventIndex !== undefined && Math.abs(a.startTime - startTime) < 0.001)?.eventIndex;
-    if (eventIndex === undefined || eventIndex < 0) return;
-    dispatch({ type: 'SELECT_EVENT', payload: eventIndex });
-    // Also select the moment so all simultaneous notes highlight
-    const allAssignments = Array.from(streamAssignments.values()).flat();
-    const clicked = allAssignments.find(a => a.eventIndex === eventIndex);
-    if (clicked) {
-      // Find moment index: count distinct start times up to this one
-      const uniqueTimes = [...new Set(allAssignments.map(a => a.startTime))].sort((a, b) => a - b);
-      const EPSILON = 0.001;
-      const momentIdx = uniqueTimes.findIndex(t => Math.abs(t - clicked.startTime) < EPSILON);
-      if (momentIdx >= 0) {
-        dispatch({ type: 'SELECT_MOMENT', payload: momentIdx });
-      }
-    }
-  }, [dispatch, streamAssignments, assignments]);
+  // A click on any note selects its whole event (S4.1): by the note's eventKey,
+  // whether or not the plan covers it (an unplaced Sound's note); a muted
+  // Sound's note, which belongs to no event, selects the event at its time.
+  // With no event there, there is nothing to select.
+  const handleNoteClick = useCallback((note: FingerAssignment) => {
+    const event = eventOfNote(timeline, note);
+    if (!event) return;
+    dispatch({
+      type: 'SELECT_EVENT',
+      payload: { key: event.key, startTime: event.startTime, ...(note.eventKey !== undefined ? { noteKey: note.eventKey } : {}) },
+    });
+  }, [dispatch, timeline]);
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
@@ -831,8 +831,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                     const finger = a.finger as string | null;
                     const isRaw = hand === 'raw' || finger === 'unassigned';
                     const fingerLabel = (finger && finger !== 'unassigned') ? FINGER_ABBREV[finger] ?? finger : '';
-                    const isSelected = a.eventIndex === state.selectedEventIndex
-                      || (selectedMomentTime !== null && Math.abs(a.startTime - selectedMomentTime) < 0.001);
+                    const isSelected = inSelectedEvent(a);
                     const handPrefix = a.assignedHand === 'left' ? 'L' : a.assignedHand === 'right' ? 'R' : '';
 
                     const isUnplayable = hand === 'Unplayable' && !unplaced;
@@ -880,6 +879,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                         data-start={a.startTime}
                         data-finger={fingerLabel ? `${handPrefix}${fingerLabel}` : ''}
                         data-placement={unplaced ? 'unplaced' : undefined}
+                        data-selected={isSelected ? 'true' : undefined}
                         className={`absolute flex items-center justify-center rounded-sm transition-all cursor-pointer
                           ${isSelected ? 'z-20 ring-2 ring-yellow-400 scale-110' : 'z-10 hover:z-20 hover:scale-105'}`}
                         style={{
@@ -900,7 +900,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                           outline: relaxed.length > 0 ? '1.5px dashed #c084fc' : undefined,
                           outlineOffset: relaxed.length > 0 ? 1 : undefined,
                         }}
-                        onClick={() => handleEventClick(a.eventIndex ?? ai, a.startTime)}
+                        onClick={() => handleNoteClick(a)}
                         title={`${formatBarBeat(a.startTime, state.tempo)} (${formatSeconds(a.startTime)})${unplaced ? ' · not placed yet' : ''}${fingerLabel ? ` · ${handPrefix}${fingerLabel}` : ''}${a.cost ? ` · ${a.difficulty}` : ''}${a.constraintDiverges ? ' · differs from your finger preference' : ''}${relaxedNote.replace(' | ', ' · ')}`}
                       >
                         {a.constraintDiverges && (

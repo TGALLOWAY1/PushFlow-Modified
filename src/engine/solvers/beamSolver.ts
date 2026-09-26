@@ -53,6 +53,7 @@ import { summarizeConstraintRelaxation } from '../evaluation/constraintRelaxatio
 import { evaluatePerformance } from '../evaluation/canonicalEvaluator';
 import { type PerformanceCostBreakdown } from '../../types/costBreakdown';
 import { buildPerformanceMoments } from '../structure/momentBuilder';
+import { groupIntoMoments, withMomentIndices } from '../structure/momentGrouping';
 import {
   type PerformabilityObjective,
   combinePerformabilityComponents,
@@ -1577,32 +1578,32 @@ export class BeamSolver implements SolverStrategy {
 
 
     // === Build moment assignments (Invariant E: full moment cost) ===
+    // Moments come from the shared grouping (S4.1, T24), which also stamps each
+    // note's momentIndex, so a chord played a few ms apart is one moment here as
+    // it is in this solver's own groups, the greedy plan and the UI. (Grouping by
+    // exact millisecond split it.)
+    const planAssignments = withMomentIndices(fingerAssignments);
     const momentAssignments: MomentAssignment[] = [];
     let unplayableMomentCount = 0;
     let hardMomentCount = 0;
 
-    // Group fingerAssignments by startTime into moments
-    const momentGroups = new Map<number, FingerAssignment[]>();
-    for (const fa of fingerAssignments) {
-      const timeKey = Math.round(fa.startTime * 1000); // ms resolution
-      if (!momentGroups.has(timeKey)) momentGroups.set(timeKey, []);
-      momentGroups.get(timeKey)!.push(fa);
-    }
-
-    const sortedTimeKeys = [...momentGroups.keys()].sort((a, b) => a - b);
-    for (let mIdx = 0; mIdx < sortedTimeKeys.length; mIdx++) {
-      const timeKey = sortedTimeKeys[mIdx];
-      const groupAssignments = momentGroups.get(timeKey)!;
-      const startTime = groupAssignments[0].startTime;
+    for (const moment of groupIntoMoments(planAssignments)) {
+      const mIdx = moment.index;
+      const groupAssignments = moment.items;
+      const startTime = moment.startTime;
 
       // Use the first non-unplayable assignment's cost as the moment cost,
-      // since cost is now moment-level (all assignments in the group share it)
+      // since cost is now moment-level (all assignments in the group share it).
+      // A moment with any note that can't be played is unplayable, as in the
+      // greedy plan and the UI (summarizeMomentCost), so a playable note never
+      // hides one struck with it (Codex review on #111).
       const playableAssignment = groupAssignments.find(a => a.assignedHand !== 'Unplayable');
-      const momentCost = playableAssignment?.cost ?? Infinity;
+      const anyUnplayable = groupAssignments.some(a => a.assignedHand === 'Unplayable');
+      const momentCost = anyUnplayable ? Infinity : playableAssignment?.cost ?? Infinity;
       const momentDifficulty = getDifficulty(momentCost);
-      const momentBreakdown = playableAssignment?.costBreakdown ?? {
-        ...createZeroV1CostBreakdown(), total: Infinity,
-      };
+      const momentBreakdown = playableAssignment?.costBreakdown && !anyUnplayable
+        ? playableAssignment.costBreakdown
+        : { ...(playableAssignment?.costBreakdown ?? createZeroV1CostBreakdown()), total: Infinity };
 
       if (momentDifficulty === 'Unplayable') unplayableMomentCount++;
       else if (momentDifficulty === 'Hard') hardMomentCount++;
@@ -1654,7 +1655,7 @@ export class BeamSolver implements SolverStrategy {
       unplayableCount,
       hardCount,
       mediumCount,
-      fingerAssignments,
+      fingerAssignments: planAssignments,
       padFingerOwnership,
       constraintRelaxation,
       momentAssignments,

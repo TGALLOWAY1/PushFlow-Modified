@@ -22,7 +22,7 @@ async function badgeLevelsWhileSelecting(page: Page, pf: PfHandle, n: number): P
   for (let i = 0; i < n; i++) {
     await selectMoment(page, i);
     await page.getByRole('button', { name: 'Costs', exact: true }).click();
-    await expect.poll(async () => { const s = await pf.call('status'); return s.selectedMomentIndex ?? s.selectedEventIndex; }).not.toBeNull();
+    await expect.poll(async () => (await pf.call('status')).selectedEvent).toBe(i);
     // The selected event gets its own card, beside the pinned layout verdict.
     await expect(page.getByTestId('selected-event-card')).toBeVisible();
     for (const badge of await page.getByTestId('verdict-badge').all()) {

@@ -56,8 +56,8 @@ describe('projectReducer saved variant loading', () => {
     state.savedVariants = [makeVariant()];
     state.inspectedLayout = { kind: 'candidate', id: 'candidate-1' };
     state.compareCandidateId = 'candidate-2';
-    state.selectedEventIndex = 4;
-    state.selectedMomentIndex = 2;
+    state.selectedMomentKey = '1000:a';
+    state.selectedNoteKey = 'n1';
     state.analysisStale = false;
 
     const next = projectReducer(state, {
@@ -67,8 +67,8 @@ describe('projectReducer saved variant loading', () => {
 
     expect(next.inspectedLayout).toBeNull();
     expect(next.compareCandidateId).toBeNull();
-    expect(next.selectedEventIndex).toBeNull();
-    expect(next.selectedMomentIndex).toBeNull();
+    expect(next.selectedMomentKey).toBeNull();
+    expect(next.selectedNoteKey).toBeNull();
     expect(next.analysisStale).toBe(true);
   });
 });

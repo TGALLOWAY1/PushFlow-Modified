@@ -168,8 +168,20 @@ export interface FingerAssignment {
   difficulty: DifficultyLevel;
   row?: number;
   col?: number;
+  /**
+   * The note's index in the analysed performance (Performance.events), the same
+   * in every solver (S4.1, T24). Unique within a plan.
+   */
   eventIndex?: number;
+  /**
+   * The index of the note's moment (everything struck at one instant) among the
+   * plan's moments, from the shared groupIntoMoments (S4.1, T24), the same in
+   * every solver. The UI numbers events over the whole performance, placed or
+   * not (src/ui/analysis/eventTimeline.ts); the two agree when every Sound is placed.
+   */
+  momentIndex?: number;
   padId?: string;
+  /** The note's PerformanceEvent.eventKey: its identity across plans. */
   eventKey?: string;
   /**
    * True when the plan's fingering differs from the preference the user set for

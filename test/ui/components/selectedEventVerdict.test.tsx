@@ -30,6 +30,7 @@ import {
   type ProjectAction,
 } from '../../../src/ui/state/projectState';
 import { FACTOR_KEYS } from '../../../src/ui/analysis/factorMeta';
+import { eventOfNote, formatEventLabel, getEventTimeline, type TimelineEvent } from '../../../src/ui/analysis/eventTimeline';
 import { scoringRequestFor } from '../../../src/ui/analysis/layoutAnalysis';
 import { analyseAndScoreLayout } from '../../../src/ui/analysis/scoreLayout';
 import { type CandidateSolution } from '../../../src/types/candidateSolution';
@@ -59,6 +60,11 @@ beforeAll(async () => {
   analysed = projectReducer(state, { type: 'SET_ANALYSIS_RESULT', payload: analysis });
 }, 60_000);
 
+/** Selects an event as every surface does (S4.1): by its momentKey, optionally naming a note. */
+function select(event: TimelineEvent, noteKey?: string) {
+  act(() => dispatch({ type: 'SELECT_EVENT', payload: { key: event.key, startTime: event.startTime, noteKey } }));
+}
+
 function renderPanels() {
   return render(
     <ProjectProvider initialState={analysed}>
@@ -79,10 +85,10 @@ describe('verdict with an event selected', () => {
 
   it('keeps the whole-layout verdict pinned and never shows "Feasible" for any selected event', () => {
     renderPanels();
-    const moments = groupIntoMoments(plan.fingerAssignments);
-    for (const moment of moments) {
-      for (const a of moment.items) {
-        act(() => dispatch({ type: 'SELECT_EVENT', payload: a.eventIndex! }));
+    const timeline = getEventTimeline(analysed);
+    for (const a of plan.fingerAssignments) {
+      {
+        select(eventOfNote(timeline, a)!, a.eventKey);
         const badges = screen.getAllByTestId('verdict-badge');
         expect(badges).toHaveLength(2);
         for (const badge of badges) {
@@ -95,12 +101,15 @@ describe('verdict with an event selected', () => {
 
   it('shows the selected event in its own card: all five factors, or "Unplayable" instead of zero bars', () => {
     renderPanels();
+    const timeline = getEventTimeline(analysed);
     const moments = groupIntoMoments(plan.fingerAssignments);
+    // The plan covers every note, so its moments are the project's events.
+    expect(moments.map(m => m.key)).toEqual(timeline.events.map(e => e.key));
     for (const moment of moments) {
-      act(() => dispatch({ type: 'SELECT_EVENT', payload: moment.items[moment.items.length - 1].eventIndex! }));
+      select(timeline.events[moment.index]!);
       for (const panel of ['costs', 'summary']) {
         const card = within(screen.getByTestId(panel)).getByTestId('selected-event-card');
-        expect(card.textContent).toContain(`Event ${moment.index + 1}`);
+        expect(within(card).getByTestId('selected-event-label').textContent).toBe(formatEventLabel(timeline.events[moment.index]!, analysed.tempo));
         expect(within(card).getByTestId('verdict-scope')).toBeTruthy();
         const level = within(card).getByTestId('moment-verdict').getAttribute('data-level');
         const unplayable = moment.items.some(a => a.assignedHand === 'Unplayable');
@@ -118,7 +127,7 @@ describe('verdict with an event selected', () => {
 
   it('shows no Selected event card and keeps the verdict once the selection is cleared', () => {
     renderPanels();
-    act(() => dispatch({ type: 'SELECT_EVENT', payload: plan.fingerAssignments[0].eventIndex! }));
+    select(getEventTimeline(analysed).events[0]!);
     act(() => dispatch({ type: 'SELECT_EVENT', payload: null }));
     expect(screen.queryByTestId('selected-event-card')).toBeNull();
     expect(screen.getAllByTestId('verdict-badge').map(b => b.getAttribute('data-level'))).toEqual(['infeasible', 'infeasible']);
@@ -175,9 +184,19 @@ describe('the app\'s own analysis of a partly placed layout (S3.3, T25)', () => 
       }
     };
     check();
-    for (const moment of groupIntoMoments(placedPlan.fingerAssignments)) {
-      act(() => dispatch({ type: 'SELECT_EVENT', payload: moment.items[0]!.eventIndex! }));
+    // Every one of the 32 events (S4.1): one no placed Sound strikes would read
+    // "Not analysed" in its card, the others their own level.
+    const timeline = getEventTimeline(placedOnly);
+    const analysedEvents = new Set(placedPlan.fingerAssignments.map(a => eventOfNote(timeline, a)!.index));
+    expect(timeline.events).toHaveLength(32);
+    for (const event of timeline.events) {
+      select(event);
       check();
+      for (const panel of ['costs', 'summary']) {
+        const level = within(within(screen.getByTestId(panel)).getByTestId('selected-event-card')).getByTestId('moment-verdict').getAttribute('data-level');
+        if (analysedEvents.has(event.index)) expect(level).not.toBe('unanalysed');
+        else expect(level).toBe('unanalysed');
+      }
     }
     // The unplaced Sounds are listed, each draggable onto a pad, with "Place remaining 3 Sounds".
     for (const panel of ['costs', 'summary']) {

@@ -126,7 +126,7 @@ export function restoreDocument(
     analysisStale: state.analysisStale || analysisInputsChanged(state, restored),
     ...(layoutsChanged || inspectionGone ? { inspectedLayout: null } : {}),
     ...(layoutsChanged ? { selectedPadKey: null } : {}),
-    ...(soundsChanged ? { selectedEventIndex: null, selectedMomentIndex: null } : {}),
+    ...(soundsChanged ? { selectedMomentKey: null, selectedNoteKey: null } : {}),
     ...(soundsChanged && !restored.soundStreams.some(s => s.id === state.armedStreamId) ? { armedStreamId: null } : {}),
   });
 }

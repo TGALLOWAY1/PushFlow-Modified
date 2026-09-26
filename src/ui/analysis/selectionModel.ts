@@ -1,4 +1,5 @@
-import { type FingerAssignment, type MomentAssignment } from '../../types/executionPlan';
+import { type FingerAssignment } from '../../types/executionPlan';
+import { planNotesByEvent, resolveEventKey, type EventTimeline } from './eventTimeline';
 
 export interface EventMoment {
   startTime: number;
@@ -40,49 +41,31 @@ function assignmentPadKey(assignment: FingerAssignment): string | null {
   return `${assignment.row},${assignment.col}`;
 }
 
-export function buildEventMoments(assignments?: FingerAssignment[] | null): EventMoment[] {
-  if (!assignments || assignments.length === 0) return [];
-
-  const byTime = new Map<number, FingerAssignment[]>();
-  for (const assignment of assignments) {
-    const current = byTime.get(assignment.startTime) ?? [];
-    current.push(assignment);
-    byTime.set(assignment.startTime, current);
-  }
-
-  return [...byTime.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([startTime, groupedAssignments]) => ({
-      startTime,
-      assignments: groupedAssignments,
-    }));
-}
-
-export function getMomentIndexForSelectedEvent(
-  assignments: FingerAssignment[] | null | undefined,
-  selectedEventIndex: number | null | undefined,
-): number {
-  if (!assignments || selectedEventIndex === null || selectedEventIndex === undefined) return -1;
-  const selected = assignments.find(a => a.eventIndex === selectedEventIndex);
-  if (!selected) return -1;
-  return buildEventMoments(assignments).findIndex(moment => moment.startTime === selected.startTime);
-}
-
+/**
+ * The selected event (S4.1), the next and the previous event the plan plays,
+ * and the moves between them. Events are the timeline's (whole moments, by
+ * eventKey), so a chord played a few ms apart is one event here as everywhere.
+ * Null when nothing is selected or the plan plays no note at the selected event.
+ */
 export function buildSelectedTransitionModel(
-  assignments: FingerAssignment[] | null | undefined,
-  selectedEventIndex: number | null | undefined,
+  timeline: EventTimeline,
+  assignments: readonly FingerAssignment[] | null | undefined,
+  selectedMomentKey: string | null | undefined,
 ): SelectedTransitionModel | null {
-  if (!assignments || assignments.length === 0 || selectedEventIndex === null || selectedEventIndex === undefined) {
-    return null;
-  }
+  const event = resolveEventKey(timeline, selectedMomentKey);
+  if (!event || !assignments || assignments.length === 0) return null;
+  const byEvent = planNotesByEvent(timeline, assignments);
+  const at = (index: number): EventMoment | null => {
+    const notes = byEvent.get(index);
+    return notes ? { startTime: timeline.events[index]!.startTime, assignments: notes } : null;
+  };
+  const current = at(event.index);
+  if (!current) return null;
+  let next: EventMoment | null = null;
+  for (let i = event.index + 1; i < timeline.events.length && !next; i++) next = at(i);
+  let previous: EventMoment | null = null;
+  for (let i = event.index - 1; i >= 0 && !previous; i--) previous = at(i);
 
-  const moments = buildEventMoments(assignments);
-  const momentIndex = getMomentIndexForSelectedEvent(assignments, selectedEventIndex);
-  if (momentIndex < 0) return null;
-
-  const current = moments[momentIndex];
-  const next = moments[momentIndex + 1] ?? null;
-  const previous = momentIndex > 0 ? moments[momentIndex - 1] : null;
   const currentPadKeys = new Set(current.assignments.map(assignmentPadKey).filter((key): key is string => key !== null));
   const nextPadKeys = new Set((next?.assignments ?? []).map(assignmentPadKey).filter((key): key is string => key !== null));
   const previousPadKeys = new Set((previous?.assignments ?? []).map(assignmentPadKey).filter((key): key is string => key !== null));
@@ -120,105 +103,6 @@ export function buildSelectedTransitionModel(
   });
   const nextOnlyAssignments = (next?.assignments ?? []).filter(assignment => {
     const key = assignmentPadKey(assignment);
-    return !key || !currentPadKeys.has(key);
-  });
-
-  return {
-    current,
-    next,
-    previous,
-    currentPadKeys,
-    nextPadKeys,
-    previousPadKeys,
-    sharedPadKeys,
-    fingerMoves,
-    currentOnlyAssignments,
-    nextOnlyAssignments,
-    timeDelta: next ? next.startTime - current.startTime : null,
-  };
-}
-
-// ============================================================================
-// Moment-indexed selection (new canonical path)
-// ============================================================================
-
-/**
- * Build a transition model directly from MomentAssignment[] and a moment index.
- * This is the preferred path — no re-derivation of grouping needed.
- */
-export function buildMomentTransitionModel(
-  momentAssignments: MomentAssignment[] | null | undefined,
-  selectedMomentIndex: number | null | undefined,
-): SelectedTransitionModel | null {
-  if (!momentAssignments || momentAssignments.length === 0 ||
-      selectedMomentIndex === null || selectedMomentIndex === undefined ||
-      selectedMomentIndex < 0 || selectedMomentIndex >= momentAssignments.length) {
-    return null;
-  }
-
-  // Convert MomentAssignment to EventMoment for compatibility
-  const toEventMoment = (ma: MomentAssignment): EventMoment => ({
-    startTime: ma.startTime,
-    assignments: ma.noteAssignments.map(na => ({
-      noteNumber: na.noteNumber,
-      voiceId: na.soundId,
-      startTime: ma.startTime,
-      assignedHand: na.hand,
-      finger: na.finger,
-      cost: ma.cost,
-      costBreakdown: ma.costBreakdown,
-      difficulty: ma.difficulty,
-      row: na.row,
-      col: na.col,
-      padId: na.padId,
-      eventKey: na.noteKey,
-    })),
-  });
-
-  const current = toEventMoment(momentAssignments[selectedMomentIndex]);
-  const next = selectedMomentIndex + 1 < momentAssignments.length
-    ? toEventMoment(momentAssignments[selectedMomentIndex + 1])
-    : null;
-  const previous = selectedMomentIndex > 0
-    ? toEventMoment(momentAssignments[selectedMomentIndex - 1])
-    : null;
-
-  const currentPadKeys = new Set(current.assignments.map(assignmentPadKey).filter((key): key is string => key !== null));
-  const nextPadKeys = new Set((next?.assignments ?? []).map(assignmentPadKey).filter((key): key is string => key !== null));
-  const previousPadKeys = new Set((previous?.assignments ?? []).map(assignmentPadKey).filter((key): key is string => key !== null));
-  const sharedPadKeys = new Set([...currentPadKeys].filter(key => nextPadKeys.has(key)));
-
-  const nextFingerAssignments = (next?.assignments ?? []).filter(
-    a => a.assignedHand !== 'Unplayable' && a.finger,
-  ) as Array<FingerAssignment & { assignedHand: 'left' | 'right'; finger: NonNullable<FingerAssignment['finger']> }>;
-
-  const currentFingerAssignments = current.assignments.filter(
-    a => a.assignedHand !== 'Unplayable' && a.finger,
-  ) as Array<FingerAssignment & { assignedHand: 'left' | 'right'; finger: NonNullable<FingerAssignment['finger']> }>;
-
-  const fingerMoves: TransitionFingerMove[] = nextFingerAssignments.map(nextAssignment => {
-    const matchingCurrent = currentFingerAssignments.find(ca =>
-      ca.assignedHand === nextAssignment.assignedHand &&
-      ca.finger === nextAssignment.finger,
-    );
-    const fromPad = matchingCurrent ? assignmentPadKey(matchingCurrent) : null;
-    const toPad = assignmentPadKey(nextAssignment);
-    return {
-      hand: nextAssignment.assignedHand,
-      finger: nextAssignment.finger,
-      fromPad,
-      toPad,
-      isHold: !!fromPad && !!toPad && fromPad === toPad,
-      rawDistance: fromPad && toPad ? distanceBetweenPads(fromPad, toPad) : undefined,
-    };
-  });
-
-  const currentOnlyAssignments = current.assignments.filter(a => {
-    const key = assignmentPadKey(a);
-    return !key || !nextPadKeys.has(key);
-  });
-  const nextOnlyAssignments = (next?.assignments ?? []).filter(a => {
-    const key = assignmentPadKey(a);
     return !key || !currentPadKeys.has(key);
   });
 

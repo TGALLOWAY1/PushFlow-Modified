@@ -21,7 +21,6 @@ interface PadGridProps {
   layout: Layout;
   voices: Voice[];
   assignments?: FingerAssignment[];
-  selectedEventIndex?: number | null;
   onPadClick?: (row: number, col: number) => void;
   /** Render smaller pads for side-by-side comparison. */
   compact?: boolean;
@@ -55,7 +54,7 @@ interface PadSummary {
   assignments: FingerAssignment[];
 }
 
-export function PadGrid({ layout, voices, assignments, selectedEventIndex, onPadClick, compact, diffPads, label, labelColor }: PadGridProps) {
+export function PadGrid({ layout, voices, assignments, onPadClick, compact, diffPads, label, labelColor }: PadGridProps) {
   const padSize = compact ? 'w-10 h-10' : 'w-14 h-14';
   const padSizeClass = compact ? 'w-10' : 'w-14';
   // Text never goes below 11 px (T64): compact pads show one line of name
@@ -118,12 +117,6 @@ export function PadGrid({ layout, voices, assignments, selectedEventIndex, onPad
     return map;
   }, [layout, assignments, voiceById]);
 
-  // Find selected assignment's pad
-  const selectedAssignment = assignments?.find(a => a.eventIndex === selectedEventIndex);
-  const selectedPadKey = selectedAssignment?.row !== undefined && selectedAssignment?.col !== undefined
-    ? `${selectedAssignment.row},${selectedAssignment.col}`
-    : null;
-
   // Render rows top-to-bottom (row 7 at top, row 0 at bottom)
   const rows = [];
   for (let row = 7; row >= 0; row--) {
@@ -131,7 +124,6 @@ export function PadGrid({ layout, voices, assignments, selectedEventIndex, onPad
     for (let col = 0; col < 8; col++) {
       const padKey = `${row},${col}`;
       const summary = padSummaries.get(padKey);
-      const isSelected = padKey === selectedPadKey;
       const isDiff = diffPads?.has(padKey) ?? false;
       const isLeftZone = col < 4;
 
@@ -177,12 +169,11 @@ export function PadGrid({ layout, voices, assignments, selectedEventIndex, onPad
             relative flex flex-col items-center justify-center
             ${padSize} rounded-pf-lg ${textSize} font-mono leading-tight
             border-2 transition-all duration-100
-            ${isSelected ? 'ring-2 ring-yellow-400/60 z-10 scale-105' : ''}
             ${isDiff ? 'ring-2 ring-amber-400/70 z-10' : ''}
             ${summary ? (summary.hitCount > 0 ? '' : 'opacity-70') : 'opacity-40'}
             hover:opacity-100 hover:scale-[1.02]
           `}
-          style={{ backgroundColor: bgColor, borderColor: isSelected ? '#facc15' : borderColor, color: textColor }}
+          style={{ backgroundColor: bgColor, borderColor, color: textColor }}
           onClick={() => onPadClick?.(row, col)}
           title={summary
             ? `${formatPadPosition(padKey)} · ${summary.voiceName} · ${summary.hitCount > 0 ? `Fingers ${[...summary.fingers].join(', ')} · ${summary.hitCount} hits` : 'no notes in this plan'}`

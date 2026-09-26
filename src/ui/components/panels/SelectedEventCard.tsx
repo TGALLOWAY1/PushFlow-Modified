@@ -12,12 +12,11 @@
  */
 
 import { type DifficultyLevel } from '../../../types/executionPlan';
-import { type SelectedMoment } from '../../analysis/selectedMoment';
+import { formatEventLabel, type SelectedEvent } from '../../analysis/eventTimeline';
 import { type SelectedTransitionModel } from '../../analysis/selectionModel';
 import { FACTOR_KEYS, FACTOR_META, factorsFromBreakdown } from '../../analysis/factorMeta';
 import { type LayoutSubject } from '../../state/layoutSubject';
 import { formatMilliseconds } from '../../../utils/musicalTime';
-import { formatBeatPosition } from '../EventsPanel';
 import { SubjectChip } from '../shared/SubjectChip';
 
 const MOMENT_LEVEL_STYLE: Record<DifficultyLevel, string> = {
@@ -28,7 +27,7 @@ const MOMENT_LEVEL_STYLE: Record<DifficultyLevel, string> = {
 };
 
 export function SelectedEventCard({ selected, tempo, scope, subject, transition }: {
-  selected: SelectedMoment;
+  selected: SelectedEvent;
   tempo: number;
   scope: string;
   /** The layout whose plan this is (S3.2). */
@@ -36,19 +35,48 @@ export function SelectedEventCard({ selected, tempo, scope, subject, transition 
   /** The move to the next event, for the transition preview. */
   transition?: SelectedTransitionModel | null;
 }) {
-  const { moment, cost } = selected;
+  const { event, cost } = selected;
+  const header = (
+    <div className="flex items-center justify-between gap-2">
+      <h4 className="section-header">Selected event</h4>
+      <span data-testid="selected-event-label" className="text-pf-xs font-mono text-[var(--text-secondary)]">
+        {formatEventLabel(event, tempo)}
+      </span>
+    </div>
+  );
+
+  // No note of the plan at this event: none of the Sounds struck then is on
+  // this layout's pads, so there is nothing to judge yet (never "Easy").
+  if (!cost) {
+    const noteWord = event.noteCount === 1 ? 'note' : 'notes';
+    return (
+      <div data-testid="selected-event-card" className="rounded-pf-sm border border-[var(--border-default)] bg-bg-card/60 p-2.5 space-y-2">
+        {header}
+        <div className="flex items-center gap-2">
+          <span
+            data-testid="moment-verdict"
+            data-level="unanalysed"
+            className="px-1.5 py-0.5 rounded-pf-sm border border-[var(--border-default)] text-pf-xs font-medium text-[var(--text-tertiary)]"
+          >
+            Not analysed
+          </span>
+          <span className="text-pf-xs text-[var(--text-tertiary)]">
+            {event.noteCount} {noteWord}, none on this layout&rsquo;s pads
+          </span>
+        </div>
+        {subject && <SubjectChip subject={subject} testId="selected-event-subject" />}
+        <div data-testid="verdict-scope" className="text-pf-micro text-[var(--text-tertiary)]">{scope}</div>
+      </div>
+    );
+  }
+
   const factors = cost.breakdown ? factorsFromBreakdown(cost.breakdown) : null;
   const max = factors ? Math.max(...FACTOR_KEYS.map(k => factors[k]), 0.01) : 1;
   const noteWord = cost.noteCount === 1 ? 'note' : 'notes';
 
   return (
     <div data-testid="selected-event-card" className="rounded-pf-sm border border-[var(--border-default)] bg-bg-card/60 p-2.5 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <h4 className="section-header">Selected event</h4>
-        <span className="text-pf-xs font-mono text-[var(--text-secondary)]">
-          Event {moment.index + 1} &middot; {formatBeatPosition(moment.startTime, tempo)}
-        </span>
-      </div>
+      {header}
 
       <div className="flex items-center gap-2">
         <span
