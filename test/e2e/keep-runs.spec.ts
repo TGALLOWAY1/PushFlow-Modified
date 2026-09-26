@@ -11,9 +11,9 @@
  * Beam generates the candidates, as C2 does.
  */
 
-import type { Dialog, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { test, expect, type PfHandle } from './fixtures';
-import { chooseMethod, generateAndWait, openTestMidi1, suggestStartingLayout, waitForAnalysis, waitForSaved } from './project';
+import { chooseMethod, generateAndWait, openTestMidi1, reloadLeaving, suggestStartingLayout, waitForAnalysis, waitForSaved } from './project';
 
 const row = (page: Page, id: string) => page.locator(`[data-testid="candidate-row"][data-candidate-id="${id}"]`);
 
@@ -82,17 +82,18 @@ test.describe('S3.3 · runs and Keep (T30)', () => {
     expect(new URL(page.url()).pathname).toContain('/project/');
 
     // Closing or reloading the page asks too (the browser's own prompt), even
-    // with the project saved; after it, only the kept variant is left.
+    // with the project saved. page.close({ runBeforeUnload }) raises it the
+    // same way in every browser (page.reload() doesn't raise it in Firefox);
+    // staying keeps the page. After a reload, only the kept variant is left.
     await waitForSaved(page);
-    const dialogs: string[] = [];
-    const leave = (d: Dialog) => {
-      dialogs.push(d.type());
-      d.accept().catch(() => {});
-    };
-    page.on('dialog', leave);
-    await page.reload();
-    page.off('dialog', leave);
-    expect(dialogs).toEqual(['beforeunload']);
+    const [prompt] = await Promise.all([
+      page.waitForEvent('dialog'),
+      page.close({ runBeforeUnload: true }),
+    ]);
+    expect(prompt.type()).toBe('beforeunload');
+    await prompt.dismiss();
+    expect(page.isClosed()).toBe(false);
+    await reloadLeaving(page);
     await pf.ready();
     await expect.poll(async () => (await pf.call('status')).soundCount).toBe(7);
     expect((await pf.call('status')).candidateIds).toEqual([]);
