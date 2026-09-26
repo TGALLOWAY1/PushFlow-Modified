@@ -590,7 +590,7 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
 
 #### S4.2 — Moment view, Events list and docked inspector ∥ S4.3a
 
-- **Status:** Not started
+- **Status:** In progress (branch `claude/pushflow-ui-roadmap-qjsqvl`)
 - **Prerequisites:** S4.1, S2.4, S3.2.
 - **Decisions:** Q7 (Events list, inspector and pad-inspector labels say "Event" and "notes").
 
