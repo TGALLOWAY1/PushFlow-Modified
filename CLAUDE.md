@@ -22,25 +22,22 @@ PushFlow-Modified/
 │   ├── utils/                    # Utilities
 │   ├── main.tsx                  # Application entry point
 │   └── index.css                 # Global styles
-├── test/                         # Test suite
+├── test/                         # Vitest, Playwright e2e and nightly suites
+├── scripts/                      # check-no-test-hook, README screenshots, UI-critique probes
+├── public/                       # Fonts, favicon, demo MIDI, GitHub Pages 404 redirect
 ├── docs/
 │   ├── canonical/                # CANONICAL SOURCE OF TRUTH (4 canon docs)
-│   ├── product/                  # Terminology, milestones, bugs, source of truth
-│   └── screenshots/              # UI screenshots
-├── archive/                      # Historical reference material — NOT active
-│   ├── v1-reference/             # V1 codebase (reference only)
-│   ├── engine-comparison/        # V1 vs V2 engine analysis (10 docs)
-│   ├── reconciliation/           # Legacy planning artifacts
-│   ├── v2-planning/              # V2-era planning markdowns
-│   ├── v2-docs/                  # V2-era product synthesis docs
-│   ├── cost-model-planning/      # Cost evaluation audit docs
-│   ├── tasks/                    # Historical task/audit docs
-│   ├── superseded-workflow/      # Superseded workflow reports
-│   └── superseded-canonical/    # Old canonical docs (replaced by new canon)
+│   ├── product/                  # UI roadmap: critique, issue register, roadmap, prompts, progress tracker
+│   ├── optimization/             # BIOMECHANICAL_ENGINE.md: how the engine works today
+│   ├── screenshots/              # readme/ (README images), ui-critique/ (the critique's "before" set)
+│   ├── dataflow-diagram.md       # Code-level dataflow graph
+│   └── ARCHIVE.md                # What left the tree, and how to restore it
+├── .github/workflows/            # ci, deploy, nightly, update-snapshots
 ├── package.json                  # Dependencies
 ├── tsconfig.json                 # TypeScript config
 ├── vite.config.ts                # Build config
-├── vitest.config.ts              # Test config
+├── vitest.config.ts              # Test config (vitest.nightly.config.ts for the nightly run)
+├── playwright.config.ts          # e2e config
 ├── tailwind.config.js            # Tailwind CSS config
 ├── postcss.config.js             # PostCSS config
 └── index.html                    # App entry HTML
@@ -59,18 +56,10 @@ Rules:
 - These four canon files are the **only** planning source of truth.
 - If any other document conflicts with them, the canon files win.
 - Do not treat archived artifacts as active requirements.
-- Do not use files in `archive/superseded-canonical/` — those are the old canonical docs, now replaced.
 
-Historical reference (not canon, use only for engine salvage context):
-- `archive/engine-comparison/` — V1 vs V2 engine analysis
-- `archive/cost-model-planning/` — cost evaluation audit
+## Archived Material
 
-## Historical Reference Material
-
-Use these only to salvage useful elements or understand regressions:
-- V1 reference codebase: `archive/v1-reference/`
-
-Do not use archived material as source of truth.
+Superseded material (the V1 codebase, V2-era planning and engine-comparison docs, the old canon) left the tree on 2026-09-26. `docs/ARCHIVE.md` lists it and how to restore it from commit `fa04025f`. Use it only to salvage ideas or understand regressions, never as a source of truth; for the engine as it is, read `docs/optimization/BIOMECHANICAL_ENGINE.md`. Before committing screenshots, plans or other scaffolding, read that file's "Keeping the tree lean" rules.
 
 ## Tech Stack
 
@@ -79,11 +68,11 @@ Do not use archived material as source of truth.
 | Language | TypeScript 5.2 (strict mode, ES2020 target) |
 | UI Framework | React 18.2 + React Router 7 |
 | Build | Vite |
-| Test | Vitest |
+| Test | Vitest (unit and happy-dom component tests), Playwright (e2e) |
 | Styling | Tailwind CSS + PostCSS |
 | MIDI Parsing | @tonejs/midi |
 | Icons | lucide-react |
-| Utilities | uuid, chroma-js, clsx, tailwind-merge |
+| Utilities | chroma-js |
 
 ## Development Commands
 
@@ -102,9 +91,10 @@ npm run check:no-test-hook  # after a build: fails if window.__pf leaked into di
 npm run test:nightly     # deep annealing on TEST MIDI 1 (~45 min; nightly.yml)
 ```
 
-The C1–C9 regression specs (`test/e2e/c*.spec.ts`) are expected-fail until the
-session that fixes each case deletes its `test.fail(EXPECTED_FAIL, …)` line. Run
-`PF_UNMARK=1 npx playwright test c2` to see a spec's real failures.
+The C1–C9 regression specs (`test/e2e/c*.spec.ts`) started expected-fail; the
+session that fixes a case deletes its `test.fail(EXPECTED_FAIL, …)` line. C1–C8
+pass now; one case in `c9-presets.spec.ts` is still marked (it flips in S8.2). Run
+`PF_UNMARK=1 npx playwright test c9` to see its real failure.
 
 In a cloud session, point Playwright at the preinstalled browser:
 `PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test`. Screenshot baselines
@@ -136,48 +126,49 @@ npx vitest test/engine/solvers/                                # Watch mode on d
 ```
 src/
 ├── engine/                        # Core optimization + analysis engine
-│   ├── optimization/              # Annealing solver, multi-candidate generator, mutation, ranker
-│   ├── evaluation/                # Canonical evaluator, cost functions, difficulty scoring, objective
-│   ├── solvers/                   # Beam solver for finger assignment (~54KB)
-│   ├── prior/                     # Biomechanical model, feasibility checking, ergonomic constants
-│   ├── analysis/                  # Baseline compare, candidate comparison, constraint explainer, diversity
-│   ├── structure/                 # Performance structure analysis, role inference, event grouping
+│   ├── optimization/              # Annealing solver, greedy optimizer, multi-candidate generator, mutation, ranker, optimizer registry + adapters, run control
+│   ├── evaluation/                # Canonical evaluator, Playability score, cost functions, objective, difficulty scoring
+│   ├── solvers/                   # Beam solver for finger assignment (~85KB), structural lookahead
+│   ├── prior/                     # Biomechanical model, feasibility checking, hand poses
+│   ├── analysis/                  # Baseline compare, candidate comparison, diversity, event explainer
+│   ├── structure/                 # Performance structure analysis, moments, role inference, event grouping
 │   ├── rudiment/                  # Rudiment library, pattern generation, coherence metrics
-│   ├── pattern/                   # Pattern engine, presets, rhythm resolvers
-│   ├── mapping/                   # Pad-to-event mapping, coverage, seed from pose
+│   ├── mapping/                   # Pad-to-event mapping, voice map, placement locks, coverage, seed from pose
 │   ├── debug/                     # Debug utilities, sanity checks, constraint validator
-│   ├── diagnostics/               # Fatigue model
 │   ├── surface/                   # Hand zone, pad grid
-│   └── index.ts                   # Main engine export
+│   └── index.ts                   # Barrel re-exporting engine APIs
 ├── types/                         # Domain types and contracts (~20 files)
 │   ├── layout.ts                  # Layout, LayoutRole, cloneLayout, hashLayout
 │   ├── voice.ts                   # Voice (Sound identity)
 │   ├── executionPlan.ts           # ExecutionPlan, FingerAssignment, DiagnosticFactors
 │   ├── candidateSolution.ts       # CandidateSolution, TradeoffProfile
 │   ├── diagnostics.ts             # DifficultyBreakdown, DifficultyAnalysis
-│   ├── engineConfig.ts            # EngineConfiguration, AnnealingPreset
+│   ├── engineConfig.ts            # EngineConfiguration, AnnealingConfig, OptimizationMode
 │   ├── performanceEvent.ts        # PerformanceEvent
 │   ├── performanceStructure.ts    # Performance, PerformanceEvent
 │   ├── padGrid.ts                 # Grid model
 │   └── fingerModel.ts             # Finger/biomechanical types
 ├── ui/
-│   ├── components/                # React components
-│   │   ├── Grid/                  # PadGrid, InteractiveGrid, CompareGridView
-│   │   ├── Panels/                # DiagnosticsPanel, AnalysisSidePanel, EventDetailPanel
-│   │   ├── Timeline/              # UnifiedTimeline, TimelinePanel
-│   │   ├── Candidates/            # CandidateCard, CandidateCompare
-│   │   ├── Voice/                 # VoicePalette, PadContextMenu
-│   │   ├── Editor/                # EditorToolbar
-│   │   ├── Lanes/                 # PerformanceLanesView, LaneRow, LaneSidebar
-│   │   ├── LoopEditor/            # LoopEditorView, LoopGridCanvas, PatternLayerEditor
-│   │   └── Workspace/             # PerformanceWorkspace, WorkspacePatternStudio
-│   ├── pages/                     # ProjectLibraryPage, ProjectEditorPage, OptimizerDebugPage
-│   ├── state/                     # ProjectContext, projectState, reducers, undo/redo
-│   ├── persistence/               # projectStorage, loopStorage, presetStorage (localStorage)
-│   ├── hooks/                     # useAutoAnalysis, useKeyboardShortcuts, useLaneImport
-│   └── fixtures/                  # demoProjects, feasibilityDemos
-├── import/                        # MIDI file import (midiImport.ts)
-├── utils/                         # idGenerator, midiNotes, seededRng
+│   ├── components/                # React components; at the top level: InteractiveGrid, PadGrid, CompareGridView,
+│   │   │                          #   UnifiedTimeline, TimelineToolbar, EventsPanel, VoicePalette, PadContextMenu, CandidateCompare
+│   │   ├── panels/                # ActiveLayoutSummary, LayoutOptionsPanel, CandidatePreviewCard, MoveTracePanel,
+│   │   │                          #   AnnealingTraceChart, PerformanceCostsPanel, SelectedEventCard, CompareModal, LearnMoreModal
+│   │   ├── workspace/             # PerformanceWorkspace, WorkspaceToolbar, LayoutStateBar, WorkspacePatternStudio, sizing
+│   │   ├── shared/                # Primitives: Overlay (Dialog/Popover), Toast, Tabs, Checkbox, Card, FingerAssignmentInput
+│   │   ├── composer/              # Composer preset library, cards, inspector
+│   │   ├── loop-editor/           # LoopGridCanvas, LoopLaneRow, LoopLaneSidebar
+│   │   └── Homepage/              # Library: ProjectHero, ProjectCard, LibraryStatsCard, QuickActionsCard
+│   ├── pages/                     # ProjectLibraryPage, ProjectEditorPage, OptimizerDebugPage, ConstraintValidatorPage, TemporalEvaluatorPage
+│   ├── state/                     # ProjectContext, projectState, reducers, undo/redo, lifecycle actions
+│   ├── analysis/                  # Scoring worker + client, per-layout analysis cache, selection model, factor metadata
+│   ├── persistence/               # projectStorage + indexedDbStore (IndexedDB), loopStorage and composerPresetStorage (localStorage), migrations
+│   ├── hooks/                     # useAutoAnalysis, useAutoSave, useKeyboardShortcuts, useLaneImport, useLayoutActions
+│   ├── audio/                     # Rehearsal audio
+│   ├── input/                     # Input registry and table (shortcuts, pointer)
+│   ├── temporal/, validator/      # Internals of the temporal evaluator and constraint validator pages
+│   └── testing/                   # e2eHook.ts (window.__pf)
+├── import/                        # MIDI file import (midiImport.ts), lanes, Sound naming
+├── utils/                         # idGenerator, midiNotes, seededRng, soundPalette, gmDrumMap
 └── main.tsx                       # Application entry point
 ```
 
@@ -185,20 +176,15 @@ src/
 
 ```
 test/
-├── types/                 # Voice identity round-trip, layout role validation
-├── engine/
-│   ├── optimization/      # Candidate generation tests
-│   ├── evaluation/        # Execution plan, diagnostics, performability, canonical evaluator
-│   ├── solvers/           # Beam solver smoke tests
-│   ├── prior/             # Feasibility atomic/regression tests
-│   ├── rudiment/          # Coherence, pattern generation, coordination, transforms
-│   ├── pattern/           # Rhythm resolvers, pattern engine
-│   └── structure/         # Constraint corrections
-├── ui/state/              # Lanes reducer, lanes-to-streams conversion
-├── ui/components/         # happy-dom component tests (*.test.tsx)
-├── golden/                # End-to-end golden scenario tests
+├── engine/                # optimization (testMidi1Integration.test.ts runs every method), evaluation, analysis,
+│                          #   mapping, solvers, prior, rudiment, structure, trust, phase2
+├── ui/                    # state, persistence, analysis, hooks, input; components/ holds happy-dom *.test.tsx
+├── types/, golden/        # Voice identity and layout roles; end-to-end golden scenarios
+├── optimizer/, validator/, import/  # Deep optimization and stress tests, validator engine, Sound naming
+├── nightly/               # *.nightly.ts deep-annealing checks (npm run test:nightly)
+├── helpers/               # setup, DOM shims, testMidi1.ts (TEST MIDI 1 through the app's own paths)
 ├── e2e/                   # Playwright specs (*.spec.ts) + fixtures.ts
-└── fixtures/midi/         # TEST MIDI 1 copy for tests (archive copy stays)
+└── fixtures/              # midi/TEST MIDI 1.mid (the copy every test and script reads), four-bars-120.mid, project JSON
 ```
 
 Key test invariants:
@@ -221,9 +207,8 @@ Key test invariants:
 
 ### Import Conventions
 
-- **Domain types**: Always import from `@/types` (barrel file at `src/types/index.ts`)
-- **Engine APIs**: Always import from `@/engine` (barrel file at `src/engine/index.ts`, ~200+ exports)
-- Internal module paths are implementation details; use barrel files for cross-boundary imports.
+- **Match the surrounding code**: import from the defining module by relative path (`../../types/layout`), as about 2,000 imports do; the `@/` alias appears a few dozen times.
+- **Barrels** (`src/types/index.ts`, `src/engine/index.ts`) are rarely imported through, and most engine re-exports are unused. Don't route new code through them for convention; when you delete a module, delete its barrel re-exports too.
 
 ### Theming
 
@@ -233,7 +218,7 @@ The UI uses CSS custom properties (defined in `src/index.css`) consumed via Tail
 
 GitHub Actions:
 - `ci.yml` (every PR and push to `main`): typecheck, `test:run`, build + `check:no-test-hook`, Playwright (Chromium, 2 shards).
-- `nightly.yml` (schedule + manual): Playwright in Firefox.
+- `nightly.yml` (schedule + manual): `test:nightly` (deep annealing on TEST MIDI 1) and Playwright in Firefox.
 - `update-snapshots.yml` (manual, or the `update-snapshots` PR label): regenerates screenshot baselines and commits them.
 - `deploy.yml` (push to `main`): typecheck + `test:run` + build + `check:no-test-hook`, then deploys `dist/` to GitHub Pages.
 
@@ -307,7 +292,7 @@ Do not let engine internals outrun the approved workflow contract.
 
 ### Cost Evaluation Architecture
 
-Cost evaluation has three layers (see `archive/cost-model-planning/CANONICAL_COST_EVALUATION_PLAN.md` for full audit):
+Cost evaluation has three layers (`docs/optimization/BIOMECHANICAL_ENGINE.md` describes the current implementation; the March cost-evaluation audit is archived, see `docs/ARCHIVE.md`):
 
 1. **Solver-Internal Cost Functions** (`src/engine/evaluation/costFunction.ts`) — pure functions called thousands of times during beam search (pose naturalness, transition cost, alternation, hand balance)
 2. **Objective Combination** (`src/engine/evaluation/objective.ts`) — two coexisting models: `PerformabilityObjective` (3-component, used for beam ranking) and `ObjectiveComponents` (7-component, legacy diagnostic display)
@@ -320,11 +305,11 @@ A canonical evaluator (`src/engine/evaluation/canonicalEvaluator.ts`) was implem
 ## Current Workspace Reality
 
 The active codebase lives at the repository root (`src/`, `test/`).
-Historical V1 and reconciliation material is archived under `archive/`.
+Historical V1 and reconciliation material is no longer in the tree; `docs/ARCHIVE.md` explains how to restore it from git history.
 
 Working assumptions:
 - The current codebase is the active implementation to develop against
-- V1 is a reference for salvageable interaction ideas, validation habits, and missing capabilities
+- V1 (restorable from git history) is a reference for salvageable interaction ideas, validation habits, and missing capabilities
 - Any deep rewrite must be justified against the canonical workflow and implementation sequence
 
 ### Completed Implementation Phases
@@ -502,7 +487,7 @@ These rules protect against recurring regressions. Violating them requires expli
 - After optimizer runs complete, `isProcessing` must be reset to `false` on both success and error paths.
 
 ### TEST MIDI 1 Verification Rule
-- Any code change that impacts any optimization method (beam, annealing, greedy) **must** be verified against TEST MIDI 1 (`archive/v1-reference/test-data/Scenario 1 Tests/TEST MIDI 1.mid`).
+- Any code change that impacts any optimization method (beam, annealing, greedy) **must** be verified against TEST MIDI 1 (`test/fixtures/midi/TEST MIDI 1.mid`).
 - The integration test `test/engine/optimization/testMidi1Integration.test.ts` exercises all optimization paths on this file.
 - **Required outcome:** All optimization methods must produce results with **0 unplayable events** on TEST MIDI 1.
 - Run: `npx vitest run test/engine/optimization/testMidi1Integration.test.ts` after any optimizer change.
@@ -512,7 +497,7 @@ These rules protect against recurring regressions. Violating them requires expli
 Any future change to solver or optimizer internals must verify:
 1. What optimizer outputs changed (layout, trace, diagnostics, telemetry)
 2. Whether trace shape changed (fields added/removed/renamed)
-3. Whether UI consumers were updated (MoveTracePanel, CandidatePreviewCard, PerformanceAnalysisPanel)
+3. Whether UI consumers were updated (MoveTracePanel, CandidatePreviewCard, ActiveLayoutSummary, LayoutStateBar)
 4. Whether stochastic behavior / restart behavior was preserved
 5. Whether deterministic debug mode (seed=0) still works
 6. Whether `isProcessing` is correctly reset on all code paths

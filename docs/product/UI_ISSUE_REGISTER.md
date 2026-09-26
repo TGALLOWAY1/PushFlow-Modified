@@ -6,7 +6,7 @@
 
 ## Critical problems: independent reproduction
 
-Each critical problem was reproduced from scratch by a separate agent with its own browser script (kept in `scripts/ui-critique-repros/`). The reproducers rated two of the nine critical and seven high; the severity used elsewhere is the consolidated theme severity.
+Each critical problem was reproduced from scratch by a separate agent with its own browser script (kept in `scripts/ui-critique-repros/` until its e2e spec passes; C1–C8 were retired on 2026-09-26 and are listed in [docs/ARCHIVE.md](../ARCHIVE.md)). The reproducers rated two of the nine critical and seven high; the severity used elsewhere is the consolidated theme severity.
 
 | # | Problem | Reproduced | Reproducer's severity | Root cause |
 |---|---------|------------|------------------------|------------|

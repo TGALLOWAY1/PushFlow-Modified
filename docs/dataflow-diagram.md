@@ -34,7 +34,7 @@ flowchart TD
         LS[("localStorage\n(fallback mirror)")]
         SERIALIZER["projectSerializer.ts\nserialize / deserialize"]
         LOOP_STORE["loopStorage.ts"]
-        PRESET_STORE["presetStorage.ts"]
+        PRESET_STORE["composerPresetStorage.ts"]
     end
 
     LIBRARY -->|"listProjectsAsync()"| STORAGE
@@ -100,11 +100,11 @@ flowchart TD
 
         subgraph PanelsLayer["Panels"]
             VOICE_PAL["VoicePalette\n(sound list + constraints)"]
-            ANALYSIS_P["PerformanceAnalysisPanel\n(feasibility + difficulty)"]
+            ANALYSIS_P["ActiveLayoutSummary\n(feasibility + difficulty)"]
             TRACE_P["MoveTracePanel\n(optimizer step trace)"]
-            CANDIDATE_C["CandidateCard\n(preview + Use button)"]
+            CANDIDATE_C["CandidatePreviewCard\n(Inspect / Promote / Keep)"]
             COMPARE_M["CompareModal\n(side-by-side diff)"]
-            EVENT_DETAIL["EventDetailPanel"]
+            EVENT_DETAIL["SelectedEventCard\n(selected event verdict)"]
             LEARN_MORE["LearnMoreModal"]
         end
 
@@ -189,7 +189,7 @@ flowchart TD
 
         subgraph Prior["Prior / Biomechanics"]
             FEASIBILITY["feasibilityCheck\n(Strict/Relaxed/Fallback tiers)"]
-            ERGONOMICS["ergonomicConstants"]
+            ERGONOMICS["biomechanicalModel\n(span, reach, speed limits)"]
             HAND_ZONE["handZone\ngetPreferredHand()"]
         end
 

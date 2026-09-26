@@ -264,7 +264,7 @@ describe('hand separation and one finger per sound are kept wherever possible', 
     // With the rules as soft costs, this exact configuration played one sound
     // with two fingers (left ring and left thumb) and scored 45 with 13 Hard
     // events, although a plan keeping both rules exists.
-    const p = path.resolve(__dirname, '../../../archive/v1-reference/test-data/Scenario 1 Tests/TEST MIDI 1.mid');
+    const p = path.resolve(__dirname, '../../fixtures/midi/TEST MIDI 1.mid');
     const buf = fs.readFileSync(p);
     const midi = new Midi(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
     const events: PerformanceEvent[] = [];

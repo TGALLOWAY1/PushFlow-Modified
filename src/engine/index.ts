@@ -47,18 +47,6 @@ export {
   getMaxSafeOffset,
   poseHasAssignments,
 } from './prior/naturalHandPose';
-export {
-  FINGER_WEIGHTS,
-  decayFatigue,
-  accumulateFatigue,
-} from './prior/ergonomicConstants';
-
-// Diagnostics
-export {
-  FATIGUE_ACCUMULATION_RATE,
-  FATIGUE_DECAY_RATE,
-  MAX_FATIGUE,
-} from './diagnostics/fatigueModel';
 
 // Mapping
 export { buildNoteToPadIndex, buildVoiceIdToPadIndex, resolveNoteToPad, resolveEventToPad, hashLayout } from './mapping/mappingResolver';
@@ -130,7 +118,6 @@ export { detectSections } from './structure/sectionDetection';
 export { buildCooccurrenceGraph } from './structure/cooccurrence';
 export { buildTransitionGraph } from './structure/transitionGraph';
 export { inferVoiceRoles } from './structure/roleInference';
-export { analyzePerformance } from './structure/performanceAnalyzer';
 export {
   detectTemporalClusters,
   computeTemporalAffinities,
@@ -233,7 +220,6 @@ export { filterAndDiversify } from './rudiment/candidateFilter';
 
 // Analysis (explainability)
 export { compareCandidates, summarizeComparison } from './analysis/candidateComparator';
-export { explainConstraints, identifyBottlenecks } from './analysis/constraintExplainer';
 
 // Diversity measurement (Phase 4: baseline-aware candidates)
 export {

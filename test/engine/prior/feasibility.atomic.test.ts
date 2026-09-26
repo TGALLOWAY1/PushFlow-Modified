@@ -11,8 +11,7 @@
  *   A7: Hand crossover (three adjacent pads) → feasible with valid orderings
  *   A8: Zone violation → feasible but penalized
  *
- * Fixture data is shared with src/ui/fixtures/feasibilityDemos.ts
- * so the same scenarios can be loaded in the grid editor for visual verification.
+ * Fixture data lives in test/golden/feasibilityFixtures.ts.
  */
 
 import { describe, it, expect } from 'vitest';
