@@ -20,6 +20,7 @@ import {
 import { scoringCounts, type ScoringCounts } from '../analysis/scoringClient';
 import { getEventTimeline, resolveEventKey } from '../analysis/eventTimeline';
 import { peekLayoutAnalysis } from '../analysis/layoutAnalysis';
+import { fingerLabel } from '../../utils/fingerNotation';
 import type { Layout } from '../../types/layout';
 import type { ExecutionPlanResult } from '../../types/executionPlan';
 import type { CandidateSolution } from '../../types/candidateSolution';
@@ -294,21 +295,14 @@ function layoutByRef(state: ProjectState, ref: { kind: InspectedLayoutKind; id: 
   }
 }
 
-const FINGER_NUMBER: Record<string, string> = { thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5' };
-
 /** A plan's notes labelled exactly as a timeline pill labels them (hand letter + finger number). */
 function fingeringOf(plan: ExecutionPlanResult | null): PfFingering[] | null {
   if (!plan) return null;
-  return plan.fingerAssignments.map(a => {
-    const finger = a.finger as string | null;
-    const label = finger && finger !== 'unassigned' ? FINGER_NUMBER[finger] ?? finger : '';
-    const hand = a.assignedHand === 'left' ? 'L' : a.assignedHand === 'right' ? 'R' : '';
-    return {
-      eventKey: a.eventKey ?? null,
-      voiceId: a.voiceId ?? null,
-      startTime: a.startTime,
-      finger: label ? `${hand}${label}` : '',
-      pad: a.row !== undefined && a.col !== undefined ? `${a.row},${a.col}` : null,
-    };
-  });
+  return plan.fingerAssignments.map(a => ({
+    eventKey: a.eventKey ?? null,
+    voiceId: a.voiceId ?? null,
+    startTime: a.startTime,
+    finger: fingerLabel(a.assignedHand, a.finger),
+    pad: a.row !== undefined && a.col !== undefined ? `${a.row},${a.col}` : null,
+  }));
 }

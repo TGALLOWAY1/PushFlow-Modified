@@ -259,6 +259,29 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     expect(boundRows().map(r => r.id)).not.toContain('pad-enter');
   },
 
+  'empty-space-click': async () => {
+    // S4.2 (T42): a click on empty space clears the pad and Sound selection; the event stays.
+    const state = await analysedProject();
+    const first = getEventTimeline(state).events[0]!;
+    mount({ ...state, selectedMomentKey: first.key });
+    const key = occupiedPad();
+    fireEvent.click(pad(key));
+    expect(api.state.selectedPadKey).toBe(key);
+    // Inside the frame (between pads) is not empty space: a near miss changes nothing.
+    fireEvent.click(screen.getByTestId('grid-frame'));
+    expect(api.state.selectedPadKey).toBe(key);
+    fireEvent.click(screen.getByTestId('grid-area'));
+    expect(api.state.selectedPadKey).toBeNull();
+    expect(api.state.selectedStreamId).toBeNull();
+    expect(api.state.selectedMomentKey).toBe(first.key);
+    // Under the Sounds list: placing stops, as with Esc.
+    fireEvent.click(soundRow(0));
+    expect(api.state.armedStreamId).not.toBeNull();
+    fireEvent.click(screen.getByTestId('sounds-list'));
+    expect(api.state.armedStreamId).toBeNull();
+    expect(api.state.selectedStreamId).toBeNull();
+  },
+
   'read-only-edit': async () => {
     // A candidate shown read-only (S3.2): each edit gesture changes nothing and says how to edit it.
     let state = await suggestedTestMidi1();

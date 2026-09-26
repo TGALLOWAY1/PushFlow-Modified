@@ -29,10 +29,10 @@ interface PresetCardProps {
   onDragEndPreset?: () => void;
 }
 
-/** Hand indicator colors. */
+/** Hand indicator colours: the hand tokens (T42), grey for both hands. */
 const HAND_COLORS = {
-  left: '#0088FF',
-  right: '#FF4400',
+  left: 'var(--hand-left)',
+  right: 'var(--hand-right)',
   both: '#888888',
 } as const;
 
@@ -92,7 +92,7 @@ export function PresetCard({
             className="text-[10px] font-mono px-1 rounded"
             style={{
               color: HAND_COLORS[preset.handedness],
-              backgroundColor: `${HAND_COLORS[preset.handedness]}15`,
+              backgroundColor: `color-mix(in srgb, ${HAND_COLORS[preset.handedness]} 8%, transparent)`,
             }}
           >
             {HAND_LABELS[preset.handedness]}
@@ -222,7 +222,7 @@ function MiniGridPreview({
                 width={cellSize}
                 height={cellSize}
                 rx={1}
-                fill={pad ? (pad.hand === 'left' ? '#0088FF' : pad.hand === 'right' ? '#FF4400' : '#888') : '#333'}
+                style={{ fill: pad ? (pad.hand ? HAND_COLORS[pad.hand] : '#888') : '#333' }}
                 opacity={pad ? 0.8 : 0.15}
               />
             );

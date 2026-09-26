@@ -33,6 +33,7 @@ import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
 import { padLabel, padLabelLines, sharedNamePrefix } from '../analysis/padLabels';
 import { midiNoteToName } from '../../utils/midiNotes';
 import { formatPadPosition, spokenPadPosition } from '../../utils/padPosition';
+import { fingerLabel, handColor } from '../../utils/fingerNotation';
 import { COMPOSER_PRESET_DRAG_TYPE } from './composer/PresetCard';
 import { type PresetDragPreview } from '../../types/composerPreset';
 import {
@@ -75,17 +76,18 @@ interface InteractiveGridProps {
   stateBar?: React.ReactNode;
 }
 
-/** Abbreviated finger names for display (numbered: thumb=1 through pinky=5) */
-const FINGER_ABBREV: Record<string, string> = {
-  thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
-};
-
+/** Hands in their tokens (T42), plus the colours for an unplayable pad and one both hands play. */
 const HAND_COLORS = {
-  left: '#0088FF', // Azure (V1 left hand base)
-  right: '#FF4400', // Orange-Red (V1 right hand base)
+  left: 'var(--hand-left)',
+  right: 'var(--hand-right)',
   Unplayable: '#FF3333',
   mixed: '#FFCC00',
 };
+
+/** A colour (a hex or a token) at `percent` strength over transparency. */
+function tint(color: string, percent: number): string {
+  return `color-mix(in srgb, ${color} ${percent}%, transparent)`;
+}
 
 /** The overlay's x origin: pads start right of the row-number column. */
 const GRID_OFFSET_X = AXIS_WIDTH;
@@ -204,15 +206,9 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
       const effectiveHand = constraint?.hand ?? a.assignedHand;
       summary.hands.add(effectiveHand);
       // Add finger label: user constraint takes priority, then solver assignment
-      if (constraint?.hand && constraint?.finger) {
-        const handChar = constraint.hand === 'left' ? 'L' : 'R';
-        const fingerNum = FINGER_ABBREV[constraint.finger] ?? constraint.finger;
-        summary.fingers.add(`${handChar}${fingerNum}`);
-      } else if (showFingerLabels && a.assignedHand && (a.assignedHand as string) !== 'raw' && (a.assignedHand as string) !== 'Unplayable' && a.finger && (a.finger as string) !== 'unassigned') {
-        const handChar = a.assignedHand === 'left' ? 'L' : 'R';
-        const fingerNum = FINGER_ABBREV[a.finger] ?? a.finger;
-        summary.fingers.add(`${handChar}${fingerNum}`);
-      }
+      const preferred = constraint?.hand && constraint?.finger ? fingerLabel(constraint.hand, constraint.finger) : '';
+      const planned = showFingerLabels ? fingerLabel(a.assignedHand, a.finger) : '';
+      if (preferred || planned) summary.fingers.add(preferred || planned);
       summary.hitCount++;
     }
     return map;
@@ -234,12 +230,7 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
       if (a.row !== undefined && a.col !== undefined) {
         const key = `${a.row},${a.col}`;
         keys.add(key);
-        const handChar = a.assignedHand === 'Unplayable' ? '?' : a.assignedHand[0].toUpperCase();
-        const fingerNum = a.finger ? (FINGER_ABBREV[a.finger] ?? a.finger) : '';
-        const handColor = a.assignedHand === 'left' ? HAND_COLORS.left
-          : a.assignedHand === 'right' ? HAND_COLORS.right
-          : HAND_COLORS.Unplayable;
-        fingers.set(key, { label: `${handChar}${fingerNum}`, hand: a.assignedHand, color: handColor });
+        fingers.set(key, { label: fingerLabel(a.assignedHand, a.finger) || '?', hand: a.assignedHand, color: handColor(a.assignedHand) ?? HAND_COLORS.Unplayable });
       }
     }
     return { selectedPadKeys: keys, selectedPadFingers: fingers };
@@ -300,7 +291,7 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
         return {
           id: `${move.hand}-${move.finger}-${move.fromPad}-${move.toPad}`,
           color: HAND_COLORS[move.hand],
-          label: `${move.hand[0].toUpperCase()}${FINGER_ABBREV[move.finger] ?? move.finger}`,
+          label: fingerLabel(move.hand, move.finger),
           d: `M ${startX} ${startY} Q ${controlX} ${controlY} ${endX} ${endY}`,
           endX,
           endY,
@@ -648,6 +639,19 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
   // The pad's ×: removes with an Undo toast (T28).
   const handleRemovePad = useRemovePadWithUndo();
 
+  // A click on empty space around the frame clears the pad and Sound selection
+  // (T42), as Escape does; the event stays. Clicks in the frame (between pads),
+  // the state bar or the dock, and in portalled menus, are not empty space.
+  const handleBackgroundClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as Element;
+    if (!e.currentTarget.contains(target)) return;
+    if (target.closest('[data-testid="grid-frame"], [data-testid="state-bar-slot"], [data-grid-dock]')) return;
+    if (state.armedStreamId !== null) dispatch({ type: 'ARM_SOUND', payload: null });
+    else if (state.selectedPadKey !== null || state.selectedStreamId !== null) {
+      dispatch({ type: 'SELECT_PAD', payload: { padKey: null, streamId: null } });
+    }
+  }, [state.armedStreamId, state.selectedPadKey, state.selectedStreamId, dispatch]);
+
   // The selection overlay is suspended while playing and comes back on Stop
   // (T10 slice): struck pads then look exactly as they do with nothing selected.
   const showSelection = !state.isPlaying;
@@ -661,7 +665,9 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
       const padKey = `${row},${col}`;
       const voice = livePadToVoice[padKey];
       const summary = padSummaries.get(padKey);
-      const isStreamHighlighted = !!voice && !!state.selectedStreamId && voice.id === state.selectedStreamId;
+      // The selected Sound (a pad click, or its row in the Sounds panel): a neutral
+      // outline, never the hand or next-event colours (T42).
+      const isSoundSelected = !!voice && !!state.selectedStreamId && voice.id === state.selectedStreamId;
       const isSelected = showSelection && selectedPadKeys.has(padKey);
       const isActivePlaying = activePadKeys.has(padKey);
       const isBlinking = blinkingPads.has(padKey);
@@ -699,10 +705,10 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
           // Hand-color mode: pad background is based on which hand plays this pad
           const hands = [...summary.hands];
           if (hands.length === 1 && hands[0] !== 'Unplayable') {
-            const handColor = HAND_COLORS[hands[0] as 'left' | 'right'] ?? HAND_COLORS.mixed;
-            bgColor = safeColorAlpha(handColor, 0.3, handColor);
-            glowColor = handColor;
-            borderColor = handColor;
+            const color = HAND_COLORS[hands[0] as 'left' | 'right'] ?? HAND_COLORS.mixed;
+            bgColor = tint(color, 30);
+            glowColor = color;
+            borderColor = color;
             textColor = 'var(--text-primary)';
             isGlowActive = true;
           } else if (hands.includes('Unplayable') && hands.length === 1) {
@@ -766,7 +772,7 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
         : isSelected || isActivePlaying
           ? `inset 0 0 15px ${displayGlowColor}, 0 0 10px ${displayGlowColor}`
           : isGlowActive
-            ? `inset 0 0 8px ${safeColorAlpha(displayGlowColor, 0.3, displayGlowColor)}`
+            ? `inset 0 0 8px ${tint(displayGlowColor, 30)}`
             : 'none';
 
       cells.push(
@@ -803,25 +809,22 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
                 : isNext && !voice
                   ? 'rgba(59, 130, 246, 0.08)'
                   : bgColor,
-            borderColor: isStreamHighlighted && !isSelected
-              ? '#60a5fa'
-              : isSelected && selectedFingerInfo
+            borderColor: isSelected && selectedFingerInfo
               ? selectedFingerInfo.color
               : isDragOver ? '#3b82f6' : isNext && !isSelected ? '#60a5fa' : borderColor,
             color: isSelected && selectedFingerInfo ? '#ffffff' : textColor,
             // Rings are part of this one box-shadow, so no state's glow can
             // hide another's ring; opacity comes from classes only (T09 slice).
             boxShadow: [
-              ...padRings({ isShared, isImpossible, isInstanceHighlighted, isDragOver, isDragSource, isPadSelected }),
-              isStreamHighlighted && !isSelected
-                ? '0 0 8px rgba(96, 165, 250, 0.5), inset 0 0 4px rgba(96, 165, 250, 0.2)'
-                : isSelected && selectedFingerInfo
+              ...padRings({ isShared, isImpossible, isInstanceHighlighted, isDragOver, isDragSource, isPadSelected, isSoundSelected }),
+              isSelected && selectedFingerInfo
                 ? `0 0 12px ${selectedFingerInfo.color}, inset 0 0 8px rgba(255,255,255,0.15)`
                 : boxGlow,
             ].filter(v => v && v !== 'none').join(', ') || 'none',
           }}
           onClick={e => !isMuted && handlePadClick(row, col, e)}
           data-selected={isPadSelected ? 'true' : undefined}
+          data-sound-selected={isSoundSelected ? 'true' : undefined}
           data-struck={isSelected ? 'true' : undefined}
           onContextMenu={e => {
             e.preventDefault();
@@ -961,7 +964,7 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
   return (
     // The state-bar slot and the frame, centred as one group in the measured
     // region ("safe" keeps the top visible if the pads are at their minimum).
-    <div className="h-full w-full flex flex-col items-center" style={{ justifyContent: 'safe center' }}>
+    <div data-testid="grid-area" className="h-full w-full flex flex-col items-center" style={{ justifyContent: 'safe center' }} onClick={handleBackgroundClick}>
       {/* State-bar slot: fixed height, never scaled. Holds the layout-state bar
           (S3.2): the transition preview moved to the selected-event card, so
           selecting an event never changes the grid's size. */}
@@ -1090,10 +1093,12 @@ export function InteractiveGrid({ assignments, layoutOverride, onionSkin = false
 }
 
 /** Ring outlines for a pad's states, as box-shadow layers. */
-function padRings(f: { isShared: boolean; isImpossible: boolean; isInstanceHighlighted: boolean; isDragOver: boolean; isDragSource: boolean; isPadSelected: boolean }): string[] {
+function padRings(f: { isShared: boolean; isImpossible: boolean; isInstanceHighlighted: boolean; isDragOver: boolean; isDragSource: boolean; isPadSelected: boolean; isSoundSelected: boolean }): string[] {
   const rings: string[] = [];
   // The selected pad: a neutral outline outside the pad, clear of the hand colours.
   if (f.isPadSelected) rings.push('0 0 0 2px var(--bg-app), 0 0 0 4px rgba(226, 232, 240, 0.9)');
+  // The selected Sound on a pad not itself selected: a fainter neutral ring.
+  else if (f.isSoundSelected) rings.push('0 0 0 2px rgba(226, 232, 240, 0.55)');
   if (f.isImpossible) rings.push('0 0 0 2px rgba(239, 68, 68, 0.8)');
   if (f.isInstanceHighlighted) rings.push('0 0 0 2px rgba(167, 139, 250, 0.6)');
   if (f.isDragOver || f.isDragSource) rings.push('0 0 0 2px rgba(96, 165, 250, 0.7)');

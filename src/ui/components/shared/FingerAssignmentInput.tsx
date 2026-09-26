@@ -7,7 +7,9 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { type FingerType, type HandSide, ALL_FINGERS } from '../../../types/fingerModel';
+import { type FingerType, type HandSide } from '../../../types/fingerModel';
+import { fingerLabel, fingerName } from '../../../utils/fingerNotation';
+import { fingerChipStyle } from './FingerChip';
 
 export interface FingerAssignmentValue {
   hand: HandSide;
@@ -32,11 +34,9 @@ export function parseFingerShorthand(input: string): FingerAssignmentValue | nul
   return { hand, finger: fingerMap[match[2]] };
 }
 
-/** Format a FingerAssignmentValue as compact label, e.g. "L2". */
+/** Format a FingerAssignmentValue as compact label, e.g. "L2" (the one notation, S4.2). */
 export function fingerAssignmentLabel(fa: FingerAssignmentValue): string {
-  const handChar = fa.hand === 'left' ? 'L' : 'R';
-  const fingerNum = ALL_FINGERS.indexOf(fa.finger) + 1;
-  return `${handChar}${fingerNum}`;
+  return fingerLabel(fa.hand, fa.finger);
 }
 
 interface FingerAssignmentInputProps {
@@ -142,13 +142,10 @@ export function FingerAssignmentInput({ value, onChange, size = 'sm', isSuggesti
   return (
     <button
       className={`${baseClass} flex items-center justify-center rounded-pf-sm flex-shrink-0 transition-colors cursor-text`}
+      // The hand as a tint and an edge (the hand tokens, S4.2); the text stays neutral.
       style={{
-        backgroundColor: value
-          ? value.hand === 'left' ? 'rgba(59,130,246,0.15)' : 'rgba(249,115,22,0.15)'
-          : 'rgba(100,100,100,0.1)',
-        color: value
-          ? value.hand === 'left' ? '#6da3f5' : '#f09060'
-          : 'var(--text-tertiary)',
+        ...(value ? fingerChipStyle(value.hand) : { backgroundColor: 'rgba(100,100,100,0.1)' }),
+        color: value ? 'var(--text-primary)' : 'var(--text-tertiary)',
         opacity: isSuggestion ? 0.5 : 1,
       }}
       onClick={() => {
@@ -160,8 +157,8 @@ export function FingerAssignmentInput({ value, onChange, size = 'sm', isSuggesti
       }}
       title={value
         ? isSuggestion
-          ? `Solver suggestion: ${value.hand} ${value.finger} — click to override`
-          : `${value.hand} ${value.finger} — click to edit`
+          ? `Solver suggestion: ${fingerName(value.hand, value.finger)} — click to override`
+          : `${fingerName(value.hand, value.finger)} — click to edit`
         : 'Click to assign finger (e.g. L1, R5)'}
     >
       {value ? fingerAssignmentLabel(value) : '··'}

@@ -48,6 +48,9 @@ export default {
         'role-working': token('role-working'),
         'role-candidate': token('role-candidate'),
         'role-variant': token('role-variant'),
+        /* Hands (S4.2): always with the L or R letter as the second cue */
+        'hand-left': token('hand-left'),
+        'hand-right': token('hand-right'),
         /* M3-inspired surface scale */
         'surface': '#131313',
         'surface-dim': '#0e0e0e',

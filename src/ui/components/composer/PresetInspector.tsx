@@ -10,7 +10,7 @@
 
 import { useMemo, useState, useCallback } from 'react';
 import { type ComposerPreset, type PresetPad, type PlacedPresetInstance, canMirrorPreset, isPresetFingerVerified } from '../../../types/composerPreset';
-import { type FingerType } from '../../../types/fingerModel';
+import { FINGER_NUMBER, fingerLabel, fingerOnlyName, handColor } from '../../../utils/fingerNotation';
 import { GRID_ROWS, GRID_COLS } from '../../../types/padGrid';
 import { totalSteps } from '../../../types/loopEditor';
 import { updateComposerPreset } from '../../persistence/composerPresetStorage';
@@ -26,26 +26,6 @@ interface PresetInspectorProps {
   onMirrorInstance?: (instanceId: string) => void;
 }
 
-const FINGER_LABELS: Record<FingerType, string> = {
-  thumb: 'Thumb',
-  index: 'Index',
-  middle: 'Middle',
-  ring: 'Ring',
-  pinky: 'Pinky',
-};
-
-const FINGER_ABBREV: Record<FingerType, string> = {
-  thumb: '1',
-  index: '2',
-  middle: '3',
-  ring: '4',
-  pinky: '5',
-};
-
-const HAND_COLORS = {
-  left: '#0088FF',
-  right: '#FF4400',
-} as const;
 
 export function PresetInspector({ preset, instance, onRemoveInstance, onMirrorInstance }: PresetInspectorProps) {
   if (!preset) return null;
@@ -101,11 +81,11 @@ export function PresetInspector({ preset, instance, onRemoveInstance, onMirrorIn
                 </span>
                 {pad.hand && pad.finger ? (
                   <>
-                    <span style={{ color: HAND_COLORS[pad.hand] }}>
-                      {pad.hand === 'left' ? 'L' : 'R'}{FINGER_ABBREV[pad.finger]}
+                    <span style={{ color: handColor(pad.hand) ?? undefined }}>
+                      {fingerLabel(pad.hand, pad.finger)}
                     </span>
                     <span className="text-gray-600">
-                      {FINGER_LABELS[pad.finger]}
+                      {fingerOnlyName(pad.finger)}
                     </span>
                   </>
                 ) : (
@@ -233,7 +213,7 @@ function InspectorGridPreview({
                   width={cellSize}
                   height={cellSize}
                   rx={2}
-                  fill={pad ? (pad.hand === 'left' ? '#0088FF' : pad.hand === 'right' ? '#FF4400' : '#777') : '#222'}
+                  style={{ fill: pad ? handColor(pad.hand) ?? '#777' : '#222' }}
                   opacity={pad ? 0.7 : 0.1}
                 />
                 {pad?.finger && (
@@ -246,7 +226,7 @@ function InspectorGridPreview({
                     fill="white"
                     opacity={0.9}
                   >
-                    {FINGER_ABBREV[pad.finger!]}
+                    {FINGER_NUMBER[pad.finger!]}
                   </text>
                 )}
               </g>

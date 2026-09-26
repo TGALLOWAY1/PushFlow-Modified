@@ -22,6 +22,7 @@ export type InputRowId =
   | 'pad-menu'
   | 'pad-enter'
   | 'read-only-edit'
+  | 'empty-space-click'
   | 'space'
   | 'step-events'
   | 'events-list-keys'
@@ -128,6 +129,11 @@ export const INPUT_TABLE: readonly InputRow[] = [
     input: ['Delete', 'Backspace'], when: 'A pad is selected',
     does: 'Takes its Sound off the pad, with Undo in the toast. With no pad selected, nothing.',
     keys: e => plain(e) && (e.key === 'Delete' || e.key === 'Backspace'),
+  },
+  {
+    id: 'empty-space-click', group: 'Pads',
+    input: ['Click empty space'], when: 'Around the grid, or under the Sounds list',
+    does: 'Clears the pad and Sound selection and stops placing, as Esc does. The selected event stays.',
   },
   {
     id: 'read-only-edit', group: 'Pads',

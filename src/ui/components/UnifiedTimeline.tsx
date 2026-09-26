@@ -23,6 +23,7 @@ import { eventAtTime, eventOfNote, getEventTimeline, resolveEventKey } from '../
 import { RehearsalAudio, type RehearsalHit } from '../audio/rehearsalAudio';
 import { TimelineToolbar } from './TimelineToolbar';
 import { formatBarBeat, formatBarRange, formatSeconds } from '../../utils/musicalTime';
+import { fingerLabel as fingerLabelOf, fingerName, handColor } from '../../utils/fingerNotation';
 import {
   BAR_HEADER_HEIGHT,
   BEAT_HEADER_HEIGHT,
@@ -35,10 +36,6 @@ import {
 const SIDEBAR_WIDTH = 180;
 const MIN_ZOOM = 30;  // px per second minimum
 const MAX_ZOOM = 500; // px per second maximum
-
-const FINGER_ABBREV: Record<string, string> = {
-  thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
-};
 
 /** A labelled pill is at least this wide, so its 11 px "L2" fits (T64). */
 const LABELLED_PILL_MIN_WIDTH = 18;
@@ -763,9 +760,17 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
             {/* Lane dividers + alternating backgrounds + instance highlight */}
             {visibleStreams.map((stream, i) => {
               const isHighlighted = highlightedStreamIds?.has(stream.id) ?? false;
+              // The selected Sound's lane: a neutral tint, like its notes' outline (T28).
+              const isSoundSelected = state.selectedStreamId === stream.id;
               return (
                 <div key={`track-bg-${i}`}>
-                  {isHighlighted ? (
+                  {isSoundSelected ? (
+                    <div
+                      data-testid="timeline-lane-selected"
+                      className="absolute w-full bg-white/[0.05] border-l-2 border-l-slate-200/70"
+                      style={{ top: TOTAL_HEADER_HEIGHT + i * TRACK_HEIGHT, height: TRACK_HEIGHT }}
+                    />
+                  ) : isHighlighted ? (
                     <div
                       className="absolute w-full"
                       style={{
@@ -819,6 +824,9 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
               // Not on the grid shown: outlined in the Sound's colour, never
               // filled or red, since nothing about these notes is judged yet.
               const unplaced = !placedSoundIds.has(stream.id);
+              // The selected Sound (a pad click, or its row in the Sounds panel):
+              // all its notes are outlined, so its hits can be found (T28).
+              const soundSelected = state.selectedStreamId === stream.id;
 
               return (
                 <div key={stream.id}>
@@ -830,9 +838,11 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                     const hand = a.assignedHand as string;
                     const finger = a.finger as string | null;
                     const isRaw = hand === 'raw' || finger === 'unassigned';
-                    const fingerLabel = (finger && finger !== 'unassigned') ? FINGER_ABBREV[finger] ?? finger : '';
+                    // "L2" (the one notation, S4.2); '' for a note no finger plays yet.
+                    const fingerLabel = fingerLabelOf(a.assignedHand, a.finger);
                     const isSelected = inSelectedEvent(a);
-                    const handPrefix = a.assignedHand === 'left' ? 'L' : a.assignedHand === 'right' ? 'R' : '';
+                    // The hand's colour as the pill's left edge (T42); the letter is the second cue.
+                    const handEdge = unplaced || isRaw ? null : handColor(a.assignedHand);
 
                     const isUnplayable = hand === 'Unplayable' && !unplaced;
                     // Always use sound color for pill background; only override for unplayable
@@ -851,13 +861,13 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                     // map the user rehearses against was effectively blank.
                     const difficulty = a.difficulty as string;
                     const difficultyBorder = isUnplayable
-                      ? '2px solid #ef4444'
+                      ? '2px solid var(--difficulty-unplayable)'
                       : isRaw || unplaced
                         ? undefined
                         : difficulty === 'Hard'
-                          ? '2px solid #f59e0b'
+                          ? '2px solid var(--difficulty-hard)'
                           : difficulty === 'Medium'
-                            ? '2px solid #a3a3a3'
+                            ? '2px solid var(--difficulty-medium)'
                             : undefined;
 
                     // A strike that breaks one of the structural rules (hand
@@ -877,9 +887,10 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                         data-sound-id={stream.id}
                         data-event-key={a.eventKey}
                         data-start={a.startTime}
-                        data-finger={fingerLabel ? `${handPrefix}${fingerLabel}` : ''}
+                        data-finger={fingerLabel}
                         data-placement={unplaced ? 'unplaced' : undefined}
                         data-selected={isSelected ? 'true' : undefined}
+                        data-sound-selected={soundSelected ? 'true' : undefined}
                         className={`absolute flex items-center justify-center rounded-sm transition-all cursor-pointer
                           ${isSelected ? 'z-20 ring-2 ring-yellow-400 scale-110' : 'z-10 hover:z-20 hover:scale-105'}`}
                         style={{
@@ -893,7 +904,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                           // `borderBottom` makes React drop one of them between
                           // renders, which silently loses the difficulty marker.
                           borderTop: unplaced ? unplacedBorder : isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined,
-                          borderLeft: unplaced ? unplacedBorder : isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined,
+                          borderLeft: unplaced ? unplacedBorder : isRaw ? '1px dashed rgba(255,255,255,0.2)' : handEdge ? `3px solid ${handEdge}` : undefined,
                           borderRight: unplaced ? unplacedBorder : isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined,
                           borderBottom: unplaced ? unplacedBorder : difficultyBorder
                             ?? (isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined),
@@ -901,8 +912,12 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                           outlineOffset: relaxed.length > 0 ? 1 : undefined,
                         }}
                         onClick={() => handleNoteClick(a)}
-                        title={`${formatBarBeat(a.startTime, state.tempo)} (${formatSeconds(a.startTime)})${unplaced ? ' · not placed yet' : ''}${fingerLabel ? ` · ${handPrefix}${fingerLabel}` : ''}${a.cost ? ` · ${a.difficulty}` : ''}${a.constraintDiverges ? ' · differs from your finger preference' : ''}${relaxedNote.replace(' | ', ' · ')}`}
+                        title={`${formatBarBeat(a.startTime, state.tempo)} (${formatSeconds(a.startTime)})${unplaced ? ' · not placed yet' : ''}${fingerLabel ? ` · ${fingerLabel} (${fingerName(a.assignedHand, a.finger)})` : ''}${a.cost ? ` · ${a.difficulty}` : ''}${a.constraintDiverges ? ' · differs from your finger preference' : ''}${relaxedNote.replace(' | ', ' · ')}`}
                       >
+                        {/* The selected Sound's notes (S4.2, T28): a neutral outline, kept apart from the event's ring. */}
+                        {soundSelected && (
+                          <span aria-hidden="true" className="absolute -inset-[3px] rounded border-2 border-slate-200/80 pointer-events-none" />
+                        )}
                         {a.constraintDiverges && (
                           <span
                             className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full"
@@ -911,7 +926,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                         )}
                         {fingerLabel && (
                           <span className="text-[11px] font-bold leading-none" style={{ color: pillText }}>
-                            {handPrefix}{fingerLabel}
+                            {fingerLabel}
                           </span>
                         )}
                       </button>
@@ -968,7 +983,7 @@ function VoiceRow({
   return (
     <div
       className={`flex items-center gap-1.5 px-2 text-pf-sm border-b border-border-subtle/30 transition-colors
-        ${isGlobalSelected ? 'bg-blue-500/15 border-l-2 border-l-blue-400' : isInstanceHighlighted ? 'bg-violet-500/10 border-l-2 border-l-violet-400' : isEven ? '' : 'bg-white/[0.015]'}
+        ${isGlobalSelected ? 'bg-white/[0.07] border-l-2 border-l-slate-200/70' : isInstanceHighlighted ? 'bg-violet-500/10 border-l-2 border-l-violet-400' : isEven ? '' : 'bg-white/[0.015]'}
         ${stream.muted ? 'opacity-40' : ''}`}
       style={{ height: TRACK_HEIGHT }}
     >

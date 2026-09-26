@@ -123,6 +123,18 @@
   --factor-balance: #3b82f6;
   --factor-constraint: #ef4444;
 
+  /* --- Hands (fingerNotation, src/utils/fingerNotation.ts): the grid, timeline
+         pills, Compare, finger chips and the inspector; always paired with
+         the L or R letter --- */
+  --hand-left: #0088ff;
+  --hand-right: #ff4400;
+
+  /* --- Event difficulty (eventDifficulty, src/ui/analysis/eventDifficulty.ts):
+         the timeline's pill markers and the Events list's badges --- */
+  --difficulty-medium: #a3a3a3;
+  --difficulty-hard: #f59e0b;
+  --difficulty-unplayable: #ef4444;
+
   /* --- Sound colours (SOUND_PALETTE, src/utils/soundPalette.ts): new imports only --- */
   --sound-1: #E69F00;
   --sound-2: #56B4E9;

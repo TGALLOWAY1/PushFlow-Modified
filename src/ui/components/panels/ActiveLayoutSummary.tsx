@@ -34,6 +34,7 @@ import { formatFingerConstraint, parseFingerConstraint } from '../../../utils/fi
 import { formatPadLocator, formatPadPosition } from '../../../utils/padPosition';
 import { formatBarBeat, formatMilliseconds, formatSeconds } from '../../../utils/musicalTime';
 import { SoundLabel } from '../shared/SoundLabel';
+import { FINGER_NUMBER, fingerLabel, fingerName, fingerOnlyName, handColor, handName } from '../../../utils/fingerNotation';
 import { momentDifficultyCounts } from '../../analysis/momentCounts';
 
 export function ActiveLayoutSummary() {
@@ -291,10 +292,14 @@ export function ActiveLayoutSummary() {
                 <DetailChip label="Pad" value={padKey ? formatPadPosition(padKey) : '—'} />
                 <DetailChip
                   label="Hand"
-                  value={effectiveHand ?? 'Unplayable'}
-                  color={effectiveHand === 'left' ? 'text-blue-300' : effectiveHand === 'right' ? 'text-orange-300' : 'text-red-400'}
+                  value={effectiveHand ? handName(effectiveHand) : 'Unplayable'}
+                  color={handColor(effectiveHand) ?? 'var(--status-bad)'}
                 />
-                <DetailChip label="Finger" value={effectiveFinger ?? 'none'} />
+                <DetailChip
+                  label="Finger"
+                  value={fingerLabel(effectiveHand, effectiveFinger) || 'none'}
+                  title={fingerName(effectiveHand, effectiveFinger) || undefined}
+                />
               </div>
 
               {/* Finger constraint controls: the layout being edited only (S3.2) */}
@@ -310,9 +315,10 @@ export function ActiveLayoutSummary() {
                           aria-describedby={fingerReason.describedBy}
                           className={`px-2 py-0.5 text-pf-xs rounded-pf-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                             effectiveHand === hand
-                              ? hand === 'left' ? 'bg-blue-600/20 text-blue-300 border border-blue-500/40' : 'bg-orange-600/20 text-orange-300 border border-orange-500/40'
+                              ? hand === 'left' ? 'bg-hand-left/20 text-[var(--text-primary)] border border-hand-left/60' : 'bg-hand-right/20 text-[var(--text-primary)] border border-hand-right/60'
                               : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border border-[var(--border-default)] hover:text-[var(--text-secondary)]'
                           }`}
+                          title={handName(hand)}
                           onClick={() => handleSetConstraint(hand, effectiveFinger ?? 'index')}
                         >
                           {hand === 'left' ? 'L' : 'R'}
@@ -330,9 +336,10 @@ export function ActiveLayoutSummary() {
                               ? 'bg-[var(--bg-active)] text-[var(--text-primary)] border border-[var(--border-strong)]'
                               : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border border-[var(--border-default)] hover:text-[var(--text-secondary)]'
                           }`}
+                          title={fingerOnlyName(finger)}
                           onClick={() => handleSetConstraint(effectiveHand ?? 'right', finger)}
                         >
-                          {finger.slice(0, 2).toUpperCase()}
+                          {FINGER_NUMBER[finger]}
                         </button>
                       ))}
                     </div>
@@ -365,8 +372,8 @@ export function ActiveLayoutSummary() {
                 <div className="space-y-0.5">
                   {transition.fingerMoves.slice(0, 5).map(move => (
                     <div key={`${move.hand}-${move.finger}-${move.fromPad}-${move.toPad}`} className="flex items-center justify-between text-pf-xs">
-                      <span className={move.hand === 'left' ? 'text-blue-300' : 'text-orange-300'}>
-                        {move.hand[0].toUpperCase()}-{move.finger.slice(0, 2).toUpperCase()}
+                      <span style={{ color: handColor(move.hand) ?? undefined }} title={fingerName(move.hand, move.finger)}>
+                        {fingerLabel(move.hand, move.finger)}
                       </span>
                       <span className="text-[var(--text-tertiary)]">
                         {move.fromPad ? formatPadLocator(move.fromPad) : '—'} → {move.toPad ? formatPadLocator(move.toPad) : '—'}
@@ -419,11 +426,11 @@ function QuickStat({ label, value, quality, subtitle, wording = false, testId }:
   );
 }
 
-function DetailChip({ label, value, color, title }: { label: string; value: string; color?: string; title?: string }) {
+function DetailChip({ label, value, color, title }: { label: string; value: string; /** A CSS colour for the value. */ color?: string; title?: string }) {
   return (
     <div className="rounded-pf-sm border border-[var(--border-subtle)] bg-bg-card/60 px-2 py-1.5" title={title}>
       <div className="text-pf-micro text-[var(--text-tertiary)] uppercase tracking-wider">{label}</div>
-      <div className={`text-pf-xs font-medium ${color ?? 'text-[var(--text-primary)]'}`}>{value}</div>
+      <div className="text-pf-xs font-medium text-[var(--text-primary)]" style={color ? { color } : undefined}>{value}</div>
     </div>
   );
 }

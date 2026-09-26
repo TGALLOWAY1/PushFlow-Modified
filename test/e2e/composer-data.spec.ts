@@ -147,7 +147,7 @@ test.describe('S1a.5 · Composer edits and project Sounds stay in sync', () => {
     await newProject(page, pf);
     await openComposer(page);
     const id = await addLaneWithNote(page, pf, 0, 0);
-    const soundsPanelFinger = page.getByTitle('left index — click to edit').and(page.locator(':not([data-testid="drawer-panel-composer"] *)'));
+    const soundsPanelFinger = page.getByTitle('Left index finger — click to edit').and(page.locator(':not([data-testid="drawer-panel-composer"] *)'));
 
     await composer(page).getByTitle('Click to assign finger (e.g. L1, R5)').click();
     await composer(page).locator('input[maxlength="2"]').fill('L2');
@@ -156,7 +156,7 @@ test.describe('S1a.5 · Composer edits and project Sounds stay in sync', () => {
     expect((await pf.call('state')).voiceConstraints[id]).toEqual({ hand: 'left', finger: 'index' });
     await expect(soundsPanelFinger).toHaveCount(1);
 
-    await composer(page).getByTitle('left index — click to edit').click();
+    await composer(page).getByTitle('Left index finger — click to edit').click();
     await composer(page).locator('input[maxlength="2"]').fill('');
     await composer(page).locator('input[maxlength="2"]').press('Enter');
 
