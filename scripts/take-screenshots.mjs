@@ -11,7 +11,8 @@
  *
  * PW_CHROMIUM points at a Chromium binary if Playwright's bundled browser isn't
  * installed (in a cloud session: /opt/pw-browsers/chromium). PORT sets the dev
- * server's port (default 5199).
+ * server's port (default 5190; the e2e suite uses 5199 and reuses whatever
+ * listens there, so the two must not share a port).
  */
 
 import { chromium } from 'playwright';
@@ -22,7 +23,7 @@ import { fileURLToPath } from 'url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = resolve(ROOT, 'docs/screenshots/readme');
-const PORT = process.env.PORT || '5199';
+const PORT = process.env.PORT || '5190';
 const URL = process.env.URL || `http://localhost:${PORT}/`;
 
 async function waitForServer(url, timeoutMs = 60_000) {
