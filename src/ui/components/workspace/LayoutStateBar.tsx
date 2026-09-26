@@ -41,6 +41,7 @@ import { SaveVariantPopover } from './SaveVariantPopover';
 import { UseAsDraftButton } from './UseAsDraftButton';
 import { useLayoutActions, type PromoteSource } from '../../hooks/useLayoutActions';
 import { USE_AS_DRAFT_HINT } from '../../hooks/useReadOnlyHint';
+import { lifecycleLabel } from '../../state/lifecycleActions';
 
 /** How long an analysis may be pending before the bar says "Updating…". */
 export const UPDATING_AFTER_MS = 1500;
@@ -195,7 +196,7 @@ export function LayoutStateBar({ hint, scoring, onVariantSaved }: {
     if (variantId) onVariantSaved?.(variantId);
   };
 
-  const backLabel = state.workingLayout ? 'Back to my draft' : 'Back to Active';
+  const backLabel = state.workingLayout ? lifecycleLabel('back') : 'Back to Active';
   const backButton = (
     <button type="button" data-testid="state-bar-back" className={SUBTLE} onClick={back} title="Show the layout you are editing again">
       {backLabel}
@@ -205,11 +206,19 @@ export function LayoutStateBar({ hint, scoring, onVariantSaved }: {
   let detail: ReactNode = null;
   let actions: ReactNode = null;
   if (replaying) {
+    // A step of the optimizer trace is on the grid, read-only (T33); Esc, or
+    // Exit replay, shows the layout on screen again (the input table's
+    // exit-replay row).
     const trace = getActiveTrace(state) ?? [];
-    detail = `Replaying trace step ${(state.moveHistoryIndex ?? 0) + 1} of ${trace.length} · read-only`;
+    detail = (
+      <span data-testid="state-bar-replay">
+        Replaying step {(state.moveHistoryIndex ?? 0) + 1}/{trace.length} {'·'} Esc to exit
+      </span>
+    );
     actions = (
       <button type="button" data-testid="state-bar-exit-replay" className={SUBTLE}
-        onClick={() => dispatch({ type: 'SET_MOVE_HISTORY_INDEX', payload: null })}>
+        onClick={() => dispatch({ type: 'SET_MOVE_HISTORY_INDEX', payload: null })}
+        title="Show the layout on screen again (Esc)">
         Exit replay
       </button>
     );
@@ -245,7 +254,7 @@ export function LayoutStateBar({ hint, scoring, onVariantSaved }: {
             <button type="button" data-testid="state-bar-promote" className={PROMOTE}
               onClick={() => promote({ kind: 'working' })}
               title="Make this layout the new Active Layout">
-              Promote
+              {lifecycleLabel('promote')}
             </button>
             <button
               ref={saveRef}
@@ -260,7 +269,7 @@ export function LayoutStateBar({ hint, scoring, onVariantSaved }: {
               }}
               title="Keep this layout as a named variant, without changing the Active Layout"
             >
-              Save variant
+              {lifecycleLabel('save-variant')}
             </button>
             {saveAt && (
               <SaveVariantPopover
@@ -275,7 +284,7 @@ export function LayoutStateBar({ hint, scoring, onVariantSaved }: {
             <button type="button" data-testid="state-bar-discard"
               className={`${SUBTLE} hover:!bg-red-900/30 hover:!text-red-300 hover:!border-red-500/30`}
               onClick={discard} title="Discard working changes">
-              Discard
+              {lifecycleLabel('discard')}
             </button>
           </>
         );
@@ -294,12 +303,12 @@ export function LayoutStateBar({ hint, scoring, onVariantSaved }: {
             <button type="button" data-testid="state-bar-promote" className={PROMOTE}
               onClick={() => promote({ kind: 'candidate', id: candidate.id })}
               title={`Make ${subject.chip} the new Active Layout`}>
-              Promote
+              {lifecycleLabel('promote')}
             </button>
             <button type="button" data-testid="state-bar-keep" className={`${KEEP} disabled:opacity-60 disabled:cursor-default`} onClick={keepCandidate}
               disabled={kept}
               title={kept ? `${subject.chip} is kept as a Saved Layout Variant` : `Keep ${subject.chip} as a Saved Layout Variant, named after how it was made`}>
-              {kept ? 'Kept' : 'Keep as variant'}
+              {kept ? 'Kept' : lifecycleLabel('keep')}
             </button>
             {backButton}
           </>
@@ -313,7 +322,7 @@ export function LayoutStateBar({ hint, scoring, onVariantSaved }: {
             <button type="button" data-testid="state-bar-promote" className={PROMOTE}
               onClick={() => promote({ kind: 'variant', id: shown.layout.id })}
               title={`Make "${subject.name}" the new Active Layout`}>
-              Promote
+              {lifecycleLabel('promote')}
             </button>
             {backButton}
           </>

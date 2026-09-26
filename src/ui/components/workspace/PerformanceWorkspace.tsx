@@ -24,7 +24,7 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { exportProjectToFile } from '../../persistence/projectStorage';
 import { useToast } from '../shared/Toast';
 import { useViewSettings, ViewSettingsProvider } from '../../state/viewSettings';
-import { getActiveTrace, getDisplayedCandidate, isPadLocked, resolveInspectedLayout, type SoundStream } from '../../state/projectState';
+import { getActiveTrace, getDisplayedCandidate, hasTraceOnScreen, isPadLocked, resolveInspectedLayout, type SoundStream } from '../../state/projectState';
 import { liveCompareIds, canCompare } from '../../state/compareSet';
 import { resolvePresetDrop, soundForPresetLane, FOREIGN_PRESET_MESSAGE } from '../../state/presetDrop';
 
@@ -131,7 +131,9 @@ export function PerformanceWorkspace() {
 function PerformanceWorkspaceInner() {
   const { state, dispatch, transact } = useProject();
   const navigate = useNavigate();
-  const { generateFull, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason } = useAutoAnalysis();
+  const {
+    generateFull, cancelGeneration, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason,
+  } = useAutoAnalysis();
   useIdentityMatchingNotice(state);
   const { saveStatus, saveNow } = useAutoSave(state);
   // The '?' sheet, generated from the input table (T61).
@@ -580,9 +582,10 @@ function PerformanceWorkspaceInner() {
   const displayedCandidate = getDisplayedCandidate(state);
   const assignments = displayedCandidate?.executionPlan.fingerAssignments;
 
-  // The trace for the Visual Debugger follows the inspected candidate (the
-  // top-ranked one when none is inspected); its step-through replay shows on
-  // the grid, read-only too.
+  // The trace on screen (T33): the reducer keeps state.moveHistory,
+  // iterationTrace, moveHistoryStopReason and traceSubject on the inspected
+  // candidate's trace, else the run's candidate A's or the promoted one's.
+  // A step of it replays on the grid, read-only.
   const activeTrace = getActiveTrace(state);
   const debuggerIteration = (activeTrace && state.moveHistoryIndex !== null)
     ? activeTrace[state.moveHistoryIndex]
@@ -664,6 +667,7 @@ function PerformanceWorkspaceInner() {
       <WorkspaceToolbar
         onNavigateLibrary={() => { saveNow(); navigate('/'); }}
         generateFull={handleGenerate}
+        cancelGeneration={cancelGeneration}
         generationProgress={generationProgress}
         analysisPhase={analysisPhase}
         canGenerate={canGenerate}
@@ -965,12 +969,15 @@ function PerformanceWorkspaceInner() {
                       onRetryGenerate={handleGenerate}
                       onVariantSaved={handleVariantSaved}
                     />
-                    {((state.moveHistory && state.moveHistory.length > 0) || (activeTrace && activeTrace.length > 0)) && (
+                    {hasTraceOnScreen(state) && (
                       <div className="p-2.5">
+                        {/* A new candidate's trace starts unfiltered and collapsed. */}
                         <MoveTracePanel
+                          key={state.traceSubject?.candidateId ?? 'trace'}
                           moves={state.moveHistory}
-                          trace={activeTrace}
-                          stopReason={state.moveHistoryStopReason as any}
+                          trace={state.iterationTrace}
+                          stopReason={state.moveHistoryStopReason}
+                          subject={state.traceSubject}
                         />
                       </div>
                     )}

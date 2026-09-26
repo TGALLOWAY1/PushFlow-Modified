@@ -132,10 +132,11 @@ describe('One Promote (T13, P3-3)', () => {
     const fromCard = projectReducer(base, { type: 'PROMOTE_CANDIDATE', payload: { candidateId: 'cand-b' } });
     expect(fromCard.candidates.map(c => c.id)).toEqual(['cand-a']);
     expect(getActiveTrace(fromCard)).toBe(TRACE);
-    // The run's move history and stopReason carry over as they are.
-    const withRun = { ...base, moveHistory: [], moveHistoryStopReason: 'converged' };
-    const carried = projectReducer(withRun, { type: 'PROMOTE_CANDIDATE', payload: { candidateId: 'cand-b' } });
-    expect({ moves: carried.moveHistory, stop: carried.moveHistoryStopReason }).toEqual({ moves: [], stop: 'converged' });
+    // The candidate's own move history and stopReason stay on screen, marked promoted (S3.4, T33).
+    const withOwn = { ...base, candidates: base.candidates.map(c => c.id === 'cand-b' ? { ...c, moveHistory: [], stopReason: 'no_improving_move' as const } : c) };
+    const carried = projectReducer(withOwn, { type: 'PROMOTE_CANDIDATE', payload: { candidateId: 'cand-b' } });
+    expect({ moves: carried.moveHistory, stop: carried.moveHistoryStopReason, promoted: carried.traceSubject?.promoted })
+      .toEqual({ moves: [], stop: 'no_improving_move', promoted: true });
   });
 
   it('staleness detection holds after the rebind: fresh for the promoted Active, stale after an edit', () => {

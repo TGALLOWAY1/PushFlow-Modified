@@ -16,7 +16,9 @@ permissions:
 jobs:
   deep-annealing:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    # Thorough is budgeted since S3.4 (≤ 2 min per candidate): each file takes
+    # about 6 min and asserts it stays within 3 × 2 min + 30 s (was ~50 min).
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

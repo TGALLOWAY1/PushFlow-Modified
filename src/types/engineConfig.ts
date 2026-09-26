@@ -87,6 +87,8 @@ export interface SolverConfig {
   initialPadOwnership?: Record<string, { hand: 'left' | 'right'; finger: import('./fingerModel').FingerType }>;
   seed?: number;
   annealingConfig?: AnnealingConfig;
+  /** Annealing only: Cancel, the clock its budgets read, and progress. */
+  runControl?: import('../engine/optimization/runControl').AnnealingRunControl;
 }
 
 // ============================================================================
@@ -117,6 +119,22 @@ export interface AnnealingConfig {
   finalBeamWidth: number;
   /** Whether to include zone transfer mutation operator. */
   useZoneTransfer?: boolean;
+  /**
+   * Iteration budget for the whole run, all restarts together. Every restart
+   * still runs, with an equal share (at least one iteration), and its cooling
+   * is rescaled so it still falls from initialTemp to the temperature the
+   * configured schedule (`iterations` at `coolingRate`) ends at: the schedule
+   * is kept, compressed into fewer steps. Unset: `iterations` per restart.
+   */
+  iterationBudget?: number;
+  /**
+   * Wall-clock budget (ms) for the whole run, shared equally by the restarts so
+   * every restart starts. A restart whose share runs out stops early, and the
+   * run keeps the best layout found so far and reports 'time_budget'. Unset: no
+   * time limit. While the budget is not reached it changes nothing, so a
+   * fixed-seed run is bounded, and reproduced, by the iteration budget alone.
+   */
+  timeBudgetMs?: number;
 }
 
 /**
@@ -134,8 +152,16 @@ export const FAST_ANNEALING_CONFIG: AnnealingConfig = {
 };
 
 /**
- * Deep annealing configuration.
+ * Deep annealing configuration ("Thorough").
  * More iterations, restarts, wider beam, and zone transfer for complex performances.
+ *
+ * Budgets (S3.4, T35). Unbudgeted, this schedule ran 8000 iterations × 4 runs
+ * per candidate: about 50 minutes for TEST MIDI 1's three candidates (about 31
+ * ms per iteration in CI). The iteration budget runs the same schedule, every
+ * restart included, in 800 steps per run: about 1.5 minutes per candidate in
+ * CI (about 1 minute in the browser), and still 0 unplayable events on TEST
+ * MIDI 1. The time budget caps a slower machine at 2 minutes per candidate
+ * (30 s per run), keeping the best layout found so far.
  */
 export const DEEP_ANNEALING_CONFIG: AnnealingConfig = {
   iterations: 8000,
@@ -145,4 +171,6 @@ export const DEEP_ANNEALING_CONFIG: AnnealingConfig = {
   fastBeamWidth: 16,
   finalBeamWidth: 50,
   useZoneTransfer: true,
+  iterationBudget: 3200,
+  timeBudgetMs: 120_000,
 };

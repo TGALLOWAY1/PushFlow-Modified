@@ -12,6 +12,7 @@ import { hashLayout } from '@/engine';
 import {
   getDisplayedExecutionPlan,
   resolveInspectedLayout,
+  type GenerationRunRecord,
   type InspectedLayoutKind,
   type ProjectAction,
   type ProjectState,
@@ -20,6 +21,7 @@ import { scoringCounts, type ScoringCounts } from '../analysis/scoringClient';
 import { peekLayoutAnalysis } from '../analysis/layoutAnalysis';
 import type { Layout } from '../../types/layout';
 import type { ExecutionPlanResult } from '../../types/executionPlan';
+import type { CandidateSolution } from '../../types/candidateSolution';
 
 export interface E2EHookSource {
   state: ProjectState;
@@ -71,11 +73,54 @@ export interface PfFingering {
 /** A layout of this project: the one on screen, or one by role and id. */
 export type PfLayoutRef = 'shown' | { kind: InspectedLayoutKind; id: string };
 
+/** The last Generate and each candidate's trace, without the traces themselves (S3.4). */
+export interface PfGeneration {
+  isProcessing: boolean;
+  lastRun: GenerationRunRecord | null;
+  /** What the trace panel reads (state.moveHistory, iterationTrace, moveHistoryStopReason). */
+  trace: { moveCount: number; iterationCount: number; stopReason: string | null };
+  candidates: Array<{
+    id: string;
+    strategy: string;
+    stopReason: string | null;
+    moveCount: number;
+    iterationCount: number;
+    annealingSteps: number;
+    hasBeamSummary: boolean;
+  }>;
+}
+
+/** The trace on screen (T33): whose it is and its sizes, as the trace panel shows it. */
+export interface PfTrace {
+  candidateId: string | null;
+  /** The letter in its title, "How candidate B was found". */
+  letter: string | null;
+  stopReason: string | null;
+  moveCount: number;
+  iterationCount: number;
+  annealingSteps: number;
+  hasBeamSummary: boolean;
+  /** The replay step (state.moveHistoryIndex), null when none is replayed. */
+  replayStep: number | null;
+  /** The trace shown with no candidate inspected: the run's candidate A's, or the promoted one's. */
+  resting: { candidateId: string | null; letter: string | null; promoted: boolean } | null;
+}
+
 export interface PfTestHook {
-  /** Deep copy of the current project state; mutating it changes nothing. */
+  /**
+   * Deep copy of the current project state, without the optimizer traces
+   * (candidates' iterationTrace and annealingTrace, the session's
+   * iterationTrace and the resting and on-screen traces' iterations and
+   * annealing snapshots), which can be hundreds of MB after a greedy run; read
+   * those through generation() and trace(). Mutating the copy changes nothing.
+   */
   state(): ProjectState;
   /** Small status summary for polling; prefer it to state() in expect.poll loops. */
   status(): PfStatus;
+  /** The last Generate: its record, the trace panel's source and each candidate's trace sizes. */
+  generation(): PfGeneration;
+  /** The trace on screen (S3.4): whose it is, its sizes and the replay step. */
+  trace(): PfTrace;
   /**
    * Layout hash of the Active Layout, the Working/Test Layout (null if none),
    * the layout on screen (the inspected one, S3.2), or a layout by role and id
@@ -105,10 +150,67 @@ declare global {
   }
 }
 
+/** A candidate without its bulky traces (the move history is small and kept). */
+function withoutBulkyTraces(candidate: CandidateSolution): CandidateSolution {
+  const copy: CandidateSolution = { ...candidate, executionPlan: { ...candidate.executionPlan } };
+  delete copy.iterationTrace;
+  delete copy.annealingTrace;
+  delete copy.executionPlan.annealingTrace;
+  return copy;
+}
+
 /** Installs window.__pf, reading through `get` so it always sees the latest render. Returns an uninstaller. */
 export function installE2EHook(get: () => E2EHookSource): () => void {
   const hook: PfTestHook = {
-    state: () => structuredClone(get().state),
+    state() {
+      const s = get().state;
+      return structuredClone({
+        ...s,
+        iterationTrace: null,
+        candidates: s.candidates.map(withoutBulkyTraces),
+        analysisResult: s.analysisResult ? withoutBulkyTraces(s.analysisResult) : null,
+        inspectedAnalysis: s.inspectedAnalysis ? withoutBulkyTraces(s.inspectedAnalysis) : null,
+        traceSubject: s.traceSubject ? { ...s.traceSubject, annealing: null } : null,
+        restingTrace: s.restingTrace ? { ...s.restingTrace, iterations: null, annealing: null } : null,
+      });
+    },
+    generation() {
+      const s = get().state;
+      return structuredClone({
+        isProcessing: s.isProcessing,
+        lastRun: s.lastGenerationRun,
+        trace: {
+          moveCount: s.moveHistory?.length ?? 0,
+          iterationCount: s.iterationTrace?.length ?? 0,
+          stopReason: s.moveHistoryStopReason,
+        },
+        candidates: s.candidates.map(c => ({
+          id: c.id,
+          strategy: c.metadata.strategy,
+          stopReason: c.stopReason ?? null,
+          moveCount: c.moveHistory?.length ?? 0,
+          iterationCount: c.iterationTrace?.length ?? 0,
+          annealingSteps: c.annealingTrace?.length ?? 0,
+          hasBeamSummary: !!c.beamSummary,
+        })),
+      });
+    },
+    trace() {
+      const s = get().state;
+      const subject = s.traceSubject;
+      const resting = s.restingTrace;
+      return {
+        candidateId: subject?.candidateId ?? null,
+        letter: subject?.letter ?? null,
+        stopReason: s.moveHistoryStopReason,
+        moveCount: s.moveHistory?.length ?? 0,
+        iterationCount: s.iterationTrace?.length ?? 0,
+        annealingSteps: subject?.annealing?.length ?? 0,
+        hasBeamSummary: !!subject?.beam,
+        replayStep: s.moveHistoryIndex,
+        resting: resting ? { candidateId: resting.candidateId, letter: resting.letter, promoted: resting.promoted } : null,
+      };
+    },
     status() {
       const s = get().state;
       return {

@@ -10,8 +10,9 @@
 import { useRef, useState } from 'react';
 import { Popover, useOverlayTitleId } from '../shared/Overlay';
 import { useUseAsDraft, type DraftSource } from '../../hooks/useUseAsDraft';
+import { lifecycleLabel } from '../../state/lifecycleActions';
 
-export function UseAsDraftButton({ source, label = 'Use as my draft', title, className = '', testId }: {
+export function UseAsDraftButton({ source, label = lifecycleLabel('use-as-draft'), title, className = '', testId }: {
   source: DraftSource;
   /** "Use as my draft" in the state bar; "Edit as draft" on a variant row. */
   label?: string;

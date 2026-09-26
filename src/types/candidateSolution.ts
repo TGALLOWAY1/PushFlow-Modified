@@ -115,6 +115,35 @@ export interface CandidateSolution {
   baselineDiff?: BaselineDiffSummary;
   /** Detailed iteration-by-iteration trace for the Visual Debugger. */
   iterationTrace?: import('../engine/optimization/optimizerInterface').OptimizationIteration[];
+
+  // How this candidate was found (T33): each generator sets these on every
+  // candidate, so the trace and the stop reason travel with the candidate.
+
+  /** Why the run that produced this candidate stopped. */
+  stopReason?: import('../engine/optimization/optimizerInterface').StopReason;
+  /** That run's timing and cost telemetry, budgets included. */
+  telemetry?: import('../engine/optimization/optimizerInterface').OptimizerTelemetry;
+  /** Greedy: the move-by-move history (the trace contract's OptimizerMove shape). */
+  moveHistory?: import('../engine/optimization/optimizerInterface').OptimizerMove[];
+  /**
+   * Annealing: one snapshot per iteration (the trace contract's shape). The
+   * same array as executionPlan.annealingTrace.
+   */
+  annealingTrace?: import('./executionPlan').AnnealingIterationSnapshot[];
+  /** Beam: what the search did (beam search has no step history). */
+  beamSummary?: BeamSearchSummary;
+}
+
+/** A small summary of a beam search, the trace a beam candidate carries. */
+export interface BeamSearchSummary {
+  /** Hand-position hypotheses the search kept at each step. */
+  beamWidth: number;
+  /** Notes the plan assigns fingers to. */
+  noteCount: number;
+  /** The starting layout the search fingered (e.g. 'baseline', 'compact-right'). */
+  layoutStrategy: string;
+  /** Time the search took (ms). */
+  wallClockMs: number;
 }
 
 // ============================================================================
