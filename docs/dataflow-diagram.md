@@ -100,11 +100,11 @@ flowchart TD
 
         subgraph PanelsLayer["Panels"]
             VOICE_PAL["VoicePalette\n(sound list + constraints)"]
-            ANALYSIS_P["PerformanceAnalysisPanel\n(feasibility + difficulty)"]
+            ANALYSIS_P["ActiveLayoutSummary\n(feasibility + difficulty)"]
             TRACE_P["MoveTracePanel\n(optimizer step trace)"]
-            CANDIDATE_C["CandidateCard\n(preview + Use button)"]
+            CANDIDATE_C["CandidatePreviewCard\n(Inspect / Promote / Keep)"]
             COMPARE_M["CompareModal\n(side-by-side diff)"]
-            EVENT_DETAIL["EventDetailPanel"]
+            EVENT_DETAIL["SelectedEventCard\n(selected event verdict)"]
             LEARN_MORE["LearnMoreModal"]
         end
 

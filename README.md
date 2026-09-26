@@ -181,7 +181,7 @@ src/
     executionPlan.ts   # ExecutionPlan, FingerAssignment
     candidateSolution.ts  # CandidateSolution, TradeoffProfile
     diagnostics.ts     # DiagnosticFactors, FeasibilityVerdict, DiagnosticsPayload
-    engineConfig.ts    # EngineConfiguration, AnnealingPreset
+    engineConfig.ts    # EngineConfiguration, AnnealingConfig, OptimizationMode
     performance.ts     # Performance, PerformanceEvent
   ui/
     components/        # Grid and timeline at the top level; panels/, workspace/, shared/, composer/, loop-editor/, Homepage/

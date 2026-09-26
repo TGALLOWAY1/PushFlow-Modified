@@ -1,8 +1,10 @@
 # Dependencies
 node_modules/
 
-# Build output
+# Build output and caches
 dist/
+coverage/
+*.tsbuildinfo
 
 # OS files
 .DS_Store

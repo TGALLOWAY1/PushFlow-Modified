@@ -25,7 +25,6 @@
     "src/**/__tests__/*",
     "src/**/*.test.ts",
     "src/**/*.spec.ts",
-    "test/**/*",
-    "Version1/**/*"
+    "test/**/*"
   ]
 }
