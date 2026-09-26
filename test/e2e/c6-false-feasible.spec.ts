@@ -7,7 +7,8 @@
  * component test (test/ui/components/FeasibilityBadge.test.tsx).
  *
  * Flipped in S1b.1 (honest verdict): the whole-layout verdict stays pinned and
- * the selected event gets its own card.
+ * the selected event gets its own card. S3.3: the partly placed case reads
+ * Unfinished (only placed Sounds are scored), still never Feasible.
  */
 
 import { test, expect } from './fixtures';
@@ -32,13 +33,16 @@ async function badgeLevelsWhileSelecting(page: Page, pf: PfHandle, n: number): P
 }
 
 test.describe('C6 · verdict with an event selected', () => {
-  test('an Infeasible layout never shows "Feasible" while an event is selected', async ({ page, pf }) => {
+  // S3.3 (T25): only placed Sounds are scored, so four of seven placed reads
+  // Unfinished, not Infeasible (the unplaced Sounds' notes counted as
+  // unplayable before). It must still never read Feasible.
+  test('a partly placed (Unfinished) layout never shows "Feasible" while an event is selected', async ({ page, pf }) => {
     await openTestMidi1(page, pf);
-    // Four of seven Sounds placed: the unplaced Sounds' events are unplayable.
     await placeSounds(pf, ['3,3', '3,4', '4,2', '4,5']);
     await waitForAnalysis(pf);
     await page.getByRole('button', { name: 'Costs', exact: true }).click();
-    await expect(page.getByTestId('verdict-badge').first()).toHaveAttribute('data-level', 'infeasible');
+    await expect(page.getByTestId('verdict-badge').first()).toHaveAttribute('data-level', 'unfinished');
+    await expect(page.getByTestId('verdict-headline').first()).toHaveText('Unfinished · 4 of 7 Sounds placed');
     const levels = await badgeLevelsWhileSelecting(page, pf, 6);
     expect(levels.filter(l => l.startsWith('feasible'))).toEqual([]);
   });

@@ -5,7 +5,7 @@
  */
 
 import { fileURLToPath } from 'url';
-import { expect, type Page } from '@playwright/test';
+import { expect, type Dialog, type Page } from '@playwright/test';
 import type { PfHandle } from './fixtures';
 
 export const TEST_MIDI_1 = fileURLToPath(new URL('../fixtures/midi/TEST MIDI 1.mid', import.meta.url));
@@ -81,18 +81,31 @@ export async function chooseMethod(page: Page, method: 'Greedy' | 'Beam' | 'Anne
   await page.getByTitle('Optimizer method').selectOption({ label: method });
 }
 
+/** The toolbar's Generate: "Generate layouts from scratch" while nothing is placed (S3.3, T37). */
+export const generateButton = (page: Page) => page.getByRole('button', { name: /^Generate( layouts from scratch)?$/ });
+
 /**
  * Clicks Generate and waits for the run to finish: isProcessing goes true, then
  * false. Generate is disabled while analysis runs, so wait for that first.
+ * Each run adds its candidates to the list (S3.3), so the ids change.
  */
 export async function generateAndWait(page: Page, pf: PfHandle, timeout = 120_000): Promise<void> {
   await expect.poll(async () => (await pf.call('status')).isProcessing, { timeout: 30_000 }).toBe(false);
   const beforeIds = (await pf.call('status')).candidateIds.join();
-  await page.getByRole('button', { name: 'Generate', exact: true }).click();
+  await generateButton(page).click();
   await expect.poll(async () => {
     const s = await pf.call('status');
     return !s.isProcessing && s.candidateIds.length > 0 && s.candidateIds.join() !== beforeIds;
   }, { timeout }).toBe(true);
+}
+
+/**
+ * After Generate the grid shows candidate A read-only (S3.2, decision Q4):
+ * "Back to my draft" in the state bar shows the layout edits go to again.
+ */
+export async function backToMyDraft(page: Page): Promise<void> {
+  await page.getByTestId('state-bar-back').click();
+  await expect(page.getByTestId('state-bar')).not.toHaveAttribute('data-read-only', 'true');
 }
 
 /** The layouts and Sounds of a project, reduced to what a save must carry. */
@@ -149,9 +162,44 @@ export async function saveAndReload(page: Page, pf: PfHandle): Promise<void> {
   await page.getByTitle('Save project').click();
   await waitForSaved(page);
   await expect.poll(() => storedShape(page), { timeout: 15_000 }).toEqual(want);
-  await page.reload();
+  await reloadLeaving(page);
   await pf.ready();
   await expect.poll(async () => (await pf.call('status')).soundCount).toBeGreaterThan(0);
+}
+
+/**
+ * Reloads the page, answering "Leave" if it asks first. Candidates are never
+ * saved, so with unkept ones the page asks before it unloads (S3.3, T30); a
+ * spec's reload is deliberate. Other dialogs are left to the spec's handlers.
+ */
+export async function reloadLeaving(page: Page): Promise<void> {
+  const leave = (d: Dialog) => {
+    if (d.type() === 'beforeunload') d.accept().catch(() => {});
+  };
+  page.on('dialog', leave);
+  try {
+    await page.reload();
+  } finally {
+    page.off('dialog', leave);
+  }
+}
+
+/**
+ * "← Library". With unkept candidates it asks first (S3.3, T30): "Leave anyway"
+ * is clicked, and the number it said would be lost is returned (0 when it
+ * left at once).
+ */
+export async function leaveToLibrary(page: Page): Promise<number> {
+  await page.getByTestId('leave-project').click();
+  const popover = page.getByTestId('leave-project-popover');
+  const inProject = () => new URL(page.url()).pathname.includes('/project/');
+  // It leaves at once, or asks.
+  await expect.poll(async () => !inProject() || await popover.isVisible()).toBe(true);
+  if (!inProject()) return 0;
+  const unkept = Number(/^(\d+) candidates? (isn’t|aren’t) kept/.exec(await popover.innerText())?.[1] ?? NaN);
+  await page.getByTestId('leave-project-confirm').click();
+  await page.waitForURL(url => !url.pathname.includes('/project/'));
+  return unkept;
 }
 
 /**

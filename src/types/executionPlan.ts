@@ -224,6 +224,8 @@ export interface AnnealingIterationSnapshot {
   relaxedStrikes?: number;
   /** Which restart this snapshot belongs to (0 = initial run). */
   restartIndex?: number;
+  /** Set on a restart's last snapshot when its share of the wall-clock budget ran out there. */
+  stoppedBy?: 'time_budget';
 }
 
 /**
@@ -259,6 +261,17 @@ export interface SolverTelemetry {
   finalCostImprovement: number;
   /** The initial layout's average ergonomic cost (no rule penalty). */
   initialErgonomicCost?: number;
+  /** Why the search stopped: its full plan ran ('completed'), or the wall-clock budget cut a restart short. */
+  stopReason?: 'completed' | 'time_budget';
+  /** The iteration budget the run was sized to (all restarts), when set. */
+  iterationBudget?: number;
+  /** The wall-clock budget (ms) the run was given, when set. */
+  timeBudgetMs?: number;
+  /** Iterations each restart planned, and ran (fewer where its share of the time ran out). */
+  plannedIterationsPerRestart?: number[];
+  completedIterationsPerRestart?: number[];
+  /** Restarts the wall-clock budget stopped early (0 = the first run). */
+  restartsStoppedByTime?: number[];
   /** Cost at iteration milestones. */
   costAtMilestones: {
     pct25: number;

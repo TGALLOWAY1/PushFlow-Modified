@@ -4,7 +4,8 @@
  *
  * Generate fills the candidate list and leaves the Working/Test Layout, the grid
  * and the history alone, so Generate on an empty grid places nothing
- * (invariant 7).
+ * (invariant 7). Since S3.2 candidate A is shown read-only afterwards (Q4),
+ * even on an empty grid: looking writes nothing.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -13,7 +14,7 @@ import * as path from 'path';
 import { renderHook, act } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { ProjectProvider, useProject } from '../../../src/ui/state/ProjectContext';
-import { projectReducer, type ProjectState } from '../../../src/ui/state/projectState';
+import { projectReducer, resolveInspectedLayout, type ProjectState } from '../../../src/ui/state/projectState';
 import { useAutoAnalysis } from '../../../src/ui/hooks/useAutoAnalysis';
 import { hashLayout } from '../../../src/engine/mapping/mappingResolver';
 import { importTestMidi1, suggestedTestMidi1 } from '../../helpers/testMidi1';
@@ -46,11 +47,13 @@ describe('Generate only proposes', () => {
     expect(s.candidates.length).toBeGreaterThan(0);
     expect(Object.keys(s.workingLayout?.padToVoice ?? {})).toEqual([]);
     expect(Object.keys(s.activeLayout.padToVoice)).toEqual([]);
-    expect(s.selectedCandidateId).toBeNull();
+    // Candidate A is shown read-only (Q4, S3.2), and nothing was written.
+    expect(s.inspectedLayout).toEqual({ kind: 'candidate', id: s.candidates[0]!.id });
+    expect(resolveInspectedLayout(s).readOnly).toBe(true);
     expect(result.current.project.canUndo).toBe(false);
   }, 120_000);
 
-  it('P1a-2a: after Generate the draft hash is unchanged and no candidate is selected', async () => {
+  it('P1a-2a: after Generate the draft hash is unchanged and candidate A is shown read-only', async () => {
     const initial = greedyNaturalPose(await suggestedTestMidi1());
     const { result } = renderProject(initial);
     const draftHash = hashLayout(result.current.project.state.workingLayout!);
@@ -59,7 +62,8 @@ describe('Generate only proposes', () => {
     const s = result.current.project.state;
     expect(s.candidates.length).toBeGreaterThan(0);
     expect(hashLayout(s.workingLayout!)).toBe(draftHash);
-    expect(s.selectedCandidateId).toBeNull();
+    expect(s.inspectedLayout).toEqual({ kind: 'candidate', id: s.candidates[0]!.id });
+    expect(resolveInspectedLayout(s)).toMatchObject({ role: 'candidate', readOnly: true, layout: s.candidates[0]!.layout });
     expect(s.isProcessing).toBe(false);
   }, 120_000);
 });

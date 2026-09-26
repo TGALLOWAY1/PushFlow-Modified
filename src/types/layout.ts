@@ -11,7 +11,7 @@
  *
  * V3 workflow roles:
  * - Active Layout: the committed baseline (read-mostly, changed only by Promote)
- * - Working/Test Layout: a session-scoped exploratory draft (created on first edit)
+ * - Working/Test Layout: the exploratory draft (created on first edit; saved with the project, decision Q1)
  * - Saved Layout Variant: a durable named alternative (kept for comparison)
  */
 
@@ -24,10 +24,35 @@ export type LayoutMode = 'manual' | 'optimized' | 'random' | 'auto' | 'none';
  * LayoutRole: the workflow role of a layout in the project.
  *
  * - 'active': the committed baseline
- * - 'working': the session-scoped exploratory draft
+ * - 'working': the exploratory draft (saved with the project, decision Q1)
  * - 'variant': a durable named alternative
  */
 export type LayoutRole = 'active' | 'working' | 'variant';
+
+/**
+ * Where a layout came from (T32). A layout's name is only its base name
+ * ("Default"); its role and origin are never written into it, and the UI builds
+ * labels from role and base name ("Draft of Default", layoutLabels.ts).
+ *
+ * - 'manual': a Working/Test Layout started by a manual edit of the Active Layout;
+ * - 'suggested': "Suggest a starting layout";
+ * - `candidate:<strategy>`: a Candidate Solution applied, promoted or kept
+ *   (the strategy is its metadata.strategy);
+ * - `variant:<id>`: loaded or promoted from that Saved Layout Variant;
+ * - 'recovered': a Working/Test Layout kept automatically when an explicit
+ *   action replaced it (ProjectDocument.recoveredDrafts);
+ * - 'replaced-active': an Active Layout that a Promote replaced, auto-saved as
+ *   a variant.
+ * A variant saved from the draft keeps the draft's provenance. Absent means
+ * unknown: layouts from before schema 5 whose names didn't say.
+ */
+export type LayoutProvenance =
+  | 'manual'
+  | 'suggested'
+  | `candidate:${string}`
+  | `variant:${string}`
+  | 'recovered'
+  | 'replaced-active';
 
 /**
  * Layout: A complete pad assignment configuration.
@@ -38,7 +63,7 @@ export type LayoutRole = 'active' | 'working' | 'variant';
 export interface Layout {
   /** Unique identifier. */
   id: string;
-  /** Display name for this layout. */
+  /** Its base name ("Default"), with no role words; see LayoutProvenance. */
   name: string;
   /**
    * Assignment: pad key ("row,col") -> Voice.
@@ -68,11 +93,8 @@ export interface Layout {
   version?: number;
   /** ISO timestamp when saved. */
   savedAt?: string;
-  /**
-   * Where a stored layout came from. 'recovered': a Working/Test Layout kept
-   * automatically when an explicit action replaced it (ProjectDocument.recoveredDrafts).
-   */
-  provenance?: 'recovered';
+  /** Where it came from (T32); absent when unknown. */
+  provenance?: LayoutProvenance;
 }
 
 /**

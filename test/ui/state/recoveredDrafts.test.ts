@@ -1,8 +1,9 @@
 /**
  * Recovered drafts (S1a.2; roadmap P1a "Generate only proposes").
  *
- * Preview, Load Draft and a candidate or variant Promote replace the
- * Working/Test Layout. A draft that would be lost is kept in a separate
+ * Use as my draft (APPLY_GENERATION_TO_LAYOUT; "Preview" before S3.2), Edit
+ * as draft (LOAD_SAVED_VARIANT; "Load Draft" before S3.2) and a candidate or
+ * variant Promote replace the Working/Test Layout. A draft that would be lost is kept in a separate
  * "Recovered drafts" list (deduped by layout hash, capped at 5), which is saved
  * with the project (decision Q1) and never mixed into the variants.
  */
@@ -59,14 +60,16 @@ async function withCandidatesAndVariant() {
   state = reduce(state, { type: 'SAVE_AS_VARIANT', payload: { name: 'My named variant', source: 'working' } });
   state = reduce(state, { type: 'DISCARD_WORKING_LAYOUT' });
   state = reduce(state, { type: 'SET_CANDIDATES', payload: [fakeCandidate('cand-a', state, ['4,4', '4,5']), fakeCandidate('cand-b', state, ['5,5', '5,6'])] });
+  // Candidate A is shown read-only after Generate (S3.2, Q4): back to the draft to edit it.
+  state = reduce(state, { type: 'INSPECT_LAYOUT', payload: null });
   state = handDraft(state, ['0,0', '0,7', '7,3']);
   return state;
 }
 
 describe('an explicit action that replaces a hand-made draft keeps it in Recovered drafts', () => {
   const cases: Array<[string, (s: ProjectState) => ProjectAction]> = [
-    ['Preview', () => ({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: 'cand-a' } })],
-    ['Load Draft', s => ({ type: 'LOAD_SAVED_VARIANT', payload: { variantId: s.savedVariants[0].id } })],
+    ['Use as my draft', () => ({ type: 'APPLY_GENERATION_TO_LAYOUT', payload: { candidateId: 'cand-a' } })],
+    ['Edit as draft', s => ({ type: 'LOAD_SAVED_VARIANT', payload: { variantId: s.savedVariants[0].id } })],
     ['a candidate Promote', () => ({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: 'cand-b' } })],
     ['a variant Promote', s => ({ type: 'PROMOTE_VARIANT', payload: { variantId: s.savedVariants[0].id } })],
   ];

@@ -19,7 +19,7 @@ import {
   type OptimizerTelemetry,
 } from './optimizerInterface';
 import { registerOptimizer } from './optimizerRegistry';
-import { createAnnealingSolver } from './annealingSolver';
+import { createAnnealingSolver, annealingRunSummary } from './annealingSolver';
 import { evaluatePerformance } from '../evaluation/canonicalEvaluator';
 import {
   type SolverConfig,
@@ -92,27 +92,9 @@ class AnnealingOptimizerAdapter implements OptimizerMethod {
       config: input.evaluationConfig,
     });
 
-    const wallClockMs = Date.now() - startTime;
-    // Prefer the initial cost the solver recorded. Back-computing it from the
-    // improvement ratio is only a fallback; an improvement at or above 1 (final
-    // cost reached 0) would divide by zero or flip sign.
-    const improvementRatio = executionPlan.metadata?.solverTelemetry?.finalCostImprovement || 0;
-    const initialCost = executionPlan.metadata?.solverTelemetry?.initialErgonomicCost
-      ?? (improvementRatio > 0 && improvementRatio < 1
-        ? executionPlan.averageMetrics.total / (1 - improvementRatio)
-        : executionPlan.averageMetrics.total);
-
-    const telemetry: OptimizerTelemetry = {
-      wallClockMs,
-      iterationsCompleted: executionPlan.metadata?.solverTelemetry?.iterationsCompleted ?? 0,
-      movesEvaluated: executionPlan.metadata?.solverTelemetry?.iterationsCompleted,
-      movesAccepted: executionPlan.metadata?.solverTelemetry?.totalAccepted,
-      movesRejected: executionPlan.metadata?.solverTelemetry?.totalRejected,
-      initialCost,
-      finalCost: executionPlan.averageMetrics.total,
-      improvement: executionPlan.metadata?.solverTelemetry?.finalCostImprovement ?? 0,
-      seed: resolvedSeed,
-    };
+    // 'time_budget' when the wall-clock budget cut a restart short.
+    const { stopReason, telemetry: runTelemetry } = annealingRunSummary(executionPlan, Date.now() - startTime);
+    const telemetry: OptimizerTelemetry = { ...runTelemetry, seed: resolvedSeed };
 
     return {
       layout: finalLayout,
@@ -120,7 +102,7 @@ class AnnealingOptimizerAdapter implements OptimizerMethod {
       executionPlan,
       diagnostics,
       costTogglesUsed: input.costToggles,
-      stopReason: 'completed',
+      stopReason,
       telemetry,
     };
   }

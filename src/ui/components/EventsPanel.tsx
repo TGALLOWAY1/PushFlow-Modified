@@ -12,6 +12,9 @@
  *
  * Reuses V1 event-analysis patterns: epsilon-based temporal grouping,
  * keyboard navigation (↑/↓ and j/k while focus is in the list), auto-scroll selected row.
+ *
+ * Costs come from the plan of the layout on screen (S3.2), which the
+ * SubjectChip at the top names.
  */
 
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react';
@@ -22,6 +25,8 @@ import { MOMENT_EPSILON } from '../../types/performanceEvent';
 import { useInputHandler } from '../input/inputRegistry';
 import { formatBarBeat } from '../../utils/musicalTime';
 import { FACTOR_KEYS, FACTOR_META, factorsFromBreakdown } from '../analysis/factorMeta';
+import { inspectedSubject } from '../state/layoutSubject';
+import { SubjectChip } from './shared/SubjectChip';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -171,6 +176,10 @@ export function EventsPanel({
 
   return (
     <div className="space-y-1">
+      {/* Whose costs these are (S3.2). */}
+      <div className="px-1 pb-0.5">
+        <SubjectChip subject={inspectedSubject(state)} testId="events-subject" />
+      </div>
       <div className="flex items-center justify-between px-1">
         <span className="text-pf-xs text-[var(--text-tertiary)]">
           {moments.length} events

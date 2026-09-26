@@ -11,6 +11,7 @@
  * 4. Every candidate of every method has 0 unplayable events in strict mode.
  * 5. A Sound locked at [7,0] stays there in every candidate.
  * 6. Fixed-seed snapshots pin each method's output.
+ * 7. Every candidate carries its stop reason and its method's trace (P3-9).
  *
  * In the app, Beam and Annealing "Quick" run the same code: generateCandidates
  * with optimizationMode 'fast', which is beam search only (annealing runs only in
@@ -151,6 +152,22 @@ describe('TEST MIDI 1.mid end-to-end', () => {
       for (const candidate of candidates) {
         expect(candidate.metadata.strategy).toBeTruthy();
         expect(typeof candidate.metadata.seed).toBe('number');
+      }
+    });
+
+    // S3.4 (T33, P3-9): the trace and the stop reason travel with the candidate.
+    it('P3-9: every candidate carries its stop reason, telemetry and its method’s trace', () => {
+      for (const candidate of candidates) {
+        expect(candidate.stopReason).toBeTruthy();
+        expect(candidate.telemetry?.wallClockMs).toBeGreaterThanOrEqual(0);
+        if (method === 'greedy') {
+          expect(['no_improving_move', 'iteration_cap', 'infeasible_neighborhood']).toContain(candidate.stopReason);
+          expect(candidate.moveHistory!.length).toBeGreaterThan(0);
+        } else {
+          // Beam, and Annealing Quick, which runs beam search only.
+          expect(candidate.stopReason).toBe('completed');
+          expect(candidate.beamSummary?.noteCount).toBe(candidate.executionPlan.fingerAssignments.length);
+        }
       }
     });
 

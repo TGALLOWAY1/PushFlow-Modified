@@ -1,9 +1,10 @@
 /**
  * Per-layout analysis cache (T08 slice, roadmap P1b "Compare stop-gap and
- * analysis cache").
+ * analysis cache"; S3.1 "One yardstick").
  *
- * An in-memory LRU of analysed layouts (Execution Plan, difficulty analysis,
- * tradeoff profile), keyed fully by
+ * An in-memory LRU of scored layouts: each entry holds a layout's own
+ * analysis plan (Execution Plan, difficulty analysis, tradeoff profile) and its
+ * Playability, keyed fully by
  *   (layoutHash, performanceHash, costToggles, evaluatorId).
  * It is analysis-only state: it lives in this module, never in project state,
  * never in undo history and never in storage. Losing it costs a re-solve.
@@ -12,31 +13,32 @@
  * for the same key, or runs `compute` once. A failed solve is not cached.
  */
 
-import { hashLayout } from '@/engine';
-import type { Layout } from '../../types/layout';
-import type { CandidateSolution } from '../../types/candidateSolution';
 import type { CostToggles } from '../../types/costToggles';
 import type { Performance, InstrumentConfig } from '../../types/performance';
 import type { EngineConfiguration } from '../../types/engineConfig';
 import type { Section } from '../../types/performanceStructure';
+import type { ScoredLayoutAnalysis } from './scoreLayout';
 
 export interface AnalysisKey {
   layoutHash: string;
   /** The performance and every setting that shapes its plan (see hashPerformance). */
   performanceHash: string;
   costToggles: CostToggles;
-  /** Which evaluator produced the plan. */
+  /** Which evaluator scored the layout (the engine's PLAYABILITY_EVALUATOR_ID). */
   evaluatorId: string;
 }
 
-/** The auto-analysis evaluator: fast beam solve (analyzeLayout). */
-export const AUTO_ANALYSIS_EVALUATOR_ID = 'beam-fast';
-
-/** Entries kept before the least recently used one is dropped. */
-export const ANALYSIS_CACHE_CAPACITY = 16;
+/**
+ * Entries kept before the least recently used one is dropped: room for every
+ * row a Layouts list shows at once (Active, the draft, about 12 candidates
+ * across runs, the variants and 5 recovered drafts) with space to spare. A row
+ * keeps a result it already has even after its entry is dropped
+ * (useLayoutAnalysis), so a full cache never makes rows re-solve each other out.
+ */
+export const ANALYSIS_CACHE_CAPACITY = 64;
 
 /** 53-bit string hash (cyrb53); stable across sessions. */
-function hashString(str: string, seed = 0): string {
+export function hashString(str: string, seed = 0): string {
   let h1 = 0xdeadbeef ^ seed;
   let h2 = 0x41c6ce57 ^ seed;
   for (let i = 0; i < str.length; i++) {
@@ -70,25 +72,10 @@ export function analysisCacheKey(key: AnalysisKey): string {
   return `${key.evaluatorId}|${key.performanceHash}|${toggles}|${hashString(key.layoutHash)}`;
 }
 
-/** Builds the key for a layout from its parts. */
-export function makeAnalysisKey(
-  layout: Layout,
-  performance: Performance,
-  context: PerformanceContext & { costToggles: CostToggles },
-  evaluatorId: string = AUTO_ANALYSIS_EVALUATOR_ID,
-): AnalysisKey {
-  return {
-    layoutHash: hashLayout(layout),
-    performanceHash: hashPerformance(performance, context),
-    costToggles: context.costToggles,
-    evaluatorId,
-  };
-}
+const entries = new Map<string, ScoredLayoutAnalysis>();
+const inFlight = new Map<string, Promise<ScoredLayoutAnalysis>>();
 
-const entries = new Map<string, CandidateSolution>();
-const inFlight = new Map<string, Promise<CandidateSolution>>();
-
-function touch(k: string, value: CandidateSolution) {
+function touch(k: string, value: ScoredLayoutAnalysis) {
   entries.delete(k);
   entries.set(k, value);
   while (entries.size > ANALYSIS_CACHE_CAPACITY) {
@@ -97,8 +84,8 @@ function touch(k: string, value: CandidateSolution) {
   }
 }
 
-/** The cached analysis for this key, or null. Marks it recently used. */
-export function peekAnalysis(key: AnalysisKey): CandidateSolution | null {
+/** The cached entry for this key, or null. Marks it recently used. */
+export function peekAnalysis(key: AnalysisKey): ScoredLayoutAnalysis | null {
   const k = analysisCacheKey(key);
   const hit = entries.get(k);
   if (!hit) return null;
@@ -106,19 +93,19 @@ export function peekAnalysis(key: AnalysisKey): CandidateSolution | null {
   return hit;
 }
 
-/** Stores an analysis computed elsewhere (auto-analysis) under its key. */
-export function rememberAnalysis(key: AnalysisKey, value: CandidateSolution): void {
+/** Stores an entry computed elsewhere under its key. */
+export function rememberAnalysis(key: AnalysisKey, value: ScoredLayoutAnalysis): void {
   touch(analysisCacheKey(key), value);
 }
 
 /**
- * The analysis of a layout: from the cache, from a solve already running for
- * the same key, or by running `compute` once and caching its result.
+ * The scored analysis of a layout: from the cache, from a solve already
+ * running for the same key, or by running `compute` once and caching its result.
  */
 export function getAnalysisForLayout(
   key: AnalysisKey,
-  compute: () => Promise<CandidateSolution>,
-): Promise<CandidateSolution> {
+  compute: () => Promise<ScoredLayoutAnalysis>,
+): Promise<ScoredLayoutAnalysis> {
   const k = analysisCacheKey(key);
   const hit = entries.get(k);
   if (hit) {

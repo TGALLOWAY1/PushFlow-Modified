@@ -194,7 +194,34 @@ export type StopReason =
   | 'local_minimum'          // Same as no_improving_move (alias for clarity)
   | 'infeasible_neighborhood' // All neighboring moves violate hard constraints
   | 'completed'              // Non-iterative method finished normally
-  | 'aborted';               // User cancelled
+  | 'time_budget'            // Annealing: its wall-clock budget ran out; the best result so far is kept
+  | 'cancelled'              // The user pressed Cancel; nothing from the run is kept
+  | 'aborted';               // @deprecated Never produced; a user's Cancel reports 'cancelled'
+
+/**
+ * Each stop reason in words, shown as "Stopped: <label>" (trace panel, toolbar)
+ * and listed in Learn More from STOP_REASONS_EXPLAINED, so they can't drift.
+ */
+export const STOP_REASON_LABELS: Record<StopReason, string> = {
+  no_improving_move: 'no move improved the layout',
+  iteration_cap: 'iteration limit reached',
+  local_minimum: 'no move improved the layout',
+  infeasible_neighborhood: 'every remaining move breaks a rule',
+  completed: 'finished',
+  time_budget: 'time limit reached',
+  cancelled: 'cancelled',
+  aborted: 'cancelled',
+};
+
+/** The stop reasons a run can report, each with what it means for the result. */
+export const STOP_REASONS_EXPLAINED: ReadonlyArray<{ reason: StopReason; meaning: string }> = [
+  { reason: 'no_improving_move', meaning: 'Greedy tried every move from its last layout and none lowered the cost.' },
+  { reason: 'infeasible_neighborhood', meaning: 'Greedy’s only moves left would put a Sound outside its hand’s zone without making anything playable.' },
+  { reason: 'iteration_cap', meaning: 'Greedy made its maximum number of moves; it may still have found more.' },
+  { reason: 'completed', meaning: 'Beam and Annealing ran their full search.' },
+  { reason: 'time_budget', meaning: 'Thorough used its whole time limit. Every restart ran, and the best layout found so far is the candidate.' },
+  { reason: 'cancelled', meaning: 'You pressed Cancel. Nothing from that run is kept; the candidates you had stay as they were.' },
+];
 
 // ============================================================================
 // Optimizer Telemetry
@@ -224,6 +251,14 @@ export interface OptimizerTelemetry {
    * be reproduced (see the Restart / Attempt Metadata contract).
    */
   seed?: number;
+  /** Annealing: the iteration budget the run was sized to (all restarts), when set. */
+  iterationBudget?: number;
+  /** Annealing: the wall-clock budget (ms) the run was given, when set. */
+  timeBudgetMs?: number;
+  /** Annealing: iterations planned under the budgets (iterationsCompleted is what ran). */
+  iterationsPlanned?: number;
+  /** Annealing: restarts the wall-clock budget stopped early (0 = the first run). */
+  restartsStoppedByTime?: number[];
 }
 
 // ============================================================================

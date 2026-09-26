@@ -31,8 +31,9 @@ import { type CandidateSolution } from '../../types/candidateSolution';
  * 2: recoveredDrafts (S1a.2).
  * 3: ghost locks pruned from every stored layout (S1a.4).
  * 4: lastOpenedAt (S2.3).
+ * 5: layout names without role words; provenance instead (S3.2, T32).
  */
-export const PERSISTED_SCHEMA_VERSION = 4;
+export const PERSISTED_SCHEMA_VERSION = 5;
 
 // ============================================================================
 // Persisted Project Document

@@ -8,9 +8,11 @@
  * ProjectDocument and ProjectSession types in projectState.ts are the other half.
  */
 
-import { type ProjectDocument, type ProjectState } from './projectState';
+import { type ProjectDocument, type ProjectState, resolveInspectedLayout, withTraceOnScreen } from './projectState';
 import { type CandidateSolution } from '../../types/candidateSolution';
+import { reconcileLayoutVoices } from '../../types/layout';
 import { deepEqual } from '../../utils/deepEqual';
+import { analysisInputsChanged } from './analysisInputs';
 
 /**
  * Every document field. A Record over keyof ProjectDocument, so adding a field to
@@ -61,22 +63,36 @@ export function documentChanged(a: ProjectDocument, b: ProjectDocument): boolean
 }
 
 /**
+ * A session copy of a layout with its Sounds' names and colours as the
+ * document has them (candidates and plans embed a copy of each; S1a.1
+ * follow-up: an undone rename stayed on the candidate cards).
+ */
+function withSoundNames<T extends { layout: CandidateSolution['layout'] }>(item: T, streams: ProjectState['soundStreams']): T {
+  const layout = reconcileLayoutVoices(item.layout, streams);
+  return layout === item.layout ? item : { ...item, layout };
+}
+
+/**
  * Puts a document slice back under the current session (Undo and Redo).
  *
  * The session is kept, so playback, selection, candidates and the trace carry
- * on. The layout may have changed under the analysis, so it is marked stale and
+ * on. When something the analysis reads changed (the layouts, the notes, the
+ * tempo, the preferences; analysisInputs.ts), it is marked stale and
  * re-resolves by layout hash (getAnalysisForLayout rejects a plan bound to
- * another layout). updatedAt moves forward so autosave writes the restored
+ * another layout); undoing a rename or a recolour leaves it fresh (T14).
+ * Candidates and plans take the restored Sound names and colours.
+ * updatedAt moves forward so autosave writes the restored
  * document even when it matches an older save.
  *
  * Candidates the step removed (`returned`, from candidatesRemovedBy) go back
  * into the list.
  *
  * Selections that would now describe something else are cleared, as the
- * edit reducers do: a selected candidate and the selected pad when the layouts
- * change (the grid shows the restored layout, so the panels must too), the
- * event selection when the Sounds change (its index may point at a different
- * event), and the armed Sound when it is gone.
+ * edit reducers do: the inspected layout and the selected pad when the layouts
+ * change (the grid shows the restored layout, so Undo is seen to act and the
+ * panels follow; S3.2), an inspected variant or recovered draft the step
+ * removed, the event selection when the Sounds change (its index may point at
+ * a different event), and the armed Sound when it is gone.
  */
 export function restoreDocument(
   state: ProjectState,
@@ -94,15 +110,25 @@ export function restoreDocument(
   const soundsChanged = restored.soundStreams !== state.soundStreams;
   const returnedCandidates = (returned as CandidateSolution[] | undefined)
     ?.filter(c => !restored.candidates.some(existing => existing.id === c.id)) ?? [];
-  return {
+  const inspectionGone = !!state.inspectedLayout && !resolveInspectedLayout(restored).readOnly;
+  const candidates = returnedCandidates.length > 0 ? [...restored.candidates, ...returnedCandidates] : restored.candidates;
+  const streams = restored.soundStreams;
+  // The trace follows the inspection like any reducer step (T33): ending an
+  // inspection shows the resting trace again.
+  return withTraceOnScreen(state, {
     ...restored,
-    ...(returnedCandidates.length > 0 ? { candidates: [...restored.candidates, ...returnedCandidates] } : {}),
+    ...(soundsChanged || returnedCandidates.length > 0 ? {
+      candidates: candidates.map(c => withSoundNames(c, streams)),
+      analysisResult: restored.analysisResult && withSoundNames(restored.analysisResult, streams),
+      inspectedAnalysis: restored.inspectedAnalysis && withSoundNames(restored.inspectedAnalysis, streams),
+    } : {}),
     updatedAt: new Date().toISOString(),
-    analysisStale: true,
-    ...(layoutsChanged ? { selectedCandidateId: null, selectedPadKey: null } : {}),
+    analysisStale: state.analysisStale || analysisInputsChanged(state, restored),
+    ...(layoutsChanged || inspectionGone ? { inspectedLayout: null } : {}),
+    ...(layoutsChanged ? { selectedPadKey: null } : {}),
     ...(soundsChanged ? { selectedEventIndex: null, selectedMomentIndex: null } : {}),
     ...(soundsChanged && !restored.soundStreams.some(s => s.id === state.armedStreamId) ? { armedStreamId: null } : {}),
-  };
+  });
 }
 
 /**

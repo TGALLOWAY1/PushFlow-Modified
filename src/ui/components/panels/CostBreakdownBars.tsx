@@ -9,7 +9,13 @@
 
 import { type V1CostBreakdown } from '../../../types/diagnostics';
 import { type DiagnosticsPayload, type FeasibilityVerdict } from '../../../types/diagnostics';
-import { verdictTier, type VerdictLevel } from '../../analysis/verdictTiers';
+import {
+  verdictHeadline,
+  verdictLevelFor,
+  verdictTier,
+  type PlacementProgress,
+  type VerdictLevel,
+} from '../../analysis/verdictTiers';
 import { FACTOR_KEYS, FACTOR_META, factorsFromBreakdown, type FactorKey } from '../../analysis/factorMeta';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -28,6 +34,8 @@ interface CostBreakdownBarsProps {
   noteCount?: number;
   /** Which Sounds the verdict covers (analysisScopeLine). */
   scope: string;
+  /** How many Sounds in scope are placed: a partly placed layout reads "Unfinished" (S3.3). */
+  placement?: PlacementProgress;
 }
 
 /** Event and note counts, as momentDifficultyCounts gives them. */
@@ -47,6 +55,11 @@ export interface VerdictCounts {
 export function verdictSummary(level: VerdictLevel, c: VerdictCounts, verdict?: FeasibilityVerdict): string {
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   if (level === 'feasible') return `All ${plural(c.events, 'event', 'events')} play with natural grips`;
+  if (level === 'unfinished') {
+    // Only the placed Sounds' notes were scored (S3.3); say what they cover.
+    const covers = `Scoring covers the ${plural(c.notes, 'note', 'notes')} you can play so far`;
+    return c.hard > 0 ? `${covers} · ${plural(c.hard, 'hard event', 'hard events')}` : covers;
+  }
   if (level === 'infeasible') {
     return c.unplayableNotes > 0
       ? `${c.unplayableNotes} of ${plural(c.notes, 'note', 'notes')} can't be played`
@@ -68,9 +81,11 @@ export function verdictSummary(level: VerdictLevel, c: VerdictCounts, verdict?: 
 /**
  * The whole-layout verdict. It is derived only from data that exists: with no
  * verdict and no counts it reads 'Unknown' ('Analysing...' while a run is in
- * flight), never 'Feasible'. Every verdict carries its scope line.
+ * flight), never 'Feasible'. A partly placed layout whose placed notes all
+ * play reads 'Unfinished \u00b7 5 of 7 Sounds placed' (S3.3). Every verdict
+ * carries its scope line.
  */
-export function FeasibilityBadge({ verdict, unplayableCount, hardCount, pending = false, scope, counts }: {
+export function FeasibilityBadge({ verdict, unplayableCount, hardCount, pending = false, scope, counts, placement }: {
   verdict?: FeasibilityVerdict;
   unplayableCount?: number;
   hardCount?: number;
@@ -80,23 +95,22 @@ export function FeasibilityBadge({ verdict, unplayableCount, hardCount, pending 
   scope: string | null;
   /** Event and note counts: the summary is stated from these when given (T23). */
   counts?: VerdictCounts;
+  /** How many Sounds in scope are placed (analysisScope). */
+  placement?: PlacementProgress;
 }) {
-  // Counts alone can prove a layout infeasible or degraded, never feasible:
-  // 'feasible' also needs no fallback grips and no broken hand rules.
-  const level: VerdictLevel = verdict?.level
-    ?? (unplayableCount !== undefined && unplayableCount > 0
-      ? 'infeasible'
-      : hardCount !== undefined && hardCount > 0 ? 'degraded' : 'unknown');
+  const level = verdictLevelFor({ verdict, unplayableCount, hardCount, placement });
   const tier = verdictTier(level);
 
   const summary = counts && level !== 'unknown'
     ? verdictSummary(level, counts, verdict)
-    : verdict?.summary
-    ?? (level === 'infeasible'
-      ? `${unplayableCount} unplayable event${unplayableCount !== 1 ? 's' : ''}`
-      : level === 'degraded'
-        ? 'Playable with hard passages'
-        : pending ? 'Analysing\u2026' : 'No analysis yet');
+    : level === 'unfinished'
+      ? 'Scoring covers the notes you can play so far'
+      : verdict?.summary
+      ?? (level === 'infeasible'
+        ? `${unplayableCount} unplayable event${unplayableCount !== 1 ? 's' : ''}`
+        : level === 'degraded'
+          ? 'Playable with hard passages'
+          : pending ? 'Analysing\u2026' : 'No analysis yet');
 
   return (
     <div
@@ -105,9 +119,9 @@ export function FeasibilityBadge({ verdict, unplayableCount, hardCount, pending 
       className={`flex items-center gap-2 px-2 py-1.5 rounded-pf-sm border text-pf-xs ${tier.className}`}
       title={tier.description}
     >
-      <span className="text-pf-sm">{tier.icon}</span>
+      <span className="text-pf-sm" aria-hidden="true">{tier.icon}</span>
       <div className="min-w-0">
-        <div className="font-medium">{tier.label}</div>
+        <div data-testid="verdict-headline" className="font-medium">{verdictHeadline(level, placement)}</div>
         <div className="text-pf-micro opacity-80">{summary}</div>
         {scope && (
           <div data-testid="verdict-scope" className="text-pf-micro text-[var(--text-tertiary)]">{scope}</div>
@@ -232,7 +246,7 @@ function DifficultySummary({ hardCount, unplayableCount, mediumCount, unplayable
 // Composite component
 // ────────────────────────────────────────────────────────────────────────────
 
-export function CostBreakdownBars({ metrics, diagnostics, hardCount, unplayableCount, mediumCount, unplayableNotes, noteCount, scope, events }: CostBreakdownBarsProps & { events?: number }) {
+export function CostBreakdownBars({ metrics, diagnostics, hardCount, unplayableCount, mediumCount, unplayableNotes, noteCount, scope, events, placement }: CostBreakdownBarsProps & { events?: number }) {
   const counts: VerdictCounts | undefined = events !== undefined && noteCount !== undefined
     ? { events, notes: noteCount, hard: hardCount ?? 0, unplayable: unplayableCount ?? 0, unplayableNotes: unplayableNotes ?? 0 }
     : undefined;
@@ -246,6 +260,7 @@ export function CostBreakdownBars({ metrics, diagnostics, hardCount, unplayableC
         hardCount={hardCount}
         scope={scope}
         counts={counts}
+        placement={placement}
       />
 
       {/* Layer 2: Ergonomic cost breakdown */}

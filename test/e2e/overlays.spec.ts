@@ -114,7 +114,8 @@ test.describe('Overlays (Dialog primitive)', () => {
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Promote to Active' }).first().click();
     await expect(dialog).toHaveCount(0);
-    await expect(page.getByText(/Promoted #1 .* to Active Layout/)).toBeVisible();
+    // Candidates are named by their letter (S3.2): the first is Candidate A.
+    await expect(page.getByText('Promoted Candidate A to Active Layout')).toBeVisible();
     // One compared layout is now Active, so Compare is disabled and says why (T31).
     await expect(page.getByTestId('toolbar-compare')).toBeDisabled();
     await expect(page.getByTestId('toolbar-compare')).toHaveAttribute('title', 'Tick 2 layouts to compare');

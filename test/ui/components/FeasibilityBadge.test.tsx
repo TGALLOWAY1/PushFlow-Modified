@@ -5,6 +5,8 @@
  *
  * Missing data reads "Unknown" (or "Analysing..." while a run is in flight),
  * never "Feasible" (T07, repro C6), and every verdict carries its scope line.
+ * A partly placed layout reads "Unfinished" (S3.3, T25), and "Infeasible" is
+ * kept for placed notes that can't be played.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -74,6 +76,40 @@ describe('FeasibilityBadge', () => {
   });
 
   it('renders every tier from the shared tier list', () => {
-    expect(VERDICT_TIERS.map(t => t.level)).toEqual(['feasible', 'degraded', 'infeasible', 'unknown']);
+    expect(VERDICT_TIERS.map(t => t.level)).toEqual(['feasible', 'degraded', 'infeasible', 'unfinished', 'unknown']);
+  });
+
+  // S3.3 (T25): a partly placed layout is unfinished, not failed.
+  describe('Unfinished', () => {
+    const counts = { events: 20, notes: 26, hard: 0, unplayable: 0, unplayableNotes: 0 };
+
+    it('reads "Unfinished · 3 of 7 Sounds placed" when the placed notes all play, never "Feasible"', () => {
+      render(<FeasibilityBadge verdict={verdict('feasible', 'All playable')} scope={SCOPE} counts={counts} placement={{ placed: 3, total: 7 }} />);
+      const badge = screen.getByTestId('verdict-badge');
+      expect(badge.getAttribute('data-level')).toBe('unfinished');
+      expect(screen.getByTestId('verdict-headline').textContent).toBe('Unfinished · 3 of 7 Sounds placed');
+      expect(badge.textContent).toContain('Scoring covers the 26 notes you can play so far');
+      expect(badge.textContent).not.toMatch(/feasible/i);
+    });
+
+    it('keeps the hard events of the placed notes in its summary (Degraded placed material)', () => {
+      render(<FeasibilityBadge verdict={verdict('degraded', 'Hard')} scope={SCOPE} counts={{ ...counts, hard: 2 }} placement={{ placed: 5, total: 7 }} />);
+      expect(screen.getByTestId('verdict-badge').getAttribute('data-level')).toBe('unfinished');
+      expect(screen.getByTestId('verdict-badge').textContent).toContain('Scoring covers the 26 notes you can play so far · 2 hard events');
+    });
+
+    it('is Infeasible, never Unfinished, when a placed note can\'t be played', () => {
+      render(<FeasibilityBadge verdict={verdict('infeasible', 'x')} scope={SCOPE} counts={{ ...counts, unplayable: 1, unplayableNotes: 2 }} placement={{ placed: 3, total: 7 }} />);
+      expect(screen.getByTestId('verdict-badge').getAttribute('data-level')).toBe('infeasible');
+      expect(screen.getByTestId('verdict-headline').textContent).toBe('Infeasible');
+    });
+
+    it('is not Unfinished when everything in scope is placed, or when there is no analysis yet', () => {
+      render(<FeasibilityBadge verdict={verdict('feasible', 'All playable')} scope={SCOPE} counts={counts} placement={{ placed: 7, total: 7 }} />);
+      expect(screen.getByTestId('verdict-badge').getAttribute('data-level')).toBe('feasible');
+      cleanup();
+      render(<FeasibilityBadge scope={SCOPE} placement={{ placed: 3, total: 7 }} />);
+      expect(screen.getByTestId('verdict-badge').getAttribute('data-level')).toBe('unknown');
+    });
   });
 });

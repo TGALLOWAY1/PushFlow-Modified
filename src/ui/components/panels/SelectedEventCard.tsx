@@ -5,13 +5,20 @@
  * whole-layout verdict. It covers the whole moment (every note struck at that
  * instant), costs it once, and shows all five canonical factors from
  * FACTOR_META. A moment that can't be played says so instead of showing
- * all-zero bars.
+ * all-zero bars. It names the layout it describes (SubjectChip, S3.2) and
+ * previews the transition to the next event, which used to sit above the grid
+ * until the layout-state bar took that slot (S4.2's docked inspector is its
+ * lasting home).
  */
 
 import { type DifficultyLevel } from '../../../types/executionPlan';
 import { type SelectedMoment } from '../../analysis/selectedMoment';
+import { type SelectedTransitionModel } from '../../analysis/selectionModel';
 import { FACTOR_KEYS, FACTOR_META, factorsFromBreakdown } from '../../analysis/factorMeta';
+import { type LayoutSubject } from '../../state/layoutSubject';
+import { formatMilliseconds } from '../../../utils/musicalTime';
 import { formatBeatPosition } from '../EventsPanel';
+import { SubjectChip } from '../shared/SubjectChip';
 
 const MOMENT_LEVEL_STYLE: Record<DifficultyLevel, string> = {
   Easy: 'bg-[var(--status-ok-bg)] border-[var(--status-ok-border)] text-[var(--status-ok)]',
@@ -20,10 +27,14 @@ const MOMENT_LEVEL_STYLE: Record<DifficultyLevel, string> = {
   Unplayable: 'bg-[var(--status-bad-bg)] border-[var(--status-bad-border)] text-[var(--status-bad)]',
 };
 
-export function SelectedEventCard({ selected, tempo, scope }: {
+export function SelectedEventCard({ selected, tempo, scope, subject, transition }: {
   selected: SelectedMoment;
   tempo: number;
   scope: string;
+  /** The layout whose plan this is (S3.2). */
+  subject?: LayoutSubject;
+  /** The move to the next event, for the transition preview. */
+  transition?: SelectedTransitionModel | null;
 }) {
   const { moment, cost } = selected;
   const factors = cost.breakdown ? factorsFromBreakdown(cost.breakdown) : null;
@@ -54,7 +65,9 @@ export function SelectedEventCard({ selected, tempo, scope }: {
           )}
         </span>
       </div>
+      {subject && <SubjectChip subject={subject} testId="selected-event-subject" />}
       <div data-testid="verdict-scope" className="text-pf-micro text-[var(--text-tertiary)]">{scope}</div>
+      {transition?.next && <TransitionPreview transition={transition} />}
 
       {cost.unplayableNoteCount > 0 || !factors ? (
         <p className="text-pf-xs text-[var(--status-bad)]">
@@ -83,6 +96,27 @@ export function SelectedEventCard({ selected, tempo, scope }: {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The time to the next event, the pads it shares with this one, and the
+ * fingers that move (drawn as arrows on the grid; "Show Transition Arrows" in
+ * the grid's view settings).
+ */
+function TransitionPreview({ transition }: { transition: SelectedTransitionModel }) {
+  const moves = transition.fingerMoves.filter(move => !move.isHold && move.fromPad && move.toPad).length;
+  const shared = transition.sharedPadKeys.size;
+  return (
+    <div
+      data-testid="transition-preview"
+      className="text-pf-micro text-sky-300/80"
+      title="Transition preview: the time to the next event, pads it shares with this one, and the fingers that move"
+    >
+      Transition preview: {transition.timeDelta != null ? formatMilliseconds(transition.timeDelta) : '\u2014'} to the next event
+      {' \u00b7 '}{shared} shared pad{shared === 1 ? '' : 's'}
+      {' \u00b7 '}{moves} finger move{moves === 1 ? '' : 's'}
     </div>
   );
 }

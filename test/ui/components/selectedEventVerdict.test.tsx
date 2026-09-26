@@ -2,11 +2,16 @@
 /**
  * Honest verdict with an event selected (S1b.1; T07, repro C6; criterion P1b-2a).
  *
- * TEST MIDI 1 with four of seven Sounds placed is Infeasible. Selecting any
- * event keeps the whole-layout verdict pinned (never "Feasible"), and shows the
- * event's own verdict in a separate "Selected event" card with all five factors
- * from FACTOR_META, or "Unplayable" instead of all-zero bars. Both analysis
- * panels are checked.
+ * TEST MIDI 1 with four of seven Sounds placed, solved on the whole
+ * performance (as every plan was before S3.3, so its unplaced Sounds' notes
+ * can't be played), is Infeasible. Selecting any event keeps the whole-layout
+ * verdict pinned (never "Feasible"), and shows the event's own verdict in a
+ * separate "Selected event" card with all five factors from FACTOR_META, or
+ * "Unplayable" instead of all-zero bars. Both analysis panels are checked.
+ *
+ * Since S3.3 the app scores only placed Sounds' notes, so its own analysis of
+ * the same layout reads "Unfinished · 4 of 7 Sounds placed", and never
+ * "Feasible", whichever event is selected (last block).
  */
 
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
@@ -20,10 +25,13 @@ import {
   getActivePerformance,
   getDisplayedLayout,
   projectReducer,
+  rebindAnalysisToLayout,
   type ProjectState,
   type ProjectAction,
 } from '../../../src/ui/state/projectState';
 import { FACTOR_KEYS } from '../../../src/ui/analysis/factorMeta';
+import { scoringRequestFor } from '../../../src/ui/analysis/layoutAnalysis';
+import { analyseAndScoreLayout } from '../../../src/ui/analysis/scoreLayout';
 import { type CandidateSolution } from '../../../src/types/candidateSolution';
 import { type ExecutionPlanResult } from '../../../src/types/executionPlan';
 import { importTestMidi1 } from '../../helpers/testMidi1';
@@ -79,7 +87,7 @@ describe('verdict with an event selected', () => {
         expect(badges).toHaveLength(2);
         for (const badge of badges) {
           expect(badge.getAttribute('data-level')).toBe('infeasible');
-          expect(within(badge).getByTestId('verdict-scope').textContent).toBe('Analysing 7 of 7 Sounds · 3 not on the grid');
+          expect(within(badge).getByTestId('verdict-scope').textContent).toBe('Analysing 7 of 7 Sounds · 3 not placed yet');
         }
       }
     }
@@ -123,7 +131,60 @@ describe('verdict with an event selected', () => {
     act(() => dispatch({ type: 'TOGGLE_MUTE', payload: analysed.soundStreams[0].id }));
     for (const badge of screen.getAllByTestId('verdict-badge')) {
       expect(badge.getAttribute('data-level')).toBe('infeasible');
-      expect(within(badge).getByTestId('verdict-scope').textContent).toBe('Analysing 7 of 7 Sounds · 3 not on the grid');
+      expect(within(badge).getByTestId('verdict-scope').textContent).toBe('Analysing 7 of 7 Sounds · 3 not placed yet');
+    }
+  });
+});
+
+describe('the app\'s own analysis of a partly placed layout (S3.3, T25)', () => {
+  let placedOnly: ProjectState;
+  let placedPlan: ExecutionPlanResult;
+
+  beforeAll(async () => {
+    const layout = getDisplayedLayout(analysed)!;
+    // The one scoring path: only the four placed Sounds' notes.
+    const { request } = scoringRequestFor(analysed, layout);
+    const { analysis } = await analyseAndScoreLayout(request);
+    placedPlan = analysis.executionPlan;
+    placedOnly = projectReducer(analysed, { type: 'SET_ANALYSIS_RESULT', payload: rebindAnalysisToLayout(analysis, layout) });
+  }, 60_000);
+
+  it('scores only the placed Sounds\' notes', () => {
+    const placed = new Set(Object.values(getDisplayedLayout(analysed)!.padToVoice).map(v => v.id));
+    expect(placedPlan.fingerAssignments.length).toBeGreaterThan(0);
+    expect(placedPlan.fingerAssignments.every(a => placed.has(a.voiceId!))).toBe(true);
+    expect(placedPlan.fingerAssignments.some(a => a.assignedHand === 'Unplayable')).toBe(false);
+  });
+
+  it('reads "Unfinished · 4 of 7 Sounds placed" in both panels, and never "Feasible" for any selected event', () => {
+    render(
+      <ProjectProvider initialState={placedOnly}>
+        <Grab />
+        <div data-testid="costs"><PerformanceCostsPanel /></div>
+        <div data-testid="summary"><ActiveLayoutSummary /></div>
+      </ProjectProvider>,
+    );
+    const check = () => {
+      const badges = screen.getAllByTestId('verdict-badge');
+      expect(badges).toHaveLength(2);
+      for (const badge of badges) {
+        expect(badge.getAttribute('data-level')).toBe('unfinished');
+        expect(within(badge).getByTestId('verdict-headline').textContent).toBe('Unfinished · 4 of 7 Sounds placed');
+        expect(badge.textContent).toMatch(/Scoring covers the \d+ notes you can play so far/);
+        expect(within(badge).getByTestId('verdict-scope').textContent).toBe('Analysing 4 of 7 Sounds · 3 not placed yet');
+      }
+    };
+    check();
+    for (const moment of groupIntoMoments(placedPlan.fingerAssignments)) {
+      act(() => dispatch({ type: 'SELECT_EVENT', payload: moment.items[0]!.eventIndex! }));
+      check();
+    }
+    // The unplaced Sounds are listed, each draggable onto a pad, with "Place remaining 3 Sounds".
+    for (const panel of ['costs', 'summary']) {
+      const unplaced = within(screen.getByTestId(panel)).getByTestId('unplaced-sounds');
+      expect(within(unplaced).getAllByTestId('unplaced-sound')).toHaveLength(3);
+      for (const chip of within(unplaced).getAllByTestId('unplaced-sound')) expect(chip.getAttribute('draggable')).toBe('true');
+      expect(within(unplaced).getByTestId('place-remaining').textContent).toBe('Place remaining 3 Sounds');
     }
   });
 });

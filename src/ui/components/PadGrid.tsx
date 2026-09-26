@@ -2,7 +2,9 @@
  * PadGrid Component.
  *
  * Visualizes the 8x8 Push 3 grid showing:
- * - Which sounds/voices are assigned to each pad (from assignments, not just layout)
+ * - Which sounds/voices are assigned to each pad: the layout's pads first,
+ *   then the plan's assignments over them (S3.3, T08), so a placed Sound the
+ *   plan doesn't play (muted, or no notes) still shows on its pad
  * - Which fingers play each pad
  * - Hand zones (left blue, right purple)
  * - Hit counts and selection state
@@ -53,7 +55,7 @@ interface PadSummary {
   assignments: FingerAssignment[];
 }
 
-export function PadGrid({ layout: _layout, voices, assignments, selectedEventIndex, onPadClick, compact, diffPads, label, labelColor }: PadGridProps) {
+export function PadGrid({ layout, voices, assignments, selectedEventIndex, onPadClick, compact, diffPads, label, labelColor }: PadGridProps) {
   const padSize = compact ? 'w-10 h-10' : 'w-14 h-14';
   const padSizeClass = compact ? 'w-10' : 'w-14';
   // Text never goes below 11 px (T64): compact pads show one line of name
@@ -71,9 +73,22 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
   }, [voices]);
   const namePrefix = useMemo(() => sharedNamePrefix(voices.map(v => v.name)), [voices]);
 
-  // Build per-pad summary from assignments
+  // Per-pad summary: the layout's pads, then the plan's assignments over them.
   const padSummaries = useMemo(() => {
     const map = new Map<string, PadSummary>();
+
+    for (const [key, placed] of Object.entries(layout.padToVoice)) {
+      const voice = voiceById.get(placed.id);
+      map.set(key, {
+        voiceName: voice?.name ?? placed.name ?? 'Unknown Sound',
+        voiceColor: voice?.color ?? placed.color ?? null,
+        noteNumber: placed.originalMidiNote ?? null,
+        hands: new Set(),
+        fingers: new Set(),
+        hitCount: 0,
+        assignments: [],
+      });
+    }
 
     if (assignments) {
       for (const a of assignments) {
@@ -101,7 +116,7 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
     }
 
     return map;
-  }, [assignments, voiceById]);
+  }, [layout, assignments, voiceById]);
 
   // Find selected assignment's pad
   const selectedAssignment = assignments?.find(a => a.eventIndex === selectedEventIndex);
@@ -141,6 +156,11 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
           borderColor = HAND_COLORS.mixed.border;
           textColor = HAND_COLORS.mixed.text;
         }
+      } else if (summary) {
+        // Placed, but the plan plays no note on it (a muted Sound, say).
+        bgColor = summary.voiceColor ? `${summary.voiceColor}26` : '#1e293b';
+        borderColor = '#334155';
+        textColor = '#94a3b8';
       } else {
         bgColor = isLeftZone ? '#0f172a' : '#120f1f';
         borderColor = '#1e293b';
@@ -159,16 +179,16 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
             border-2 transition-all duration-100
             ${isSelected ? 'ring-2 ring-yellow-400/60 z-10 scale-105' : ''}
             ${isDiff ? 'ring-2 ring-amber-400/70 z-10' : ''}
-            ${summary && summary.hitCount > 0 ? '' : 'opacity-40'}
+            ${summary ? (summary.hitCount > 0 ? '' : 'opacity-70') : 'opacity-40'}
             hover:opacity-100 hover:scale-[1.02]
           `}
           style={{ backgroundColor: bgColor, borderColor: isSelected ? '#facc15' : borderColor, color: textColor }}
           onClick={() => onPadClick?.(row, col)}
           title={summary
-            ? `${formatPadPosition(padKey)} · ${summary.voiceName} · Fingers ${[...summary.fingers].join(', ')} · ${summary.hitCount} hits`
+            ? `${formatPadPosition(padKey)} · ${summary.voiceName} · ${summary.hitCount > 0 ? `Fingers ${[...summary.fingers].join(', ')} · ${summary.hitCount} hits` : 'no notes in this plan'}`
             : `${formatPadPosition(padKey)} · empty`}
         >
-          {summary && summary.hitCount > 0 ? (
+          {summary ? (
             <>
               {/* Voice name */}
               <span
@@ -182,7 +202,7 @@ export function PadGrid({ layout: _layout, voices, assignments, selectedEventInd
                 {fingerList.join(' ')}
               </span>
               {/* Hit count badge */}
-              {!compact && (
+              {!compact && summary.hitCount > 0 && (
                 <span className="absolute top-0.5 right-0.5 text-pf-micro font-bold bg-black/40 rounded px-0.5" style={{ color: textColor }}>
                   {summary.hitCount}
                 </span>

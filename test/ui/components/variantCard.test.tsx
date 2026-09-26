@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 /**
  * S2.3 · variants worth keeping (T29, P2-6): each variant card reads
- * "Scoring..." while its layout is analysed through the per-layout cache, then
- * its score and Hard/Unplayable event counts; a card renames its variant in
- * place.
+ * "Scoring…" while its layout is solved and scored through the per-layout
+ * cache, then its score and Hard/Unplayable event counts, all from the same
+ * LayoutScore (S3.1); a card renames its variant in place.
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -12,12 +12,14 @@ import { ToastProvider } from '../../../src/ui/components/shared/Toast';
 import { ProjectProvider, useProject } from '../../../src/ui/state/ProjectContext';
 import { LayoutOptionsPanel } from '../../../src/ui/components/panels/LayoutOptionsPanel';
 import { projectReducer, type ProjectState } from '../../../src/ui/state/projectState';
-import { type CandidateSolution } from '../../../src/types/candidateSolution';
+import { type ScoredLayoutAnalysis } from '../../../src/ui/analysis/scoreLayout';
 import { suggestedTestMidi1 } from '../../helpers/testMidi1';
 
-let resolveAnalysis: ((value: CandidateSolution) => void) | null = null;
-vi.mock('../../../src/ui/analysis/analyzeLayout', () => ({
-  analyzeLayout: vi.fn(() => new Promise<CandidateSolution>(resolve => { resolveAnalysis = resolve; })),
+/** Pending scoring runs by layout id (the Active row is scored too). */
+const resolveScoring = new Map<string, (value: ScoredLayoutAnalysis) => void>();
+vi.mock('../../../src/ui/analysis/scoreLayout', () => ({
+  analyseAndScoreLayout: vi.fn((request: { layout: { id: string } }) =>
+    new Promise<ScoredLayoutAnalysis>(resolve => { resolveScoring.set(request.layout.id, resolve); })),
 }));
 
 afterEach(cleanup);
@@ -40,7 +42,7 @@ async function projectWithVariant(): Promise<ProjectState> {
 }
 
 describe('saved variant cards', () => {
-  it('read "Scoring..." while the variant is analysed, then its score and hard/unplayable events', async () => {
+  it('read "Scoring…" while the variant is scored, then its score and hard/unplayable events', async () => {
     const initial = await projectWithVariant();
     render(
       <ToastProvider>
@@ -50,23 +52,15 @@ describe('saved variant cards', () => {
       </ToastProvider>,
     );
     const row = await screen.findByTestId('variant-row');
-    expect(within(row).getByTestId('variant-score').textContent).toBe('Scoring...');
+    expect(within(row).getByTestId('variant-score').textContent).toBe('Scoring…');
 
     const variant = initial.savedVariants[0]!;
     await act(async () => {
-      resolveAnalysis!({
-        id: 'analysis',
-        layout: variant,
-        executionPlan: {
-          score: 81.6,
-          unplayableCount: 0,
-          hardCount: 0,
-          fingerAssignments: [
-            { noteNumber: 36, voiceId: 'a', startTime: 0, assignedHand: 'right', finger: 'index', cost: 1, difficulty: 'Hard', eventIndex: 0 },
-            { noteNumber: 38, voiceId: 'b', startTime: 0.5, assignedHand: 'Unplayable', finger: null, cost: Infinity, difficulty: 'Unplayable', eventIndex: 1 },
-          ],
-        },
-      } as unknown as CandidateSolution);
+      resolveScoring.get(variant.id)!({
+        analysis: { id: 'analysis', layout: variant, executionPlan: { score: 12, fingerAssignments: [] } },
+        // The plan's own score (12) is never shown: the row reads the LayoutScore.
+        score: { evaluatorId: 'canonical-v1', playability: 81.6, events: 32, hardEvents: 1, unplayableEvents: 1 },
+      } as unknown as ScoredLayoutAnalysis);
     });
     expect(within(row).getByTestId('variant-score').textContent).toBe('Score 82% · 1 hard · 1 unplayable');
   });

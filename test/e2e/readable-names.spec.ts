@@ -9,7 +9,7 @@
 import { fileURLToPath } from 'url';
 import type { Page } from '@playwright/test';
 import { test, expect, type PfHandle } from './fixtures';
-import { generateAndWait, newProject, openTestMidi1, suggestStartingLayout, waitForAnalysis } from './project';
+import { generateAndWait, leaveToLibrary, newProject, openTestMidi1, suggestStartingLayout, waitForAnalysis } from './project';
 
 const FOUR_BARS = fileURLToPath(new URL('../fixtures/midi/four-bars-120.mid', import.meta.url));
 
@@ -70,8 +70,8 @@ test.describe('S2.2b · readable names and counts', () => {
     // The Library card for this project.
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
-    await page.getByRole('button', { name: /Library/ }).first().click();
-    await page.waitForURL(url => !url.pathname.includes('/project/'));
+    // The candidates were never kept, so leaving may ask first (S3.3): leave anyway.
+    await leaveToLibrary(page);
     await expect(page.getByRole('button', { name: 'New project', exact: true })).toBeVisible();
     await expect(page.getByText('7 sounds').first()).toBeVisible();
     expect(rawIds(await page.locator('body').innerText(), ids), 'Library text').toEqual([]);

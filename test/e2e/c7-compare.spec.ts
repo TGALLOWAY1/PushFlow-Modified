@@ -21,9 +21,12 @@ import type { PfHandle } from './fixtures';
 const compareButton = (page: Page) => page.getByTestId('toolbar-compare');
 
 /**
- * Suggest → Promote (so Active is analysed) → Generate with Beam → Preview #1,
- * which leaves a differing draft (Generate itself only proposes, from S1a.2).
- * Returns Active's standalone score.
+ * Suggest → Promote (so Active is analysed) → Generate with Beam, which shows
+ * candidate A read-only (S3.2) → "Use as my draft", which leaves a differing
+ * draft (Generate itself only proposes, from S1a.2; there is no draft yet, so
+ * it applies at once).
+ * Returns Active's standalone score: its Playability on the Analysis panel
+ * (S3.1: every displayed score is the layout's Playability, not a plan's own).
  */
 async function activeThenCandidates(page: Page, pf: PfHandle): Promise<number> {
   await openTestMidi1(page, pf);
@@ -31,13 +34,16 @@ async function activeThenCandidates(page: Page, pf: PfHandle): Promise<number> {
   await waitForAnalysis(pf);
   await page.getByTitle('Make this layout the new Active Layout').click();
   await waitForAnalysis(pf);
-  const s = await pf.call('state');
-  expect(s.workingLayout).toBeNull();
-  const standalone = s.analysisResult!.executionPlan.score;
+  const s = await pf.call('status');
+  expect(s.hasWorkingLayout).toBe(false);
+  const tile = page.getByTestId('analysis-score');
+  await expect(tile).toHaveText(/^Score\d+%$/, { timeout: 30_000 });
+  const standalone = Number(/(\d+)%/.exec(await tile.innerText())![1]);
   await chooseMethod(page, 'Beam');
   await generateAndWait(page, pf);
-  await page.getByTestId('candidate-row').first().getByRole('button', { name: 'Preview' }).click();
-  expect((await pf.call('state')).workingLayout, 'Preview left a draft that differs from Active').not.toBeNull();
+  await expect(page.getByTestId('state-bar')).toHaveAttribute('data-chip', 'Candidate A');
+  await page.getByTestId('state-bar-use').click();
+  await expect.poll(async () => (await pf.call('status')).hasWorkingLayout, 'Use as my draft left a draft that differs from Active').toBe(true);
   // Let the draft's own analysis land, as it would before a user opens Compare.
   await waitForAnalysis(pf);
   return standalone;
@@ -50,10 +56,18 @@ async function openActiveVsFirst(page: Page) {
   await expect(page.getByTestId('compare-dialog')).toBeVisible();
 }
 
+/** The Active card's text and score, once it shows one or says it couldn't analyse ("Scoring…" before that). */
 async function activeCardScore(page: Page): Promise<{ text: string; score: number | null }> {
-  const text = (await page.getByTestId('compare-card').and(page.locator('[data-candidate-id="__active__"]')).innerText()).replace(/\s+/g, ' ');
-  const m = /SCORE ([\d.]+)/i.exec(text);
-  return { text, score: m ? Number(m[1]) : null };
+  const read = async () => {
+    const text = (await page.getByTestId('compare-card').and(page.locator('[data-candidate-id="__active__"]')).innerText()).replace(/\s+/g, ' ');
+    const m = /SCORE ([\d.]+)/i.exec(text);
+    return { text, score: m ? Number(m[1]) : null };
+  };
+  await expect.poll(async () => {
+    const { text, score } = await read();
+    return score !== null || /Couldn.t analyse/i.test(text);
+  }, { timeout: 30_000 }).toBe(true);
+  return read();
 }
 
 test.describe('C7 · Compare with the Active Layout', () => {
@@ -78,9 +92,8 @@ test.describe('C7 · Compare with the Active Layout', () => {
     const first = page.getByTestId('candidate-row').first();
     await first.getByTitle('Select for comparison').click();
     await expect(compareButton(page)).toBeEnabled();
-    const promote = first.getByRole('button', { name: /Promote|Confirm\?/ });
-    await promote.click();
-    await promote.click();
+    // One Promote (S3.3): a single click, at once. The draft had candidate A's pads, so no draft is left.
+    await first.getByTestId('candidate-promote').click();
     await expect.poll(async () => (await pf.call('status')).hasWorkingLayout).toBe(false);
     await expect(compareButton(page)).toBeDisabled();
   });
@@ -100,6 +113,6 @@ test.describe('C7 · Compare with the Active Layout', () => {
     const standalone = await activeThenCandidates(page, pf);
     await openActiveVsFirst(page);
     const { score } = await activeCardScore(page);
-    expect(score).toBeCloseTo(standalone, 0);
+    expect(score).toBe(standalone);
   });
 });

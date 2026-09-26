@@ -12,10 +12,11 @@ import { useProject } from '../state/ProjectContext';
 import { useInputHandler } from '../input/inputRegistry';
 import { gmDrumName, gmDrumRenames } from '../../utils/gmDrumMap';
 import { DisabledReason, useDisabledReason } from './shared/DisabledReason';
-import { getDisplayedCandidate, getDisplayedLayout, type SoundStream } from '../state/projectState';
+import { getDisplayedCandidate, getInspectedLayout, isShownLayoutReadOnly, type SoundStream } from '../state/projectState';
+import { placeRemainingLabel, usePlaceRemaining } from '../hooks/usePlaceRemaining';
 import type { LaneGroup } from '../../types/performanceLane';
 import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
-import { LOCKED_SOUND_DRAG_TYPE } from './dragTypes';
+import { setSoundDragData } from './dragTypes';
 import { generateId } from '../../utils/idGenerator';
 import { formatPadLocator, formatPadPosition } from '../../utils/padPosition';
 import { FingerAssignmentInput, type FingerAssignmentValue } from './shared/FingerAssignmentInput';
@@ -34,8 +35,13 @@ const COLOR_PALETTE = [
 
 export function VoicePalette() {
   const { state, dispatch, transact } = useProject();
-  const layout = getDisplayedLayout(state);
+  // Where each Sound is, and its suggested finger, on the layout on screen
+  // (S3.2): an inspected candidate's pads, not the draft's behind it.
+  const layout = getInspectedLayout(state);
   const displayedCandidate = getDisplayedCandidate(state);
+  // "Place remaining N Sounds" for the layout being edited (S3.3, T37).
+  const placeRemaining = usePlaceRemaining();
+  const layoutReadOnly = isShownLayoutReadOnly(state);
   const [selectedStreamIds, setSelectedStreamIds] = useState<Set<string>>(new Set());
   const soundStreamLookup = useMemo(
     () => buildSoundStreamLookup(state.soundStreams),
@@ -226,17 +232,7 @@ export function VoicePalette() {
   const gmReason = useDisabledReason(gmDisabledReason);
 
   const handleDragStart = (e: React.DragEvent, stream: SoundStream) => {
-    e.dataTransfer.setData('application/pushflow-stream', JSON.stringify({
-      id: stream.id,
-      name: stream.name,
-      color: stream.color,
-      originalMidiNote: stream.originalMidiNote,
-      source: 'palette',
-    }));
-    // A locked Sound stays on its pad: the grid refuses to drop it elsewhere.
-    const lockedPad = layout?.placementLocks[stream.id];
-    if (lockedPad) e.dataTransfer.setData(LOCKED_SOUND_DRAG_TYPE, lockedPad);
-    e.dataTransfer.effectAllowed = 'copyMove';
+    setSoundDragData(e.dataTransfer, stream, layout?.placementLocks[stream.id]);
   };
 
   const handleReorderDrop = useCallback((targetStreamId: string) => {
@@ -312,6 +308,22 @@ export function VoicePalette() {
             </button>
           </div>
           <DisabledReason id={gmReason.id} reason={gmDisabledReason} className="block text-right" />
+          {/* Proposes a candidate; never places anything itself (T37, Q4). */}
+          {placeRemaining.count > 0 && !layoutReadOnly && (
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <span className="text-pf-xs text-[var(--text-tertiary)]">{placeRemaining.count} to place</span>
+              <button
+                type="button"
+                data-testid="sounds-place-remaining"
+                className="pf-btn pf-btn-subtle text-pf-xs px-2 py-1"
+                disabled={placeRemaining.busy}
+                onClick={() => void placeRemaining.placeRemaining()}
+                title="Propose a candidate that places them, shown read-only: your placed Sounds stay where they are, and nothing changes until you use it"
+              >
+                {placeRemaining.busy ? 'Placing…' : placeRemainingLabel(placeRemaining.count)}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

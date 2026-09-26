@@ -1,12 +1,17 @@
 import { useMemo, useState } from 'react';
 import { useProject } from '../../state/ProjectContext';
-import { getDisplayedExecutionPlan, getDisplayedLayout } from '../../state/projectState';
+import { resolveInspectedLayout } from '../../state/projectState';
+import { inspectedSubject } from '../../state/layoutSubject';
+import { buildSelectedTransitionModel } from '../../analysis/selectionModel';
+import { SubjectChip } from '../shared/SubjectChip';
 import { CostBreakdownBars, FeasibilityBadge } from './CostBreakdownBars';
 import { SelectedEventCard } from './SelectedEventCard';
 import { findSelectedMoment } from '../../analysis/selectedMoment';
-import { analysisScopeLine, planSoundIds } from '../../analysis/analysisScope';
+import { analysisScope, analysisScopeLine, planSoundIds, scopeLineOf } from '../../analysis/analysisScope';
 import { EventCostChart } from './EventCostChart';
-import { formatPlanScore, getPlanScoreQuality, getPlanScoreSummary } from '../../analysis/planScore';
+import { scoreTile } from '../../analysis/planScore';
+import { useShownAnalysis } from '../../hooks/useShownAnalysis';
+import { UnplacedSounds } from './UnplacedSounds';
 import { momentDifficultyCounts } from '../../analysis/momentCounts';
 import { COST_FAMILY_FACTOR, FACTOR_META } from '../../analysis/factorMeta';
 import { type CostToggles } from '../../../types/costToggles';
@@ -14,7 +19,17 @@ import { type CostToggles } from '../../../types/costToggles';
 export function PerformanceCostsPanel() {
   const { state, dispatch } = useProject();
   const [chartOpen, setChartOpen] = useState(false);
-  const currentPlan = getDisplayedExecutionPlan(state);
+  // The layout on screen (S3.2), its own plan, and the subject every panel
+  // names; while a re-solve is pending, the previous plan and Score of the same
+  // layout, dimmed (S3.3, T14). The Score is the layout's Playability (S3.1).
+  const shown = resolveInspectedLayout(state);
+  const subject = inspectedSubject(state);
+  const { candidate: shownCandidate, score: layoutScore, updating } = useShownAnalysis();
+  const currentPlan = shownCandidate?.executionPlan ?? null;
+  const transition = useMemo(
+    () => buildSelectedTransitionModel(currentPlan?.fingerAssignments ?? null, state.selectedEventIndex),
+    [currentPlan, state.selectedEventIndex],
+  );
 
   // The selected event's whole moment, costed once (never summed per note).
   const selectedMoment = useMemo(
@@ -22,22 +37,25 @@ export function PerformanceCostsPanel() {
     [currentPlan, state.selectedEventIndex],
   );
   // The plan's own scope (the Sounds it analysed), so a mute made since it was
-  // computed never relabels an old verdict; the live scope when there is no plan.
-  const scope = analysisScopeLine(
+  // computed never relabels an old verdict; the live scope when there is no
+  // plan. Its placement makes a partly placed layout "Unfinished" (S3.3).
+  const scoped = analysisScope(
     state.soundStreams,
-    getDisplayedLayout(state),
+    shown.layout,
     currentPlan ? planSoundIds(currentPlan.fingerAssignments) : undefined,
   );
-  const liveScope = analysisScopeLine(state.soundStreams, getDisplayedLayout(state));
+  const scope = scopeLineOf(scoped);
+  const liveScope = analysisScopeLine(state.soundStreams, shown.layout);
   // Events are moments for both solvers (T23).
   const counts = useMemo(() => momentDifficultyCounts(currentPlan?.fingerAssignments), [currentPlan]);
 
   if (!currentPlan && !state.isProcessing) {
     return (
       <div className="px-3 py-4 space-y-2">
-        {state.soundStreams.length > 0 && <FeasibilityBadge scope={scope} />}
+        <SubjectChip subject={subject} testId="costs-subject" />
+        {state.soundStreams.length > 0 && <FeasibilityBadge scope={scope} placement={scoped.placement} />}
         <div className="text-pf-xs text-[var(--text-tertiary)] text-center">
-          No cost analysis yet. Generate or preview a layout to inspect playability.
+          No cost analysis yet. Place Sounds to analyse them, or Generate and inspect a candidate.
         </div>
       </div>
     );
@@ -45,13 +63,11 @@ export function PerformanceCostsPanel() {
 
   return (
     <div className="flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-subtle)]">
-        <div className="flex items-center gap-2">
-          <h3 className="section-header">Cost Analysis</h3>
-          {state.analysisStale && currentPlan && (
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" title="Analysis outdated" />
-          )}
-        </div>
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-[var(--border-subtle)]">
+        {/* Freshness is the state bar's ("Updating…"); here the numbers dim (T14). */}
+        <h3 className="section-header flex-shrink-0">Cost Analysis</h3>
+        {/* What these costs describe (S3.2). */}
+        <SubjectChip subject={subject} testId="costs-subject" className="justify-end" />
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
@@ -118,18 +134,19 @@ export function PerformanceCostsPanel() {
         )}
 
         {state.isProcessing && !currentPlan ? (
-          <FeasibilityBadge pending scope={scope} />
+          <FeasibilityBadge pending scope={scope} placement={scoped.placement} />
         ) : null}
 
         {currentPlan ? (
           <>
+            <div
+              data-testid="costs-numbers"
+              data-updating={updating ? 'true' : undefined}
+              aria-busy={updating || undefined}
+              className={`space-y-3 transition-opacity duration-pf-normal ${updating ? 'opacity-50' : ''}`}
+            >
             <div className="grid grid-cols-4 gap-1.5">
-              <QuickStat
-                label="Score"
-                value={formatPlanScore(currentPlan.score)}
-                quality={getPlanScoreQuality(currentPlan.score)}
-                subtitle={getPlanScoreSummary(currentPlan.score)}
-              />
+              <QuickStat label="Score" testId="costs-score" {...scoreTile(layoutScore)} />
               <QuickStat
                 label="Events"
                 value={String(counts.events)}
@@ -159,10 +176,14 @@ export function PerformanceCostsPanel() {
               noteCount={counts.notes}
               events={counts.events}
               scope={scope}
+              placement={scoped.placement}
             />
+            </div>
+
+            <UnplacedSounds />
 
             {selectedMoment && (
-              <SelectedEventCard selected={selectedMoment} tempo={state.tempo} scope={scope} />
+              <SelectedEventCard selected={selectedMoment} tempo={state.tempo} scope={scope} subject={subject} transition={transition} />
             )}
 
             {currentPlan.fingerAssignments.length > 0 && (
@@ -177,6 +198,7 @@ export function PerformanceCostsPanel() {
                 {chartOpen && (
                   <EventCostChart
                     fingerAssignments={currentPlan.fingerAssignments}
+                    subject={subject}
                     tempo={state.tempo}
                     selectedEventIndex={state.selectedEventIndex}
                     onEventClick={(idx) => dispatch({ type: 'SELECT_EVENT', payload: idx })}
@@ -191,11 +213,14 @@ export function PerformanceCostsPanel() {
   );
 }
 
-function QuickStat({ label, value, quality, subtitle }: {
+function QuickStat({ label, value, quality, subtitle, wording = false, testId }: {
   label: string;
   value: string;
   quality?: 'good' | 'ok' | 'bad';
   subtitle?: string;
+  /** The value is words ("Scoring…"), not a number: smaller, so it fits the tile. */
+  wording?: boolean;
+  testId?: string;
 }) {
   const colors = {
     good: 'text-green-400 border-green-500/15 bg-green-500/5',
@@ -205,9 +230,9 @@ function QuickStat({ label, value, quality, subtitle }: {
   const style = quality ? colors[quality] : 'text-[var(--text-primary)] border-[var(--border-default)] bg-[var(--bg-card)]';
 
   return (
-    <div className={`px-2 py-1.5 rounded-pf-md border text-center ${style}`} title={subtitle}>
+    <div className={`px-2 py-1.5 rounded-pf-md border text-center ${style}`} title={subtitle} data-testid={testId}>
       <div className="text-pf-micro text-[var(--text-tertiary)] uppercase tracking-wider">{label}</div>
-      <div className="text-pf-sm font-mono font-medium tabular-nums">{value}</div>
+      <div className={wording ? 'text-pf-micro leading-[18px] text-[var(--text-secondary)] whitespace-nowrap' : 'text-pf-sm font-mono font-medium tabular-nums'}>{value}</div>
     </div>
   );
 }

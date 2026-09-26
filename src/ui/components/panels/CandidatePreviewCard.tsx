@@ -3,25 +3,39 @@
  *
  * Compact preview of a candidate solution with mini grid,
  * summary metadata, selection checkbox for compare, and action buttons.
+ * Inspect shows it on the grid read-only and writes nothing (S3.2); the
+ * state bar then offers "Use as my draft". Promote acts at once, with an Undo
+ * toast (S3.3, the one Promote), and Keep saves it as a Saved Layout Variant.
  */
 
 import { useState } from 'react';
 import { type CandidateSolution } from '../../../types/candidateSolution';
 import { type SoundStream } from '../../state/projectState';
 import { MiniGridPreview } from './MiniGridPreview';
-import { formatPlanScore, getPlanScoreSummary } from '../../analysis/planScore';
+import { formatPlanScore, playabilityTooltip, PLAYABILITY_TOOLTIP, SCORE_FAILED_TEXT, SCORING_TEXT } from '../../analysis/planScore';
+import { useLayoutAnalysis } from '../../analysis/layoutAnalysis';
 import { FACTOR_KEYS, FACTOR_META, factorsFromBreakdown } from '../../analysis/factorMeta';
 import { strategyLabel } from '../../analysis/strategyLabels';
+import { candidateRunLine } from '../../analysis/stopReason';
 import { type V1CostBreakdown } from '../../../types/diagnostics';
 
 interface CandidatePreviewCardProps {
   candidate: CandidateSolution;
   soundStreams: SoundStream[];
-  rank: number;
-  isSelected: boolean;
+  /** Its letter for the session (candidateLetterFor): the state bar calls it "Candidate B". */
+  letter: string;
+  /** It is the layout on screen. */
+  isInspected: boolean;
   isCheckedForCompare: boolean;
-  onSelect: () => void;
+  /** Shows it on the grid, read-only. */
+  onInspect: () => void;
   onPromote: () => void;
+  /** Saves it as a Saved Layout Variant (T30); absent where there is no Keep. */
+  onKeep?: () => void;
+  /** A Saved Layout Variant already has its pads. */
+  kept?: boolean;
+  /** Made for an earlier version of the performance (T14). */
+  stale?: boolean;
   onDelete: () => void;
   onToggleCompare: () => void;
 }
@@ -40,6 +54,24 @@ function difficultyColor(score: number): string {
   return '#ef4444';
 }
 
+function CandidateScore({ candidate }: { candidate: CandidateSolution }) {
+  const scored = useLayoutAnalysis(candidate.layout);
+  if (scored.status === 'ready') {
+    return (
+      <span data-testid="candidate-score" title={playabilityTooltip(scored.score.playability)}>
+        Score: {formatPlanScore(scored.score.playability)}
+      </span>
+    );
+  }
+  if (scored.status === 'error') {
+    return <span data-testid="candidate-score" className="text-red-300" title={scored.message}>{SCORE_FAILED_TEXT}</span>;
+  }
+  if (scored.status === 'empty') {
+    return <span data-testid="candidate-score" title={PLAYABILITY_TOOLTIP}>Score: —</span>;
+  }
+  return <span data-testid="candidate-score" className="animate-pulse" title={PLAYABILITY_TOOLTIP}>{SCORING_TEXT}</span>;
+}
+
 /** The factor that costs this plan most, by its FACTOR_META label (T20). */
 function topCostDriver(metrics: V1CostBreakdown): string {
   const values = factorsFromBreakdown(metrics);
@@ -50,31 +82,37 @@ function topCostDriver(metrics: V1CostBreakdown): string {
 export function CandidatePreviewCard({
   candidate,
   soundStreams,
-  rank,
-  isSelected,
+  letter,
+  isInspected,
   isCheckedForCompare,
-  onSelect,
+  onInspect,
   onPromote,
+  onKeep,
+  kept = false,
+  stale = false,
   onDelete,
   onToggleCompare,
 }: CandidatePreviewCardProps) {
-  const [confirmPromote, setConfirmPromote] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const overall = candidate.difficultyAnalysis.overallScore;
   const topDriver = topCostDriver(candidate.executionPlan.averageMetrics);
+  const runLine = candidateRunLine(candidate);
 
   return (
     <div
       data-testid="candidate-row"
       data-candidate-id={candidate.id}
+      data-letter={letter}
+      data-inspected={isInspected ? 'true' : undefined}
+      data-stale={stale ? 'true' : undefined}
       className={`rounded-pf-lg border transition-all relative ${
-        isSelected
-          ? 'border-blue-500 bg-blue-500/5 ring-1 ring-blue-500/20'
+        isInspected
+          ? 'border-role-candidate bg-role-candidate/5 ring-1 ring-role-candidate/30'
           : 'border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--border-default)]'
       }`}
     >
-      {/* Only the Preview button previews: a click on the card body changes
-          nothing, so a stray click can't replace the Working/Test Layout. */}
+      {/* Only the Inspect button shows it: a click on the card body changes
+          nothing, and Inspect itself writes nothing (S3.2). */}
       {/* Compare checkbox */}
       <button
         className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded-pf-sm border flex items-center justify-center transition-all ${
@@ -128,12 +166,25 @@ export function CandidatePreviewCard({
         {/* Top row: rank + difficulty */}
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-1.5 ml-5">
-            <span className="text-pf-xs bg-[var(--bg-hover)] text-[var(--text-secondary)] px-1.5 py-0.5 rounded-pf-sm font-mono">
-              #{rank}
+            <span
+              data-testid="candidate-letter"
+              className="text-pf-xs bg-[var(--bg-hover)] text-[var(--text-secondary)] px-1.5 py-0.5 rounded-pf-sm font-mono"
+              title={`Candidate ${letter}`}
+            >
+              {letter}
             </span>
             <span className="text-pf-xs text-[var(--text-secondary)] truncate max-w-[80px]">
               {strategyLabel(candidate.metadata.strategy)}
             </span>
+            {stale && (
+              <span
+                data-testid="candidate-stale"
+                className="text-pf-micro px-1 rounded-pf-sm border border-dashed border-[var(--status-warn-border)] text-[var(--status-warn)]"
+                title="Made for an earlier version of the performance: its Score is re-scored for the notes as they are now, but how it was found (its plan and trace) describes the old notes"
+              >
+                Stale
+              </span>
+            )}
           </div>
           <span
             className="text-pf-xs font-mono font-medium mr-5"
@@ -143,10 +194,10 @@ export function CandidatePreviewCard({
           </span>
         </div>
 
-        {/* Optimization method */}
-        {(candidate.metadata.optimizationMode || candidate.metadata.optimizationSummary) && (
-          <div className="text-pf-micro text-[var(--text-tertiary)] ml-5 mb-1 truncate" title={candidate.metadata.optimizationSummary}>
-            {candidate.metadata.optimizationSummary ?? candidate.metadata.optimizationMode}
+        {/* How it was found: why its run stopped, then what ran (T33, P3-9). */}
+        {runLine && (
+          <div data-testid="candidate-run-line" className="text-pf-micro text-[var(--text-tertiary)] ml-5 mb-1 truncate" title={runLine}>
+            {runLine}
           </div>
         )}
 
@@ -155,7 +206,7 @@ export function CandidatePreviewCard({
           <MiniGridPreview
             layout={candidate.layout}
             soundStreams={soundStreams}
-            highlighted={isSelected}
+            highlighted={isInspected}
           />
         </div>
 
@@ -166,9 +217,11 @@ export function CandidatePreviewCard({
           </div>
         )}
 
-        {/* Summary metadata */}
+        {/* Summary metadata. The Score is the layout's Playability on the one
+            yardstick (S3.1), not the optimizer's own plan score, so it reads
+            the same here, on the draft, in Compare and on a variant. */}
         <div className="flex justify-between text-pf-xs text-[var(--text-tertiary)] mb-2 px-0.5">
-          <span title={getPlanScoreSummary(candidate.executionPlan.score)}>Score: {formatPlanScore(candidate.executionPlan.score)}</span>
+          <CandidateScore candidate={candidate} />
           <span>Top: {topDriver}</span>
         </div>
 
@@ -234,36 +287,43 @@ export function CandidatePreviewCard({
         {/* Action buttons */}
         <div className="flex gap-1.5">
           <button
-            className="flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-blue-600/15 border border-blue-500/30 text-blue-400 hover:bg-blue-600/25"
-            onClick={e => { e.stopPropagation(); onSelect(); }}
-          >
-            Preview
-          </button>
-          <button
-            className={`flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-all ${
-              confirmPromote 
-                ? 'bg-emerald-600 text-white shadow-inner flex items-center justify-center gap-1.5 scale-[1.02] border-emerald-400' 
-                : 'bg-emerald-600/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/25'
+            type="button"
+            data-testid="candidate-inspect"
+            aria-current={isInspected ? 'true' : undefined}
+            className={`flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-colors border ${
+              isInspected
+                ? 'bg-role-candidate/25 border-role-candidate/60 text-[var(--text-primary)]'
+                : 'bg-role-candidate/10 border-role-candidate/30 text-role-candidate hover:bg-role-candidate/20'
             }`}
-            onClick={e => { 
-              e.stopPropagation(); 
-              if (confirmPromote) {
-                onPromote();
-                setConfirmPromote(false);
-              } else {
-                setConfirmPromote(true);
-                // Auto-reset after 3s
-                setTimeout(() => setConfirmPromote(false), 3000);
-              }
-            }}
+            title={isInspected ? `Candidate ${letter} is on the grid, read-only` : `Show Candidate ${letter} on the grid, read-only: your draft stays as it is`}
+            onClick={e => { e.stopPropagation(); onInspect(); }}
           >
-            {confirmPromote ? (
-              <>
-                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z" /></svg>
-                Confirm?
-              </>
-            ) : 'Promote'}
+            Inspect
           </button>
+          {/* The one Promote (S3.3): at once, with an Undo toast; no timed "Confirm?". */}
+          <button
+            type="button"
+            data-testid="candidate-promote"
+            className="flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-emerald-600/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/25"
+            title={`Make Candidate ${letter} the new Active Layout (Undo brings the old one back)`}
+            onClick={e => { e.stopPropagation(); onPromote(); }}
+          >
+            Promote
+          </button>
+          {onKeep && (
+            <button
+              type="button"
+              data-testid="candidate-keep"
+              disabled={kept}
+              className="flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-colors border bg-accent-primary/15 border-accent-primary/30 text-[var(--accent-primary-soft)] hover:bg-accent-primary/25 disabled:opacity-60 disabled:cursor-default disabled:hover:bg-accent-primary/15"
+              title={kept
+                ? `Candidate ${letter} is kept as a Saved Layout Variant`
+                : `Keep Candidate ${letter} as a Saved Layout Variant, named after how it was made (candidates are temporary)`}
+              onClick={e => { e.stopPropagation(); onKeep(); }}
+            >
+              {kept ? 'Kept' : 'Keep'}
+            </button>
+          )}
         </div>
       </div>
     </div>

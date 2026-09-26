@@ -19,15 +19,21 @@
 
 import { type Performance, type InstrumentConfig } from '../../types/performance';
 import { type EngineConfiguration } from '../../types/engineConfig';
-import { type CandidateSolution, type CandidateGenerationSummary } from '../../types/candidateSolution';
-import { type Layout, type LayoutRole, cloneLayout, createEmptyLayout, reconcileLayoutVoices } from '../../types/layout';
-import { type ExecutionPlanResult } from '../../types/executionPlan';
+import { type BeamSearchSummary, type CandidateSolution, type CandidateGenerationSummary } from '../../types/candidateSolution';
+import { type Layout, type LayoutProvenance, cloneLayout, createEmptyLayout, reconcileLayoutVoices } from '../../types/layout';
+import { type AnnealingIterationSnapshot, type ExecutionPlanResult } from '../../types/executionPlan';
 import { type Section, type VoiceProfile } from '../../types/performanceStructure';
 import { type PerformanceLane, type LaneGroup, type SourceFile } from '../../types/performanceLane';
 import { type LaneAction, isLaneAction, lanesReducer } from './lanesReducer';
 import { type CostToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
 import { type PerformanceCostBreakdown } from '../../types/costBreakdown';
-import { type OptimizerMethodKey, type OptimizerMove, type OptimizationIteration } from '../../engine/optimization/optimizerInterface';
+import {
+  type OptimizerMethodKey,
+  type OptimizerMove,
+  type OptimizationIteration,
+  type OptimizerTelemetry,
+  type StopReason,
+} from '../../engine/optimization/optimizerInterface';
 import { type GreedyLayoutStrategy } from '../../engine/optimization/greedyCandidatePipeline';
 import { checkPlanFreshness } from '../../engine/evaluation/executionPlanValidation';
 import { hashLayout } from '../../engine/mapping/mappingResolver';
@@ -37,6 +43,8 @@ import { formatFingerConstraint, parseFingerConstraint } from '../../utils/finge
 import { type RehearsalAudioOptions, DEFAULT_REHEARSAL_AUDIO } from '../audio/rehearsalAudio';
 import { gmDrumRenames } from '../../utils/gmDrumMap';
 import { uniqueName } from '../../utils/uniqueName';
+import { suggestVariantName } from './variantNames';
+import { EMPTY_CANDIDATE_RUNS, candidateLetterFor, olderRuns, withRun, type CandidateRunsState } from './candidateRuns';
 
 // ============================================================================
 // Sound Stream Model
@@ -155,8 +163,22 @@ export interface ProjectSession {
 
   // Analysis cache
   analysisResult: CandidateSolution | null;
+  /** Every run's candidates, newest run first (S3.3: each Generate adds a run). */
   candidates: CandidateSolution[];
-  selectedCandidateId: string | null;
+  /** The runs those candidates came from and each candidate's letter for the session (candidateRuns.ts). */
+  candidateRuns: CandidateRunsState;
+  /**
+   * The layout on screen (S3.2): null for the layout edits go to (the draft,
+   * else Active). Never in undo history, never saved.
+   */
+  inspectedLayout: InspectedLayoutRef | null;
+  /**
+   * The read-only inspected layout's own plan, mirrored from the per-layout
+   * analysis cache (useInspectedAnalysis) so the pure selectors the timeline,
+   * the Events list and SELECT_EVENT's playhead use can read it. Bound to its
+   * layout, and ignored unless it is fresh for the layout shown.
+   */
+  inspectedAnalysis: CandidateSolution | null;
   /** What the last Generate reported about its list (dropped candidates, diversity). */
   generationSummary: CandidateGenerationSummary | null;
 
@@ -192,6 +214,10 @@ export interface ProjectSession {
 
   /** Manual cost evaluation result (from Calculate Cost button). */
   manualCostResult: PerformanceCostBreakdown | null;
+  // The trace on screen (T33): the inspected candidate's, else restingTrace.
+  // The reducer keeps moveHistory, iterationTrace, moveHistoryStopReason and
+  // traceSubject on it (withTraceOnScreen); MoveTracePanel reads them.
+
   /** Move history from interpretable optimizers (greedy). */
   moveHistory: OptimizerMove[] | null;
   /** Detailed iteration traces for the visual debugger. */
@@ -200,6 +226,19 @@ export interface ProjectSession {
   moveHistoryStopReason: string | null;
   /** Current index in move history for step-through replay. */
   moveHistoryIndex: number | null;
+  /** Whose trace is on screen, and the rest of it (annealing snapshots, a beam summary). */
+  traceSubject: TraceSubject | null;
+  /**
+   * The trace shown while no candidate is inspected: the latest run's
+   * candidate A, or the candidate promoted since (traces survive promotion).
+   */
+  restingTrace: CandidateTrace | null;
+  /**
+   * How the last Generate ended (T35). A cancelled run commits nothing else
+   * (no candidates, summary or trace), so its 'cancelled' lives here: the
+   * candidate list and the trace fields above still describe the run before.
+   */
+  lastGenerationRun: GenerationRunRecord | null;
 
   // Transport
   currentTime: number;
@@ -223,11 +262,62 @@ export interface ProjectSession {
   rehearsalAudio: RehearsalAudioOptions;
 }
 
+/** How a Generate run ended (session only; see ProjectSession.lastGenerationRun). */
+export interface GenerationRunRecord {
+  outcome: 'completed' | 'cancelled' | 'failed';
+  /**
+   * 'cancelled' for Cancel; for a completed run 'time_budget' when a candidate
+   * used its whole time limit, else 'completed'; null when the run failed.
+   */
+  stopReason: StopReason | null;
+  method: OptimizerMethodKey;
+  /** Candidates the run committed: 0 unless it completed. */
+  candidateCount: number;
+  elapsedMs: number;
+}
+
+/** Whose trace is on screen (T33), and what its method keeps besides moves. */
+export interface TraceSubject {
+  /** The candidate it describes; null for a trace set without one (SET_MOVE_HISTORY). */
+  candidateId: string | null;
+  /** Its letter when the trace was taken ("B"): the title still names it once it has left the list. */
+  letter: string | null;
+  /** Annealing: one snapshot per iteration (the candidate's annealingTrace). */
+  annealing: AnnealingIterationSnapshot[] | null;
+  /** Beam: what the search did. */
+  beam: BeamSearchSummary | null;
+  /** The run's telemetry: time, iterations, budgets. */
+  telemetry: OptimizerTelemetry | null;
+  /** It was promoted, so it stays when it leaves the candidate list. */
+  promoted: boolean;
+}
+
+/** A candidate's whole trace, as the trace panel shows it (T33). */
+export interface CandidateTrace extends TraceSubject {
+  moves: OptimizerMove[] | null;
+  iterations: OptimizationIteration[] | null;
+  stopReason: string | null;
+}
+
 /**
  * The whole in-memory project: document plus session, kept flat so every
  * consumer reads fields directly (state.moveHistory, state.activeLayout, ...).
  */
 export type ProjectState = ProjectDocument & ProjectSession;
+
+/**
+ * Which layout the screen shows (S3.2, T01): the grid, its plan, the timeline
+ * and the Analysis and Events panels all describe it. Looking never writes:
+ * the Active Layout while a differing draft exists, a Candidate Solution, a
+ * Saved Layout Variant or a recovered draft is shown read-only.
+ */
+export type InspectedLayoutKind = 'active' | 'working' | 'candidate' | 'variant' | 'recovered';
+
+export interface InspectedLayoutRef {
+  kind: InspectedLayoutKind;
+  /** The layout's id (a candidate's id for a candidate). */
+  id: string;
+}
 
 // ============================================================================
 // Derived State Helpers
@@ -261,21 +351,12 @@ export function getActiveLayout(state: ProjectState): Layout | null {
 }
 
 /**
- * Get the currently displayed layout.
- * Returns the working layout if one exists, otherwise the active layout.
- * This is the layout the user sees and interacts with.
+ * The layout edits go to: the Working/Test Layout if one exists, otherwise the
+ * Active Layout (the first edit starts a draft from it). The grid shows it
+ * unless a read-only layout is inspected (getInspectedLayout).
  */
 export function getDisplayedLayout(state: ProjectState): Layout | null {
   return state.workingLayout ?? state.activeLayout ?? null;
-}
-
-/**
- * Get the role of the currently displayed layout.
- */
-export function getDisplayedLayoutRole(state: ProjectState): LayoutRole | null {
-  if (state.workingLayout) return 'working';
-  if (state.activeLayout) return 'active';
-  return null;
 }
 
 /**
@@ -300,8 +381,179 @@ export function getCandidateById(
   return state.candidates.find(candidate => candidate.id === candidateId) ?? null;
 }
 
-export function getSelectedCandidate(state: ProjectState): CandidateSolution | null {
-  return getCandidateById(state, state.selectedCandidateId);
+/** The layout on screen, resolved (S3.2). */
+export interface ResolvedInspection {
+  /** The role it is shown in; a draft identical to Active shows as Active. */
+  role: InspectedLayoutKind;
+  layout: Layout;
+  /** Not the layout edits go to: shown read-only, through the grid's layoutOverride. */
+  readOnly: boolean;
+  /** The candidate, when a Candidate Solution is shown. */
+  candidate: CandidateSolution | null;
+}
+
+/**
+ * What state.inspectedLayout points at now. A reference that no longer
+ * resolves (a deleted candidate or variant) or that names the layout edits go
+ * to falls back to that layout: the draft, else Active.
+ */
+export function resolveInspectedLayout(state: ProjectState): ResolvedInspection {
+  const ref = state.inspectedLayout;
+  const differingDraft = hasWorkingChanges(state);
+  switch (ref?.kind) {
+    case 'active':
+      // With no differing draft, Active is simply the layout being edited.
+      if (differingDraft) return { role: 'active', layout: state.activeLayout, readOnly: true, candidate: null };
+      break;
+    case 'candidate': {
+      const candidate = getCandidateById(state, ref.id);
+      if (candidate) return { role: 'candidate', layout: candidate.layout, readOnly: true, candidate };
+      break;
+    }
+    case 'variant': {
+      const variant = state.savedVariants.find(v => v.id === ref.id);
+      if (variant) return { role: 'variant', layout: variant, readOnly: true, candidate: null };
+      break;
+    }
+    case 'recovered': {
+      const draft = (state.recoveredDrafts ?? []).find(l => l.id === ref.id);
+      if (draft) return { role: 'recovered', layout: draft, readOnly: true, candidate: null };
+      break;
+    }
+  }
+  return {
+    role: differingDraft ? 'working' : 'active',
+    layout: state.workingLayout ?? state.activeLayout,
+    readOnly: false,
+    candidate: null,
+  };
+}
+
+/** The layout on screen: the inspected one, or the layout edits go to. */
+export function getInspectedLayout(state: ProjectState): Layout {
+  return resolveInspectedLayout(state).layout;
+}
+
+/** Whether the layout on screen is one edits don't go to (S3.2). */
+export function isInspectedReadOnly(state: ProjectState): boolean {
+  return resolveInspectedLayout(state).readOnly;
+}
+
+/** The candidate on screen, when a Candidate Solution is inspected. */
+export function getInspectedCandidate(state: ProjectState): CandidateSolution | null {
+  return resolveInspectedLayout(state).candidate;
+}
+
+/**
+ * The optimizer trace the trace panel and its step-through replay use: the
+ * one on screen. The reducer keeps state.iterationTrace on the inspected
+ * candidate's trace, else the run's candidate A's or the promoted one's
+ * (withTraceOnScreen), so this reads state as MoveTracePanel does.
+ */
+export function getActiveTrace(state: ProjectState): OptimizationIteration[] | null {
+  return state.iterationTrace;
+}
+
+/** A candidate's trace, taken now, with its session letter (T33; letters are stable, S3.3). */
+export function candidateTrace(
+  state: Pick<ProjectState, 'candidates' | 'candidateRuns'>,
+  candidate: CandidateSolution,
+  promoted = false,
+): CandidateTrace {
+  return {
+    candidateId: candidate.id,
+    letter: candidateLetterFor(state, candidate.id),
+    moves: candidate.moveHistory ?? null,
+    iterations: candidate.iterationTrace ?? null,
+    stopReason: candidate.stopReason ?? null,
+    annealing: candidate.annealingTrace ?? null,
+    beam: candidate.beamSummary ?? null,
+    telemetry: candidate.telemetry ?? null,
+    promoted,
+  };
+}
+
+/** Whether a trace is on screen: moves, iterations, annealing snapshots or a beam summary. */
+export function hasTraceOnScreen(state: ProjectState): boolean {
+  return !!state.moveHistory?.length || !!state.iterationTrace?.length
+    || !!state.traceSubject?.annealing?.length || !!state.traceSubject?.beam;
+}
+
+/** The trace to show: the inspected candidate's, else the resting one while it applies. */
+function traceToShow(state: ProjectState): CandidateTrace | null {
+  const ref = state.inspectedLayout;
+  const inspected = ref?.kind === 'candidate' ? getCandidateById(state, ref.id) : null;
+  if (inspected) return candidateTrace(state, inspected);
+  const resting = state.restingTrace;
+  // A candidate deleted from the list takes its trace with it, unless it was promoted.
+  if (resting?.candidateId && !resting.promoted && !state.candidates.some(c => c.id === resting.candidateId)) return null;
+  return resting;
+}
+
+function showsTrace(state: ProjectState, trace: CandidateTrace | null): boolean {
+  const subject = state.traceSubject;
+  return state.moveHistory === (trace?.moves ?? null)
+    && state.iterationTrace === (trace?.iterations ?? null)
+    && state.moveHistoryStopReason === (trace?.stopReason ?? null)
+    && (subject?.candidateId ?? null) === (trace?.candidateId ?? null)
+    && (subject?.letter ?? null) === (trace?.letter ?? null)
+    && (subject?.annealing ?? null) === (trace?.annealing ?? null)
+    && (subject?.beam ?? null) === (trace?.beam ?? null);
+}
+
+/**
+ * Keeps the trace fields on the trace on screen (T33): whenever the
+ * inspection, the candidate list or the resting trace changes, moveHistory,
+ * iterationTrace, moveHistoryStopReason and traceSubject take the inspected
+ * candidate's trace, else the resting one (a new trace starts with no replay
+ * step). Every reducer step and every Undo/Redo goes through it, so the panel,
+ * bound to state.moveHistory, always describes the candidate on screen.
+ */
+export function withTraceOnScreen(prev: ProjectState, next: ProjectState): ProjectState {
+  if (next === prev) return next;
+  if (next.inspectedLayout === prev.inspectedLayout && next.candidates === prev.candidates
+    && next.restingTrace === prev.restingTrace) return next;
+  const trace = traceToShow(next);
+  if (showsTrace(next, trace)) return next;
+  return {
+    ...next,
+    moveHistory: trace?.moves ?? null,
+    iterationTrace: trace?.iterations ?? null,
+    moveHistoryStopReason: trace?.stopReason ?? null,
+    moveHistoryIndex: null,
+    traceSubject: trace && {
+      candidateId: trace.candidateId,
+      letter: trace.letter,
+      annealing: trace.annealing,
+      beam: trace.beam,
+      telemetry: trace.telemetry,
+      promoted: trace.promoted,
+    },
+  };
+}
+
+/**
+ * Traces survive promotion (T33): the promoted candidate's trace becomes the
+ * one shown while no candidate is inspected, so MoveTracePanel still renders
+ * it, named by the candidate's letter, after the candidate leaves the list.
+ * Every reducer path that promotes a candidate returns through it.
+ */
+export function withPromotedTrace(before: ProjectState, after: ProjectState, candidate: CandidateSolution): ProjectState {
+  return { ...after, restingTrace: candidateTrace(before, candidate, true) };
+}
+
+/** Whether the grid shows a step of the optimizer trace (the replay is read-only too). */
+export function isReplayingTrace(state: ProjectState): boolean {
+  return state.moveHistoryIndex !== null && !!getActiveTrace(state)?.[state.moveHistoryIndex];
+}
+
+/**
+ * Whether the grid shows a layout edits don't go to (an inspected read-only
+ * layout, or a replayed trace step): every edit path is refused then, with
+ * "Use as my draft to edit".
+ */
+export function isShownLayoutReadOnly(state: ProjectState): boolean {
+  return isInspectedReadOnly(state) || isReplayingTrace(state);
 }
 
 /**
@@ -315,7 +567,7 @@ export function getSelectedCandidate(state: ProjectState): CandidateSolution | n
  * The pad map is unchanged by promotion, so the plan is still valid; only its
  * binding needs to follow the layout.
  */
-function rebindAnalysisToLayout(
+export function rebindAnalysisToLayout(
   candidate: CandidateSolution,
   layout: Layout,
 ): CandidateSolution {
@@ -349,8 +601,19 @@ export function getAnalysisForLayout(
     : null;
 }
 
+/**
+ * The plan of the layout on screen: the draft's (or Active's) analysis, or a
+ * read-only inspected layout's own plan from the cache (its mirror,
+ * state.inspectedAnalysis), never a candidate's optimizer plan (S3.2). So the
+ * fingering on the grid, the timeline and the Events list is the one its
+ * Score describes, and the one the draft gets after "Use as my draft". Null
+ * until that plan is ready for the layout shown.
+ */
 export function getDisplayedCandidate(state: ProjectState): CandidateSolution | null {
-  return getSelectedCandidate(state) ?? getAnalysisForLayout(state, getDisplayedLayout(state));
+  const shown = resolveInspectedLayout(state);
+  if (!shown.readOnly) return getAnalysisForLayout(state, shown.layout);
+  const mirror = state.inspectedAnalysis;
+  return mirror && checkPlanFreshness(mirror.executionPlan, shown.layout).isFresh ? mirror : null;
 }
 
 export function getDisplayedExecutionPlan(state: ProjectState): ExecutionPlanResult | null {
@@ -397,10 +660,13 @@ export type ProjectAction =
   // V3 Workflow actions
   | { type: 'CREATE_WORKING_LAYOUT' }
   | { type: 'DISCARD_WORKING_LAYOUT' }
-  | { type: 'PROMOTE_WORKING_LAYOUT' }
-  | { type: 'PROMOTE_CANDIDATE'; payload: { candidateId: string } }
+  // The one Promote (S3.3, T13), from the draft, a candidate or a variant. `reviewed`
+  // is the plan the user saw for that layout (its plan from the per-layout
+  // cache, usePromote); it is rebound to the new Active Layout.
+  | { type: 'PROMOTE_WORKING_LAYOUT'; payload?: { reviewed?: CandidateSolution | null } }
+  | { type: 'PROMOTE_CANDIDATE'; payload: { candidateId: string; reviewed?: CandidateSolution | null } }
   | { type: 'DELETE_CANDIDATE'; payload: { candidateId: string } }
-  | { type: 'PROMOTE_VARIANT'; payload: { variantId: string } }
+  | { type: 'PROMOTE_VARIANT'; payload: { variantId: string; reviewed?: CandidateSolution | null } }
   | { type: 'DELETE_VARIANT'; payload: { variantId: string } }
   | { type: 'SAVE_AS_VARIANT'; payload: { name: string; source: 'working' | 'candidate'; candidateId?: string; /** The new variant's id, so the caller can show it. */ variantId?: string } }
   | { type: 'LOAD_SAVED_VARIANT'; payload: { variantId: string } }
@@ -410,9 +676,17 @@ export type ProjectAction =
 
   // Analysis
   | { type: 'SET_ANALYSIS_RESULT'; payload: CandidateSolution | null }
+  /** A Generate run's candidates: added as a run (S3.3), candidate A shown read-only (Q4). */
   | { type: 'SET_CANDIDATES'; payload: CandidateSolution[] }
+  /** A run that isn't a Generate ("Place remaining N Sounds", T37): added and shown like one. */
+  | { type: 'ADD_CANDIDATE_RUN'; payload: CandidateSolution[] }
+  /** Removes every run but the newest, with its candidates. */
+  | { type: 'CLEAR_OLDER_RUNS' }
   | { type: 'SET_GENERATION_SUMMARY'; payload: CandidateGenerationSummary | null }
-  | { type: 'SELECT_CANDIDATE'; payload: string | null }
+  /** Shows a layout (S3.2): null (or the draft) for the layout edits go to; anything else read-only. Writes nothing. */
+  | { type: 'INSPECT_LAYOUT'; payload: InspectedLayoutRef | null }
+  /** The inspected read-only layout's plan, from the per-layout cache (useInspectedAnalysis). */
+  | { type: 'SET_INSPECTED_ANALYSIS'; payload: CandidateSolution | null }
   | { type: 'MARK_ANALYSIS_STALE' }
   | { type: 'APPLY_GENERATION_TO_LAYOUT'; payload: { candidateId: string } }
   | { type: 'SUGGEST_STARTING_LAYOUT' }
@@ -434,6 +708,7 @@ export type ProjectAction =
   | { type: 'SET_MANUAL_COST_RESULT'; payload: PerformanceCostBreakdown | null }
   | { type: 'SET_MOVE_HISTORY'; payload: { moves: OptimizerMove[] | null; trace: OptimizationIteration[] | null; stopReason?: string } }
   | { type: 'SET_MOVE_HISTORY_INDEX'; payload: number | null }
+  | { type: 'SET_GENERATION_RUN'; payload: GenerationRunRecord | null }
 
   // Transport
   | { type: 'SET_CURRENT_TIME'; payload: number }
@@ -474,6 +749,32 @@ export function isEphemeralAction(action: ProjectAction): boolean {
   return EPHEMERAL_ACTIONS.has(action.type);
 }
 
+/**
+ * Actions that edit a layout's pads, locks or pad finger preferences, or start
+ * a draft. While the grid shows a layout edits don't go to (a read-only
+ * inspection or a trace replay) the reducer refuses them, whatever dispatched
+ * them (S3.2, defence in depth behind the grid's own checks): looking never
+ * writes the Working/Test Layout. Named role actions (Use as my draft,
+ * Promote, Save as variant, Discard, Restore) are not edits and still run.
+ * A Sound's own finger preference (SET_VOICE_CONSTRAINT) is not a layout edit
+ * either: it belongs to the Sound in every layout (invariant 6).
+ */
+const LAYOUT_EDIT_ACTIONS = new Set<ProjectAction['type']>([
+  'ASSIGN_VOICE_TO_PAD',
+  'BULK_ASSIGN_PADS',
+  'MERGE_ASSIGN_PADS',
+  'REMOVE_VOICE_FROM_PAD',
+  'SWAP_PADS',
+  'SET_FINGER_CONSTRAINT',
+  'TOGGLE_PLACEMENT_LOCK',
+  'CREATE_WORKING_LAYOUT',
+  'SUGGEST_STARTING_LAYOUT',
+]);
+
+export function isLayoutEditAction(action: ProjectAction): boolean {
+  return LAYOUT_EDIT_ACTIONS.has(action.type);
+}
+
 // ============================================================================
 // Reducer Helpers
 // ============================================================================
@@ -486,18 +787,50 @@ function generateId(): string {
 /**
  * Ensure a working layout exists. If not, clone the active layout as a working draft.
  * Returns the state with a guaranteed non-null workingLayout.
+ *
+ * The draft keeps the Active Layout's base name: names never carry a role
+ * (T32), and the UI labels it "Draft of Default" (layoutLabels.ts).
  */
 function ensureWorkingLayout(state: ProjectState): ProjectState & { workingLayout: Layout } {
   if (state.workingLayout) {
     return state as ProjectState & { workingLayout: Layout };
   }
-  const working = cloneLayout(
-    state.activeLayout,
-    generateId(),
-    `${state.activeLayout.name} (draft)`,
-    'working',
-  );
+  const working: Layout = {
+    ...cloneLayout(state.activeLayout, generateId(), state.activeLayout.name, 'working'),
+    provenance: 'manual',
+  };
   return { ...state, workingLayout: working } as ProjectState & { workingLayout: Layout };
+}
+
+/** The provenance of a layout taken from a candidate (T32); a candidate with no metadata has no strategy to name. */
+function candidateProvenance(candidate: CandidateSolution): LayoutProvenance {
+  return `candidate:${candidate.metadata?.strategy ?? ''}`;
+}
+
+/**
+ * The saved variants after a Promote replaces the Active Layout: the replaced
+ * Active is auto-saved (CLAUDE.md default) when it has pads, under a clean
+ * dated name, "Default – 25 Sep 14:02" (numbered when taken), with provenance
+ * 'replaced-active'. It used to be "Default (replaced 9/25/2026)" (T32).
+ */
+function withReplacedActiveSaved(state: ProjectState, variants: Layout[], now: string): Layout[] {
+  if (Object.keys(state.activeLayout.padToVoice).length === 0) return variants;
+  const name = suggestVariantName(state.activeLayout.name, variants.map(v => v.name), new Date(now));
+  const replaced: Layout = {
+    ...cloneLayout(state.activeLayout, generateId(), name, 'variant'),
+    provenance: 'replaced-active',
+    savedAt: now,
+  };
+  return [...variants, replaced];
+}
+
+/**
+ * The draft after an edit (T14): a draft whose pads, locks and finger
+ * preferences are back to Active's is no draft at all, so it goes (the grid
+ * shows Active, and Promote and Discard have nothing to act on).
+ */
+function draftOrNull(draft: Layout, active: Layout): Layout | null {
+  return hashLayout(draft) === hashLayout(active) ? null : draft;
 }
 
 /**
@@ -514,9 +847,35 @@ function updateWorkingLayout(
     ...withWorking,
     updatedAt: now,
     analysisStale: true,
-    selectedCandidateId: null, // Clear candidate selection so grid shows the working layout
-    workingLayout: { ...updater(withWorking.workingLayout), scoreCache: null },
+    // Edits reach here only while the layout edits go to is shown (the guard
+    // refuses them otherwise); a Sound's finger preference, which also lands
+    // here, keeps a read-only inspection on screen.
+    inspectedLayout: isInspectedReadOnly(state) ? state.inspectedLayout : null,
+    workingLayout: draftOrNull({ ...updater(withWorking.workingLayout), scoreCache: null }, state.activeLayout),
   };
+}
+
+/**
+ * Shows `ref` (S3.2). Nothing is written: selections that belong to the
+ * previous layout go (the selected pad, a trace replay step), and a Sound
+ * armed for placing is disarmed when the new layout is read-only. The event
+ * selection stays, so the same event can be compared across layouts.
+ */
+function inspecting(state: ProjectState, ref: InspectedLayoutRef | null): ProjectState {
+  const next: ProjectState = { ...state, inspectedLayout: ref, selectedPadKey: null, moveHistoryIndex: null };
+  if (!resolveInspectedLayout(next).readOnly) return { ...next, inspectedLayout: null };
+  if (next.armedStreamId === null) return next;
+  return {
+    ...next,
+    armedStreamId: null,
+    selectedStreamId: next.selectedStreamId === next.armedStreamId ? null : next.selectedStreamId,
+  };
+}
+
+/** The inspection after `id` left its list: the layout edits go to, if it was the one shown. */
+function inspectionWithout(state: ProjectState, kind: InspectedLayoutKind, id: string): InspectedLayoutRef | null {
+  const ref = state.inspectedLayout;
+  return ref && ref.kind === kind && ref.id === id ? null : ref;
 }
 
 function buildLayoutFingerConstraints(
@@ -609,7 +968,7 @@ function prunePlacementLocks(
  * Sound is on this pad"; one pointing elsewhere is invisible in the UI and
  * would silently drag the Sound back on the next Generate.
  */
-function withDerivedLayoutState(
+export function withDerivedLayoutState(
   layout: Layout,
   voiceConstraints: ProjectState['voiceConstraints'],
 ): Layout {
@@ -618,6 +977,17 @@ function withDerivedLayoutState(
     fingerConstraints: buildLayoutFingerConstraints(layout.padToVoice, voiceConstraints),
     placementLocks: prunePlacementLocks(layout.padToVoice, layout.placementLocks ?? {}),
   };
+}
+
+/**
+ * A layout's identity in this project (S3.3): the hash of its pads, locks and
+ * the finger preferences it has once applied (withDerivedLayoutState), as the
+ * scoring cache keys it. A candidate and the draft, variant or Active made
+ * from it share one identity, even when the candidate keeps a moved Sound's
+ * preference on the pad it left.
+ */
+export function layoutIdentity(state: Pick<ProjectState, 'voiceConstraints'>, layout: Layout): string {
+  return hashLayout(withDerivedLayoutState(layout, state.voiceConstraints));
 }
 
 /** Recovered drafts kept per project; the oldest is pruned beyond this. */
@@ -654,15 +1024,178 @@ function keepReplacedDraft(state: ProjectState, incoming: Layout | null, now: st
   return [...kept.filter(layout => hashLayout(layout) !== hash), entry].slice(-RECOVERED_DRAFTS_CAP);
 }
 
+/**
+ * The state once a run's candidates arrive (S3.3, T30): they are added as a
+ * run, first in the list, instead of replacing it; each gets its letter for
+ * the session; runs beyond the cap go, with their candidates (and with the
+ * inspection or compare pick of one of them).
+ */
+function withInstalledRun(state: ProjectState, incoming: CandidateSolution[]): ProjectState {
+  if (incoming.length === 0) return state;
+  const { candidateRuns, droppedIds } = withRun(state, incoming, new Date().toISOString());
+  const incomingIds = new Set(incoming.map(c => c.id));
+  const gone = (id: string | null | undefined) => !!id && droppedIds.has(id) && !incomingIds.has(id);
+  return {
+    ...state,
+    candidates: [...incoming, ...state.candidates.filter(c => !incomingIds.has(c.id) && !droppedIds.has(c.id))],
+    candidateRuns,
+    inspectedLayout: state.inspectedLayout?.kind === 'candidate' && gone(state.inspectedLayout.id) ? null : state.inspectedLayout,
+    compareCandidateId: gone(state.compareCandidateId) ? null : state.compareCandidateId,
+  };
+}
+
+/** What a Promote makes the Active Layout (S3.3). */
+type PromoteSource =
+  | { kind: 'working'; layout: Layout }
+  | { kind: 'candidate'; candidate: CandidateSolution }
+  | { kind: 'variant'; variant: Layout };
+
+/**
+ * The plan the user reviewed for the layout being promoted: the one the
+ * Promote action carries (its plan from the per-layout cache), else the one on
+ * screen (the draft's analysis, or an inspected layout's own plan), else none
+ * (the new Active is analysed afresh, through the same cache).
+ */
+function reviewedPlanFor(state: ProjectState, source: PromoteSource, given: CandidateSolution | null | undefined): CandidateSolution | null {
+  if (given) return given;
+  if (source.kind === 'working') return getAnalysisForLayout(state, source.layout);
+  const layout = source.kind === 'candidate' ? source.candidate.layout : source.variant;
+  const mirror = state.inspectedAnalysis;
+  return mirror && checkPlanFreshness(mirror.executionPlan, layout).isFresh ? mirror : null;
+}
+
+/**
+ * The one Promote (S3.3, T13), from the draft, a candidate or a saved variant.
+ *
+ * The layout becomes the Active Layout (its finger preferences re-derived and
+ * dead locks pruned), the replaced Active is auto-saved as a variant, and a
+ * differing draft it replaces is kept in Recovered drafts. A pad map matching
+ * a candidate's promotes as that candidate: its card leaves the list (Undo
+ * puts it back) and its trace stays on screen. The plan the user reviewed is
+ * rebound to the new Active, so its fingering and numbers carry over and
+ * nothing is re-solved; staleness detection still holds, because the plan is
+ * bound by the new layout's hash.
+ */
+function promote(state: ProjectState, source: PromoteSource, reviewed: CandidateSolution | null | undefined): ProjectState {
+  const now = new Date().toISOString();
+  const sourceLayout = source.kind === 'working' ? source.layout
+    : source.kind === 'candidate' ? source.candidate.layout
+    : source.variant;
+  const base: Layout = source.kind === 'working'
+    ? source.layout
+    : source.kind === 'candidate'
+      ? {
+        ...source.candidate.layout,
+        id: generateId(),
+        placementLocks: { ...source.candidate.layout.placementLocks },
+        provenance: candidateProvenance(source.candidate),
+      }
+      : { ...source.variant, provenance: `variant:${source.variant.id}` };
+  const promoted: Layout = withDerivedLayoutState(reconcileLayoutVoices({
+    ...base,
+    role: 'active',
+    baselineId: undefined,
+    savedAt: now,
+  }, state.soundStreams), state.voiceConstraints);
+
+  // Every candidate with these pads goes: it is the Active Layout now.
+  const identity = layoutIdentity(state, sourceLayout);
+  const promotedCandidates = state.candidates.filter(c =>
+    (source.kind === 'candidate' && c.id === source.candidate.id) || layoutIdentity(state, c.layout) === identity);
+  const asCandidate = source.kind === 'candidate' ? source.candidate : promotedCandidates[0] ?? null;
+
+  const plan = reviewedPlanFor(state, source, reviewed);
+  const variants = source.kind === 'variant' ? state.savedVariants.filter(v => v.id !== source.variant.id) : state.savedVariants;
+
+  const next: ProjectState = {
+    ...state,
+    activeLayout: promoted,
+    workingLayout: null,
+    savedVariants: withReplacedActiveSaved(state, variants, now),
+    recoveredDrafts: keepReplacedDraft(state, promoted, now),
+    candidates: promotedCandidates.length > 0 ? state.candidates.filter(c => !promotedCandidates.includes(c)) : state.candidates,
+    updatedAt: now,
+    analysisResult: plan ? rebindAnalysisToLayout(plan, promoted) : null,
+    analysisStale: !plan,
+    inspectedLayout: null,
+    compareCandidateId: null,
+  };
+  // The promoted candidate's trace stays on screen once its card has left the list (T33).
+  return asCandidate ? withPromotedTrace(state, next, asCandidate) : next;
+}
+
+/**
+ * The layout with every unplaced Sound in scope placed (S3.3): busiest Sound
+ * first, on the shipped Natural Hand Pose pads in their own order, then row by
+ * row; a placed Sound is never moved or covered, so locks hold. "Suggest a
+ * starting layout" writes the result as the draft; "Place remaining N Sounds"
+ * proposes it as a candidate (Q4). Returns the same layout when nothing is
+ * left to place.
+ */
+export function withRemainingPlaced(state: ProjectState, base: Layout): Layout {
+  const streams = getActiveStreams(state);
+  const padToVoice = { ...base.padToVoice };
+  const takenPads = new Set(Object.keys(padToVoice));
+  const placedVoiceIds = new Set(Object.values(padToVoice).map(v => v.id).filter(Boolean));
+
+  // Most-used sounds first, so the busiest sound gets the strongest finger.
+  const byUsage = [...streams].sort((a, b) => b.events.length - a.events.length);
+
+  // The shipped Natural Hand Pose, in its own order. These ten pads are a real
+  // relaxed two-hand shape, and taking them contiguously keeps the suggestion
+  // compact. Reordering them to alternate hands looks tidier but measurably
+  // hurts: on the reference performance it spread the right hand across the
+  // grid and turned a layout with no hard moments into one with thirteen.
+  //
+  // This is only a starting point — Generate is what optimises it — but it
+  // should be a starting point the user would not immediately want to undo.
+  const posePads = getPose0PadsWithOffset(createDefaultPose0(), 0, true)
+    .map(p => padKey(p.row, p.col));
+  const fallbackPads: string[] = [];
+  for (let row = 2; row < 8; row++) {
+    for (let col = 0; col < 8; col++) fallbackPads.push(padKey(row, col));
+  }
+  const candidatePads = [...posePads, ...fallbackPads];
+
+  let cursor = 0;
+  let placed = 0;
+  for (const stream of byUsage) {
+    if (placedVoiceIds.has(stream.id)) continue;
+    while (cursor < candidatePads.length && takenPads.has(candidatePads[cursor])) cursor++;
+    if (cursor >= candidatePads.length) break;
+    const pad = candidatePads[cursor];
+    takenPads.add(pad);
+    padToVoice[pad] = {
+      id: stream.id,
+      name: stream.name,
+      sourceType: 'midi_track' as const,
+      sourceFile: '',
+      originalMidiNote: stream.originalMidiNote,
+      color: stream.color,
+    };
+    placed++;
+  }
+  if (placed === 0) return base;
+  return { ...base, padToVoice, fingerConstraints: buildLayoutFingerConstraints(padToVoice, state.voiceConstraints) };
+}
+
 // ============================================================================
 // Reducer
 // ============================================================================
 
 export function projectReducer(state: ProjectState, action: ProjectAction): ProjectState {
+  return withTraceOnScreen(state, reduceProject(state, action));
+}
+
+function reduceProject(state: ProjectState, action: ProjectAction): ProjectState {
   // Delegate lane/group actions to the dedicated lanes reducer
   if (isLaneAction(action.type)) {
     return lanesReducer(state, action as LaneAction);
   }
+
+  // Looking never writes (S3.2): no layout edit while the grid shows a layout
+  // edits don't go to. Nothing changes, so no draft and no undo step.
+  if (LAYOUT_EDIT_ACTIONS.has(action.type) && isShownLayoutReadOnly(state)) return state;
 
   switch (action.type) {
     case 'LOAD_PROJECT':
@@ -670,6 +1203,8 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         ...action.payload,
         // Reset ephemeral state
         workingLayout: null, // Session-scoped: strip working layout on load
+        inspectedLayout: null,
+        inspectedAnalysis: null,
         selectedEventIndex: null,
         selectedMomentIndex: null,
         armedStreamId: null,
@@ -1108,7 +1643,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
           ...state,
           updatedAt: new Date().toISOString(),
           analysisStale: true,
-          workingLayout: { ...state.workingLayout, placementLocks: newLocks },
+          workingLayout: draftOrNull({ ...state.workingLayout, placementLocks: newLocks }, state.activeLayout),
         };
       }
       // No working layout: lock on active layout directly (locks are durable)
@@ -1158,104 +1693,30 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         selectedEventIndex: null,
         selectedMomentIndex: null,
         // Preserve candidates — discarding working layout doesn't invalidate them
-        selectedCandidateId: null,
+        inspectedLayout: null,
         compareCandidateId: null,
       };
     }
 
+    // Every Promote is one: the draft's, a candidate's and a variant's (S3.3, T13).
     case 'PROMOTE_WORKING_LAYOUT': {
       if (!state.workingLayout) return state;
-      const now = new Date().toISOString();
-
-      // Auto-save the replaced active layout as a variant (if it has any assignments)
-      const autoSavedVariants = [...state.savedVariants];
-      if (Object.keys(state.activeLayout.padToVoice).length > 0) {
-        const replaced = cloneLayout(
-          state.activeLayout,
-          generateId(),
-          `${state.activeLayout.name} (replaced ${new Date().toLocaleDateString()})`,
-          'variant',
-        );
-        autoSavedVariants.push(replaced);
-      }
-
-      // Promote: working becomes active
-      const promoted: Layout = withDerivedLayoutState({
-        ...state.workingLayout,
-        role: 'active',
-        baselineId: undefined,
-        savedAt: now,
-      }, state.voiceConstraints);
-
-      return {
-        ...state,
-        activeLayout: promoted,
-        workingLayout: null,
-        savedVariants: autoSavedVariants,
-        updatedAt: now,
-        analysisStale: true,
-        // Preserve candidates — they remain valid for comparison/promotion
-        selectedCandidateId: null,
-        compareCandidateId: null,
-      };
+      return promote(state, { kind: 'working', layout: state.workingLayout }, action.payload?.reviewed);
     }
 
     case 'PROMOTE_CANDIDATE': {
       const candidate = state.candidates.find(c => c.id === action.payload.candidateId);
       if (!candidate) return state;
-      const now = new Date().toISOString();
-
-      // Auto-save the replaced active layout as a variant
-      const autoSavedVariants = [...state.savedVariants];
-      if (Object.keys(state.activeLayout.padToVoice).length > 0) {
-        const replaced = cloneLayout(
-          state.activeLayout,
-          generateId(),
-          `${state.activeLayout.name} (replaced ${new Date().toLocaleDateString()})`,
-          'variant',
-        );
-        autoSavedVariants.push(replaced);
-      }
-
-      // Promote: candidate's layout becomes active, reconciling voice metadata
-      // and re-deriving its pad constraints from the user's preferences.
-      const promoted: Layout = withDerivedLayoutState(reconcileLayoutVoices({
-        ...candidate.layout,
-        id: generateId(),
-        role: 'active',
-        baselineId: undefined,
-        placementLocks: { ...candidate.layout.placementLocks },
-        savedAt: now,
-      }, state.soundStreams), state.voiceConstraints);
-
-      // Keep non-promoted candidates so the user can still compare or promote others
-      const remainingCandidates = state.candidates.filter(c => c.id !== action.payload.candidateId);
-
-      return {
-        ...state,
-        activeLayout: promoted,
-        workingLayout: null,
-        savedVariants: autoSavedVariants,
-        recoveredDrafts: keepReplacedDraft(state, promoted, now),
-        updatedAt: now,
-        // Re-bind the candidate's plan to the promoted layout so the finger
-        // assignments, costs and timeline pills keep rendering after promotion.
-        analysisResult: rebindAnalysisToLayout(candidate, promoted),
-        analysisStale: false,
-        candidates: remainingCandidates,
-        selectedCandidateId: null,
-        compareCandidateId: null,
-      };
+      return promote(state, { kind: 'candidate', candidate }, action.payload.reviewed);
     }
 
     case 'DELETE_CANDIDATE': {
       const filtered = state.candidates.filter(c => c.id !== action.payload.candidateId);
-      const wasSelected = state.selectedCandidateId === action.payload.candidateId;
       const wasCompare = state.compareCandidateId === action.payload.candidateId;
       return {
         ...state,
         candidates: filtered,
-        selectedCandidateId: wasSelected ? null : state.selectedCandidateId,
+        inspectedLayout: inspectionWithout(state, 'candidate', action.payload.candidateId),
         compareCandidateId: wasCompare ? null : state.compareCandidateId,
       };
     }
@@ -1263,23 +1724,30 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'SAVE_AS_VARIANT': {
       const { name, source, candidateId } = action.payload;
       let sourceLayout: Layout | undefined;
+      // A variant keeps its source's provenance (T32); a candidate's is its strategy.
+      let provenance: LayoutProvenance | undefined;
 
       if (source === 'working' && state.workingLayout) {
         sourceLayout = state.workingLayout;
+        provenance = state.workingLayout.provenance;
       } else if (source === 'candidate' && candidateId) {
         const candidate = state.candidates.find(c => c.id === candidateId);
         sourceLayout = candidate?.layout;
+        provenance = candidate ? candidateProvenance(candidate) : undefined;
       }
 
       if (!sourceLayout) return state;
 
       // No two variants share a name (T29): a taken name gets " (2)".
-      const variant = cloneLayout(
-        sourceLayout,
-        action.payload.variantId ?? generateId(),
-        uniqueName(name, state.savedVariants.map(v => v.name)),
-        'variant',
-      );
+      const variant: Layout = {
+        ...cloneLayout(
+          sourceLayout,
+          action.payload.variantId ?? generateId(),
+          uniqueName(name, state.savedVariants.map(v => v.name)),
+          'variant',
+        ),
+        ...(provenance ? { provenance } : {}),
+      };
 
       return {
         ...state,
@@ -1298,10 +1766,10 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         updatedAt: now,
         recoveredDrafts: keepReplacedDraft(state, reconciledVariant, now),
         workingLayout: withDerivedLayoutState(
-          cloneLayout(reconciledVariant, generateId(), reconciledVariant.name, 'working'),
+          { ...cloneLayout(reconciledVariant, generateId(), reconciledVariant.name, 'working'), provenance: `variant:${variant.id}` },
           state.voiceConstraints,
         ),
-        selectedCandidateId: null,
+        inspectedLayout: null,
         compareCandidateId: null,
         selectedEventIndex: null,
         selectedMomentIndex: null,
@@ -1312,45 +1780,14 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'PROMOTE_VARIANT': {
       const variant = state.savedVariants.find(v => v.id === action.payload.variantId);
       if (!variant) return state;
-      const now = new Date().toISOString();
-
-      // Auto-save the replaced active layout as a variant
-      const autoSavedVariants = [...state.savedVariants.filter(v => v.id !== action.payload.variantId)];
-      if (Object.keys(state.activeLayout.padToVoice).length > 0) {
-        const replaced = cloneLayout(
-          state.activeLayout,
-          generateId(),
-          `${state.activeLayout.name} (replaced ${new Date().toLocaleDateString()})`,
-          'variant',
-        );
-        autoSavedVariants.push(replaced);
-      }
-
-      const promoted: Layout = withDerivedLayoutState(reconcileLayoutVoices({
-        ...variant,
-        role: 'active',
-        baselineId: undefined,
-        savedAt: now,
-      }, state.soundStreams), state.voiceConstraints);
-
-      return {
-        ...state,
-        activeLayout: promoted,
-        workingLayout: null,
-        savedVariants: autoSavedVariants,
-        recoveredDrafts: keepReplacedDraft(state, promoted, now),
-        updatedAt: now,
-        analysisStale: true,
-        analysisResult: null,
-        selectedCandidateId: null,
-        compareCandidateId: null,
-      };
+      return promote(state, { kind: 'variant', variant }, action.payload.reviewed);
     }
 
     case 'DELETE_VARIANT': {
       return {
         ...state,
         savedVariants: state.savedVariants.filter(v => v.id !== action.payload.variantId),
+        inspectedLayout: inspectionWithout(state, 'variant', action.payload.variantId),
         updatedAt: new Date().toISOString(),
       };
     }
@@ -1406,7 +1843,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         recoveredDrafts: keepReplacedDraft(withoutRestored, restored, now),
         updatedAt: now,
         analysisStale: true,
-        selectedCandidateId: null,
+        inspectedLayout: null,
         compareCandidateId: null,
         selectedEventIndex: null,
         selectedMomentIndex: null,
@@ -1416,7 +1853,12 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'DELETE_RECOVERED_DRAFT': {
       const remaining = (state.recoveredDrafts ?? []).filter(l => l.id !== action.payload.layoutId);
       if (remaining.length === (state.recoveredDrafts ?? []).length) return state;
-      return { ...state, recoveredDrafts: remaining, updatedAt: new Date().toISOString() };
+      return {
+        ...state,
+        recoveredDrafts: remaining,
+        inspectedLayout: inspectionWithout(state, 'recovered', action.payload.layoutId),
+        updatedAt: new Date().toISOString(),
+      };
     }
 
     // -- Analysis --
@@ -1427,23 +1869,62 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'SET_ANALYSIS_RESULT':
       return { ...state, analysisResult: action.payload, analysisStale: false };
 
-    case 'SET_CANDIDATES':
-      // Candidates are proposals: a new list selects none of them, so the grid
-      // keeps showing the user's layout until they Preview one.
-      return {
-        ...state,
-        candidates: action.payload,
+    case 'SET_CANDIDATES': {
+      // Candidates are proposals (decision Q4): a run's first candidate, A,
+      // is shown read-only, even on an empty grid, and nothing is written. The
+      // draft stays as it was until "Use as my draft". Each run is added to
+      // the list, not put in its place (S3.3).
+      const first = action.payload[0];
+      const installed = withInstalledRun(state, action.payload);
+      const next: ProjectState = {
+        ...installed,
         generationSummary: null,
-        selectedCandidateId: null,
         compareCandidateId: null,
         isProcessing: false,
+        // The run's candidate A: its trace shows whenever no candidate is inspected (T33).
+        restingTrace: first ? candidateTrace(installed, first) : null,
       };
+      if (first) return inspecting(next, { kind: 'candidate', id: first.id });
+      return state.inspectedLayout?.kind === 'candidate' ? inspecting(next, null) : next;
+    }
+
+    case 'ADD_CANDIDATE_RUN': {
+      // Installed like a Generate run, so it is shown read-only too (S3.2).
+      const first = action.payload[0];
+      if (!first) return state;
+      const installed = withInstalledRun(state, action.payload);
+      return inspecting({ ...installed, restingTrace: candidateTrace(installed, first) }, { kind: 'candidate', id: first.id });
+    }
+
+    case 'CLEAR_OLDER_RUNS': {
+      const { runs, candidateIds } = olderRuns(state);
+      if (runs.length === 0) return state;
+      const cleared = (id: string | null | undefined) => !!id && candidateIds.has(id);
+      return {
+        ...state,
+        candidates: state.candidates.filter(c => !candidateIds.has(c.id)),
+        candidateRuns: { ...state.candidateRuns, runs: state.candidateRuns.runs.slice(0, 1) },
+        inspectedLayout: state.inspectedLayout?.kind === 'candidate' && cleared(state.inspectedLayout.id) ? null : state.inspectedLayout,
+        compareCandidateId: cleared(state.compareCandidateId) ? null : state.compareCandidateId,
+      };
+    }
 
     case 'SET_GENERATION_SUMMARY':
       return { ...state, generationSummary: action.payload };
 
-    case 'SELECT_CANDIDATE':
-      return { ...state, selectedCandidateId: action.payload };
+    case 'INSPECT_LAYOUT': {
+      const next = inspecting(state, action.payload?.kind === 'working' ? null : action.payload);
+      // Showing what is already shown changes nothing (no re-render).
+      const sameRef = next.inspectedLayout?.kind === state.inspectedLayout?.kind
+        && next.inspectedLayout?.id === state.inspectedLayout?.id;
+      if (sameRef && next.selectedPadKey === state.selectedPadKey && next.moveHistoryIndex === state.moveHistoryIndex
+        && next.armedStreamId === state.armedStreamId) return state;
+      return next;
+    }
+
+    case 'SET_INSPECTED_ANALYSIS':
+      if (action.payload === state.inspectedAnalysis) return state;
+      return { ...state, inspectedAnalysis: action.payload };
 
     case 'MARK_ANALYSIS_STALE':
       return { ...state, analysisStale: true };
@@ -1462,52 +1943,12 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       if (streams.length === 0) return state;
 
       const base = getDisplayedLayout(state) ?? state.activeLayout;
-      const working = cloneLayout(base, generateId(), `${base.name} (suggested)`, 'working');
-
-      const takenPads = new Set(Object.keys(working.padToVoice));
-      const placedVoiceIds = new Set(
-        Object.values(working.padToVoice).map(v => v.id).filter(Boolean),
-      );
-
-      // Most-used sounds first, so the busiest sound gets the strongest finger.
-      const byUsage = [...streams].sort((a, b) => b.events.length - a.events.length);
-
-      // The shipped Natural Hand Pose, in its own order. These ten pads are a real
-      // relaxed two-hand shape, and taking them contiguously keeps the suggestion
-      // compact. Reordering them to alternate hands looks tidier but measurably
-      // hurts: on the reference performance it spread the right hand across the
-      // grid and turned a layout with no hard moments into one with thirteen.
-      //
-      // This is only a starting point — Generate is what optimises it — but it
-      // should be a starting point the user would not immediately want to undo.
-      const posePads = getPose0PadsWithOffset(createDefaultPose0(), 0, true)
-        .map(p => padKey(p.row, p.col));
-      const fallbackPads: string[] = [];
-      for (let row = 2; row < 8; row++) {
-        for (let col = 0; col < 8; col++) fallbackPads.push(padKey(row, col));
-      }
-      const candidatePads = [...posePads, ...fallbackPads];
-
-      let cursor = 0;
-      for (const stream of byUsage) {
-        if (placedVoiceIds.has(stream.id)) continue;
-        while (cursor < candidatePads.length && takenPads.has(candidatePads[cursor])) cursor++;
-        if (cursor >= candidatePads.length) break;
-        const pad = candidatePads[cursor];
-        takenPads.add(pad);
-        working.padToVoice[pad] = {
-          id: stream.id,
-          name: stream.name,
-          sourceType: 'midi_track' as const,
-          sourceFile: '',
-          originalMidiNote: stream.originalMidiNote,
-          color: stream.color,
-        };
-      }
-
-      working.fingerConstraints = buildLayoutFingerConstraints(
-        working.padToVoice, state.voiceConstraints,
-      );
+      // The base name stays; "suggested" is where it came from, not its name (T32).
+      const clone: Layout = { ...cloneLayout(base, generateId(), base.name, 'working'), provenance: 'suggested' };
+      const filled = withRemainingPlaced(state, clone);
+      const working: Layout = filled === clone
+        ? { ...clone, fingerConstraints: buildLayoutFingerConstraints(clone.padToVoice, state.voiceConstraints) }
+        : filled;
 
       return {
         ...state,
@@ -1522,14 +1963,14 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       if (!candidate) return state;
       const now = new Date().toISOString();
 
-      // Apply the candidate's layout as the working layout, reconciling voice metadata
+      // Apply the candidate's layout as the working layout, reconciling voice
+      // metadata. It keeps the candidate's base name; the strategy goes into
+      // provenance, never "(draft)" into the name (T32).
       const reconciledCandidateLayout = reconcileLayoutVoices(candidate.layout, state.soundStreams);
-      const working = cloneLayout(
-        reconciledCandidateLayout,
-        generateId(),
-        `${reconciledCandidateLayout.name ?? 'Generated'} (draft)`,
-        'working',
-      );
+      const working: Layout = {
+        ...cloneLayout(reconciledCandidateLayout, generateId(), reconciledCandidateLayout.name || 'Generated', 'working'),
+        provenance: candidateProvenance(candidate),
+      };
 
       // The solver's fingering is NOT a user preference and must not be written
       // into voiceConstraints. Doing so meant one click of Generate stamped a
@@ -1545,6 +1986,8 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         ...state,
         recoveredDrafts: keepReplacedDraft(state, reconciledCandidateLayout, now),
         workingLayout: withDerivedLayoutState(working, state.voiceConstraints),
+        // "Use as my draft": the grid now shows the draft it became.
+        inspectedLayout: null,
         // The pad map changed, so any existing analysis describes a different
         // layout. Marking it stale re-runs analysis instead of showing figures
         // the freshness check itself would reject.
@@ -1638,16 +2081,28 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return { ...state, manualCostResult: action.payload };
 
     case 'SET_MOVE_HISTORY':
+      // A trace with no candidate (Generate installs its run's through
+      // SET_CANDIDATES): it shows while no candidate is inspected.
       return {
         ...state,
-        moveHistory: action.payload.moves,
-        iterationTrace: action.payload.trace,
-        moveHistoryStopReason: action.payload.stopReason ?? null,
-        moveHistoryIndex: null,
+        restingTrace: {
+          candidateId: null,
+          letter: null,
+          moves: action.payload.moves,
+          iterations: action.payload.trace,
+          stopReason: action.payload.stopReason ?? null,
+          annealing: null,
+          beam: null,
+          telemetry: null,
+          promoted: false,
+        },
       };
 
     case 'SET_MOVE_HISTORY_INDEX':
       return { ...state, moveHistoryIndex: action.payload };
+
+    case 'SET_GENERATION_RUN':
+      return { ...state, lastGenerationRun: action.payload };
 
     default:
       return state;
@@ -1684,7 +2139,9 @@ export function createEmptyProjectState(): ProjectState {
     recoveredDrafts: [],
     analysisResult: null,
     candidates: [],
-    selectedCandidateId: null,
+    candidateRuns: EMPTY_CANDIDATE_RUNS,
+    inspectedLayout: null,
+    inspectedAnalysis: null,
     generationSummary: null,
     engineConfig: {
       beamWidth: 30,
@@ -1715,6 +2172,9 @@ export function createEmptyProjectState(): ProjectState {
     iterationTrace: null,
     moveHistoryStopReason: null,
     moveHistoryIndex: null,
+    traceSubject: null,
+    restingTrace: null,
+    lastGenerationRun: null,
     currentTime: 0,
     isPlaying: false,
     playbackRate: 1,

@@ -3,27 +3,33 @@
  *
  * Right-column top section showing the current layout status, scores,
  * constraint satisfaction, and contextual event details when an event
- * is selected.
+ * is selected. It describes the layout on screen (S3.2), named by the
+ * SubjectChip at its head: the draft, Active, or a read-only inspected layout
+ * with its own plan from the cache.
  */
 
 import { useState, useMemo } from 'react';
 import { useProject } from '../../state/ProjectContext';
 import {
-  getDisplayedCandidate,
-  getDisplayedLayout,
-  getDisplayedLayoutRole,
   getActiveStreams,
+  resolveInspectedLayout,
 } from '../../state/projectState';
+import { useShownAnalysis } from '../../hooks/useShownAnalysis';
+import { UnplacedSounds } from './UnplacedSounds';
+import { inspectedSubject } from '../../state/layoutSubject';
+import { readOnlyHint } from '../../hooks/useReadOnlyHint';
+import { SubjectChip } from '../shared/SubjectChip';
+import { DisabledReason, useDisabledReason } from '../shared/DisabledReason';
 import { type FingerType, ALL_FINGERS } from '../../../types/fingerModel';
 import { type ConstraintRelaxationSummary } from '../../../types/executionPlan';
 import { CostBreakdownBars, FeasibilityBadge } from './CostBreakdownBars';
 import { SelectedEventCard } from './SelectedEventCard';
 import { findSelectedMoment } from '../../analysis/selectedMoment';
-import { analysisScopeLine, planSoundIds } from '../../analysis/analysisScope';
+import { analysisScope, planSoundIds, scopeLineOf } from '../../analysis/analysisScope';
 import { EventCostChart } from './EventCostChart';
 import { LearnMoreModal } from './LearnMoreModal';
 import { buildSelectedTransitionModel } from '../../analysis/selectionModel';
-import { formatPlanScore, getPlanScoreQuality, getPlanScoreSummary } from '../../analysis/planScore';
+import { scoreTile } from '../../analysis/planScore';
 import { formatFingerConstraint, parseFingerConstraint } from '../../../utils/fingerConstraints';
 import { formatPadLocator, formatPadPosition } from '../../../utils/padPosition';
 import { formatBarBeat, formatMilliseconds, formatSeconds } from '../../../utils/musicalTime';
@@ -37,12 +43,19 @@ export function ActiveLayoutSummary() {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
 
-  const displayedLayout = getDisplayedLayout(state);
-  const displayedCandidate = getDisplayedCandidate(state);
-  const layoutRole = getDisplayedLayoutRole(state);
+  // The layout on screen (S3.2) and its own plan; while a re-solve is pending,
+  // the previous plan and Score of the same layout, dimmed (S3.3, T14). The
+  // Score is the Playability of the layout the grid shows (S3.1).
+  const shown = resolveInspectedLayout(state);
+  const displayedLayout = shown.layout;
+  const subject = inspectedSubject(state);
+  const { candidate: displayedCandidate, score: layoutScore, updating } = useShownAnalysis();
   const activeStreams = getActiveStreams(state);
   const currentPlan = displayedCandidate?.executionPlan;
   const assignments = currentPlan?.fingerAssignments;
+  // A read-only layout's finger controls say how to edit it instead (S3.2).
+  const editHint = readOnlyHint(state);
+  const fingerReason = useDisabledReason(editHint);
 
   // Selected event data
   const assignment = useMemo(() => {
@@ -55,12 +68,14 @@ export function ActiveLayoutSummary() {
     () => findSelectedMoment(assignments, state.selectedEventIndex),
     [assignments, state.selectedEventIndex],
   );
-  // The plan's own scope (see analysisScope.ts); the live scope when there is no plan.
-  const scope = analysisScopeLine(
+  // The plan's own scope (see analysisScope.ts); the live scope when there is
+  // no plan. Its placement makes a partly placed layout "Unfinished" (S3.3).
+  const scoped = analysisScope(
     state.soundStreams,
     displayedLayout,
     currentPlan ? planSoundIds(currentPlan.fingerAssignments) : undefined,
   );
+  const scope = scopeLineOf(scoped);
 
   // Transition data
   const transition = useMemo(
@@ -98,12 +113,8 @@ export function ActiveLayoutSummary() {
       <div className="flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-subtle)] flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <h3 className="section-header">Layout Summary</h3>
-            {state.analysisStale && !state.selectedCandidateId && currentPlan && (
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" title="Analysis outdated" />
-            )}
-          </div>
+          {/* Freshness is the state bar's ("Updating…"); here the numbers dim (T14). */}
+          <h3 className="section-header">Layout Summary</h3>
           <button
             className="text-pf-xs text-[var(--accent-primary-soft)] hover:text-[var(--text-primary)] transition-colors"
             onClick={() => setLearnMoreOpen(true)}
@@ -114,8 +125,9 @@ export function ActiveLayoutSummary() {
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-          {/* Layout identity */}
-          <div className="flex items-center gap-2">
+          {/* Layout identity: the subject every panel names (S3.2). The layout
+              being edited can be renamed here; a read-only one, from its row. */}
+          <div className="flex items-center gap-2 min-w-0">
             {editingName ? (
               <input
                 autoFocus
@@ -124,8 +136,8 @@ export function ActiveLayoutSummary() {
                 onChange={e => setNameDraft(e.target.value)}
                 onBlur={() => {
                   const trimmed = nameDraft.trim();
-                  if (trimmed && trimmed !== displayedLayout?.name) {
-                    dispatch({ type: 'RENAME_LAYOUT', payload: { target: layoutRole === 'working' ? 'working' : 'active', name: trimmed } });
+                  if (trimmed && trimmed !== displayedLayout.name) {
+                    dispatch({ type: 'RENAME_LAYOUT', payload: { target: state.workingLayout ? 'working' : 'active', name: trimmed } });
                   }
                   setEditingName(false);
                 }}
@@ -136,34 +148,29 @@ export function ActiveLayoutSummary() {
               />
             ) : (
               <span
-                className="text-pf-sm text-[var(--text-primary)] font-medium truncate editable-field transition-colors"
-                onDoubleClick={() => {
-                  setNameDraft(displayedLayout?.name ?? '');
+                className={`min-w-0 max-w-full inline-flex ${shown.readOnly ? '' : 'editable-field transition-colors'}`}
+                onDoubleClick={shown.readOnly ? undefined : () => {
+                  // A rename edits the base name, never the label ("Draft of …").
+                  setNameDraft(displayedLayout.name);
                   setEditingName(true);
                 }}
-                title="Double-click to rename"
+                title={shown.readOnly ? undefined : 'Double-click to rename'}
               >
-                {displayedLayout?.name ?? 'No Layout'}
+                <SubjectChip subject={subject} testId="layout-summary" />
               </span>
             )}
-            <span className={`pf-badge ${
-              layoutRole === 'working'
-                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/15'
-                : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/15'
-            }`}>
-              {layoutRole === 'working' ? 'Draft' : 'Active'}
-            </span>
           </div>
 
-          {/* Quick stats */}
+          {/* Quick stats; the previous numbers, dimmed, while a re-solve is pending (T14) */}
+          <div
+            data-testid="analysis-numbers"
+            data-updating={updating ? 'true' : undefined}
+            aria-busy={updating || undefined}
+            className={`space-y-3 transition-opacity duration-pf-normal ${updating ? 'opacity-50' : ''}`}
+          >
           {currentPlan ? (
             <div className="grid grid-cols-4 gap-1.5">
-              <QuickStat
-                label="Score"
-                value={formatPlanScore(currentPlan.score)}
-                quality={getPlanScoreQuality(currentPlan.score)}
-                subtitle={getPlanScoreSummary(currentPlan.score)}
-              />
+              <QuickStat label="Score" testId="analysis-score" {...scoreTile(layoutScore)} />
               <QuickStat
                 label="Events"
                 value={String(counts.events)}
@@ -190,7 +197,7 @@ export function ActiveLayoutSummary() {
               </div>
 
               {/* No analysis means no claim: 'Unknown', never 'Feasible'. */}
-              {mappedCount > 0 && <FeasibilityBadge pending={state.isProcessing} scope={scope} />}
+              {mappedCount > 0 && <FeasibilityBadge pending={state.isProcessing} scope={scope} placement={scoped.placement} />}
 
               {/* An empty grid is not an unplayable layout — it is an unfinished one.
                   Say so; the grid's state bar offers the starting point (T44). */}
@@ -230,12 +237,17 @@ export function ActiveLayoutSummary() {
               noteCount={counts.notes}
               events={counts.events}
               scope={scope}
+              placement={scoped.placement}
             />
-
-            {selectedMoment && (
-              <SelectedEventCard selected={selectedMoment} tempo={state.tempo} scope={scope} />
-            )}
             </>
+          )}
+          </div>
+
+          {/* A partly placed layout: what is left to place, and "Place remaining N Sounds" (T25, T37). */}
+          <UnplacedSounds />
+
+          {currentPlan && selectedMoment && (
+            <SelectedEventCard selected={selectedMoment} tempo={state.tempo} scope={scope} subject={subject} transition={transition} />
           )}
 
           {/* Event difficulty chart (collapsible) */}
@@ -251,6 +263,7 @@ export function ActiveLayoutSummary() {
               {chartOpen && (
                 <EventCostChart
                   fingerAssignments={currentPlan.fingerAssignments}
+                  subject={subject}
                   tempo={state.tempo}
                   selectedEventIndex={state.selectedEventIndex}
                   onEventClick={(idx) => dispatch({ type: 'SELECT_EVENT', payload: idx })}
@@ -284,16 +297,18 @@ export function ActiveLayoutSummary() {
                 <DetailChip label="Finger" value={effectiveFinger ?? 'none'} />
               </div>
 
-              {/* Finger constraint controls */}
+              {/* Finger constraint controls: the layout being edited only (S3.2) */}
               {padKey && (
-                <div className="space-y-1.5">
+                <div className="space-y-1.5" data-testid="selected-note-fingers">
                   <div className="flex items-center gap-2">
                     <span className="text-pf-micro text-[var(--text-tertiary)] w-10">Hand:</span>
                     <div className="flex gap-1">
                       {(['left', 'right'] as const).map(hand => (
                         <button
                           key={hand}
-                          className={`px-2 py-0.5 text-pf-xs rounded-pf-sm transition-colors ${
+                          disabled={!!editHint}
+                          aria-describedby={fingerReason.describedBy}
+                          className={`px-2 py-0.5 text-pf-xs rounded-pf-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                             effectiveHand === hand
                               ? hand === 'left' ? 'bg-blue-600/20 text-blue-300 border border-blue-500/40' : 'bg-orange-600/20 text-orange-300 border border-orange-500/40'
                               : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border border-[var(--border-default)] hover:text-[var(--text-secondary)]'
@@ -308,7 +323,9 @@ export function ActiveLayoutSummary() {
                       {ALL_FINGERS.map(finger => (
                         <button
                           key={finger}
-                          className={`px-1.5 py-0.5 text-pf-xs rounded-pf-sm transition-colors ${
+                          disabled={!!editHint}
+                          aria-describedby={fingerReason.describedBy}
+                          className={`px-1.5 py-0.5 text-pf-xs rounded-pf-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                             effectiveFinger === finger
                               ? 'bg-[var(--bg-active)] text-[var(--text-primary)] border border-[var(--border-strong)]'
                               : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border border-[var(--border-default)] hover:text-[var(--text-secondary)]'
@@ -319,7 +336,7 @@ export function ActiveLayoutSummary() {
                         </button>
                       ))}
                     </div>
-                    {currentConstraint && (
+                    {currentConstraint && !editHint && (
                       <button
                         className="text-pf-micro text-amber-400 hover:text-amber-300 ml-auto transition-colors"
                         onClick={handleClearConstraint}
@@ -328,6 +345,7 @@ export function ActiveLayoutSummary() {
                       </button>
                     )}
                   </div>
+                  <DisabledReason id={fingerReason.id} reason={editHint} />
                 </div>
               )}
             </div>
@@ -377,11 +395,14 @@ export function ActiveLayoutSummary() {
   );
 }
 
-function QuickStat({ label, value, quality, subtitle }: {
+function QuickStat({ label, value, quality, subtitle, wording = false, testId }: {
   label: string;
   value: string;
   quality?: 'good' | 'ok' | 'bad';
   subtitle?: string;
+  /** The value is words ("Scoring…"), not a number: smaller, so it fits the tile. */
+  wording?: boolean;
+  testId?: string;
 }) {
   const colors = {
     good: 'text-green-400 border-green-500/15 bg-green-500/5',
@@ -391,9 +412,9 @@ function QuickStat({ label, value, quality, subtitle }: {
   const style = quality ? colors[quality] : 'text-[var(--text-primary)] border-[var(--border-default)] bg-[var(--bg-card)]';
 
   return (
-    <div className={`px-2 py-1.5 rounded-pf-md border text-center ${style}`} title={subtitle}>
+    <div className={`px-2 py-1.5 rounded-pf-md border text-center ${style}`} title={subtitle} data-testid={testId}>
       <div className="text-pf-micro text-[var(--text-tertiary)] uppercase tracking-wider">{label}</div>
-      <div className="text-pf-sm font-mono font-medium tabular-nums">{value}</div>
+      <div className={wording ? 'text-pf-micro leading-[18px] text-[var(--text-secondary)] whitespace-nowrap' : 'text-pf-sm font-mono font-medium tabular-nums'}>{value}</div>
     </div>
   );
 }

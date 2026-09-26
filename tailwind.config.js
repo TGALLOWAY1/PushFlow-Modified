@@ -43,6 +43,11 @@ export default {
         'accent-secondary-strong': token('accent-secondary-strong'),
         'accent-tertiary': token('accent-tertiary'),
         'accent-tertiary-strong': token('accent-tertiary-strong'),
+        /* Layout roles (S3.2): Active, Working/Test, Candidate, Saved variant */
+        'role-active': token('role-active'),
+        'role-working': token('role-working'),
+        'role-candidate': token('role-candidate'),
+        'role-variant': token('role-variant'),
         /* M3-inspired surface scale */
         'surface': '#131313',
         'surface-dim': '#0e0e0e',

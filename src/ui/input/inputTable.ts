@@ -21,9 +21,11 @@ export type InputRowId =
   | 'drag-pad'
   | 'pad-menu'
   | 'pad-enter'
+  | 'read-only-edit'
   | 'space'
   | 'step-events'
   | 'events-list-keys'
+  | 'exit-replay'
   | 'escape'
   | 'delete'
   | 'rename-sound'
@@ -127,17 +129,22 @@ export const INPUT_TABLE: readonly InputRow[] = [
     does: 'Takes its Sound off the pad, with Undo in the toast. With no pad selected, nothing.',
     keys: e => plain(e) && (e.key === 'Delete' || e.key === 'Backspace'),
   },
+  {
+    id: 'read-only-edit', group: 'Pads',
+    input: ['Any edit on the grid'], when: 'A candidate, a saved variant, or Active over your draft is shown',
+    does: 'Changes nothing and says "Use as my draft to edit": drops, pad drags, click-to-place, the pad menu and Delete are all refused. Looking never changes your draft.',
+  },
   // Playback and events
   {
     id: 'space', group: 'Playback and events',
     input: ['Space'], when: 'Anywhere except a text field',
-    does: 'Plays or stops, even with a button focused (Enter presses buttons). With the Composer tab open, plays or stops the pattern.',
+    does: 'Plays or stops, even with a button focused (Enter presses buttons); a focused checkbox is ticked instead. With the Composer tab open, plays or stops the pattern.',
     keys: e => plain(e) && e.key === ' ',
   },
   {
     id: 'step-events', group: 'Playback and events',
     input: ['←', '→'], when: 'Stopped',
-    does: 'Selects the previous or next event, stopping at the first and last.',
+    does: 'Selects the previous or next event, stopping at the first and last. In a row of tabs they move between the tabs instead.',
     keys: e => plain(e) && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'),
   },
   {
@@ -146,6 +153,13 @@ export const INPUT_TABLE: readonly InputRow[] = [
     does: 'Selects the previous or next event.',
     keys: e => plain(e) && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'j' || e.key === 'k'),
     within: EVENTS_LIST_SCOPE,
+  },
+  // Before 'escape': while a step is replayed, Esc leaves the replay first.
+  {
+    id: 'exit-replay', group: 'Playback and events',
+    input: ['Esc'], when: 'A step of the optimizer trace is replayed on the grid',
+    does: 'Leaves the replay: the grid shows the layout on screen again, and edits work as before.',
+    keys: e => plain(e) && e.key === 'Escape',
   },
   {
     id: 'escape', group: 'Playback and events',

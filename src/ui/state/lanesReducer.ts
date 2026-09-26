@@ -11,6 +11,7 @@ import { type Layout } from '../../types/layout';
 import { buildSoundStreamsFromLanes } from './lanesToStreams';
 import { buildLegacySourceFile, buildPerformanceLanesFromStreams } from './streamsToLanes';
 import { deepEqual } from '../../utils/deepEqual';
+import { analysisInputsChanged, soundsSignature } from './analysisInputs';
 
 // ============================================================================
 // Action Types
@@ -89,16 +90,17 @@ const LANE_ACTION_TYPES = new Set<string>([
  * After any lane-modifying action, rebuild soundStreams so that VoicePalette
  * and EventsPanel always reflect the current lanes — regardless of which
  * UI components are mounted.
+ *
+ * The analysis goes stale only when something it reads changed (T14): notes,
+ * mute and solo, or a placement taken off the grid with its Sound. Renaming,
+ * recolouring or regrouping a Sound leaves it as it was.
  */
-function withSyncedStreams(next: ProjectState): ProjectState {
-  if (next.performanceLanes.length === 0) {
-    return withoutOrphanedVoices({ ...next, soundStreams: [], analysisStale: true });
-  }
-  return withoutOrphanedVoices({
+function withSyncedStreams(prev: ProjectState, next: ProjectState): ProjectState {
+  const synced = withoutOrphanedVoices({
     ...next,
-    soundStreams: buildSoundStreamsFromLanes(next.performanceLanes),
-    analysisStale: true,
+    soundStreams: next.performanceLanes.length === 0 ? [] : buildSoundStreamsFromLanes(next.performanceLanes),
   });
+  return { ...synced, analysisStale: prev.analysisStale || analysisInputsChanged(prev, synced) };
 }
 
 /**
@@ -197,7 +199,7 @@ function upsertNotesOnly(
     && !state.laneGroups.some(g => g.groupId === group.groupId);
   const performanceLanes = [...kept, ...added];
   const laneCount = performanceLanes.filter(l => l.sourceFileId === sourceFileId).length;
-  return withSyncedStreams({
+  return withSyncedStreams(state, {
     ...state,
     updatedAt: now,
     performanceLanes,
@@ -218,7 +220,7 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
         ? [...state.laneGroups, group]
         : state.laneGroups;
 
-      return withSyncedStreams({
+      return withSyncedStreams(state, {
         ...state,
         updatedAt: now,
         performanceLanes: [...state.performanceLanes, ...lanes],
@@ -244,7 +246,7 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
         ? [...state.laneGroups.filter(g => g.groupId !== group.groupId), group]
         : state.laneGroups;
 
-      return withSyncedStreams({
+      return withSyncedStreams(state, {
         ...state,
         updatedAt: now,
         performanceLanes: nextLanes,
@@ -255,7 +257,7 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
 
     case 'REMOVE_LANE_SOURCE': {
       const { sourceFileId, groupId } = action.payload;
-      return withSyncedStreams({
+      return withSyncedStreams(state, {
         ...state,
         updatedAt: now,
         performanceLanes: state.performanceLanes.filter(l => l.sourceFileId !== sourceFileId),
@@ -267,7 +269,7 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
     }
 
     case 'RENAME_LANE':
-      return withSyncedStreams({
+      return withSyncedStreams(state, {
         ...state,
         updatedAt: now,
         performanceLanes: state.performanceLanes.map(l =>
@@ -276,7 +278,7 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
       });
 
     case 'SET_LANE_COLOR':
-      return withSyncedStreams({
+      return withSyncedStreams(state, {
         ...state,
         updatedAt: now,
         performanceLanes: state.performanceLanes.map(l =>
@@ -331,7 +333,7 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
     }
 
     case 'TOGGLE_LANE_MUTE':
-      return withSyncedStreams({
+      return withSyncedStreams(state, {
         ...state,
         updatedAt: now,
         performanceLanes: state.performanceLanes.map(l =>
@@ -340,7 +342,7 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
       });
 
     case 'TOGGLE_LANE_SOLO':
-      return withSyncedStreams({
+      return withSyncedStreams(state, {
         ...state,
         updatedAt: now,
         performanceLanes: state.performanceLanes.map(l =>
@@ -349,7 +351,7 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
       });
 
     case 'TOGGLE_LANE_HIDDEN':
-      return withSyncedStreams({
+      return withSyncedStreams(state, {
         ...state,
         updatedAt: now,
         performanceLanes: state.performanceLanes.map(l =>
@@ -358,7 +360,7 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
       });
 
     case 'DELETE_LANE':
-      return withSyncedStreams({
+      return withSyncedStreams(state, {
         ...state,
         updatedAt: now,
         performanceLanes: state.performanceLanes.filter(l => l.id !== action.payload),
@@ -384,7 +386,7 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
 
     case 'SET_LANE_GROUP_COLOR': {
       const { groupId, color } = action.payload;
-      return withSyncedStreams({
+      return withSyncedStreams(state, {
         ...state,
         updatedAt: now,
         laneGroups: state.laneGroups.map(g =>
@@ -456,7 +458,7 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
         ...state,
         updatedAt: now,
         soundStreams,
-        analysisStale: true,
+        analysisStale: state.analysisStale || soundsSignature(soundStreams) !== soundsSignature(state.soundStreams),
       };
     }
 

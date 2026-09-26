@@ -7,6 +7,10 @@
  * Local / cloud runs:
  *   npx playwright test                                         # uses Playwright's own browser
  *   PW_CHROMIUM=/opt/pw-browsers/chromium npx playwright test   # cloud sessions: preinstalled Chromium
+ *   PW_PORT=5201 npx playwright test                            # another dev server, e.g. a second worktree
+ *
+ * Local runs reuse a server already listening on the port, so two checkouts
+ * running e2e at once must use different PW_PORT values or one tests the other's code.
  *
  * Screenshot baselines are generated in CI only (.github/workflows/update-snapshots.yml),
  * never locally, because font rasterisation differs between machines.
@@ -15,7 +19,7 @@
 
 import { defineConfig, devices, type Project } from '@playwright/test';
 
-const PORT = 5199;
+const PORT = Number(process.env.PW_PORT) || 5199;
 const executablePath = process.env.PW_CHROMIUM || undefined;
 
 const viewports = [

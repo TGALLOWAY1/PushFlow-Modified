@@ -4,6 +4,8 @@
  * Single unified timeline combining lane editing + execution visualization.
  * Shows per-voice swim lanes with event blocks, finger assignment pills (when
  * analysis exists), beat grid, playhead, transport controls, and MIDI import.
+ * The pills show the plan of the layout on screen (S3.2), named in the
+ * header ("Timeline shows: Candidate B · …"), always as hand+finger ("L2").
  *
  * Replaces the separate LaneToolbar + LaneSidebar + LaneTimeline + TimelinePanel
  * components with one cohesive view rendered in the bottom drawer.
@@ -12,7 +14,9 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import chroma from 'chroma-js';
 import { useProject } from '../state/ProjectContext';
-import { getDisplayedExecutionPlan, type SoundStream } from '../state/projectState';
+import { getDisplayedExecutionPlan, getInspectedLayout, type SoundStream } from '../state/projectState';
+import { inspectedSubject } from '../state/layoutSubject';
+import { SubjectChip } from './shared/SubjectChip';
 import { useLaneImport } from '../hooks/useLaneImport';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { RehearsalAudio, type RehearsalHit } from '../audio/rehearsalAudio';
@@ -98,6 +102,13 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
   // ─── Derived Data ────────────────────────────────────────────────────────
 
   const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
+  // Sounds on the layout on screen; the others' notes are drawn outlined, as
+  // not placed yet (S3.3, T25), and never hidden (invariant 4).
+  const shownLayout = getInspectedLayout(state);
+  const placedSoundIds = useMemo(
+    () => new Set(Object.values(shownLayout.padToVoice).map(v => v.id)),
+    [shownLayout],
+  );
 
   // Timeline shows ALL sound streams, including muted ones (Product Invariant #4:
   // the timeline must never hide a stream). Muted streams are rendered distinctly
@@ -395,14 +406,16 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
       }
 
       // Render unassigned streams: streams with events but no solver assignments
-      // (including muted streams, which the solver never assigns) get grey
-      // "unassigned" pills so they remain visible in the timeline.
+      // (muted streams, and since S3.3 unplaced ones, which the analysis never
+      // scores) get "unassigned" pills so they remain visible in the timeline.
+      // Their index is negative: they are no event of the plan (a click selects
+      // the planned event at the same time, if any).
       for (const s of visibleStreams) {
         if (!map.has(s.id) && s.events.length > 0) {
           const constraint = state.voiceConstraints[s.id];
           const unassigned: FingerAssignment[] = s.events.map((e, i) => ({
             eventKey: e.eventKey,
-            eventIndex: i,
+            eventIndex: -1 - i,
             noteNumber: s.originalMidiNote,
             startTime: e.startTime,
             assignedHand: (constraint?.hand ?? 'raw') as any,
@@ -420,7 +433,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
         const constraint = state.voiceConstraints[s.id];
         const dummies: FingerAssignment[] = s.events.map((e, i) => ({
           eventKey: e.eventKey,
-          eventIndex: i,
+          eventIndex: -1 - i,
           noteNumber: s.originalMidiNote,
           startTime: e.startTime,
           assignedHand: (constraint?.hand ?? 'raw') as any,
@@ -560,7 +573,13 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
     }
   }, []);
 
-  const handleEventClick = useCallback((eventIndex: number) => {
+  const handleEventClick = useCallback((clickedIndex: number, startTime: number) => {
+    // A note the plan doesn't cover (unplaced or muted) selects the planned
+    // event at the same time, so its whole moment still highlights; with none
+    // there is nothing to select.
+    const eventIndex = clickedIndex >= 0 ? clickedIndex
+      : assignments?.find(a => a.eventIndex !== undefined && Math.abs(a.startTime - startTime) < 0.001)?.eventIndex;
+    if (eventIndex === undefined || eventIndex < 0) return;
     dispatch({ type: 'SELECT_EVENT', payload: eventIndex });
     // Also select the moment so all simultaneous notes highlight
     const allAssignments = Array.from(streamAssignments.values()).flat();
@@ -574,7 +593,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
         dispatch({ type: 'SELECT_MOMENT', payload: momentIdx });
       }
     }
-  }, [dispatch, streamAssignments]);
+  }, [dispatch, streamAssignments, assignments]);
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
@@ -619,8 +638,15 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
           className="flex-shrink-0 overflow-y-auto border-r border-[var(--border-subtle)]"
           style={{ width: SIDEBAR_WIDTH }}
         >
-          {/* Header spacer to align with beat header */}
-          <div className="sticky top-0 z-40 bg-[var(--bg-panel)] border-b border-[var(--border-subtle)]" style={{ height: TOTAL_HEADER_HEIGHT }} />
+          {/* The header's corner names the layout whose plan the pills show (S3.2). */}
+          <div
+            data-testid="timeline-header"
+            className="sticky top-0 z-40 bg-[var(--bg-panel)] border-b border-[var(--border-subtle)] flex flex-col justify-center gap-1 px-2"
+            style={{ height: TOTAL_HEADER_HEIGHT }}
+          >
+            <span className="text-pf-micro text-[var(--text-tertiary)]">Timeline shows</span>
+            <SubjectChip subject={inspectedSubject(state)} testId="timeline-subject" />
+          </div>
           {visibleStreams.map((stream, i) => (
             <VoiceRow
               key={stream.id}
@@ -790,6 +816,9 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
               for (const e of stream.events) {
                 durationByTime.set(e.startTime, e.duration);
               }
+              // Not on the grid shown: outlined in the Sound's colour, never
+              // filled or red, since nothing about these notes is judged yet.
+              const unplaced = !placedSoundIds.has(stream.id);
 
               return (
                 <div key={stream.id}>
@@ -806,12 +835,14 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                       || (selectedMomentTime !== null && Math.abs(a.startTime - selectedMomentTime) < 0.001);
                     const handPrefix = a.assignedHand === 'left' ? 'L' : a.assignedHand === 'right' ? 'R' : '';
 
-                    const isUnplayable = hand === 'Unplayable';
+                    const isUnplayable = hand === 'Unplayable' && !unplaced;
                     // Always use sound color for pill background; only override for unplayable
                     const pillBg = isUnplayable ? '#ef4444' : stream.color;
-                    const pillOpacity = isSelected ? 1 : isRaw ? 0.5 : isUnplayable ? 0.6 : 0.85;
+                    const pillOpacity = isSelected ? 1 : unplaced ? 0.9 : isRaw ? 0.5 : isUnplayable ? 0.6 : 0.85;
                     // Readable on any Sound colour; the L/R letter carries the hand.
-                    const pillText = pillTextColor(pillBg, pillOpacity);
+                    // An outlined pill's text sits on the timeline itself.
+                    const pillText = unplaced ? 'var(--text-primary)' : pillTextColor(pillBg, pillOpacity);
+                    const unplacedBorder = `1.5px solid ${stream.color}`;
                     const pillWidth = fingerLabel ? Math.max(w, LABELLED_PILL_MIN_WIDTH) : w;
 
                     // Difficulty indicator: colored bottom border for analyzed events.
@@ -822,7 +853,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                     const difficulty = a.difficulty as string;
                     const difficultyBorder = isUnplayable
                       ? '2px solid #ef4444'
-                      : isRaw
+                      : isRaw || unplaced
                         ? undefined
                         : difficulty === 'Hard'
                           ? '2px solid #f59e0b'
@@ -843,6 +874,12 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                     return (
                       <button
                         key={`pill-${stream.id}-${ai}`}
+                        data-testid="timeline-pill"
+                        data-sound-id={stream.id}
+                        data-event-key={a.eventKey}
+                        data-start={a.startTime}
+                        data-finger={fingerLabel ? `${handPrefix}${fingerLabel}` : ''}
+                        data-placement={unplaced ? 'unplaced' : undefined}
                         className={`absolute flex items-center justify-center rounded-sm transition-all cursor-pointer
                           ${isSelected ? 'z-20 ring-2 ring-yellow-400 scale-110' : 'z-10 hover:z-20 hover:scale-105'}`}
                         style={{
@@ -850,21 +887,21 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                           top: trackY + 4,
                           width: pillWidth,
                           height: TRACK_HEIGHT - 8,
-                          backgroundColor: pillBg,
+                          backgroundColor: unplaced ? 'transparent' : pillBg,
                           opacity: pillOpacity,
                           // Longhand only: mixing the `border` shorthand with
                           // `borderBottom` makes React drop one of them between
                           // renders, which silently loses the difficulty marker.
-                          borderTop: isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined,
-                          borderLeft: isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined,
-                          borderRight: isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined,
-                          borderBottom: difficultyBorder
+                          borderTop: unplaced ? unplacedBorder : isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined,
+                          borderLeft: unplaced ? unplacedBorder : isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined,
+                          borderRight: unplaced ? unplacedBorder : isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined,
+                          borderBottom: unplaced ? unplacedBorder : difficultyBorder
                             ?? (isRaw ? '1px dashed rgba(255,255,255,0.2)' : undefined),
                           outline: relaxed.length > 0 ? '1.5px dashed #c084fc' : undefined,
                           outlineOffset: relaxed.length > 0 ? 1 : undefined,
                         }}
-                        onClick={() => handleEventClick(a.eventIndex ?? ai)}
-                        title={`${formatBarBeat(a.startTime, state.tempo)} (${formatSeconds(a.startTime)})${fingerLabel ? ` · ${handPrefix}${fingerLabel}` : ''}${a.cost ? ` · ${a.difficulty}` : ''}${a.constraintDiverges ? ' · differs from your finger preference' : ''}${relaxedNote.replace(' | ', ' · ')}`}
+                        onClick={() => handleEventClick(a.eventIndex ?? ai, a.startTime)}
+                        title={`${formatBarBeat(a.startTime, state.tempo)} (${formatSeconds(a.startTime)})${unplaced ? ' · not placed yet' : ''}${fingerLabel ? ` · ${handPrefix}${fingerLabel}` : ''}${a.cost ? ` · ${a.difficulty}` : ''}${a.constraintDiverges ? ' · differs from your finger preference' : ''}${relaxedNote.replace(' | ', ' · ')}`}
                       >
                         {a.constraintDiverges && (
                           <span

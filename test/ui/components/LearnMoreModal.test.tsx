@@ -8,21 +8,46 @@
  * (CONSTRAINT_RULE_NAMES) and every optimization method (OPTIMIZER_METHOD_KEYS,
  * which must all be registered). It renders the verdict tiers from the same list
  * FeasibilityBadge uses (VERDICT_TIERS), and the per-event cost with the same
- * factor labels as the Selected event card (FACTOR_META).
+ * factor labels as the Selected event card (FACTOR_META). The App Flow tab
+ * names the layout roles from the list the layout-state bar's chips use
+ * (ROLE_META, S3.2), and says looking never writes your draft. S3.3 (P3-10c):
+ * the Unfinished tier and placed-only scoring, with the badge's own headline;
+ * Promote acts at once with Undo, Keep, and candidates are temporary. Its
+ * Lifecycle section (S3.4, P3-10b) lists exactly those roles and the
+ * lifecycle's actions from the list the state bar's buttons take their words
+ * from (LIFECYCLE_ACTIONS), and how layouts are named.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import { HARD_CONSTRAINTS, LOCK_ENFORCING_METHODS, SOLVER_CONSTRAINT_RULES, LearnMoreModal } from '../../../src/ui/components/panels/LearnMoreModal';
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
+import {
+  HARD_CONSTRAINTS,
+  LOCK_ENFORCING_METHODS,
+  SOLVER_CONSTRAINT_RULES,
+  UNFINISHED_EXAMPLE,
+  LearnMoreModal,
+  describeThoroughTimeLimit,
+  namingExamples,
+} from '../../../src/ui/components/panels/LearnMoreModal';
 import {
   CONSTRAINT_RULE_NAMES,
   OPTIMIZER_METHOD_KEYS,
   OPTIMIZER_METHOD_LABELS,
+  PLAN_SCORE_WEIGHTS,
+  STOP_REASONS_EXPLAINED,
   getAvailableMethodKeys,
+  planAnnealingRun,
 } from '../../../src/engine';
-import { VERDICT_TIERS } from '../../../src/ui/analysis/verdictTiers';
+import { PLAYABILITY_TOOLTIP } from '../../../src/ui/analysis/planScore';
+import { DEEP_ANNEALING_CONFIG } from '../../../src/types/engineConfig';
+import { stopReasonText } from '../../../src/ui/analysis/stopReason';
+import { formatDuration } from '../../../src/ui/hooks/generationProgress';
+import { VERDICT_TIERS, verdictHeadline } from '../../../src/ui/analysis/verdictTiers';
 import { FACTOR_KEYS, FACTOR_META } from '../../../src/ui/analysis/factorMeta';
 import { FeasibilityBadge } from '../../../src/ui/components/panels/CostBreakdownBars';
+import { ROLE_META, ROLE_ORDER } from '../../../src/ui/state/layoutSubject';
+import { USE_AS_DRAFT_HINT } from '../../../src/ui/hooks/useReadOnlyHint';
+import { LIFECYCLE_ACTIONS } from '../../../src/ui/state/lifecycleActions';
 
 afterEach(cleanup);
 
@@ -43,6 +68,10 @@ describe('Learn More · Constraints', () => {
     expect(text).toContain('a candidate that would break a lock is dropped');
     expect(text).toContain('a locked Sound cannot be dragged off its pad, and nothing can be dropped onto a locked pad');
     expect(text).toContain('Locked · Unlock to move');
+    // S2.4's gestures (P2 audit follow-up): click-to-place and the Delete key refuse too, with their reasons.
+    expect(text).toContain('Click-to-place won’t put a locked Sound on another pad');
+    expect(text).toContain('Remove from pad or the Delete key won’t take it off');
+    expect(text).toContain('“Unlock it to move it”, “Unlock it to remove it”');
   });
 
   it('states that Sounds are matched by identity, never by pitch', () => {
@@ -96,13 +125,43 @@ describe('Learn More sync (P1b-8)', () => {
     cleanup();
 
     // The badge renders the same labels for the same levels.
-    for (const tier of VERDICT_TIERS.filter(t => t.level !== 'unknown')) {
+    for (const tier of VERDICT_TIERS.filter(t => t.level !== 'unknown' && t.level !== 'unfinished')) {
       render(<FeasibilityBadge verdict={{ level: tier.level as 'feasible', summary: 's', reasons: [] }} scope="scope" />);
       expect(screen.getByTestId('verdict-badge').textContent).toContain(tier.label);
       cleanup();
     }
+    // Unfinished arises as it does on screen: the placed notes play, and some Sounds have no pad (S3.3).
+    const unfinished = VERDICT_TIERS.find(t => t.level === 'unfinished')!;
+    render(<FeasibilityBadge verdict={{ level: 'feasible', summary: 's', reasons: [] }} placement={UNFINISHED_EXAMPLE} scope="scope" />);
+    expect(screen.getByTestId('verdict-badge').dataset.level).toBe('unfinished');
+    expect(screen.getByTestId('verdict-headline').textContent).toBe(`${unfinished.label} · 5 of 7 Sounds placed`);
+    cleanup();
     render(<FeasibilityBadge scope="scope" />);
     expect(screen.getByTestId('verdict-badge').textContent).toContain(VERDICT_TIERS.find(t => t.level === 'unknown')!.label);
+  });
+
+  it('explains placed-only scoring and the Unfinished tier with the badge’s own headline (S3.3, P3-10c)', () => {
+    openTab('Cost Factors');
+    const row = screen.getByTestId('learn-verdict-unfinished');
+    expect(row.textContent).toContain('Unfinished');
+    expect(row.textContent).toContain('Only the notes of placed Sounds are scored');
+    const text = screen.getByTestId('learn-placed-only').textContent ?? '';
+    expect(text).toContain('Only placed Sounds are scored');
+    expect(text).toContain('left out of the analysis, the verdict and the Score');
+    // Quoted from the function the badge headlines with, so it can't drift.
+    expect(text).toContain(`reads ‘${verdictHeadline('unfinished', UNFINISHED_EXAMPLE)}’`);
+    expect(verdictHeadline('unfinished', UNFINISHED_EXAMPLE)).toBe('Unfinished · 5 of 7 Sounds placed');
+    expect(text).toContain('covers the notes you can play so far');
+    expect(text).toContain('drawn as outlines');
+    expect(text).toContain('‘Place remaining’ proposes a candidate');
+    // Unplayable is kept for placed notes; an unplaced Sound is not a failure.
+    const all = document.body.textContent ?? '';
+    expect(all).toContain('‘Unfinished’ isn’t a failure either');
+    expect(all).toContain('‘Infeasible’ is kept for placed notes that can’t be played');
+    expect(all).toContain('1 not placed yet');
+    expect(screen.getByTestId('learn-score').textContent).not.toContain('a note has no pad');
+    cleanup();
+    expect(openConstraints()).toContain('its notes are left out of the analysis until you place it (the layout reads Unfinished)');
   });
 
   it('renders its factor list from FACTOR_META, in order, with the registry’s colours (P2-9)', () => {
@@ -116,11 +175,142 @@ describe('Learn More sync (P1b-8)', () => {
     });
   });
 
+  it('explains the Score as one yardstick, from the engine’s own weights (S3.1)', () => {
+    openTab('Cost Factors');
+    const text = screen.getByTestId('learn-score').textContent ?? '';
+    expect(text).toContain('Score is its Playability, from 0 to 100: higher is easier');
+    expect(text).toContain('canonical evaluator');
+    expect(text).toContain(`minus ${PLAN_SCORE_WEIGHTS.hardEvent} for each hard event`);
+    expect(text).toContain(`minus ${PLAN_SCORE_WEIGHTS.unplayableEvent} for each event that can’t be played`);
+    expect(text).toContain(`minus up to ${PLAN_SCORE_WEIGHTS.ergonomicCap} for the average cost per event`);
+    for (const key of FACTOR_KEYS) expect(text).toContain(FACTOR_META[key].label);
+    expect(text).toContain('the same layout scores the same wherever it appears');
+    expect(text).toContain('whichever optimizer proposed it');
+    // The tooltip on every displayed Score names the same yardstick.
+    expect(PLAYABILITY_TOOLTIP).toBe('Playability · canonical evaluator · higher = easier');
+  });
+
+  // S3.4 (T35): Thorough's time limit, read from the settings Generate runs.
+  it('explains Thorough’s time limit from DEEP_ANNEALING_CONFIG, and that the best layout so far is kept', () => {
+    openTab('Optimizers');
+    const text = screen.getByTestId('learn-generation-time').textContent ?? '';
+    const plan = planAnnealingRun(DEEP_ANNEALING_CONFIG);
+    expect(DEEP_ANNEALING_CONFIG.timeBudgetMs).toBeDefined();
+    expect(text).toContain(describeThoroughTimeLimit());
+    expect(text).toContain(`up to ${plan.total.toLocaleString('en-US')} iterations in ${plan.iterationsPerRestart.length} runs`);
+    expect(text).toContain(`at most ${formatDuration(DEEP_ANNEALING_CONFIG.timeBudgetMs!)} per candidate, shared equally so every run starts`);
+    expect(text).toContain('the candidate is the best layout the search has found so far');
+    expect(text).toContain('“Stopped: time limit reached”');
+    expect(text).toContain('Cancel stops the run: nothing from it is kept, and the candidates you already had stay as they were');
+  });
+
+  it('lists every reason a run stops, in the trace panel’s words', () => {
+    openTab('Optimizers');
+    const rows = screen.getAllByTestId('learn-stop-reason');
+    expect(rows.map(row => row.getAttribute('data-reason'))).toEqual(STOP_REASONS_EXPLAINED.map(r => r.reason));
+    rows.forEach((row, i) => {
+      const { reason, meaning } = STOP_REASONS_EXPLAINED[i]!;
+      expect(row.textContent).toContain(stopReasonText(reason));
+      expect(row.textContent).toContain(meaning);
+    });
+    expect(rows.map(row => row.getAttribute('data-reason'))).toEqual(expect.arrayContaining(['time_budget', 'cancelled']));
+  });
+
   it('explains per-event cost with the Selected event card’s factor labels', () => {
     openTab('Cost Factors');
     const text = screen.getByTestId('learn-per-event-cost').textContent ?? '';
     expect(text).toContain('counted once for the event, never once per note');
     for (const key of FACTOR_KEYS) expect(text).toContain(FACTOR_META[key].label);
     expect(text).toContain('Unplayable');
+  });
+});
+
+describe('Learn More · which layout is on screen (S3.2)', () => {
+  it('lists every role the layout-state bar can show, from the list its chips use, in order', () => {
+    openTab('App Flow');
+    const section = screen.getByTestId('learn-more-roles');
+    const chips = [...section.querySelectorAll('[data-testid="role-chip"]')];
+    expect(chips.map(chip => chip.getAttribute('data-role'))).toEqual([...ROLE_ORDER]);
+    chips.forEach((chip, i) => {
+      const meta = ROLE_META[ROLE_ORDER[i]!];
+      expect(chip.textContent).toBe(meta.label);
+      expect(chip.parentElement?.textContent).toContain(meta.description);
+    });
+    const text = section.textContent ?? '';
+    expect(text).toContain('Only your draft can be edited');
+    expect(text).toContain(`an edit on it says “${USE_AS_DRAFT_HINT}”`);
+  });
+
+  it('says Generate shows candidate A read-only and Inspect never changes your draft', () => {
+    const flow = openTab('App Flow');
+    expect(flow).toContain('Generate proposes alternative layouts and shows candidate A read-only; your draft stays as it is');
+    expect(flow).toContain('Inspect any layout on the grid without changing your draft');
+    expect(flow).toContain('Use as my draft to edit one');
+    cleanup();
+    const overview = openTab('Overview');
+    expect(overview).toContain('Generating never changes your layout');
+    expect(overview).toContain('Looking never writes your draft');
+    expect(overview).toContain('Back to my draft returns to it');
+  });
+
+  it('says Promote acts at once with Undo, Keep saves a candidate, and candidates are temporary (S3.3)', () => {
+    const flow = openTab('App Flow');
+    expect(flow).toContain('Promote makes the layout you choose the new Active Layout at once, with Undo');
+    expect(flow).toContain('The replaced Active Layout is kept as a variant, and a draft it replaces goes to Recovered drafts');
+    expect(flow).toContain('Keep on a candidate, keeps a layout as a Saved Layout Variant');
+    expect(flow).toContain('Candidates are temporary: each Generate adds a run, and they go when you leave the project');
+    expect(flow).toContain('Compare two side by side, scored the same way as everywhere else');
+  });
+});
+
+describe('Learn More · the layout lifecycle (S3.4, P3-10b)', () => {
+  it('lists exactly the roles, from ROLE_META, and the actions, from the list the state bar’s buttons use', () => {
+    openTab('App Flow');
+    const section = screen.getByTestId('learn-lifecycle');
+    // The roles: the state bar's chips, in order (S3.2's block is part of the section).
+    const chips = [...section.querySelectorAll('[data-testid="role-chip"]')];
+    expect(chips.map(chip => chip.textContent)).toEqual(['Active', 'Working/Test', 'Candidate', 'Saved variant', 'Recovered draft']);
+    expect(chips.map(chip => chip.getAttribute('data-role'))).toEqual([...ROLE_ORDER]);
+    expect(within(section).getByTestId('learn-more-roles')).toBeTruthy();
+
+    // The actions: exactly these, each with its button's words, where it is offered and what it does.
+    expect(LIFECYCLE_ACTIONS.map(a => a.label)).toEqual([
+      'Inspect', 'Back to my draft', 'Use as my draft', 'Save variant', 'Keep as variant', 'Promote', 'Discard',
+    ]);
+    const rows = within(section).getAllByTestId('learn-lifecycle-action');
+    expect(rows.map(row => row.getAttribute('data-action'))).toEqual(LIFECYCLE_ACTIONS.map(a => a.id));
+    rows.forEach((row, i) => {
+      const action = LIFECYCLE_ACTIONS[i]!;
+      expect(row.textContent).toContain(action.label);
+      expect(row.textContent).toContain(action.on);
+      expect(row.textContent).toContain(action.description);
+    });
+    // Save variant is the canon's Save as variant; Keep keeps a candidate.
+    expect(rows[3]!.textContent).toContain('Save as variant');
+    expect(rows[4]!.textContent).toContain('Candidates are temporary');
+  });
+
+  it('describes Promote as it acts: at once, with Undo; the replaced Active saved as a variant; an unrelated draft kept', () => {
+    openTab('App Flow');
+    const promote = screen.getAllByTestId('learn-lifecycle-action').find(row => row.getAttribute('data-action') === 'promote')!;
+    expect(promote.textContent).toContain('Makes it the new Active Layout at once, with Undo in the toast');
+    expect(promote.textContent).toContain('The Active Layout it replaces is saved as a variant');
+    expect(promote.textContent).toContain('a draft that is not the layout you promote goes to Recovered drafts');
+    expect(promote.textContent).not.toMatch(/Confirm/);
+  });
+
+  it('explains "Draft of …", recovered drafts, candidates’ names and the dated names of replaced Actives, from the functions that make them', () => {
+    openTab('App Flow');
+    const text = screen.getByTestId('learn-lifecycle-names').textContent ?? '';
+    const names = namingExamples();
+    expect(names).toEqual({
+      draft: 'Draft of Default',
+      recovered: 'Recovered draft of Default',
+      replaced: 'Default – 23 Sep 14:02',
+      replacedAgain: 'Default – 23 Sep 14:02 (2)',
+      candidate: 'Candidate B · Natural hand pose, shifted 1 row',
+    });
+    for (const example of Object.values(names)) expect(text).toContain(`“${example}”`);
+    expect(text).toContain('its role is shown beside it, never written into it');
   });
 });

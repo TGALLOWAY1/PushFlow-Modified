@@ -23,7 +23,8 @@ interface CandidateCompareProps {
 
 export function CandidateCompare({ candidateA, candidateB, labelA, labelB, sounds }: CandidateCompareProps) {
   const comparison = compareCandidates(candidateA, candidateB);
-  const summary = summarizeComparison(comparison);
+  // Each side by the name it has on screen ("Active Layout", "Candidate B"), not its position (S3.3).
+  const summary = summarizeComparison(comparison, { a: labelA.split(' · ')[0]!, b: labelB.split(' · ')[0]! });
   const diff = layoutDiff(candidateA.layout, candidateB.layout);
 
 
@@ -100,7 +101,7 @@ export function CandidateCompare({ candidateA, candidateB, labelA, labelB, sound
       </div>
 
       {/* Summary */}
-      <div className="p-2.5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-pf-md text-pf-sm text-[var(--text-primary)] whitespace-pre-line">
+      <div data-testid="compare-summary" className="p-2.5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-pf-md text-pf-sm text-[var(--text-primary)] whitespace-pre-line">
         {summary}
       </div>
     </div>

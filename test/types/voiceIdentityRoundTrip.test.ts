@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import { type Voice } from '../../src/types/voice';
 import { type Layout, type LayoutRole, createEmptyLayout, cloneLayout } from '../../src/types/layout';
+import { suggestVariantName } from '../../src/ui/state/variantNames';
 
 // ============================================================================
 // Factories
@@ -147,7 +148,11 @@ describe('Voice identity through promote simulation', () => {
     newActive: Layout;
     savedVariant: Layout;
   } {
-    const savedVariant = cloneLayout(active, 'variant-1', `${active.name} (replaced)`, 'variant');
+    // Named as the reducer names a replaced Active (T32): no role words.
+    const savedVariant: Layout = {
+      ...cloneLayout(active, 'variant-1', suggestVariantName(active.name, []), 'variant'),
+      provenance: 'replaced-active',
+    };
     const newActive: Layout = {
       ...candidateLayout,
       id: 'promoted-1',

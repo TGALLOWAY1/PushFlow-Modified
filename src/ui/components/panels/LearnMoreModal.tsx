@@ -9,9 +9,25 @@
 import { useState } from 'react';
 import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { InputTableSections } from '../shared/ShortcutSheet';
-import { CONSTRAINT_RULE_NAMES, OPTIMIZER_METHOD_KEYS, OPTIMIZER_METHOD_LABELS } from '@/engine';
-import { VERDICT_TIERS } from '../../analysis/verdictTiers';
+import {
+  CONSTRAINT_RULE_NAMES,
+  OPTIMIZER_METHOD_KEYS,
+  OPTIMIZER_METHOD_LABELS,
+  PLAN_SCORE_WEIGHTS,
+  STOP_REASONS_EXPLAINED,
+  planAnnealingRun,
+} from '@/engine';
+import { DEEP_ANNEALING_CONFIG } from '@/types';
+import { VERDICT_TIERS, verdictHeadline } from '../../analysis/verdictTiers';
 import { FACTOR_KEYS, FACTOR_META, type FactorKey } from '../../analysis/factorMeta';
+import { ROLE_META, ROLE_ORDER, candidateLetter } from '../../state/layoutSubject';
+import { LIFECYCLE_ACTIONS } from '../../state/lifecycleActions';
+import { layoutLabel } from '../../state/layoutLabels';
+import { suggestVariantName } from '../../state/variantNames';
+import { strategyLabel } from '../../analysis/strategyLabels';
+import { RoleChip } from '../shared/SubjectChip';
+import { stopReasonText } from '../../analysis/stopReason';
+import { formatDuration } from '../../hooks/generationProgress';
 
 interface LearnMoreModalProps {
   open: boolean;
@@ -56,10 +72,10 @@ const WORKFLOW_STEPS = [
   { step: '1', title: 'Import', description: 'Import a MIDI file (the Library starts a project from one) or build a pattern in the Composer' },
   { step: '2', title: 'Place', description: 'Click a Sound, then a pad (or drag it), or Suggest a starting layout' },
   { step: '3', title: 'Analyze', description: 'Analysis updates automatically as you place Sounds: costs and difficulty per event' },
-  { step: '4', title: 'Generate', description: 'Generate proposes alternative layouts; your draft stays as it is' },
-  { step: '5', title: 'Compare', description: 'Compare candidates side by side' },
-  { step: '6', title: 'Keep', description: 'Save variant keeps a layout under a name, without changing the Active Layout' },
-  { step: '7', title: 'Promote', description: 'Promote makes the layout you choose the new Active Layout' },
+  { step: '4', title: 'Generate', description: 'Generate proposes alternative layouts and shows candidate A read-only; your draft stays as it is' },
+  { step: '5', title: 'Inspect and compare', description: 'Inspect any layout on the grid without changing your draft, or Compare two side by side, scored the same way as everywhere else. Use as my draft to edit one' },
+  { step: '6', title: 'Keep', description: 'Save variant, or Keep on a candidate, keeps a layout as a Saved Layout Variant without changing the Active Layout. Candidates are temporary: each Generate adds a run, and they go when you leave the project' },
+  { step: '7', title: 'Promote', description: 'Promote makes the layout you choose the new Active Layout at once, with Undo. The replaced Active Layout is kept as a variant, and a draft it replaces goes to Recovered drafts' },
 ];
 
 export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
@@ -315,7 +331,8 @@ function OverviewInfographic() {
           <p>
             <strong className="text-[var(--text-primary)]">What are candidates?</strong> Each candidate is a complete layout + execution plan proposal.
             PushFlow generates multiple alternatives so you can compare tradeoffs. Generating never changes your layout:
-            Preview a candidate to try it. If that replaces a draft you made, the draft is kept under Recovered drafts.
+            candidate A is shown read-only under a violet bar, and Inspect shows any other one. Looking never writes your draft;
+            Use as my draft makes a candidate your draft (asking first when you have one), and Back to my draft returns to it.
           </p>
           <p>
             <strong className="text-[var(--text-primary)]">What is the Greedy optimizer?</strong> It builds a layout step by step, then improves it
@@ -428,6 +445,96 @@ function WorkflowSection() {
           </div>
         ))}
       </div>
+      <LifecycleSection />
+    </div>
+  );
+}
+
+/** The date the naming examples use: fixed, so the text doesn't change with the clock. */
+const NAMING_EXAMPLE_DATE = new Date(2026, 8, 23, 14, 2);
+
+/**
+ * How the layouts, and the names you see, are made from one another (T32).
+ * Every example is built by the functions the app names layouts with.
+ */
+export function namingExamples() {
+  const base = { name: 'Default', role: 'working' as const };
+  const replaced = suggestVariantName('Default', [], NAMING_EXAMPLE_DATE);
+  return {
+    draft: layoutLabel(base),
+    recovered: layoutLabel({ ...base, provenance: 'recovered' }, { role: 'recovered', withRole: true }),
+    replaced,
+    replacedAgain: suggestVariantName('Default', [replaced], NAMING_EXAMPLE_DATE),
+    candidate: `Candidate ${candidateLetter(1)} · ${strategyLabel('pose0-offset-1')}`,
+  };
+}
+
+/**
+ * The layout lifecycle (invariant 2): the roles a layout can have (ROLE_META,
+ * as the state bar's chips draw them), the actions that move a layout between
+ * them (LIFECYCLE_ACTIONS, the state bar's own button words) and how their
+ * names are made.
+ */
+function LifecycleSection() {
+  const names = namingExamples();
+  return (
+    <section data-testid="learn-lifecycle" className="pt-4 space-y-3">
+      <h3 className="text-pf-base font-semibold text-[var(--text-primary)]">Layout lifecycle</h3>
+      <p className="text-pf-sm text-[var(--text-tertiary)]">
+        The Active Layout is your committed baseline. Your edits go to your draft, the Working/Test Layout; Generate
+        proposes candidates; saved variants keep the layouts you want to come back to. Nothing moves between them
+        unless you ask, and every step below that changes a layout is one Undo.
+      </p>
+      <LayoutRolesSection />
+      <div data-testid="learn-lifecycle-actions" className="space-y-2">
+        <h4 className="text-pf-sm font-semibold text-[var(--text-primary)]">What you can do with a layout</h4>
+        <ul className="space-y-1.5">
+          {LIFECYCLE_ACTIONS.map(action => (
+            <li key={action.id} data-testid="learn-lifecycle-action" data-action={action.id} className="text-pf-sm text-[var(--text-secondary)]">
+              <span className="inline-block px-1.5 mr-1.5 rounded-pf-sm border border-[var(--border-default)] bg-[var(--bg-card)] text-[var(--text-primary)] font-semibold">
+                {action.label}
+              </span>
+              <span className="text-[var(--text-tertiary)]">{action.on}.</span> {action.description}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div data-testid="learn-lifecycle-names" className="space-y-1.5">
+        <h4 className="text-pf-sm font-semibold text-[var(--text-primary)]">How layouts are named</h4>
+        <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
+          A layout keeps a plain name, such as &ldquo;Default&rdquo;; its role is shown beside it, never written into it.
+          Your draft reads &ldquo;{names.draft}&rdquo;: a draft of the layout it started from. A draft that an action replaced is
+          kept as &ldquo;{names.recovered}&rdquo;. When Promote replaces the Active Layout, the old one is saved as a variant
+          named with when it was replaced, &ldquo;{names.replaced}&rdquo;, and a second one in the same minute gets
+          &ldquo;{names.replacedAgain}&rdquo;. Candidates are lettered A, B, C in the order Generate ranks them and named after
+          how they were made: &ldquo;{names.candidate}&rdquo;.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The bar above the grid (S3.2): which layout is on screen, from ROLE_META,
+ * the list its chips are drawn from, so this text can't drift from them.
+ */
+function LayoutRolesSection() {
+  return (
+    <div data-testid="learn-more-roles" className="space-y-2">
+      <h4 className="text-pf-sm font-semibold text-[var(--text-primary)]">Which layout is on screen</h4>
+      <p className="text-pf-sm text-[var(--text-tertiary)]">
+        The bar above the grid names the layout the grid, the timeline and the Analysis and Events panels describe, how many
+        pads it differs from the Active Layout by, and whether its analysis is up to date. Only your draft can be edited:
+        anything else is shown read-only, and an edit on it says &ldquo;Use as my draft to edit&rdquo;.
+      </p>
+      <ul className="space-y-1.5">
+        {ROLE_ORDER.map(role => (
+          <li key={role} className="flex items-start gap-2 text-pf-sm text-[var(--text-secondary)]">
+            <RoleChip role={role} text={ROLE_META[role].label} className="mt-0.5" />
+            <span>{ROLE_META[role].description}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -469,7 +576,43 @@ function CostFactorsSection() {
         );
       })}
 
+      <ScoreSection />
       <VerdictsSection />
+    </div>
+  );
+}
+
+/** The partly placed layout Learn More quotes, headlined as the badge would (S3.3). */
+export const UNFINISHED_EXAMPLE = { placed: 5, total: 7 } as const;
+
+/**
+ * The Score every layout shows (S3.1, one yardstick), explained from the
+ * engine's own weights so the text can't drift from the number (invariant 2).
+ * Only placed Sounds are scored (S3.3, T25).
+ */
+function ScoreSection() {
+  const { hardEvent, unplayableEvent, ergonomicCap } = PLAN_SCORE_WEIGHTS;
+  return (
+    <div className="space-y-3 pt-2 border-t border-[var(--border-subtle)]">
+      <h4 className="text-pf-base font-medium text-[var(--text-primary)]">Score</h4>
+      <p data-testid="learn-score" className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
+        Every layout&rsquo;s Score is its Playability, from 0 to 100: higher is easier. PushFlow plays the layout with
+        its own fingering (the same analysis for the Active Layout, your draft, each candidate and each saved variant),
+        and the canonical evaluator scores that fingering: 100, minus {hardEvent} for each hard event, minus{' '}
+        {unplayableEvent} for each event that can&rsquo;t be played, and minus up to {ergonomicCap} for the average cost
+        per event of the {listNames(FACTOR_KEYS.map(k => FACTOR_META[k].label))} factors above (a cost family you switch
+        off adds nothing). A hard event needs a grip beyond the strict hand-geometry limits; an event can&rsquo;t be
+        played when one finger would strike two pads at once, or a hand would have to move faster than it can. So the
+        same layout scores the same wherever it appears (its row, the Analysis panel and Compare), whichever optimizer
+        proposed it. &lsquo;Scoring&hellip;&rsquo; shows while a layout is being scored.
+      </p>
+      <p data-testid="learn-placed-only" className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
+        Only placed Sounds are scored. The notes of a Sound with no pad yet are left out of the analysis, the verdict and
+        the Score, so a partly placed layout reads &lsquo;{verdictHeadline('unfinished', UNFINISHED_EXAMPLE)}&rsquo;, and
+        its Score covers the notes you can play so far, rather than failing for the rest. Its unplaced
+        notes stay in the timeline, drawn as outlines, and &lsquo;Place remaining&rsquo; proposes a candidate that places
+        them without moving the ones you placed.
+      </p>
     </div>
   );
 }
@@ -489,8 +632,9 @@ function VerdictsSection() {
       <h4 className="text-pf-base font-medium text-[var(--text-primary)]">Verdicts</h4>
       <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
         The layout verdict always describes the whole layout, whichever event you select. Under it, a scope line
-        says what was analysed, for example &ldquo;Analysing 5 of 7 Sounds &middot; 2 muted&rdquo;: muted Sounds are
-        left out of the analysis, and a Sound that isn&rsquo;t on the grid can&rsquo;t be played.
+        says what was analysed, for example &ldquo;Analysing 4 of 7 Sounds &middot; 2 muted &middot; 1 not placed
+        yet&rdquo;: muted Sounds are left out of the analysis, and so are the notes of a Sound that isn&rsquo;t on the
+        grid yet.
       </p>
       <div className="space-y-1.5">
         {VERDICT_TIERS.map(tier => (
@@ -505,7 +649,8 @@ function VerdictsSection() {
       <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
         &lsquo;Unknown&rsquo; is not a warning about your layout: it means there is no analysis to judge it by yet
         (&lsquo;Analysing&hellip;&rsquo; while one runs). PushFlow never shows &lsquo;Feasible&rsquo; without an analysis
-        that says so.
+        that says so. &lsquo;Unfinished&rsquo; isn&rsquo;t a failure either: some Sounds have no pad yet, and every note of
+        the placed ones plays. &lsquo;Infeasible&rsquo; is kept for placed notes that can&rsquo;t be played.
       </p>
       <h4 className="text-pf-base font-medium text-[var(--text-primary)]">Per-event cost</h4>
       <p data-testid="learn-per-event-cost" className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
@@ -522,6 +667,20 @@ function VerdictsSection() {
 /* ═══════════════════════════════════════════════════════════════════════
  * Optimizers Section — available optimization methods
  * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Thorough's budgets in words, from DEEP_ANNEALING_CONFIG itself (the settings
+ * Generate runs), so this text can't drift from the solver.
+ */
+export function describeThoroughTimeLimit(): string {
+  const plan = planAnnealingRun(DEEP_ANNEALING_CONFIG);
+  const runs = plan.iterationsPerRestart.length;
+  const limit = DEEP_ANNEALING_CONFIG.timeBudgetMs;
+  const iterations = `up to ${plan.total.toLocaleString('en-US')} iterations in ${runs} runs (a first run and ${runs - 1} restarts, each cooling from hot to cold)`;
+  return limit === undefined
+    ? `Thorough (Annealing’s deep intensity) anneals each candidate: ${iterations}.`
+    : `Thorough (Annealing’s deep intensity) anneals each candidate: ${iterations}, and for at most ${formatDuration(limit)} per candidate, shared equally so every run starts. When a run’s share of the time is used up it stops there, and the candidate is the best layout the search has found so far, marked “${stopReasonText('time_budget')}”.`;
+}
 
 function OptimizersSection() {
   return (
@@ -546,7 +705,31 @@ function OptimizersSection() {
         </div>
       ))}
 
-      <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 mt-4">
+      <div data-testid="learn-generation-time" className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 mt-4">
+        <h4 className="text-pf-sm font-medium text-[var(--text-primary)] mb-2">How long Generate takes</h4>
+        <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
+          While Generate runs, the toolbar shows which candidate it is working on and an estimate of the time left, measured from how fast the run is going. The other Generate controls stay where they are, disabled, until it finishes. Cancel stops the run: nothing from it is kept, and the candidates you already had stay as they were.
+        </p>
+        <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed mt-2">
+          {describeThoroughTimeLimit()}
+        </p>
+      </div>
+
+      <div data-testid="learn-stop-reasons" className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
+        <h4 className="text-pf-sm font-medium text-[var(--text-primary)] mb-2">Why a run stopped</h4>
+        <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed mb-2">
+          Every candidate keeps the trace of the run that found it, with the reason that run stopped:
+        </p>
+        <ul className="space-y-1">
+          {STOP_REASONS_EXPLAINED.map(({ reason, meaning }) => (
+            <li key={reason} data-testid="learn-stop-reason" data-reason={reason} className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
+              <span className="text-[var(--text-secondary)] font-medium">{stopReasonText(reason)}</span> {'—'} {meaning}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="rounded-pf-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
         <h4 className="text-pf-sm font-medium text-[var(--text-primary)] mb-2">Cost Toggles</h4>
         <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
           All cost factors can be individually toggled on/off in the Cost Evaluation section of the analysis panel.
@@ -590,12 +773,12 @@ export const HARD_CONSTRAINTS = [
       {
         name: 'Placement Locks',
         key: 'placementLock',
-        description: `A lock pins a Sound to one pad, and it is the one hard placement rule you set. ${listNames(LOCK_ENFORCING_METHODS)} all place locked Sounds first, on their locked pads, and never move them; a candidate that would break a lock is dropped, and the candidate list says so. Manual edits enforce locks too: a locked Sound cannot be dragged off its pad, and nothing can be dropped onto a locked pad (Locked \u00b7 Unlock to move); Remove from pad is refused too until the Sound is unlocked, and a Composer preset is never placed or mirrored over a locked Sound.`,
+        description: `A lock pins a Sound to one pad, and it is the one hard placement rule you set. ${listNames(LOCK_ENFORCING_METHODS)} all place locked Sounds first, on their locked pads, and never move them; a candidate that would break a lock is dropped, and the candidate list says so. Manual edits enforce locks too: a locked Sound cannot be dragged off its pad, and nothing can be dropped onto a locked pad (Locked \u00b7 Unlock to move). Click-to-place won\u2019t put a locked Sound on another pad, and Remove from pad or the Delete key won\u2019t take it off; each says why (\u201cUnlock it to move it\u201d, \u201cUnlock it to remove it\u201d). A Composer preset is never placed or mirrored over a locked Sound.`,
       },
       {
         name: 'Sound Identity',
         key: 'identity',
-        description: 'Every event is matched to a pad by its Sound, never by MIDI pitch. A Sound with no pad is unmapped even when another Sound shares its pitch, so an unplaced Sound never borrows another Sound\u2019s pad or fingering, and its events count as unplayable until you place it. Imported pitch is kept only as provenance.',
+        description: 'Every event is matched to a pad by its Sound, never by MIDI pitch. A Sound with no pad is unmapped even when another Sound shares its pitch, so an unplaced Sound never borrows another Sound\u2019s pad or fingering, and its notes are left out of the analysis until you place it (the layout reads Unfinished). Imported pitch is kept only as provenance.',
       },
       {
         // Generate proposes; it never takes a placed Sound off the grid (T15).

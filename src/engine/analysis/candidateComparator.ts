@@ -92,18 +92,23 @@ export function compareCandidates(
 }
 
 /**
- * Summarizes a comparison in human-readable text.
+ * Summarizes a comparison in human-readable text. `names` says what each side
+ * is called on screen (Compare passes "Active Layout" and "Candidate B", its
+ * session letter), so the sentence never names a side by its position.
  */
-export function summarizeComparison(comparison: CandidateComparison): string {
+export function summarizeComparison(
+  comparison: CandidateComparison,
+  names: { a: string; b: string } = { a: 'Candidate A', b: 'Candidate B' },
+): string {
   const parts: string[] = [];
 
   // Overall
   if (Math.abs(comparison.overallDelta) < 0.01) {
     parts.push('Overall difficulty is similar.');
   } else if (comparison.overallDelta > 0) {
-    parts.push(`Candidate A is ${(comparison.overallDelta * 100).toFixed(0)}% easier overall.`);
+    parts.push(`${names.a} is ${(comparison.overallDelta * 100).toFixed(0)}% easier overall.`);
   } else {
-    parts.push(`Candidate B is ${(Math.abs(comparison.overallDelta) * 100).toFixed(0)}% easier overall.`);
+    parts.push(`${names.b} is ${(Math.abs(comparison.overallDelta) * 100).toFixed(0)}% easier overall.`);
   }
 
   // Passage highlights

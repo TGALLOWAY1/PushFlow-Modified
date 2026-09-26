@@ -109,6 +109,13 @@
   --status-bad-bg: rgba(239, 68, 68, 0.10);
   --status-bad-border: rgba(239, 68, 68, 0.30);
 
+  /* --- Layout roles (ROLE_META, src/ui/state/layoutSubject.ts): the state bar
+         and every SubjectChip; always paired with the role's icon --- */
+  --role-active: #34d399;
+  --role-working: #fbbf24;
+  --role-candidate: #a78bfa;
+  --role-variant: #38bdf8;
+
   /* --- Cost factors (FACTOR_META, src/ui/analysis/factorMeta.ts) --- */
   --factor-transition: #f97316;
   --factor-grip: #a855f7;
@@ -246,10 +253,29 @@ body {
   border-bottom-color: var(--border-default);
 }
 
-/* Focus ring for keyboard nav */
+/* Focus ring for keyboard nav (every shared primitive uses it, T63). The focus
+   token keeps 7:1 or more on every surface token; the #2e5bff accent fell
+   under 3:1 on hovered ones. */
 .focus-ring:focus-visible {
-  outline: 2px solid var(--accent-primary);
+  outline: 2px solid var(--border-focus);
   outline-offset: 1px;
+}
+
+/* Card (T63): an interactive card's own button or link covers the whole card
+   under its content. The content lets clicks through to it, except on the
+   card's own controls, which stay separate controls above it. */
+.pf-card-action {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  cursor: pointer;
+}
+.pf-card-content {
+  position: relative;
+  pointer-events: none;
+}
+.pf-card-content :is(a, button, input, select, textarea, label, summary, [tabindex], [role="button"]) {
+  pointer-events: auto;
 }
 
 /* Smooth transitions everywhere */

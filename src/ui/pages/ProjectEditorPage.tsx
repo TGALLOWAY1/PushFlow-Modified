@@ -14,6 +14,7 @@ import { type ProjectState } from '../state/projectState';
 import { ProjectProvider } from '../state/ProjectContext';
 import { loadProjectAsync, loadProject, markProjectOpened } from '../persistence/projectStorage';
 import { PerformanceWorkspace } from '../components/workspace/PerformanceWorkspace';
+import { LayoutActionsProvider } from '../hooks/useLayoutActions';
 
 export function ProjectEditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -83,5 +84,11 @@ export function ProjectEditorPage() {
 }
 
 function ProjectContent() {
-  return <PerformanceWorkspace />;
+  // One Promote and one Keep for every surface, and the warning before the
+  // page closes while unkept candidates exist (S3.3).
+  return (
+    <LayoutActionsProvider>
+      <PerformanceWorkspace />
+    </LayoutActionsProvider>
+  );
 }

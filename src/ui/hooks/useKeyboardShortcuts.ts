@@ -6,18 +6,20 @@
  * - Mod+S saves now; Mod+Z undoes; Mod+Shift+Z or Mod+Y redoes;
  * - Space plays and stops (the Composer binds its own while its tab is open);
  * - ←/→ select the previous or next event while stopped, stopping at the ends;
- * - Escape steps back one layer: the armed Sound, then the pad selection, then
- *   the event (an open overlay closes itself first);
+ * - Escape steps back one layer: a trace replay, then the armed Sound, then
+ *   the pad selection, then the event (an open overlay closes itself first);
  * - Delete/Backspace take the selected pad's Sound off the grid, with Undo;
- *   with no pad selected they do nothing (T28);
+ *   with no pad selected they do nothing (T28), and on a read-only layout
+ *   they say how to edit it (S3.2);
  * - '?' opens the shortcut sheet.
  */
 
 import { useRef } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getDisplayedExecutionPlan, getDisplayedLayout, isPadLocked } from '../state/projectState';
+import { getDisplayedExecutionPlan, getDisplayedLayout, isPadLocked, isReplayingTrace } from '../state/projectState';
 import { useInputHandler } from '../input/inputRegistry';
 import { useRemovePadWithUndo } from './useRemovePadWithUndo';
+import { useReadOnlyHint } from './useReadOnlyHint';
 import { useToast } from '../components/shared/Toast';
 
 export interface KeyboardShortcutOptions {
@@ -30,6 +32,7 @@ export interface KeyboardShortcutOptions {
 export function useKeyboardShortcuts({ onSave, onOpenShortcuts }: KeyboardShortcutOptions = {}) {
   const { state, dispatch, undo, redo } = useProject();
   const removePad = useRemovePadWithUndo();
+  const { refuse: refuseEdit } = useReadOnlyHint();
   const toast = useToast();
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -69,6 +72,12 @@ export function useKeyboardShortcuts({ onSave, onOpenShortcuts }: KeyboardShortc
     dispatch({ type: 'SELECT_EVENT', payload: first?.eventIndex ?? null });
   });
 
+  // A trace replay (T33): "Replaying step 3/92 · Esc to exit".
+  useInputHandler('exit-replay', () => {
+    if (!isReplayingTrace(stateRef.current)) return false;
+    dispatch({ type: 'SET_MOVE_HISTORY_INDEX', payload: null });
+  });
+
   useInputHandler('escape', () => {
     const s = stateRef.current;
     if (s.armedStreamId !== null) {
@@ -88,6 +97,7 @@ export function useKeyboardShortcuts({ onSave, onOpenShortcuts }: KeyboardShortc
 
   useInputHandler('delete', () => {
     const s = stateRef.current;
+    if (s.selectedPadKey !== null && refuseEdit()) return;
     const padKey = s.selectedPadKey;
     const layout = getDisplayedLayout(s);
     const voice = padKey ? layout?.padToVoice[padKey] : undefined;

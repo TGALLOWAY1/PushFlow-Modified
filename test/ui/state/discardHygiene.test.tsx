@@ -146,11 +146,19 @@ describe('P1a-7 · pad fingerConstraints re-derive from voiceConstraints on ever
     expect(previewed.workingLayout?.fingerConstraints).toEqual({ '3,4': 'L2', '4,3': 'R3' });
     expect(previewed.workingLayout?.placementLocks).toEqual({});
 
-    const promoted = projectReducer(withCandidate, { type: 'PROMOTE_CANDIDATE', payload: { candidateId: 'cand-1' } });
+    // The plan the user reviewed travels with Promote (S3.3: its plan from the per-layout cache).
+    const reviewed = { ...withCandidate.candidates[0]!, id: 'reviewed-plan' };
+    const promoted = projectReducer(withCandidate, { type: 'PROMOTE_CANDIDATE', payload: { candidateId: 'cand-1', reviewed } });
     expect(promoted.activeLayout.fingerConstraints).toEqual({ '3,4': 'L2', '4,3': 'R3' });
     expect(promoted.activeLayout.placementLocks).toEqual({});
-    // The candidate's plan is re-bound to the layout it now describes.
+    // The reviewed plan is re-bound to the layout it now describes.
+    expect(promoted.analysisResult?.id).toBe('reviewed-plan');
     expect(promoted.analysisResult?.executionPlan.layoutBinding?.layoutHash).toBe(hashLayout(promoted.activeLayout));
+    expect(promoted.analysisStale).toBe(false);
+    // With none, the new Active is analysed afresh, never shown with the optimizer's own plan.
+    const unreviewed = projectReducer(withCandidate, { type: 'PROMOTE_CANDIDATE', payload: { candidateId: 'cand-1' } });
+    expect(unreviewed.analysisResult).toBeNull();
+    expect(unreviewed.analysisStale).toBe(true);
   });
 
   it('Load Draft, a variant Promote and Restore re-derive from the current preferences', () => {
