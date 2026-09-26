@@ -12,7 +12,8 @@
  * case. Preview became Inspect, which shows a layout read-only and never
  * writes; "Load Draft" became "Edit as draft", which asks before replacing a
  * draft that differs from Active; after Generate, candidate A is shown
- * read-only, so the hand-made draft is built after "Back to my draft".
+ * read-only, so the hand-made draft is built after "Back to my draft". S3.3:
+ * Promote acts at once (one click, an Undo toast), and says where the draft went.
  */
 
 import { test, expect } from './fixtures';
@@ -108,23 +109,24 @@ test.describe('C2 · Working/Test Layout overwritten', () => {
       await expectRecoverableNowAndAfterReload(page, pf, pads);
     });
 
+    // One Promote (S3.3): it acts at once, with an Undo toast; no "Confirm?" step.
     test('after a candidate card Promote', async ({ page, pf }) => {
       const pads = await candidatesAndHandDraft(page, pf);
-      const promote = page.getByTestId('candidate-row').nth(1).getByRole('button', { name: /Promote|Confirm\?/ });
+      const promote = page.getByTestId('candidate-row').nth(1).getByTestId('candidate-promote');
       const activeBefore = await pf.call('layoutHash', 'active');
       await promote.click();
-      await promote.click();
       await expect.poll(() => pf.call('layoutHash', 'active')).not.toBe(activeBefore);
+      await expect(page.getByTestId('toast').filter({ hasText: /^Promoted/ })).toContainText('your draft is in Recovered drafts');
       await expectRecoverableNowAndAfterReload(page, pf, pads);
     });
 
     test('after a saved variant Promote', async ({ page, pf }) => {
       const pads = await candidatesAndHandDraft(page, pf);
-      const promote = page.getByTestId('variant-row').first().getByRole('button', { name: /Promote|Confirm\?/ });
+      const promote = page.getByTestId('variant-row').first().getByTestId('variant-promote');
       const activeBefore = await pf.call('layoutHash', 'active');
       await promote.click();
-      await promote.click();
       await expect.poll(() => pf.call('layoutHash', 'active')).not.toBe(activeBefore);
+      await expect(page.getByTestId('toast').filter({ hasText: /^Promoted/ })).toContainText('your draft is in Recovered drafts');
       await expectRecoverableNowAndAfterReload(page, pf, pads);
     });
   });

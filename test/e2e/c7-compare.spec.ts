@@ -92,9 +92,8 @@ test.describe('C7 · Compare with the Active Layout', () => {
     const first = page.getByTestId('candidate-row').first();
     await first.getByTitle('Select for comparison').click();
     await expect(compareButton(page)).toBeEnabled();
-    const promote = first.getByRole('button', { name: /Promote|Confirm\?/ });
-    await promote.click();
-    await promote.click();
+    // One Promote (S3.3): a single click, at once. The draft had candidate A's pads, so no draft is left.
+    await first.getByTestId('candidate-promote').click();
     await expect.poll(async () => (await pf.call('status')).hasWorkingLayout).toBe(false);
     await expect(compareButton(page)).toBeDisabled();
   });
