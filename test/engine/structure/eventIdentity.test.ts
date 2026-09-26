@@ -126,6 +126,31 @@ describe('a played-in chord, planned by greedy and by beam', () => {
   });
 });
 
+describe('a moment with a note beam cannot play (Codex review on #111)', () => {
+  it('is unplayable in beam\'s moment summary, whether that note lands with the others or a few ms later', async () => {
+    // The hat has no pad (strict mapping), so beam can't play its notes.
+    const layout: Layout = { ...LAYOUT, padToVoice: { '0,1': voice('kick', 36), '0,2': voice('snare', 38) } };
+    const performance: Performance = {
+      name: 'Partly placed',
+      tempo: 120,
+      events: [
+        { noteNumber: 36, voiceId: 'kick', startTime: 0, eventKey: 'k0' },
+        { noteNumber: 42, voiceId: 'hat', startTime: 0.003, eventKey: 'h0' },
+        { noteNumber: 38, voiceId: 'snare', startTime: 0.5, eventKey: 's0' },
+        { noteNumber: 36, voiceId: 'kick', startTime: 1.0, eventKey: 'k1' },
+        { noteNumber: 42, voiceId: 'hat', startTime: 1.0, eventKey: 'h1' },
+      ],
+    };
+    const plan = await beamPlan(performance, layout, DEFAULT_ENGINE_CONFIG, DEFAULT_TEST_INSTRUMENT_CONFIG);
+    expect(plan.fingerAssignments.filter(a => a.assignedHand === 'Unplayable').map(a => a.eventKey)).toEqual(['h0', 'h1']);
+    const moments = plan.momentAssignments!;
+    expect(moments.map(m => m.noteAssignments.length)).toEqual([2, 1, 2]);
+    expect(moments.map(m => m.difficulty === 'Unplayable')).toEqual([true, false, true]);
+    expect([moments[0]!.cost, moments[2]!.cost]).toEqual([Infinity, Infinity]);
+    expect(plan.unplayableMomentCount).toBe(2);
+  });
+});
+
 describe('TEST MIDI 1, planned by greedy and by beam', () => {
   let performance: Performance;
   let greedy: ExecutionPlanResult;

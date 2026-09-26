@@ -578,14 +578,14 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
 
 **Session checks**
 - [x] Solver Change Checklist recorded in the PR. · *PR / verified by:* PR #111's description.
-  - (1) Outputs: greedy plans' eventIndex is the note index (it was the moment index), and their notes carry their own start time (it was the moment's). Every plan note gains momentIndex. Beam's momentAssignments group by the shared 25 ms rule (it was exact ms), which can change its moment counts, and so its plan score, only for chords played apart; TEST MIDI 1 is unchanged. Layouts, fingering, costs and diagnostics are unchanged.
+  - (1) Outputs: greedy plans' eventIndex is the note index (it was the moment index), and their notes carry their own start time (it was the moment's). Every plan note gains momentIndex. Beam's momentAssignments group by the shared 25 ms rule (it was exact ms), and a moment holding a note beam can't play is Unplayable in them, as in the greedy plan and the UI. That can change beam's moment counts, and so its plan score, only for chords played apart or holding an unplayable note; TEST MIDI 1 is unchanged. Layouts, fingering, costs and diagnostics are unchanged.
   - (2) Trace shapes (`OptimizerMove`, `AnnealingIterationSnapshot`) and stopReason are unchanged.
   - (3) UI consumers are updated (above).
   - (4) Greedy restarts and seeded noise are untouched; annealing's plans come from beam.
   - (5) Seed-0 snapshots are unchanged.
   - (6) `isProcessing` paths are untouched.
   - (7) TEST MIDI 1: 0 unplayable events for all three methods.
-  - Full suite: `npm run typecheck`; `npm run test:run` 123 files, 1410 passed, 4 skips; build + `check:no-test-hook` OK. Playwright (chromium-1366, -1600, and C1 at -1920): 233 passed, 2 failed (11.2 min). The 2 are the Library screenshot comparisons (8,514 and 8,479 pixels), which differ only in a cloud container and pass in CI; no expected-fail case passed. After a last fix to the chart's axis labels, `event-identity.spec.ts` and `overlays.spec.ts` passed again at both sizes (16/16).
+  - Full suite: `npm run typecheck`; `npm run test:run` 123 files, 1411 passed, 4 skips; build + `check:no-test-hook` OK. Playwright (chromium-1366, -1600, and C1 at -1920): 233 passed, 2 failed (11.2 min). The 2 are the Library screenshot comparisons (8,514 and 8,479 pixels), which differ only in a cloud container and pass in CI; no expected-fail case passed. After a last fix to the chart's axis labels, `event-identity.spec.ts` and `overlays.spec.ts` passed again at both sizes (16/16).
 
 #### S4.2 — Moment view, Events list and docked inspector ∥ S4.3a
 
@@ -1443,7 +1443,7 @@ Record each one with the date, the session, what differs from the roadmap or the
 - **2026-09-26 · S4.1 · Every event is selectable, and ←/→ step through all of them.** An event no placed Sound strikes can be selected from the Events list, the timeline or ←/→: its card reads "Not analysed", and the grid lights nothing. ←/→ step through every event, as the Events list does; they stepped through analysed events only. Before, such an event couldn't be selected, and a click on one of its notes did nothing, although the CLAUDE.md timeline rule asks for its whole moment.
 - **2026-09-26 · S4.1 · The Selected note card keeps the note a timeline click named.** The selection is an event, so `selectedNoteKey` remembers which note was clicked; without one (a list row, a bar, ←/→) the card shows the event's first note, as before.
 - **2026-09-26 · S4.1 · A greedy plan reaches the four surfaces only in a component test.** Since S3.2 the workspace shows each layout's own plan from the analysis cache, which beam solves, and never a candidate's optimizer plan; the mirror re-applies the cached plan if another is put in state. So P4-1's greedy half is checked by `eventIdentity.test.tsx`, which mounts the real grid, Events list, timeline and Costs panel with the greedy optimizer's own plan. The e2e spec checks beam's plans of the suggested layout and of a Greedy candidate's layout.
-- **2026-09-26 · S4.1 · Beam's moment summaries use the shared grouping.** `momentAssignments` grouped by exact millisecond. They now group by the 25 ms rule every other moment in the product uses, so a chord played a few ms apart counts once in beam's hard and unplayable moment counts, and in the plan score fed by them. TEST MIDI 1 is unchanged.
+- **2026-09-26 · S4.1 · Beam's moment summaries use the shared grouping.** `momentAssignments` grouped by exact millisecond. They now group by the 25 ms rule every other moment in the product uses, so a chord played a few ms apart counts once in beam's hard and unplayable moment counts, and in the plan score fed by them. A moment holding any note beam can't play is now unplayable in that summary, as in the greedy plan and the UI; before, a playable note of the same moment hid it, which the merge would have made more common (Codex review on PR #111). TEST MIDI 1 is unchanged.
 
 ## 6. Follow-ups
 

@@ -1593,13 +1593,17 @@ export class BeamSolver implements SolverStrategy {
       const startTime = moment.startTime;
 
       // Use the first non-unplayable assignment's cost as the moment cost,
-      // since cost is now moment-level (all assignments in the group share it)
+      // since cost is now moment-level (all assignments in the group share it).
+      // A moment with any note that can't be played is unplayable, as in the
+      // greedy plan and the UI (summarizeMomentCost), so a playable note never
+      // hides one struck with it (Codex review on #111).
       const playableAssignment = groupAssignments.find(a => a.assignedHand !== 'Unplayable');
-      const momentCost = playableAssignment?.cost ?? Infinity;
+      const anyUnplayable = groupAssignments.some(a => a.assignedHand === 'Unplayable');
+      const momentCost = anyUnplayable ? Infinity : playableAssignment?.cost ?? Infinity;
       const momentDifficulty = getDifficulty(momentCost);
-      const momentBreakdown = playableAssignment?.costBreakdown ?? {
-        ...createZeroV1CostBreakdown(), total: Infinity,
-      };
+      const momentBreakdown = playableAssignment?.costBreakdown && !anyUnplayable
+        ? playableAssignment.costBreakdown
+        : { ...(playableAssignment?.costBreakdown ?? createZeroV1CostBreakdown()), total: Infinity };
 
       if (momentDifficulty === 'Unplayable') unplayableMomentCount++;
       else if (momentDifficulty === 'Hard') hardMomentCount++;
