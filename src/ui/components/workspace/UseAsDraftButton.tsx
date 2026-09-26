@@ -1,9 +1,10 @@
 /**
  * "Use as my draft" / "Edit as draft" (S3.2): makes a candidate, a saved
  * variant or a recovered draft the Working/Test Layout, as one undo step. With
- * no draft that differs from Active it acts at once; otherwise a popover
- * offers "Save my draft as a variant first" or "Replace (undoable)", so a
- * hand-made draft is never replaced by surprise (T01).
+ * no draft that differs from Active, or a layout that keeps all of the draft
+ * (S3.3), it acts at once; otherwise a popover offers "Save my draft as a
+ * variant first" or "Replace (undoable)", so a hand-made draft is never
+ * replaced by surprise (T01).
  */
 
 import { useRef, useState } from 'react';
@@ -18,7 +19,8 @@ export function UseAsDraftButton({ source, label = 'Use as my draft', title, cla
   className?: string;
   testId?: string;
 }) {
-  const { needsChoice, apply } = useUseAsDraft();
+  const { needsChoice: needsChoiceFor, apply } = useUseAsDraft();
+  const needsChoice = needsChoiceFor(source);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [at, setAt] = useState<{ x: number; y: number } | null>(null);
   const titleId = useOverlayTitleId();

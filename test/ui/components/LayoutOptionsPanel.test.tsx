@@ -3,8 +3,8 @@
  * Layouts panel (S1a.2, S3.2): Inspect shows a candidate read-only and writes
  * nothing (Preview, and its auto-keep, are gone); a card-body click does
  * nothing; "Edit as draft" asks before replacing a draft that differs from
- * Active, and either choice is one undo step; a row Promote still keeps the
- * replaced draft with a Restore toast; every saved variant is listed.
+ * Active, and either choice is one undo step; a row Promote acts at once and
+ * keeps the replaced draft (S3.3); every saved variant is listed.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -172,18 +172,24 @@ describe('LayoutOptionsPanel', () => {
     expect(project.undoLabel).toBe('Use as my draft');
   });
 
-  it('a candidate row Promote keeps the replaced draft, and the toast Restore brings it back', async () => {
+  // S3.3: the one Promote acts at once (no timed "Confirm?"), as one undo step,
+  // and its toast says the replaced draft is in Recovered drafts.
+  it('a candidate row Promote acts at once: the replaced draft is recovered, the toast says so, and one Undo brings it all back', async () => {
     renderPanel(await projectWithCandidatesAndHandDraft());
-    const promote = () => within(screen.getByTestId('candidate-row')).getByRole('button', { name: /Promote|Confirm\?/ });
-    fireEvent.click(promote());
-    fireEvent.click(promote());
+    fireEvent.click(within(screen.getByTestId('candidate-row')).getByRole('button', { name: 'Promote' }));
 
     expect(padsOf(latest.activeLayout)).toEqual(['4,4', '4,5']);
-    expect(screen.getByTestId('toast').textContent).toContain('Your draft was kept');
+    expect(project.undoLabel).toBe('Promote');
+    const toast = screen.getByTestId('toast');
+    expect(toast.textContent).toContain('Promoted Candidate A to Active Layout');
+    expect(toast.textContent).toContain('your draft is in Recovered drafts');
     expect(screen.getAllByTestId('recovered-row')).toHaveLength(1);
-    fireEvent.click(within(screen.getByTestId('toast')).getByRole('button', { name: 'Restore' }));
+    fireEvent.click(within(toast).getByRole('button', { name: 'Undo' }));
     expect(padsOf(latest.workingLayout)).toEqual(['0,0', '0,7']);
+    expect(padsOf(latest.activeLayout)).toEqual([]);
     expect(screen.queryAllByTestId('recovered-row')).toHaveLength(0);
+    // Undo gives the promoted candidate back, under its letter.
+    expect(within(screen.getByTestId('candidate-row')).getByTestId('candidate-letter').textContent).toBe('A');
   });
 
   it('lists every saved variant', async () => {

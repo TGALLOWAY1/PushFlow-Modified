@@ -38,6 +38,7 @@ import { type RehearsalAudioOptions, DEFAULT_REHEARSAL_AUDIO } from '../audio/re
 import { gmDrumRenames } from '../../utils/gmDrumMap';
 import { uniqueName } from '../../utils/uniqueName';
 import { suggestVariantName } from './variantNames';
+import { EMPTY_CANDIDATE_RUNS, olderRuns, withRun, type CandidateRunsState } from './candidateRuns';
 
 // ============================================================================
 // Sound Stream Model
@@ -156,7 +157,10 @@ export interface ProjectSession {
 
   // Analysis cache
   analysisResult: CandidateSolution | null;
+  /** Every run's candidates, newest run first (S3.3: each Generate adds a run). */
   candidates: CandidateSolution[];
+  /** The runs those candidates came from and each candidate's letter for the session (candidateRuns.ts). */
+  candidateRuns: CandidateRunsState;
   /**
    * The layout on screen (S3.2): null for the layout edits go to (the draft,
    * else Active). Never in undo history, never saved.
@@ -510,10 +514,13 @@ export type ProjectAction =
   // V3 Workflow actions
   | { type: 'CREATE_WORKING_LAYOUT' }
   | { type: 'DISCARD_WORKING_LAYOUT' }
-  | { type: 'PROMOTE_WORKING_LAYOUT' }
-  | { type: 'PROMOTE_CANDIDATE'; payload: { candidateId: string } }
+  // The one Promote (S3.3, T13), from the draft, a candidate or a variant. `reviewed`
+  // is the plan the user saw for that layout (its plan from the per-layout
+  // cache, usePromote); it is rebound to the new Active Layout.
+  | { type: 'PROMOTE_WORKING_LAYOUT'; payload?: { reviewed?: CandidateSolution | null } }
+  | { type: 'PROMOTE_CANDIDATE'; payload: { candidateId: string; reviewed?: CandidateSolution | null } }
   | { type: 'DELETE_CANDIDATE'; payload: { candidateId: string } }
-  | { type: 'PROMOTE_VARIANT'; payload: { variantId: string } }
+  | { type: 'PROMOTE_VARIANT'; payload: { variantId: string; reviewed?: CandidateSolution | null } }
   | { type: 'DELETE_VARIANT'; payload: { variantId: string } }
   | { type: 'SAVE_AS_VARIANT'; payload: { name: string; source: 'working' | 'candidate'; candidateId?: string; /** The new variant's id, so the caller can show it. */ variantId?: string } }
   | { type: 'LOAD_SAVED_VARIANT'; payload: { variantId: string } }
@@ -523,7 +530,12 @@ export type ProjectAction =
 
   // Analysis
   | { type: 'SET_ANALYSIS_RESULT'; payload: CandidateSolution | null }
+  /** A Generate run's candidates: added as a run (S3.3), candidate A shown read-only (Q4). */
   | { type: 'SET_CANDIDATES'; payload: CandidateSolution[] }
+  /** A run that isn't a Generate ("Place remaining N Sounds", T37): added and shown like one. */
+  | { type: 'ADD_CANDIDATE_RUN'; payload: CandidateSolution[] }
+  /** Removes every run but the newest, with its candidates. */
+  | { type: 'CLEAR_OLDER_RUNS' }
   | { type: 'SET_GENERATION_SUMMARY'; payload: CandidateGenerationSummary | null }
   /** Shows a layout (S3.2): null (or the draft) for the layout edits go to; anything else read-only. Writes nothing. */
   | { type: 'INSPECT_LAYOUT'; payload: InspectedLayoutRef | null }
@@ -666,6 +678,15 @@ function withReplacedActiveSaved(state: ProjectState, variants: Layout[], now: s
 }
 
 /**
+ * The draft after an edit (T14): a draft whose pads, locks and finger
+ * preferences are back to Active's is no draft at all, so it goes (the grid
+ * shows Active, and Promote and Discard have nothing to act on).
+ */
+function draftOrNull(draft: Layout, active: Layout): Layout | null {
+  return hashLayout(draft) === hashLayout(active) ? null : draft;
+}
+
+/**
  * Update the working layout (auto-creating it from active if needed).
  * All manual edits go through this helper.
  */
@@ -683,7 +704,7 @@ function updateWorkingLayout(
     // refuses them otherwise); a Sound's finger preference, which also lands
     // here, keeps a read-only inspection on screen.
     inspectedLayout: isInspectedReadOnly(state) ? state.inspectedLayout : null,
-    workingLayout: { ...updater(withWorking.workingLayout), scoreCache: null },
+    workingLayout: draftOrNull({ ...updater(withWorking.workingLayout), scoreCache: null }, state.activeLayout),
   };
 }
 
@@ -811,6 +832,17 @@ export function withDerivedLayoutState(
   };
 }
 
+/**
+ * A layout's identity in this project (S3.3): the hash of its pads, locks and
+ * the finger preferences it has once applied (withDerivedLayoutState), as the
+ * scoring cache keys it. A candidate and the draft, variant or Active made
+ * from it share one identity, even when the candidate keeps a moved Sound's
+ * preference on the pad it left.
+ */
+export function layoutIdentity(state: Pick<ProjectState, 'voiceConstraints'>, layout: Layout): string {
+  return hashLayout(withDerivedLayoutState(layout, state.voiceConstraints));
+}
+
 /** Recovered drafts kept per project; the oldest is pruned beyond this. */
 export const RECOVERED_DRAFTS_CAP = 5;
 
@@ -843,6 +875,179 @@ function keepReplacedDraft(state: ProjectState, incoming: Layout | null, now: st
     savedAt: now,
   };
   return [...kept.filter(layout => hashLayout(layout) !== hash), entry].slice(-RECOVERED_DRAFTS_CAP);
+}
+
+/**
+ * The state once a run's candidates arrive (S3.3, T30): they are added as a
+ * run, first in the list, instead of replacing it; each gets its letter for
+ * the session; runs beyond the cap go, with their candidates (and with the
+ * inspection or compare pick of one of them).
+ */
+function withInstalledRun(state: ProjectState, incoming: CandidateSolution[]): ProjectState {
+  if (incoming.length === 0) return state;
+  const { candidateRuns, droppedIds } = withRun(state, incoming, new Date().toISOString());
+  const incomingIds = new Set(incoming.map(c => c.id));
+  const gone = (id: string | null | undefined) => !!id && droppedIds.has(id) && !incomingIds.has(id);
+  return {
+    ...state,
+    candidates: [...incoming, ...state.candidates.filter(c => !incomingIds.has(c.id) && !droppedIds.has(c.id))],
+    candidateRuns,
+    inspectedLayout: state.inspectedLayout?.kind === 'candidate' && gone(state.inspectedLayout.id) ? null : state.inspectedLayout,
+    compareCandidateId: gone(state.compareCandidateId) ? null : state.compareCandidateId,
+  };
+}
+
+/** What a Promote makes the Active Layout (S3.3). */
+type PromoteSource =
+  | { kind: 'working'; layout: Layout }
+  | { kind: 'candidate'; candidate: CandidateSolution }
+  | { kind: 'variant'; variant: Layout };
+
+/**
+ * The optimizer trace a Promote leaves on screen (S3.3): the promoted
+ * candidate's own trace, so MoveTracePanel still shows how the new Active
+ * Layout was found once its card has left the list; the run's move history
+ * and stopReason carry over as they are. This is the one place a Promote
+ * touches the trace (S3.4 adds each candidate's own history and stopReason).
+ */
+export function traceAfterPromote(
+  state: ProjectState,
+  candidate: CandidateSolution | null,
+): Pick<ProjectSession, 'moveHistory' | 'iterationTrace' | 'moveHistoryStopReason' | 'moveHistoryIndex'> {
+  return {
+    moveHistory: state.moveHistory,
+    iterationTrace: candidate?.iterationTrace ?? state.iterationTrace,
+    moveHistoryStopReason: state.moveHistoryStopReason,
+    moveHistoryIndex: null,
+  };
+}
+
+/**
+ * The plan the user reviewed for the layout being promoted: the one the
+ * Promote action carries (its plan from the per-layout cache), else the one on
+ * screen (the draft's analysis, or an inspected layout's own plan), else none
+ * (the new Active is analysed afresh, through the same cache).
+ */
+function reviewedPlanFor(state: ProjectState, source: PromoteSource, given: CandidateSolution | null | undefined): CandidateSolution | null {
+  if (given) return given;
+  if (source.kind === 'working') return getAnalysisForLayout(state, source.layout);
+  const layout = source.kind === 'candidate' ? source.candidate.layout : source.variant;
+  const mirror = state.inspectedAnalysis;
+  return mirror && checkPlanFreshness(mirror.executionPlan, layout).isFresh ? mirror : null;
+}
+
+/**
+ * The one Promote (S3.3, T13), from the draft, a candidate or a saved variant.
+ *
+ * The layout becomes the Active Layout (its finger preferences re-derived and
+ * dead locks pruned), the replaced Active is auto-saved as a variant, and a
+ * differing draft it replaces is kept in Recovered drafts. A pad map matching
+ * a candidate's promotes as that candidate: its card leaves the list (Undo
+ * puts it back) and its trace stays on screen. The plan the user reviewed is
+ * rebound to the new Active, so its fingering and numbers carry over and
+ * nothing is re-solved; staleness detection still holds, because the plan is
+ * bound by the new layout's hash.
+ */
+function promote(state: ProjectState, source: PromoteSource, reviewed: CandidateSolution | null | undefined): ProjectState {
+  const now = new Date().toISOString();
+  const sourceLayout = source.kind === 'working' ? source.layout
+    : source.kind === 'candidate' ? source.candidate.layout
+    : source.variant;
+  const base: Layout = source.kind === 'working'
+    ? source.layout
+    : source.kind === 'candidate'
+      ? {
+        ...source.candidate.layout,
+        id: generateId(),
+        placementLocks: { ...source.candidate.layout.placementLocks },
+        provenance: candidateProvenance(source.candidate),
+      }
+      : { ...source.variant, provenance: `variant:${source.variant.id}` };
+  const promoted: Layout = withDerivedLayoutState(reconcileLayoutVoices({
+    ...base,
+    role: 'active',
+    baselineId: undefined,
+    savedAt: now,
+  }, state.soundStreams), state.voiceConstraints);
+
+  // Every candidate with these pads goes: it is the Active Layout now.
+  const identity = layoutIdentity(state, sourceLayout);
+  const promotedCandidates = state.candidates.filter(c =>
+    (source.kind === 'candidate' && c.id === source.candidate.id) || layoutIdentity(state, c.layout) === identity);
+  const asCandidate = source.kind === 'candidate' ? source.candidate : promotedCandidates[0] ?? null;
+
+  const plan = reviewedPlanFor(state, source, reviewed);
+  const variants = source.kind === 'variant' ? state.savedVariants.filter(v => v.id !== source.variant.id) : state.savedVariants;
+
+  return {
+    ...state,
+    activeLayout: promoted,
+    workingLayout: null,
+    savedVariants: withReplacedActiveSaved(state, variants, now),
+    recoveredDrafts: keepReplacedDraft(state, promoted, now),
+    candidates: promotedCandidates.length > 0 ? state.candidates.filter(c => !promotedCandidates.includes(c)) : state.candidates,
+    updatedAt: now,
+    analysisResult: plan ? rebindAnalysisToLayout(plan, promoted) : null,
+    analysisStale: !plan,
+    inspectedLayout: null,
+    compareCandidateId: null,
+    ...traceAfterPromote(state, asCandidate),
+  };
+}
+
+/**
+ * The layout with every unplaced Sound in scope placed (S3.3): busiest Sound
+ * first, on the shipped Natural Hand Pose pads in their own order, then row by
+ * row; a placed Sound is never moved or covered, so locks hold. "Suggest a
+ * starting layout" writes the result as the draft; "Place remaining N Sounds"
+ * proposes it as a candidate (Q4). Returns the same layout when nothing is
+ * left to place.
+ */
+export function withRemainingPlaced(state: ProjectState, base: Layout): Layout {
+  const streams = getActiveStreams(state);
+  const padToVoice = { ...base.padToVoice };
+  const takenPads = new Set(Object.keys(padToVoice));
+  const placedVoiceIds = new Set(Object.values(padToVoice).map(v => v.id).filter(Boolean));
+
+  // Most-used sounds first, so the busiest sound gets the strongest finger.
+  const byUsage = [...streams].sort((a, b) => b.events.length - a.events.length);
+
+  // The shipped Natural Hand Pose, in its own order. These ten pads are a real
+  // relaxed two-hand shape, and taking them contiguously keeps the suggestion
+  // compact. Reordering them to alternate hands looks tidier but measurably
+  // hurts: on the reference performance it spread the right hand across the
+  // grid and turned a layout with no hard moments into one with thirteen.
+  //
+  // This is only a starting point — Generate is what optimises it — but it
+  // should be a starting point the user would not immediately want to undo.
+  const posePads = getPose0PadsWithOffset(createDefaultPose0(), 0, true)
+    .map(p => padKey(p.row, p.col));
+  const fallbackPads: string[] = [];
+  for (let row = 2; row < 8; row++) {
+    for (let col = 0; col < 8; col++) fallbackPads.push(padKey(row, col));
+  }
+  const candidatePads = [...posePads, ...fallbackPads];
+
+  let cursor = 0;
+  let placed = 0;
+  for (const stream of byUsage) {
+    if (placedVoiceIds.has(stream.id)) continue;
+    while (cursor < candidatePads.length && takenPads.has(candidatePads[cursor])) cursor++;
+    if (cursor >= candidatePads.length) break;
+    const pad = candidatePads[cursor];
+    takenPads.add(pad);
+    padToVoice[pad] = {
+      id: stream.id,
+      name: stream.name,
+      sourceType: 'midi_track' as const,
+      sourceFile: '',
+      originalMidiNote: stream.originalMidiNote,
+      color: stream.color,
+    };
+    placed++;
+  }
+  if (placed === 0) return base;
+  return { ...base, padToVoice, fingerConstraints: buildLayoutFingerConstraints(padToVoice, state.voiceConstraints) };
 }
 
 // ============================================================================
@@ -1305,7 +1510,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
           ...state,
           updatedAt: new Date().toISOString(),
           analysisStale: true,
-          workingLayout: { ...state.workingLayout, placementLocks: newLocks },
+          workingLayout: draftOrNull({ ...state.workingLayout, placementLocks: newLocks }, state.activeLayout),
         };
       }
       // No working layout: lock on active layout directly (locks are durable)
@@ -1360,72 +1565,16 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       };
     }
 
+    // Every Promote is one: the draft's, a candidate's and a variant's (S3.3, T13).
     case 'PROMOTE_WORKING_LAYOUT': {
       if (!state.workingLayout) return state;
-      const now = new Date().toISOString();
-
-      // Auto-save the replaced active layout as a variant (if it has any assignments)
-      const autoSavedVariants = withReplacedActiveSaved(state, state.savedVariants, now);
-
-      // Promote: working becomes active, keeping its base name and provenance.
-      const promoted: Layout = withDerivedLayoutState({
-        ...state.workingLayout,
-        role: 'active',
-        baselineId: undefined,
-        savedAt: now,
-      }, state.voiceConstraints);
-
-      return {
-        ...state,
-        activeLayout: promoted,
-        workingLayout: null,
-        savedVariants: autoSavedVariants,
-        updatedAt: now,
-        analysisStale: true,
-        // Preserve candidates — they remain valid for comparison/promotion
-        inspectedLayout: null,
-        compareCandidateId: null,
-      };
+      return promote(state, { kind: 'working', layout: state.workingLayout }, action.payload?.reviewed);
     }
 
     case 'PROMOTE_CANDIDATE': {
       const candidate = state.candidates.find(c => c.id === action.payload.candidateId);
       if (!candidate) return state;
-      const now = new Date().toISOString();
-
-      // Auto-save the replaced active layout as a variant
-      const autoSavedVariants = withReplacedActiveSaved(state, state.savedVariants, now);
-
-      // Promote: candidate's layout becomes active, reconciling voice metadata
-      // and re-deriving its pad constraints from the user's preferences.
-      const promoted: Layout = withDerivedLayoutState(reconcileLayoutVoices({
-        ...candidate.layout,
-        id: generateId(),
-        role: 'active',
-        baselineId: undefined,
-        placementLocks: { ...candidate.layout.placementLocks },
-        savedAt: now,
-        provenance: candidateProvenance(candidate),
-      }, state.soundStreams), state.voiceConstraints);
-
-      // Keep non-promoted candidates so the user can still compare or promote others
-      const remainingCandidates = state.candidates.filter(c => c.id !== action.payload.candidateId);
-
-      return {
-        ...state,
-        activeLayout: promoted,
-        workingLayout: null,
-        savedVariants: autoSavedVariants,
-        recoveredDrafts: keepReplacedDraft(state, promoted, now),
-        updatedAt: now,
-        // Re-bind the candidate's plan to the promoted layout so the finger
-        // assignments, costs and timeline pills keep rendering after promotion.
-        analysisResult: rebindAnalysisToLayout(candidate, promoted),
-        analysisStale: false,
-        candidates: remainingCandidates,
-        inspectedLayout: null,
-        compareCandidateId: null,
-      };
+      return promote(state, { kind: 'candidate', candidate }, action.payload.reviewed);
     }
 
     case 'DELETE_CANDIDATE': {
@@ -1498,32 +1647,7 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'PROMOTE_VARIANT': {
       const variant = state.savedVariants.find(v => v.id === action.payload.variantId);
       if (!variant) return state;
-      const now = new Date().toISOString();
-
-      // Auto-save the replaced active layout as a variant
-      const autoSavedVariants = withReplacedActiveSaved(
-        state, state.savedVariants.filter(v => v.id !== action.payload.variantId), now);
-
-      const promoted: Layout = withDerivedLayoutState(reconcileLayoutVoices({
-        ...variant,
-        role: 'active',
-        baselineId: undefined,
-        savedAt: now,
-        provenance: `variant:${variant.id}`,
-      }, state.soundStreams), state.voiceConstraints);
-
-      return {
-        ...state,
-        activeLayout: promoted,
-        workingLayout: null,
-        savedVariants: autoSavedVariants,
-        recoveredDrafts: keepReplacedDraft(state, promoted, now),
-        updatedAt: now,
-        analysisStale: true,
-        analysisResult: null,
-        inspectedLayout: null,
-        compareCandidateId: null,
-      };
+      return promote(state, { kind: 'variant', variant }, action.payload.reviewed);
     }
 
     case 'DELETE_VARIANT': {
@@ -1613,12 +1737,12 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return { ...state, analysisResult: action.payload, analysisStale: false };
 
     case 'SET_CANDIDATES': {
-      // Candidates are proposals (decision Q4): a run's first candidate, A,
-      // is shown read-only, even on an empty grid, and nothing is written. The
-      // draft stays as it was until "Use as my draft".
+      // Candidates are proposals (decision Q4): a run's first candidate is
+      // shown read-only, even on an empty grid, and nothing is written. The
+      // draft stays as it was until "Use as my draft". Each run is added to
+      // the list, not put in its place (S3.3).
       const next: ProjectState = {
-        ...state,
-        candidates: action.payload,
+        ...withInstalledRun(state, action.payload),
         generationSummary: null,
         compareCandidateId: null,
         isProcessing: false,
@@ -1626,6 +1750,26 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       const first = action.payload[0];
       if (first) return inspecting(next, { kind: 'candidate', id: first.id });
       return state.inspectedLayout?.kind === 'candidate' ? inspecting(next, null) : next;
+    }
+
+    case 'ADD_CANDIDATE_RUN': {
+      // Installed like a Generate run, so it is shown read-only too (S3.2).
+      const first = action.payload[0];
+      if (!first) return state;
+      return inspecting(withInstalledRun(state, action.payload), { kind: 'candidate', id: first.id });
+    }
+
+    case 'CLEAR_OLDER_RUNS': {
+      const { runs, candidateIds } = olderRuns(state);
+      if (runs.length === 0) return state;
+      const cleared = (id: string | null | undefined) => !!id && candidateIds.has(id);
+      return {
+        ...state,
+        candidates: state.candidates.filter(c => !candidateIds.has(c.id)),
+        candidateRuns: { ...state.candidateRuns, runs: state.candidateRuns.runs.slice(0, 1) },
+        inspectedLayout: state.inspectedLayout?.kind === 'candidate' && cleared(state.inspectedLayout.id) ? null : state.inspectedLayout,
+        compareCandidateId: cleared(state.compareCandidateId) ? null : state.compareCandidateId,
+      };
     }
 
     case 'SET_GENERATION_SUMMARY':
@@ -1663,52 +1807,11 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
 
       const base = getDisplayedLayout(state) ?? state.activeLayout;
       // The base name stays; "suggested" is where it came from, not its name (T32).
-      const working: Layout = { ...cloneLayout(base, generateId(), base.name, 'working'), provenance: 'suggested' };
-
-      const takenPads = new Set(Object.keys(working.padToVoice));
-      const placedVoiceIds = new Set(
-        Object.values(working.padToVoice).map(v => v.id).filter(Boolean),
-      );
-
-      // Most-used sounds first, so the busiest sound gets the strongest finger.
-      const byUsage = [...streams].sort((a, b) => b.events.length - a.events.length);
-
-      // The shipped Natural Hand Pose, in its own order. These ten pads are a real
-      // relaxed two-hand shape, and taking them contiguously keeps the suggestion
-      // compact. Reordering them to alternate hands looks tidier but measurably
-      // hurts: on the reference performance it spread the right hand across the
-      // grid and turned a layout with no hard moments into one with thirteen.
-      //
-      // This is only a starting point — Generate is what optimises it — but it
-      // should be a starting point the user would not immediately want to undo.
-      const posePads = getPose0PadsWithOffset(createDefaultPose0(), 0, true)
-        .map(p => padKey(p.row, p.col));
-      const fallbackPads: string[] = [];
-      for (let row = 2; row < 8; row++) {
-        for (let col = 0; col < 8; col++) fallbackPads.push(padKey(row, col));
-      }
-      const candidatePads = [...posePads, ...fallbackPads];
-
-      let cursor = 0;
-      for (const stream of byUsage) {
-        if (placedVoiceIds.has(stream.id)) continue;
-        while (cursor < candidatePads.length && takenPads.has(candidatePads[cursor])) cursor++;
-        if (cursor >= candidatePads.length) break;
-        const pad = candidatePads[cursor];
-        takenPads.add(pad);
-        working.padToVoice[pad] = {
-          id: stream.id,
-          name: stream.name,
-          sourceType: 'midi_track' as const,
-          sourceFile: '',
-          originalMidiNote: stream.originalMidiNote,
-          color: stream.color,
-        };
-      }
-
-      working.fingerConstraints = buildLayoutFingerConstraints(
-        working.padToVoice, state.voiceConstraints,
-      );
+      const clone: Layout = { ...cloneLayout(base, generateId(), base.name, 'working'), provenance: 'suggested' };
+      const filled = withRemainingPlaced(state, clone);
+      const working: Layout = filled === clone
+        ? { ...clone, fingerConstraints: buildLayoutFingerConstraints(clone.padToVoice, state.voiceConstraints) }
+        : filled;
 
       return {
         ...state,
@@ -1887,6 +1990,7 @@ export function createEmptyProjectState(): ProjectState {
     recoveredDrafts: [],
     analysisResult: null,
     candidates: [],
+    candidateRuns: EMPTY_CANDIDATE_RUNS,
     inspectedLayout: null,
     inspectedAnalysis: null,
     generationSummary: null,

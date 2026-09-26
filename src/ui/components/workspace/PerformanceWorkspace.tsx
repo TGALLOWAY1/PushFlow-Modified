@@ -963,6 +963,7 @@ function PerformanceWorkspaceInner() {
                       onToggleCompare={handleToggleCompare}
                       onCompare={handleOpenCompare}
                       onRetryGenerate={handleGenerate}
+                      onVariantSaved={handleVariantSaved}
                     />
                     {((state.moveHistory && state.moveHistory.length > 0) || (activeTrace && activeTrace.length > 0)) && (
                       <div className="p-2.5">

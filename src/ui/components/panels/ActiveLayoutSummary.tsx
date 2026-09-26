@@ -11,10 +11,11 @@
 import { useState, useMemo } from 'react';
 import { useProject } from '../../state/ProjectContext';
 import {
-  getDisplayedCandidate,
   getActiveStreams,
   resolveInspectedLayout,
 } from '../../state/projectState';
+import { useShownAnalysis } from '../../hooks/useShownAnalysis';
+import { UnplacedSounds } from './UnplacedSounds';
 import { inspectedSubject } from '../../state/layoutSubject';
 import { readOnlyHint } from '../../hooks/useReadOnlyHint';
 import { SubjectChip } from '../shared/SubjectChip';
@@ -24,12 +25,11 @@ import { type ConstraintRelaxationSummary } from '../../../types/executionPlan';
 import { CostBreakdownBars, FeasibilityBadge } from './CostBreakdownBars';
 import { SelectedEventCard } from './SelectedEventCard';
 import { findSelectedMoment } from '../../analysis/selectedMoment';
-import { analysisScopeLine, planSoundIds } from '../../analysis/analysisScope';
+import { analysisScope, planSoundIds, scopeLineOf } from '../../analysis/analysisScope';
 import { EventCostChart } from './EventCostChart';
 import { LearnMoreModal } from './LearnMoreModal';
 import { buildSelectedTransitionModel } from '../../analysis/selectionModel';
 import { scoreTile } from '../../analysis/planScore';
-import { useLayoutAnalysis } from '../../analysis/layoutAnalysis';
 import { formatFingerConstraint, parseFingerConstraint } from '../../../utils/fingerConstraints';
 import { formatPadLocator, formatPadPosition } from '../../../utils/padPosition';
 import { formatBarBeat, formatMilliseconds, formatSeconds } from '../../../utils/musicalTime';
@@ -43,17 +43,16 @@ export function ActiveLayoutSummary() {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
 
-  // The layout on screen (S3.2) and its own plan.
+  // The layout on screen (S3.2) and its own plan; while a re-solve is pending,
+  // the previous plan and Score of the same layout, dimmed (S3.3, T14). The
+  // Score is the Playability of the layout the grid shows (S3.1).
   const shown = resolveInspectedLayout(state);
   const displayedLayout = shown.layout;
   const subject = inspectedSubject(state);
-  const displayedCandidate = getDisplayedCandidate(state);
+  const { candidate: displayedCandidate, score: layoutScore, updating } = useShownAnalysis();
   const activeStreams = getActiveStreams(state);
   const currentPlan = displayedCandidate?.executionPlan;
   const assignments = currentPlan?.fingerAssignments;
-  // The Score is the Playability of the layout the grid shows (S3.1), from the
-  // one yardstick, whichever plan the panel is showing.
-  const layoutScore = useLayoutAnalysis(displayedLayout);
   // A read-only layout's finger controls say how to edit it instead (S3.2).
   const editHint = readOnlyHint(state);
   const fingerReason = useDisabledReason(editHint);
@@ -69,12 +68,14 @@ export function ActiveLayoutSummary() {
     () => findSelectedMoment(assignments, state.selectedEventIndex),
     [assignments, state.selectedEventIndex],
   );
-  // The plan's own scope (see analysisScope.ts); the live scope when there is no plan.
-  const scope = analysisScopeLine(
+  // The plan's own scope (see analysisScope.ts); the live scope when there is
+  // no plan. Its placement makes a partly placed layout "Unfinished" (S3.3).
+  const scoped = analysisScope(
     state.soundStreams,
     displayedLayout,
     currentPlan ? planSoundIds(currentPlan.fingerAssignments) : undefined,
   );
+  const scope = scopeLineOf(scoped);
 
   // Transition data
   const transition = useMemo(
@@ -112,12 +113,8 @@ export function ActiveLayoutSummary() {
       <div className="flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--border-subtle)] flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <h3 className="section-header">Layout Summary</h3>
-            {state.analysisStale && !shown.readOnly && currentPlan && (
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" title="Analysis outdated" />
-            )}
-          </div>
+          {/* Freshness is the state bar's ("Updating…"); here the numbers dim (T14). */}
+          <h3 className="section-header">Layout Summary</h3>
           <button
             className="text-pf-xs text-[var(--accent-primary-soft)] hover:text-[var(--text-primary)] transition-colors"
             onClick={() => setLearnMoreOpen(true)}
@@ -164,7 +161,13 @@ export function ActiveLayoutSummary() {
             )}
           </div>
 
-          {/* Quick stats */}
+          {/* Quick stats; the previous numbers, dimmed, while a re-solve is pending (T14) */}
+          <div
+            data-testid="analysis-numbers"
+            data-updating={updating ? 'true' : undefined}
+            aria-busy={updating || undefined}
+            className={`space-y-3 transition-opacity duration-pf-normal ${updating ? 'opacity-50' : ''}`}
+          >
           {currentPlan ? (
             <div className="grid grid-cols-4 gap-1.5">
               <QuickStat label="Score" testId="analysis-score" {...scoreTile(layoutScore)} />
@@ -194,7 +197,7 @@ export function ActiveLayoutSummary() {
               </div>
 
               {/* No analysis means no claim: 'Unknown', never 'Feasible'. */}
-              {mappedCount > 0 && <FeasibilityBadge pending={state.isProcessing} scope={scope} />}
+              {mappedCount > 0 && <FeasibilityBadge pending={state.isProcessing} scope={scope} placement={scoped.placement} />}
 
               {/* An empty grid is not an unplayable layout — it is an unfinished one.
                   Say so; the grid's state bar offers the starting point (T44). */}
@@ -234,12 +237,17 @@ export function ActiveLayoutSummary() {
               noteCount={counts.notes}
               events={counts.events}
               scope={scope}
+              placement={scoped.placement}
             />
-
-            {selectedMoment && (
-              <SelectedEventCard selected={selectedMoment} tempo={state.tempo} scope={scope} subject={subject} transition={transition} />
-            )}
             </>
+          )}
+          </div>
+
+          {/* A partly placed layout: what is left to place, and "Place remaining N Sounds" (T25, T37). */}
+          <UnplacedSounds />
+
+          {currentPlan && selectedMoment && (
+            <SelectedEventCard selected={selectedMoment} tempo={state.tempo} scope={scope} subject={subject} transition={transition} />
           )}
 
           {/* Event difficulty chart (collapsible) */}

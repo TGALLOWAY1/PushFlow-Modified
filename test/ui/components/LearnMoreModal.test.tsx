@@ -10,12 +10,20 @@
  * FeasibilityBadge uses (VERDICT_TIERS), and the per-event cost with the same
  * factor labels as the Selected event card (FACTOR_META). The App Flow tab
  * names the layout roles from the list the layout-state bar's chips use
- * (ROLE_META, S3.2), and says looking never writes your draft.
+ * (ROLE_META, S3.2), and says looking never writes your draft. S3.3 (P3-10c):
+ * the Unfinished tier and placed-only scoring, with the badge's own headline;
+ * Promote acts at once with Undo, Keep, and candidates are temporary.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import { HARD_CONSTRAINTS, LOCK_ENFORCING_METHODS, SOLVER_CONSTRAINT_RULES, LearnMoreModal } from '../../../src/ui/components/panels/LearnMoreModal';
+import {
+  HARD_CONSTRAINTS,
+  LOCK_ENFORCING_METHODS,
+  SOLVER_CONSTRAINT_RULES,
+  UNFINISHED_EXAMPLE,
+  LearnMoreModal,
+} from '../../../src/ui/components/panels/LearnMoreModal';
 import {
   CONSTRAINT_RULE_NAMES,
   OPTIMIZER_METHOD_KEYS,
@@ -24,7 +32,7 @@ import {
   getAvailableMethodKeys,
 } from '../../../src/engine';
 import { PLAYABILITY_TOOLTIP } from '../../../src/ui/analysis/planScore';
-import { VERDICT_TIERS } from '../../../src/ui/analysis/verdictTiers';
+import { VERDICT_TIERS, verdictHeadline } from '../../../src/ui/analysis/verdictTiers';
 import { FACTOR_KEYS, FACTOR_META } from '../../../src/ui/analysis/factorMeta';
 import { FeasibilityBadge } from '../../../src/ui/components/panels/CostBreakdownBars';
 import { ROLE_META, ROLE_ORDER } from '../../../src/ui/state/layoutSubject';
@@ -102,13 +110,43 @@ describe('Learn More sync (P1b-8)', () => {
     cleanup();
 
     // The badge renders the same labels for the same levels.
-    for (const tier of VERDICT_TIERS.filter(t => t.level !== 'unknown')) {
+    for (const tier of VERDICT_TIERS.filter(t => t.level !== 'unknown' && t.level !== 'unfinished')) {
       render(<FeasibilityBadge verdict={{ level: tier.level as 'feasible', summary: 's', reasons: [] }} scope="scope" />);
       expect(screen.getByTestId('verdict-badge').textContent).toContain(tier.label);
       cleanup();
     }
+    // Unfinished arises as it does on screen: the placed notes play, and some Sounds have no pad (S3.3).
+    const unfinished = VERDICT_TIERS.find(t => t.level === 'unfinished')!;
+    render(<FeasibilityBadge verdict={{ level: 'feasible', summary: 's', reasons: [] }} placement={UNFINISHED_EXAMPLE} scope="scope" />);
+    expect(screen.getByTestId('verdict-badge').dataset.level).toBe('unfinished');
+    expect(screen.getByTestId('verdict-headline').textContent).toBe(`${unfinished.label} · 5 of 7 Sounds placed`);
+    cleanup();
     render(<FeasibilityBadge scope="scope" />);
     expect(screen.getByTestId('verdict-badge').textContent).toContain(VERDICT_TIERS.find(t => t.level === 'unknown')!.label);
+  });
+
+  it('explains placed-only scoring and the Unfinished tier with the badge’s own headline (S3.3, P3-10c)', () => {
+    openTab('Cost Factors');
+    const row = screen.getByTestId('learn-verdict-unfinished');
+    expect(row.textContent).toContain('Unfinished');
+    expect(row.textContent).toContain('Only the notes of placed Sounds are scored');
+    const text = screen.getByTestId('learn-placed-only').textContent ?? '';
+    expect(text).toContain('Only placed Sounds are scored');
+    expect(text).toContain('left out of the analysis, the verdict and the Score');
+    // Quoted from the function the badge headlines with, so it can't drift.
+    expect(text).toContain(`reads ‘${verdictHeadline('unfinished', UNFINISHED_EXAMPLE)}’`);
+    expect(verdictHeadline('unfinished', UNFINISHED_EXAMPLE)).toBe('Unfinished · 5 of 7 Sounds placed');
+    expect(text).toContain('covers the notes you can play so far');
+    expect(text).toContain('drawn as outlines');
+    expect(text).toContain('‘Place remaining’ proposes a candidate');
+    // Unplayable is kept for placed notes; an unplaced Sound is not a failure.
+    const all = document.body.textContent ?? '';
+    expect(all).toContain('‘Unfinished’ isn’t a failure either');
+    expect(all).toContain('‘Infeasible’ is kept for placed notes that can’t be played');
+    expect(all).toContain('1 not placed yet');
+    expect(screen.getByTestId('learn-score').textContent).not.toContain('a note has no pad');
+    cleanup();
+    expect(openConstraints()).toContain('its notes are left out of the analysis until you place it (the layout reads Unfinished)');
   });
 
   it('renders its factor list from FACTOR_META, in order, with the registry’s colours (P2-9)', () => {
@@ -172,5 +210,14 @@ describe('Learn More · which layout is on screen (S3.2)', () => {
     expect(overview).toContain('Generating never changes your layout');
     expect(overview).toContain('Looking never writes your draft');
     expect(overview).toContain('Back to my draft returns to it');
+  });
+
+  it('says Promote acts at once with Undo, Keep saves a candidate, and candidates are temporary (S3.3)', () => {
+    const flow = openTab('App Flow');
+    expect(flow).toContain('Promote makes the layout you choose the new Active Layout at once, with Undo');
+    expect(flow).toContain('The replaced Active Layout is kept as a variant, and a draft it replaces goes to Recovered drafts');
+    expect(flow).toContain('Keep on a candidate, keeps a layout as a Saved Layout Variant');
+    expect(flow).toContain('Candidates are temporary: each Generate adds a run, and they go when you leave the project');
+    expect(flow).toContain('Compare two side by side, scored the same way as everywhere else');
   });
 });

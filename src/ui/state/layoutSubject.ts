@@ -11,6 +11,7 @@ import { type CandidateSolution } from '../../types/candidateSolution';
 import { layoutDiff } from '../analysis/layoutDiff';
 import { strategyLabel } from '../analysis/strategyLabels';
 import { layoutLabel } from './layoutLabels';
+import { candidateLetterFor } from './candidateRuns';
 import {
   hasWorkingChanges,
   resolveInspectedLayout,
@@ -76,35 +77,19 @@ export interface LayoutSubject {
   name: string;
 }
 
-/**
- * A candidate's letter by its place in the list: A for the first, then B … Z,
- * AA … One helper, so S3.3 can make the letters stable for the session.
- */
-export function candidateLetter(index: number): string {
-  let n = Math.max(0, Math.floor(index));
-  let letters = '';
-  do {
-    letters = String.fromCharCode(65 + (n % 26)) + letters;
-    n = Math.floor(n / 26) - 1;
-  } while (n >= 0);
-  return letters;
-}
-
-/** The letter of a candidate in this list ("?" when it isn't in it). */
-export function candidateLetterFor(candidates: readonly CandidateSolution[], candidateId: string): string {
-  const index = candidates.findIndex(c => c.id === candidateId);
-  return index < 0 ? '?' : candidateLetter(index);
-}
+// A candidate's letter is given when it is installed and kept for the session
+// (S3.3): "Candidate B" stays B after a delete, a Promote or another run.
+export { candidateLetter, candidateLetterFor } from './candidateRuns';
 
 /** A candidate's name: how it was made (T20). Its layout carries the user's base name, so that is no name for it. */
 export function candidateName(candidate: CandidateSolution): string {
   return strategyLabel(candidate.metadata?.strategy);
 }
 
-export function candidateSubject(candidates: readonly CandidateSolution[], candidate: CandidateSolution): LayoutSubject {
+export function candidateSubject(state: Pick<ProjectState, 'candidates' | 'candidateRuns'>, candidate: CandidateSolution): LayoutSubject {
   return {
     role: 'candidate',
-    chip: `${ROLE_META.candidate.label} ${candidateLetterFor(candidates, candidate.id)}`,
+    chip: `${ROLE_META.candidate.label} ${candidateLetterFor(state, candidate.id)}`,
     name: candidateName(candidate),
   };
 }
@@ -117,7 +102,7 @@ export function layoutSubject(layout: Layout, role: Exclude<SubjectRole, 'candid
 /** The subject of whatever the screen shows now (resolveInspectedLayout). */
 export function inspectedSubject(state: ProjectState): LayoutSubject {
   const shown = resolveInspectedLayout(state);
-  if (shown.candidate) return candidateSubject(state.candidates, shown.candidate);
+  if (shown.candidate) return candidateSubject(state, shown.candidate);
   return layoutSubject(shown.layout, shown.role === 'candidate' ? 'active' : shown.role);
 }
 

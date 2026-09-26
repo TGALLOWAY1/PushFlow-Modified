@@ -38,7 +38,7 @@ export interface AnalysisKey {
 export const ANALYSIS_CACHE_CAPACITY = 64;
 
 /** 53-bit string hash (cyrb53); stable across sessions. */
-function hashString(str: string, seed = 0): string {
+export function hashString(str: string, seed = 0): string {
   let h1 = 0xdeadbeef ^ seed;
   let h2 = 0x41c6ce57 ^ seed;
   for (let i = 0; i < str.length; i++) {

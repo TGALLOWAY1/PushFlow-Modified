@@ -16,6 +16,8 @@ export function strategyLabel(strategy: string | undefined | null): string {
     case 'baseline': return 'Based on your layout';
     case 'compact-right': return 'Compact, right hand';
     case 'compact-left': return 'Compact, left hand';
+    // "Place remaining N Sounds" (S3.3): your placed Sounds, plus the rest.
+    case 'remaining-placed': return 'Remaining placed';
     default: return strategy;
   }
 }

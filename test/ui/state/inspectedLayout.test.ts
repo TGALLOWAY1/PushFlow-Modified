@@ -30,6 +30,7 @@ import {
 import { hashLayout } from '../../../src/engine/mapping/mappingResolver';
 import { type Layout } from '../../../src/types/layout';
 import { type CandidateSolution } from '../../../src/types/candidateSolution';
+import { EMPTY_CANDIDATE_RUNS } from '../../../src/ui/state/candidateRuns';
 import { importTestMidi1 } from '../../helpers/testMidi1';
 
 const reduce = (state: ProjectState, ...actions: ProjectAction[]) => actions.reduce(projectReducer, state);
@@ -301,7 +302,10 @@ describe('the plan on screen', () => {
 describe('candidateLetter', () => {
   it('names candidates A, B, … Z, then AA, AB', () => {
     expect([0, 1, 25, 26, 27, 51, 52].map(candidateLetter)).toEqual(['A', 'B', 'Z', 'AA', 'AB', 'AZ', 'BA']);
-    expect(candidateLetterFor([{ id: 'x' }, { id: 'y' }] as CandidateSolution[], 'y')).toBe('B');
-    expect(candidateLetterFor([], 'y')).toBe('?');
+    // S3.3: a candidate's letter is the one it got when installed (candidateRuns.test.ts);
+    // one put in the list without a run falls back to its place in the list.
+    const loose = { candidates: [{ id: 'x' }, { id: 'y' }] as CandidateSolution[], candidateRuns: EMPTY_CANDIDATE_RUNS };
+    expect(candidateLetterFor(loose, 'y')).toBe('B');
+    expect(candidateLetterFor({ candidates: [], candidateRuns: EMPTY_CANDIDATE_RUNS }, 'y')).toBe('?');
   });
 });

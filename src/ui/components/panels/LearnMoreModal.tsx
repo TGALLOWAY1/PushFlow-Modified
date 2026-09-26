@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { InputTableSections } from '../shared/ShortcutSheet';
 import { CONSTRAINT_RULE_NAMES, OPTIMIZER_METHOD_KEYS, OPTIMIZER_METHOD_LABELS, PLAN_SCORE_WEIGHTS } from '@/engine';
-import { VERDICT_TIERS } from '../../analysis/verdictTiers';
+import { VERDICT_TIERS, verdictHeadline } from '../../analysis/verdictTiers';
 import { FACTOR_KEYS, FACTOR_META, type FactorKey } from '../../analysis/factorMeta';
 import { ROLE_META, ROLE_ORDER } from '../../state/layoutSubject';
 import { RoleChip } from '../shared/SubjectChip';
@@ -59,9 +59,9 @@ const WORKFLOW_STEPS = [
   { step: '2', title: 'Place', description: 'Click a Sound, then a pad (or drag it), or Suggest a starting layout' },
   { step: '3', title: 'Analyze', description: 'Analysis updates automatically as you place Sounds: costs and difficulty per event' },
   { step: '4', title: 'Generate', description: 'Generate proposes alternative layouts and shows candidate A read-only; your draft stays as it is' },
-  { step: '5', title: 'Inspect and compare', description: 'Inspect any layout on the grid without changing your draft, or Compare two side by side. Use as my draft to edit one' },
-  { step: '6', title: 'Keep', description: 'Save variant keeps a layout under a name, without changing the Active Layout' },
-  { step: '7', title: 'Promote', description: 'Promote makes the layout you choose the new Active Layout' },
+  { step: '5', title: 'Inspect and compare', description: 'Inspect any layout on the grid without changing your draft, or Compare two side by side, scored the same way as everywhere else. Use as my draft to edit one' },
+  { step: '6', title: 'Keep', description: 'Save variant, or Keep on a candidate, keeps a layout as a Saved Layout Variant without changing the Active Layout. Candidates are temporary: each Generate adds a run, and they go when you leave the project' },
+  { step: '7', title: 'Promote', description: 'Promote makes the layout you choose the new Active Layout at once, with Undo. The replaced Active Layout is kept as a variant, and a draft it replaces goes to Recovered drafts' },
 ];
 
 export function LearnMoreModal({ open, onClose }: LearnMoreModalProps) {
@@ -504,9 +504,13 @@ function CostFactorsSection() {
   );
 }
 
+/** The partly placed layout Learn More quotes, headlined as the badge would (S3.3). */
+export const UNFINISHED_EXAMPLE = { placed: 5, total: 7 } as const;
+
 /**
  * The Score every layout shows (S3.1, one yardstick), explained from the
  * engine's own weights so the text can't drift from the number (invariant 2).
+ * Only placed Sounds are scored (S3.3, T25).
  */
 function ScoreSection() {
   const { hardEvent, unplayableEvent, ergonomicCap } = PLAN_SCORE_WEIGHTS;
@@ -520,9 +524,16 @@ function ScoreSection() {
         {unplayableEvent} for each event that can&rsquo;t be played, and minus up to {ergonomicCap} for the average cost
         per event of the {listNames(FACTOR_KEYS.map(k => FACTOR_META[k].label))} factors above (a cost family you switch
         off adds nothing). A hard event needs a grip beyond the strict hand-geometry limits; an event can&rsquo;t be
-        played when a note has no pad, one finger would strike two pads at once, or a hand would have to move faster
-        than it can. So the same layout scores the same wherever it appears (its row, the Analysis panel and Compare),
-        whichever optimizer proposed it. &lsquo;Scoring&hellip;&rsquo; shows while a layout is being scored.
+        played when one finger would strike two pads at once, or a hand would have to move faster than it can. So the
+        same layout scores the same wherever it appears (its row, the Analysis panel and Compare), whichever optimizer
+        proposed it. &lsquo;Scoring&hellip;&rsquo; shows while a layout is being scored.
+      </p>
+      <p data-testid="learn-placed-only" className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
+        Only placed Sounds are scored. The notes of a Sound with no pad yet are left out of the analysis, the verdict and
+        the Score, so a partly placed layout reads &lsquo;{verdictHeadline('unfinished', UNFINISHED_EXAMPLE)}&rsquo;, and
+        its Score covers the notes you can play so far, rather than failing for the rest. Its unplaced
+        notes stay in the timeline, drawn as outlines, and &lsquo;Place remaining&rsquo; proposes a candidate that places
+        them without moving the ones you placed.
       </p>
     </div>
   );
@@ -543,8 +554,9 @@ function VerdictsSection() {
       <h4 className="text-pf-base font-medium text-[var(--text-primary)]">Verdicts</h4>
       <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
         The layout verdict always describes the whole layout, whichever event you select. Under it, a scope line
-        says what was analysed, for example &ldquo;Analysing 5 of 7 Sounds &middot; 2 muted&rdquo;: muted Sounds are
-        left out of the analysis, and a Sound that isn&rsquo;t on the grid can&rsquo;t be played.
+        says what was analysed, for example &ldquo;Analysing 4 of 7 Sounds &middot; 2 muted &middot; 1 not placed
+        yet&rdquo;: muted Sounds are left out of the analysis, and so are the notes of a Sound that isn&rsquo;t on the
+        grid yet.
       </p>
       <div className="space-y-1.5">
         {VERDICT_TIERS.map(tier => (
@@ -559,7 +571,8 @@ function VerdictsSection() {
       <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
         &lsquo;Unknown&rsquo; is not a warning about your layout: it means there is no analysis to judge it by yet
         (&lsquo;Analysing&hellip;&rsquo; while one runs). PushFlow never shows &lsquo;Feasible&rsquo; without an analysis
-        that says so.
+        that says so. &lsquo;Unfinished&rsquo; isn&rsquo;t a failure either: some Sounds have no pad yet, and every note of
+        the placed ones plays. &lsquo;Infeasible&rsquo; is kept for placed notes that can&rsquo;t be played.
       </p>
       <h4 className="text-pf-base font-medium text-[var(--text-primary)]">Per-event cost</h4>
       <p data-testid="learn-per-event-cost" className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
@@ -649,7 +662,7 @@ export const HARD_CONSTRAINTS = [
       {
         name: 'Sound Identity',
         key: 'identity',
-        description: 'Every event is matched to a pad by its Sound, never by MIDI pitch. A Sound with no pad is unmapped even when another Sound shares its pitch, so an unplaced Sound never borrows another Sound\u2019s pad or fingering, and its events count as unplayable until you place it. Imported pitch is kept only as provenance.',
+        description: 'Every event is matched to a pad by its Sound, never by MIDI pitch. A Sound with no pad is unmapped even when another Sound shares its pitch, so an unplaced Sound never borrows another Sound\u2019s pad or fingering, and its notes are left out of the analysis until you place it (the layout reads Unfinished). Imported pitch is kept only as provenance.',
       },
       {
         // Generate proposes; it never takes a placed Sound off the grid (T15).

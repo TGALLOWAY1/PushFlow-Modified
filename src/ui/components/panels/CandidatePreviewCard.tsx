@@ -4,7 +4,8 @@
  * Compact preview of a candidate solution with mini grid,
  * summary metadata, selection checkbox for compare, and action buttons.
  * Inspect shows it on the grid read-only and writes nothing (S3.2); the
- * state bar then offers "Use as my draft".
+ * state bar then offers "Use as my draft". Promote acts at once, with an Undo
+ * toast (S3.3, the one Promote), and Keep saves it as a Saved Layout Variant.
  */
 
 import { useState } from 'react';
@@ -20,7 +21,7 @@ import { type V1CostBreakdown } from '../../../types/diagnostics';
 interface CandidatePreviewCardProps {
   candidate: CandidateSolution;
   soundStreams: SoundStream[];
-  /** Its letter in the list (candidateLetter): the state bar calls it "Candidate B". */
+  /** Its letter for the session (candidateLetterFor): the state bar calls it "Candidate B". */
   letter: string;
   /** It is the layout on screen. */
   isInspected: boolean;
@@ -28,6 +29,12 @@ interface CandidatePreviewCardProps {
   /** Shows it on the grid, read-only. */
   onInspect: () => void;
   onPromote: () => void;
+  /** Saves it as a Saved Layout Variant (T30); absent where there is no Keep. */
+  onKeep?: () => void;
+  /** A Saved Layout Variant already has its pads. */
+  kept?: boolean;
+  /** Made for an earlier version of the performance (T14). */
+  stale?: boolean;
   onDelete: () => void;
   onToggleCompare: () => void;
 }
@@ -79,10 +86,12 @@ export function CandidatePreviewCard({
   isCheckedForCompare,
   onInspect,
   onPromote,
+  onKeep,
+  kept = false,
+  stale = false,
   onDelete,
   onToggleCompare,
 }: CandidatePreviewCardProps) {
-  const [confirmPromote, setConfirmPromote] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const overall = candidate.difficultyAnalysis.overallScore;
   const topDriver = topCostDriver(candidate.executionPlan.averageMetrics);
@@ -93,6 +102,7 @@ export function CandidatePreviewCard({
       data-candidate-id={candidate.id}
       data-letter={letter}
       data-inspected={isInspected ? 'true' : undefined}
+      data-stale={stale ? 'true' : undefined}
       className={`rounded-pf-lg border transition-all relative ${
         isInspected
           ? 'border-role-candidate bg-role-candidate/5 ring-1 ring-role-candidate/30'
@@ -164,6 +174,15 @@ export function CandidatePreviewCard({
             <span className="text-pf-xs text-[var(--text-secondary)] truncate max-w-[80px]">
               {strategyLabel(candidate.metadata.strategy)}
             </span>
+            {stale && (
+              <span
+                data-testid="candidate-stale"
+                className="text-pf-micro px-1 rounded-pf-sm border border-dashed border-[var(--status-warn-border)] text-[var(--status-warn)]"
+                title="Made for an earlier version of the performance: its Score is re-scored for the notes as they are now, but how it was found (its plan and trace) describes the old notes"
+              >
+                Stale
+              </span>
+            )}
           </div>
           <span
             className="text-pf-xs font-mono font-medium mr-5"
@@ -279,31 +298,30 @@ export function CandidatePreviewCard({
           >
             Inspect
           </button>
+          {/* The one Promote (S3.3): at once, with an Undo toast; no timed "Confirm?". */}
           <button
-            className={`flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-all ${
-              confirmPromote 
-                ? 'bg-emerald-600 text-white shadow-inner flex items-center justify-center gap-1.5 scale-[1.02] border-emerald-400' 
-                : 'bg-emerald-600/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/25'
-            }`}
-            onClick={e => { 
-              e.stopPropagation(); 
-              if (confirmPromote) {
-                onPromote();
-                setConfirmPromote(false);
-              } else {
-                setConfirmPromote(true);
-                // Auto-reset after 3s
-                setTimeout(() => setConfirmPromote(false), 3000);
-              }
-            }}
+            type="button"
+            data-testid="candidate-promote"
+            className="flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-emerald-600/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/25"
+            title={`Make Candidate ${letter} the new Active Layout (Undo brings the old one back)`}
+            onClick={e => { e.stopPropagation(); onPromote(); }}
           >
-            {confirmPromote ? (
-              <>
-                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z" /></svg>
-                Confirm?
-              </>
-            ) : 'Promote'}
+            Promote
           </button>
+          {onKeep && (
+            <button
+              type="button"
+              data-testid="candidate-keep"
+              disabled={kept}
+              className="flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-colors border bg-accent-primary/15 border-accent-primary/30 text-[var(--accent-primary-soft)] hover:bg-accent-primary/25 disabled:opacity-60 disabled:cursor-default disabled:hover:bg-accent-primary/15"
+              title={kept
+                ? `Candidate ${letter} is kept as a Saved Layout Variant`
+                : `Keep Candidate ${letter} as a Saved Layout Variant, named after how it was made (candidates are temporary)`}
+              onClick={e => { e.stopPropagation(); onKeep(); }}
+            >
+              {kept ? 'Kept' : 'Keep'}
+            </button>
+          )}
         </div>
       </div>
     </div>

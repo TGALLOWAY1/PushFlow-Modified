@@ -6,22 +6,57 @@
  * Every row can be inspected (S3.2): Inspect shows the Active Layout, a
  * candidate, a saved variant or a recovered draft on the grid, read-only, and
  * writes nothing. "Edit as draft" is a variant's "Use as my draft".
+ *
+ * Candidates are grouped by run (S3.3, T30): each Generate adds a run ("Run 2
+ * · Quick · 1 min ago"); older runs fold into "Earlier runs", with "Clear older
+ * runs". Every candidate row has Keep (save it as a variant) and the one
+ * Promote; a candidate made for an earlier version of the performance is
+ * marked stale.
  */
 
-import { useState } from 'react';
-import { Pencil } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ChevronDown, ChevronRight, Pencil } from 'lucide-react';
 import { Dialog, useOverlayTitleId } from '../shared/Overlay';
 import { useProject } from '../../state/ProjectContext';
 import { useDraftReplacement } from '../../hooks/useDraftReplacement';
+import { useLayoutActions } from '../../hooks/useLayoutActions';
 import { type Layout } from '../../../types/layout';
-import { type SoundStream, type InspectedLayoutRef, RECOVERED_DRAFTS_CAP, resolveInspectedLayout } from '../../state/projectState';
+import { type CandidateSolution } from '../../../types/candidateSolution';
+import { type SoundStream, type InspectedLayoutRef, type ProjectState, RECOVERED_DRAFTS_CAP, resolveInspectedLayout } from '../../state/projectState';
 import { describeDroppedForLocks, describePinnedPlacements } from '@/engine';
 import { CandidatePreviewCard } from './CandidatePreviewCard';
 import { MiniGridPreview } from './MiniGridPreview';
 import { LayoutScoreLine } from './LayoutScoreLine';
 import { layoutLabel } from '../../state/layoutLabels';
-import { candidateLetter } from '../../state/layoutSubject';
+import {
+  candidateLetterFor,
+  isCandidateStale,
+  runAge,
+  runLabel,
+  runViews,
+  type RunView,
+} from '../../state/candidateRuns';
+import { isCandidateSavedAsVariant } from '../../state/keptCandidates';
 import { UseAsDraftButton } from '../workspace/UseAsDraftButton';
+
+/** Said over every candidate list (T30): candidates are never saved. */
+export const CANDIDATES_CAPTION = 'Candidates are temporary · Save the ones you like as variants';
+
+/** The time, refreshed now and then, for "1 min ago". */
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(timer);
+  }, [intervalMs]);
+  return now;
+}
+
+/** "Run 2 · Quick · 1 min ago". */
+export function runTitle(view: RunView, now: number): string {
+  if (!view.run) return 'Candidates';
+  return `Run ${view.run.number} · ${runLabel(view.candidates)} · ${runAge(view.run.createdAt, now)}`;
+}
 
 /** The small "Inspect" button every layout row has (S3.2). */
 function InspectButton({ current, onClick, testId, what }: { current: boolean; onClick: () => void; testId: string; what: string }) {
@@ -51,6 +86,55 @@ interface LayoutOptionsPanelProps {
   onCompare: () => void;
   /** Re-runs candidate generation after a failure. */
   onRetryGenerate?: () => void;
+  /** A candidate was kept as a variant: show it. */
+  onVariantSaved?: (variantId: string) => void;
+}
+
+/** One run's candidates, under its title. */
+function RunGroup({ view, now, state, isInspected, isChecked, onInspect, onPromote, onKeep, onDelete, onToggleCompare }: {
+  view: RunView;
+  now: number;
+  state: ProjectState;
+  isInspected: (c: CandidateSolution) => boolean;
+  isChecked: (c: CandidateSolution) => boolean;
+  onInspect: (c: CandidateSolution) => void;
+  onPromote: (c: CandidateSolution) => void;
+  onKeep: (c: CandidateSolution) => void;
+  onDelete: (c: CandidateSolution) => void;
+  onToggleCompare: (c: CandidateSolution) => void;
+}) {
+  const title = runTitle(view, now);
+  // One run, one performance: its candidates are stale together.
+  const stale = !!view.candidates[0] && isCandidateStale(state, view.candidates[0].id);
+  return (
+    <section data-testid="candidate-run" data-run={view.run?.number} aria-label={title} className="flex flex-col gap-2">
+      <div className="flex items-center gap-2 px-0.5 min-w-0">
+        <span data-testid="candidate-run-title" className="text-pf-xs font-semibold text-[var(--text-secondary)] truncate">{title}</span>
+        {stale && (
+          <span className="text-pf-micro text-[var(--status-warn)] whitespace-nowrap" title="The notes or the tempo changed since this run">
+            · performance changed since
+          </span>
+        )}
+      </div>
+      {view.candidates.map(candidate => (
+        <CandidatePreviewCard
+          key={candidate.id}
+          candidate={candidate}
+          soundStreams={state.soundStreams}
+          letter={candidateLetterFor(state, candidate.id)}
+          isInspected={isInspected(candidate)}
+          isCheckedForCompare={isChecked(candidate)}
+          stale={stale}
+          kept={isCandidateSavedAsVariant(state, candidate)}
+          onInspect={() => onInspect(candidate)}
+          onPromote={() => onPromote(candidate)}
+          onKeep={() => onKeep(candidate)}
+          onDelete={() => onDelete(candidate)}
+          onToggleCompare={() => onToggleCompare(candidate)}
+        />
+      ))}
+    </section>
+  );
 }
 
 export function LayoutOptionsPanel({
@@ -59,9 +143,13 @@ export function LayoutOptionsPanel({
   onToggleCompare,
   onCompare,
   onRetryGenerate,
+  onVariantSaved,
 }: LayoutOptionsPanelProps) {
   const { state, dispatch } = useProject();
   const replaceDraft = useDraftReplacement();
+  const layoutActions = useLayoutActions();
+  const now = useNow(30_000);
+  const [earlierOpen, setEarlierOpen] = useState(false);
   const [viewAllOpen, setViewAllOpen] = useState(false);
   const [editingLayoutName, setEditingLayoutName] = useState(false);
   const [layoutNameDraft, setLayoutNameDraft] = useState('');
@@ -252,33 +340,66 @@ export function LayoutOptionsPanel({
           </p>
         )}
 
-        {/* Candidate list */}
-        {hasCandidates && (
-          <div className="flex flex-col gap-2">
-            {/* Generate only proposes (Q4): candidate A is shown read-only, and the draft is untouched. */}
-            <p data-testid="candidates-hint" className="text-pf-xs text-[var(--text-tertiary)] px-0.5">
-              Inspect a candidate to see it on the grid, read-only. Use as my draft to edit it; your draft stays as it is until you do.
-            </p>
-            {state.candidates.map((candidate, idx) => (
-              <CandidatePreviewCard
-                key={candidate.id}
-                candidate={candidate}
-                soundStreams={state.soundStreams}
-                letter={candidateLetter(idx)}
-                isInspected={shown.candidate?.id === candidate.id}
-                isCheckedForCompare={selectedForCompare.has(candidate.id)}
-                onInspect={() => inspect({ kind: 'candidate', id: candidate.id })}
-                onPromote={() => {
-                  replaceDraft({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } });
-                }}
-                onDelete={() => {
-                  dispatch({ type: 'DELETE_CANDIDATE', payload: { candidateId: candidate.id } });
-                }}
-                onToggleCompare={() => onToggleCompare(candidate.id)}
-              />
-            ))}
-          </div>
-        )}
+        {/* Candidate list, by run (S3.3) */}
+        {hasCandidates && (() => {
+          const [current, ...earlier] = runViews(state);
+          const group = (view: RunView) => (
+            <RunGroup
+              key={view.run?.id ?? 'loose'}
+              view={view}
+              now={now}
+              state={state}
+              isInspected={c => shown.candidate?.id === c.id}
+              isChecked={c => selectedForCompare.has(c.id)}
+              onInspect={c => inspect({ kind: 'candidate', id: c.id })}
+              onPromote={c => layoutActions.promote({ kind: 'candidate', id: c.id })}
+              onKeep={c => {
+                const variantId = layoutActions.keep(c.id);
+                if (variantId) onVariantSaved?.(variantId);
+              }}
+              onDelete={c => dispatch({ type: 'DELETE_CANDIDATE', payload: { candidateId: c.id } })}
+              onToggleCompare={c => onToggleCompare(c.id)}
+            />
+          );
+          return (
+            <div className="flex flex-col gap-2">
+              <p data-testid="candidates-caption" className="text-pf-xs font-medium text-[var(--text-secondary)] px-0.5">
+                {CANDIDATES_CAPTION}
+              </p>
+              {/* Generate only proposes (Q4): candidate A is shown read-only, and the draft is untouched. */}
+              <p data-testid="candidates-hint" className="text-pf-xs text-[var(--text-tertiary)] px-0.5">
+                Inspect a candidate to see it on the grid, read-only. Use as my draft to edit it; your draft stays as it is until you do.
+              </p>
+              {current && group(current)}
+              {earlier.length > 0 && (
+                <div data-testid="earlier-runs" className="flex flex-col gap-2 pt-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      data-testid="earlier-runs-toggle"
+                      aria-expanded={earlierOpen}
+                      className="inline-flex items-center gap-1 min-h-[24px] text-pf-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] focus-ring rounded-pf-sm"
+                      onClick={() => setEarlierOpen(open => !open)}
+                    >
+                      {earlierOpen ? <ChevronDown size={12} aria-hidden="true" /> : <ChevronRight size={12} aria-hidden="true" />}
+                      Earlier runs ({earlier.length})
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="clear-older-runs"
+                      className="min-h-[24px] px-2 text-pf-xs rounded-pf-sm text-[var(--text-tertiary)] hover:text-red-300 hover:bg-red-500/10 focus-ring"
+                      title="Remove the earlier runs and their candidates; kept variants stay"
+                      onClick={() => dispatch({ type: 'CLEAR_OLDER_RUNS' })}
+                    >
+                      Clear older runs
+                    </button>
+                  </div>
+                  {earlierOpen && earlier.map(group)}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Saved variants */}
         {state.savedVariants.length > 0 && (
@@ -296,7 +417,7 @@ export function LayoutOptionsPanel({
                   soundStreams={state.soundStreams}
                   isInspected={shown.role === 'variant' && shown.layout.id === variant.id}
                   onInspect={() => inspect({ kind: 'variant', id: variant.id })}
-                  onPromote={() => replaceDraft({ type: 'PROMOTE_VARIANT', payload: { variantId: variant.id } })}
+                  onPromote={() => layoutActions.promote({ kind: 'variant', id: variant.id })}
                   onDelete={() => dispatch({ type: 'DELETE_VARIANT', payload: { variantId: variant.id } })}
                   onRename={name => dispatch({ type: 'RENAME_LAYOUT', payload: { target: 'variant', variantId: variant.id, name } })}
                 />
@@ -345,7 +466,7 @@ export function LayoutOptionsPanel({
 
 function ViewAllOverlay({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useProject();
-  const replaceDraft = useDraftReplacement();
+  const layoutActions = useLayoutActions();
   const shown = resolveInspectedLayout(state);
 
   const titleId = useOverlayTitleId();
@@ -368,23 +489,23 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
                 Generated Candidates ({state.candidates.length})
               </h4>
               <div className="flex flex-col gap-3">
-                {state.candidates.map((c, idx) => (
+                {state.candidates.map(c => (
                   <CandidatePreviewCard
                     key={c.id}
                     candidate={c}
                     soundStreams={state.soundStreams}
-                    letter={candidateLetter(idx)}
+                    letter={candidateLetterFor(state, c.id)}
                     isInspected={shown.candidate?.id === c.id}
                     isCheckedForCompare={false}
+                    stale={isCandidateStale(state, c.id)}
+                    kept={isCandidateSavedAsVariant(state, c)}
                     onInspect={() => {
                       dispatch({ type: 'INSPECT_LAYOUT', payload: { kind: 'candidate', id: c.id } });
                       onClose();
                     }}
-                    onPromote={() => {
-                      if (confirm('Promote this candidate to become the Active Layout?')) {
-                        replaceDraft({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: c.id } });
-                      }
-                    }}
+                    // The one Promote (S3.3): at once, with an Undo toast; no confirm().
+                    onPromote={() => layoutActions.promote({ kind: 'candidate', id: c.id })}
+                    onKeep={() => layoutActions.keep(c.id)}
                     onDelete={() => {
                       dispatch({ type: 'DELETE_CANDIDATE', payload: { candidateId: c.id } });
                     }}
@@ -411,7 +532,7 @@ function ViewAllOverlay({ onClose }: { onClose: () => void }) {
                       dispatch({ type: 'INSPECT_LAYOUT', payload: { kind: 'variant', id: variant.id } });
                       onClose();
                     }}
-                    onPromote={() => replaceDraft({ type: 'PROMOTE_VARIANT', payload: { variantId: variant.id } })}
+                    onPromote={() => layoutActions.promote({ kind: 'variant', id: variant.id })}
                     onDelete={() => dispatch({ type: 'DELETE_VARIANT', payload: { variantId: variant.id } })}
                     onRename={name => dispatch({ type: 'RENAME_LAYOUT', payload: { target: 'variant', variantId: variant.id, name } })}
                   />
@@ -626,28 +747,17 @@ function RecoveredDraftCard({
   );
 }
 
+/** The one Promote (S3.3): at once, with an Undo toast; no timed "Confirm?". */
 function VariantPromoteButton({ onPromote }: { onPromote: () => void }) {
-  const [confirmMode, setConfirmMode] = useState(false);
-  
   return (
     <button
-      className={`flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-all ${
-        confirmMode 
-          ? 'bg-emerald-600 text-white shadow-inner flex items-center justify-center gap-1.5 border-emerald-400' 
-          : 'bg-emerald-600/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/25'
-      }`}
-      onClick={e => { 
-        e.stopPropagation(); 
-        if (confirmMode) {
-          onPromote();
-          setConfirmMode(false);
-        } else {
-          setConfirmMode(true);
-          setTimeout(() => setConfirmMode(false), 3000);
-        }
-      }}
+      type="button"
+      data-testid="variant-promote"
+      className="flex-1 px-2 py-1 text-pf-xs rounded-pf-sm transition-colors bg-emerald-600/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/25"
+      title="Make this variant the new Active Layout (Undo brings the old one back)"
+      onClick={e => { e.stopPropagation(); onPromote(); }}
     >
-      {confirmMode ? 'Confirm?' : 'Promote'}
+      Promote
     </button>
   );
 }

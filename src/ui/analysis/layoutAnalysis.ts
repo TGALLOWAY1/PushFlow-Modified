@@ -6,7 +6,9 @@
  * Active Layout, the draft, a candidate, a variant) its own analysis plan and
  * its Playability, solved and scored in the scoring worker. The draft's
  * auto-analysis takes the same path, so a layout scores the same wherever it is
- * shown and whichever optimizer proposed it.
+ * shown and whichever optimizer proposed it. Only the notes of Sounds on the
+ * layout's pads are scored (S3.3): a partly placed layout is unfinished, not
+ * failed.
  *
  * `useLayoutAnalysis(layout)` is the hook form: 'analysing' ("Scoring…"), then
  * `{ analysis, score }` (the plan, bound to `layout`, and its LayoutScore), or
@@ -69,10 +71,47 @@ function performanceFor(state: ProjectState): { performance: Performance; perfor
   return lastPerformance;
 }
 
+/**
+ * The performance a layout is scored on: only the notes of Sounds on its pads
+ * (S3.3, T25). A partly placed layout is unfinished, not failed: its unplaced
+ * Sounds' notes are neither played nor counted as unplayable, so its plan,
+ * verdict and Playability describe the notes you can play so far. The hash
+ * covers the notes kept, so the cache key follows them. Reused per layout
+ * placement while the performance is unchanged.
+ */
+type ScoredPerformance = { performance: Performance; performanceHash: string };
+
+const placedPerformances = new Map<string, { from: Performance; result: ScoredPerformance }>();
+
+function placedPerformanceFor(state: ProjectState, layout: Layout): ScoredPerformance {
+  const full = performanceFor(state);
+  const placed = new Set(Object.values(layout.padToVoice).map(v => v.id));
+  const placedKey = [...placed].sort().join('|');
+  const hit = placedPerformances.get(placedKey);
+  if (hit && hit.from === full.performance) return hit.result;
+  const events = full.performance.events.filter(e => e.voiceId !== undefined && placed.has(e.voiceId));
+  let result: ScoredPerformance = full;
+  if (events.length !== full.performance.events.length) {
+    const performance: Performance = { ...full.performance, events };
+    result = {
+      performance,
+      performanceHash: hashPerformance(performance, {
+        engineConfig: state.engineConfig,
+        instrumentConfig: state.instrumentConfig,
+        sections: state.sections,
+      }),
+    };
+  }
+  // A handful of placements are on screen at once (the draft, Active, rows).
+  if (placedPerformances.size >= 32) placedPerformances.clear();
+  placedPerformances.set(placedKey, { from: full.performance, result });
+  return result;
+}
+
 /** The cache key and the worker request for one layout of this project. */
 export function scoringRequestFor(state: ProjectState, layout: Layout): { key: AnalysisKey; request: ScoreLayoutRequest } {
   const scored = scoringLayoutFor(state, layout);
-  const { performance, performanceHash } = performanceFor(state);
+  const { performance, performanceHash } = placedPerformanceFor(state, scored);
   return {
     key: {
       layoutHash: hashLayout(scored),
@@ -94,6 +133,11 @@ export function scoringRequestFor(state: ProjectState, layout: Layout): { key: A
 /** The cache key for a layout of this project. */
 export function analysisKeyFor(state: ProjectState, layout: Layout): AnalysisKey {
   return scoringRequestFor(state, layout).key;
+}
+
+/** Whether any note in scope is on this layout's pads: with none there is nothing to analyse. */
+export function hasPlacedNotes(state: ProjectState, layout: Layout): boolean {
+  return Object.keys(layout.padToVoice).length > 0 && placedPerformanceFor(state, layout).performance.events.length > 0;
 }
 
 /** A cached entry with its plan bound to the layout it was asked for (same hash, that layout's id and role). */
@@ -127,9 +171,8 @@ export type LayoutAnalysisState =
  */
 export function useLayoutAnalysis(layout: Layout | null): LayoutAnalysisState {
   const { state } = useProject();
-  const isEmpty = !layout
-    || Object.keys(layout.padToVoice).length === 0
-    || !state.soundStreams.some(s => !s.muted && s.events.length > 0);
+  // Nothing to analyse without a note on the layout's pads (placed-only scoring, S3.3).
+  const isEmpty = !layout || !hasPlacedNotes(state, layout);
   const scoring = useMemo(() => (layout && !isEmpty ? scoringRequestFor(state, layout) : null), [
     layout, isEmpty, state.soundStreams, state.tempo, state.engineConfig, state.instrumentConfig, state.sections, // eslint-disable-line react-hooks/exhaustive-deps
     state.costToggles, state.voiceConstraints,

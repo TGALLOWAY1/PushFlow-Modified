@@ -145,7 +145,8 @@ describe('the layout-state bar', () => {
     expect(api.state.recoveredDrafts).toHaveLength(1);
     expect(api.undoLabel).toBe('Promote');
     const toast = screen.getByTestId('toast');
-    expect(toast.textContent).toContain('Promoted Candidate A to Active Layout · your draft is in Recovered drafts');
+    // The one Promote's toast (S3.3) also says what the new Active leaves unplaced.
+    expect(toast.textContent).toContain('Promoted Candidate A to Active Layout · 5 Sounds not placed · your draft is in Recovered drafts');
     fireEvent.click(within(toast).getByRole('button', { name: 'Undo' }));
     expect(Object.keys(api.state.activeLayout.padToVoice).sort()).toEqual(['3,3', '3,4']);
     expect(Object.keys(api.state.workingLayout!.padToVoice).sort()).toEqual(['3,4', '7,0']);

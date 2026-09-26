@@ -20,6 +20,7 @@ import { useViewSettings } from '../../state/viewSettings';
 import { DisabledReason, useDisabledReason } from '../shared/DisabledReason';
 import { Popover } from '../shared/Overlay';
 import { MoreHorizontal } from 'lucide-react';
+import { LeaveProjectButton } from './LeaveProjectButton';
 
 interface WorkspaceToolbarProps {
   onNavigateLibrary: () => void;
@@ -81,6 +82,9 @@ export function WorkspaceToolbar({
 
   // Generation mode
   const [generationMode, setGenerationMode] = useState<GenerationMode>('fast');
+  // On an empty grid Generate proposes whole layouts; it still only proposes (T37, Q4).
+  const nothingPlaced = Object.keys((state.workingLayout ?? state.activeLayout).padToVoice).length === 0;
+  const generateLabel = canGenerate && nothingPlaced ? 'Generate layouts from scratch' : 'Generate';
 
   const commitName = () => {
     const trimmed = nameDraft.trim();
@@ -100,14 +104,8 @@ export function WorkspaceToolbar({
 
   return (
     <div className="flex items-center gap-2 px-4 py-2 border-b border-[rgba(67,70,86,0.1)] bg-[var(--bg-app)] flex-shrink-0">
-      {/* Library back */}
-      <button
-        className="pf-btn pf-btn-subtle text-pf-sm"
-        onClick={onNavigateLibrary}
-        title="Save and return to library"
-      >
-        &larr; Library
-      </button>
+      {/* Library back; asks first while unkept candidates exist (S3.3) */}
+      <LeaveProjectButton onLeave={onNavigateLibrary} />
 
       {/* Divider */}
       <div className="pf-divider-v" />
@@ -314,9 +312,13 @@ export function WorkspaceToolbar({
             onClick={() => canGenerate && generateFull(generationMode)}
             disabled={!canGenerate}
             aria-describedby={generateReason.describedBy}
-            title={canGenerate ? 'Generate optimized layouts' : generateDisabledReason ?? undefined}
+            title={canGenerate
+              ? nothingPlaced
+                ? 'Propose whole layouts for your Sounds, shown read-only: nothing is placed until you use one'
+                : 'Generate optimized layouts'
+              : generateDisabledReason ?? undefined}
           >
-            Generate
+            {generateLabel}
           </button>
           <DisabledReason id={generateReason.id} reason={canGenerate ? null : generateDisabledReason} className="whitespace-nowrap" />
         </div>

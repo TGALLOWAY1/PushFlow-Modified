@@ -31,7 +31,7 @@ import { generateCandidates } from '../../engine/optimization/multiCandidateGene
 import { generateGreedyCandidates } from '../../engine/optimization/greedyCandidatePipeline';
 import { pinnedPlacements } from '../../engine/mapping/placementLocks';
 import { buildSolverConstraints, constraintsToManualAssignments } from '../analysis/analyzeLayout';
-import { analyseLayoutCached } from '../analysis/layoutAnalysis';
+import { analyseLayoutCached, hasPlacedNotes, scoringRequestFor } from '../analysis/layoutAnalysis';
 // Import adapters to ensure they self-register
 import '../../engine/optimization/beamOptimizerAdapter';
 import '../../engine/optimization/annealingOptimizerAdapter';
@@ -73,8 +73,9 @@ export function useAutoAnalysis() {
     // first thing a user saw after importing a MIDI file. It reads as a damning
     // judgement on their layout when the truth is simply that no sounds have been
     // placed yet, and the product forbids placing them automatically. Clear the
-    // analysis instead and let the UI ask for placements.
-    if (Object.keys(layout.padToVoice).length === 0) {
+    // analysis instead and let the UI ask for placements. Only placed Sounds'
+    // notes are analysed (S3.3), so a grid whose Sounds are all muted is empty too.
+    if (!hasPlacedNotes(state, layout)) {
       // SET_ANALYSIS_RESULT also clears analysisStale, so this settles rather than
       // re-triggering on every render.
       dispatch({ type: 'SET_ANALYSIS_RESULT', payload: null });
@@ -248,7 +249,8 @@ export function useAutoAnalysis() {
       return;
     }
 
-    const performance = getActivePerformance(state);
+    // The placed Sounds' notes, as the verdict and the Score are (S3.3).
+    const { performance } = scoringRequestFor(state, layout).request;
     if (performance.events.length === 0) return;
 
     dispatch({ type: 'SET_ERROR', payload: null });

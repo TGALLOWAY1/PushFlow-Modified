@@ -35,6 +35,10 @@ export interface PfStatus {
   isProcessing: boolean;
   analysisStale: boolean;
   hasAnalysis: boolean;
+  /** Hash of the layout the analysis's plan is bound to; null with no analysis (S3.3). */
+  planLayoutHash: string | null;
+  /** When the project document last changed; opening the Composer tab never moves it (S3.3). */
+  updatedAt: string;
   candidateIds: string[];
   soundCount: number;
   hasWorkingLayout: boolean;
@@ -111,6 +115,8 @@ export function installE2EHook(get: () => E2EHookSource): () => void {
         isProcessing: s.isProcessing,
         analysisStale: s.analysisStale,
         hasAnalysis: !!s.analysisResult,
+        planLayoutHash: s.analysisResult?.executionPlan.layoutBinding?.layoutHash ?? null,
+        updatedAt: s.updatedAt,
         candidateIds: s.candidates.map(c => c.id),
         soundCount: s.soundStreams.length,
         hasWorkingLayout: s.workingLayout !== null,

@@ -25,11 +25,11 @@ import {
   getActiveTrace,
   isReplayingTrace,
   resolveInspectedLayout,
-  type ProjectAction,
   type ProjectState,
   type ResolvedInspection,
 } from '../../state/projectState';
-import { inspectedSubject, candidateName, shownLayoutDiff } from '../../state/layoutSubject';
+import { inspectedSubject, shownLayoutDiff } from '../../state/layoutSubject';
+import { isCandidateSavedAsVariant } from '../../state/keptCandidates';
 import { type LayoutAnalysisState } from '../../analysis/layoutAnalysis';
 import { suggestVariantName } from '../../state/variantNames';
 import { uniqueName } from '../../../utils/uniqueName';
@@ -39,7 +39,7 @@ import { IconButton } from '../shared/IconButton';
 import { useToast } from '../shared/Toast';
 import { SaveVariantPopover } from './SaveVariantPopover';
 import { UseAsDraftButton } from './UseAsDraftButton';
-import { draftKeptBy, type DraftReplacingAction } from '../../hooks/useDraftReplacement';
+import { useLayoutActions, type PromoteSource } from '../../hooks/useLayoutActions';
 import { USE_AS_DRAFT_HINT } from '../../hooks/useReadOnlyHint';
 
 /** How long an analysis may be pending before the bar says "Updating…". */
@@ -124,6 +124,8 @@ export function LayoutStateBar({ hint, scoring, onVariantSaved }: {
 }) {
   const { state, dispatch, undo, undoLabel } = useProject();
   const toast = useToast();
+  // The one Promote and one Keep every surface shares (S3.3).
+  const layoutActions = useLayoutActions();
   const shown = resolveInspectedLayout(state);
   const subject = inspectedSubject(state);
   const freshness = useFreshness(state, shown, scoring);
@@ -171,12 +173,10 @@ export function LayoutStateBar({ hint, scoring, onVariantSaved }: {
     dispatch({ type: 'INSPECT_LAYOUT', payload: null });
   };
 
-  /** Promote from the bar: at once, one undo step, a toast with Undo (S3.3 unifies every Promote). */
-  const promote = (action: DraftReplacingAction | Extract<ProjectAction, { type: 'PROMOTE_WORKING_LAYOUT' }>, what: string) => {
+  /** Promote from the bar: the one Promote (at once, one undo step, a toast with Undo). */
+  const promote = (source: PromoteSource) => {
     onCandidateActed();
-    const kept = action.type === 'PROMOTE_WORKING_LAYOUT' ? false : !!draftKeptBy(state, action).keptId;
-    dispatch(action);
-    confirm(`Promoted ${what} to Active Layout${kept ? ' · your draft is in Recovered drafts' : ''}`, 'Promote');
+    layoutActions.promote(source);
   };
 
   // Discard is confirmed by a toast with Undo. Finger preferences live in
@@ -191,11 +191,8 @@ export function LayoutStateBar({ hint, scoring, onVariantSaved }: {
     const candidate = shown.candidate;
     if (!candidate) return;
     finishCoach();
-    const variantId = generateId('variant');
-    const name = uniqueName(candidateName(candidate), state.savedVariants.map(v => v.name));
-    dispatch({ type: 'SAVE_AS_VARIANT', payload: { name, source: 'candidate', candidateId: candidate.id, variantId } });
-    confirm(`Kept ${subject.chip} as the variant "${name}"`, 'Save as variant');
-    onVariantSaved?.(variantId);
+    const variantId = layoutActions.keep(candidate.id);
+    if (variantId) onVariantSaved?.(variantId);
   };
 
   const backLabel = state.workingLayout ? 'Back to my draft' : 'Back to Active';
@@ -246,7 +243,7 @@ export function LayoutStateBar({ hint, scoring, onVariantSaved }: {
         actions = (
           <>
             <button type="button" data-testid="state-bar-promote" className={PROMOTE}
-              onClick={() => promote({ type: 'PROMOTE_WORKING_LAYOUT' }, 'your draft')}
+              onClick={() => promote({ kind: 'working' })}
               title="Make this layout the new Active Layout">
               Promote
             </button>
@@ -288,19 +285,21 @@ export function LayoutStateBar({ hint, scoring, onVariantSaved }: {
         break;
       case 'candidate': {
         const candidate = shown.candidate!;
+        const kept = isCandidateSavedAsVariant(state, candidate);
         actions = (
           <>
             <span onClickCapture={finishCoach} className="contents">
               <UseAsDraftButton source={{ kind: 'candidate', id: candidate.id }} testId="state-bar-use" className={PRIMARY} />
             </span>
             <button type="button" data-testid="state-bar-promote" className={PROMOTE}
-              onClick={() => promote({ type: 'PROMOTE_CANDIDATE', payload: { candidateId: candidate.id } }, subject.chip)}
+              onClick={() => promote({ kind: 'candidate', id: candidate.id })}
               title={`Make ${subject.chip} the new Active Layout`}>
               Promote
             </button>
-            <button type="button" data-testid="state-bar-keep" className={KEEP} onClick={keepCandidate}
-              title={`Keep ${subject.chip} as a Saved Layout Variant, named after how it was made`}>
-              Keep as variant
+            <button type="button" data-testid="state-bar-keep" className={`${KEEP} disabled:opacity-60 disabled:cursor-default`} onClick={keepCandidate}
+              disabled={kept}
+              title={kept ? `${subject.chip} is kept as a Saved Layout Variant` : `Keep ${subject.chip} as a Saved Layout Variant, named after how it was made`}>
+              {kept ? 'Kept' : 'Keep as variant'}
             </button>
             {backButton}
           </>
@@ -312,7 +311,7 @@ export function LayoutStateBar({ hint, scoring, onVariantSaved }: {
           <>
             <UseAsDraftButton source={{ kind: 'variant', id: shown.layout.id }} testId="state-bar-use" className={PRIMARY} />
             <button type="button" data-testid="state-bar-promote" className={PROMOTE}
-              onClick={() => promote({ type: 'PROMOTE_VARIANT', payload: { variantId: shown.layout.id } }, `"${subject.name}"`)}
+              onClick={() => promote({ kind: 'variant', id: shown.layout.id })}
               title={`Make "${subject.name}" the new Active Layout`}>
               Promote
             </button>
