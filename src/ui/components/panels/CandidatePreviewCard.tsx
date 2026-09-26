@@ -15,6 +15,7 @@ import { formatPlanScore, playabilityTooltip, PLAYABILITY_TOOLTIP, SCORE_FAILED_
 import { useLayoutAnalysis } from '../../analysis/layoutAnalysis';
 import { FACTOR_KEYS, FACTOR_META, factorsFromBreakdown } from '../../analysis/factorMeta';
 import { strategyLabel } from '../../analysis/strategyLabels';
+import { candidateRunLine } from '../../analysis/stopReason';
 import { type V1CostBreakdown } from '../../../types/diagnostics';
 
 interface CandidatePreviewCardProps {
@@ -86,6 +87,7 @@ export function CandidatePreviewCard({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const overall = candidate.difficultyAnalysis.overallScore;
   const topDriver = topCostDriver(candidate.executionPlan.averageMetrics);
+  const runLine = candidateRunLine(candidate);
 
   return (
     <div
@@ -173,10 +175,10 @@ export function CandidatePreviewCard({
           </span>
         </div>
 
-        {/* Optimization method */}
-        {(candidate.metadata.optimizationMode || candidate.metadata.optimizationSummary) && (
-          <div className="text-pf-micro text-[var(--text-tertiary)] ml-5 mb-1 truncate" title={candidate.metadata.optimizationSummary}>
-            {candidate.metadata.optimizationSummary ?? candidate.metadata.optimizationMode}
+        {/* How it was found: why its run stopped, then what ran (T33, P3-9). */}
+        {runLine && (
+          <div data-testid="candidate-run-line" className="text-pf-micro text-[var(--text-tertiary)] ml-5 mb-1 truncate" title={runLine}>
+            {runLine}
           </div>
         )}
 

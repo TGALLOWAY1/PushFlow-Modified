@@ -27,6 +27,7 @@ import { createDefaultPose0 } from '../../../src/engine/prior/naturalHandPose';
 import { getNeutralHandCenters } from '../../../src/engine/prior/handPose';
 import { ALL_COSTS_ENABLED } from '../../../src/types/costToggles';
 import { DEFAULT_TEST_INSTRUMENT_CONFIG, DEFAULT_ENGINE_CONFIG } from '../../helpers/testHelpers';
+import { candidateRunLine } from '../../../src/ui/analysis/stopReason';
 
 const voice = (id: string, midi: number): Voice => ({
   id, name: id, sourceType: 'midi_track', sourceFile: '', originalMidiNote: midi, color: '#444',
@@ -401,7 +402,10 @@ describe('Every candidate carries its stop reason, telemetry and trace (T33)', (
     }
   });
 
-  it('annealing stopped by its time budget says so first on its card line', async () => {
+  // P3-9: the engine says what ran; the card's line leads with why it stopped,
+  // from the candidate's own stopReason (S3.4 UI), so the reason is never
+  // said twice and reads the same for every method.
+  it('annealing stopped by its time budget says what ran, and its card line leads with why', async () => {
     const { candidates } = await generateCandidates(fourSounds(), createDefaultPose0(), {
       count: 1,
       optimizationMode: 'deep',
@@ -416,6 +420,9 @@ describe('Every candidate carries its stop reason, telemetry and trace (T33)', (
     expect(c.stopReason).toBe('time_budget');
     expect(c.telemetry!.restartsStoppedByTime).toEqual([0, 1, 2]);
     expect(c.metadata.optimizationSummary).toBe(
+      `Deep optimization (${c.telemetry!.iterationsCompleted} of 60 iterations over 3 runs)`,
+    );
+    expect(candidateRunLine(c)).toBe(
       `Stopped: time limit reached · Deep optimization (${c.telemetry!.iterationsCompleted} of 60 iterations over 3 runs)`,
     );
   });

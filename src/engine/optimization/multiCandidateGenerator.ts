@@ -42,7 +42,6 @@ import { applicableLocks, findLockViolations, pinsToHonour, fixedPlacements, wit
 import { getMaxSafeOffset, poseHasAssignments, fingerIdToHandAndFingerType, getPose0PadsWithOffset } from '../prior/naturalHandPose';
 import { createAnnealingSolver, planAnnealingRun, annealingRunSummary } from './annealingSolver';
 import { type RunControl, type GenerationProgress, Yielder, throwIfCancelled, estimateRemainingMs } from './runControl';
-import { STOP_REASON_LABELS } from './optimizerInterface';
 import { createBeamSolver } from '../solvers/beamSolver';
 import { countRelaxedStrikes } from '../evaluation/constraintRelaxation';
 import { analyzeDifficulty, computeTradeoffProfile } from '../evaluation/difficultyScoring';
@@ -91,15 +90,16 @@ function computeInitialPadOwnership(
 }
 
 /**
- * An annealed candidate's summary line: "Deep optimization (3,200 iterations
- * over 4 runs)", or, when the time budget stopped it, "Stopped: time limit
- * reached · Deep optimization (2,412 of 3,200 iterations over 4 runs)".
+ * What an annealing run did: "Deep optimization (3,200 iterations over 4
+ * runs)", or, when the time budget stopped it, "Deep optimization (2,412 of
+ * 3,200 iterations over 4 runs)". Why it stopped is the candidate's
+ * stopReason, which the card's line leads with.
  */
 function describeAnnealingRun(run: ReturnType<typeof annealingRunSummary>, runs: number): string {
   const done = run.telemetry.iterationsCompleted.toLocaleString('en-US');
   if (run.stopReason !== 'time_budget') return `Deep optimization (${done} iterations over ${runs} runs)`;
   const planned = (run.telemetry.iterationsPlanned ?? run.telemetry.iterationsCompleted).toLocaleString('en-US');
-  return `Stopped: ${STOP_REASON_LABELS.time_budget} · Deep optimization (${done} of ${planned} iterations over ${runs} runs)`;
+  return `Deep optimization (${done} of ${planned} iterations over ${runs} runs)`;
 }
 
 // ============================================================================
@@ -632,8 +632,8 @@ export async function generateCandidates(
       seed: strategy.seed,
       generationTimeMs,
       optimizationMode: config.optimizationMode,
-      // Says what ran: a budget can stop annealing before its planned iterations,
-      // and then the card's (truncated) line leads with why.
+      // Says what ran: a budget can stop annealing before its planned iterations
+      // (the card's line leads with why, from stopReason).
       optimizationSummary: !config.optimizationMode
         ? undefined
         : annealingRun
