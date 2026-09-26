@@ -8,7 +8,7 @@ the commit that still has it.
 
 | Date | What left the tree | Recover from |
 |------|--------------------|--------------|
-| 2026-09-26 | `archive/`, P0–P3 screenshot evidence, stale March docs, retired UI-critique probes, unreachable source files ([details](#what-the-2026-09-26-cleanup-removed)) | `fa04025f6ecbd90ffd14689ad9a31778370836dc` |
+| 2026-09-26 (PR #112) | `archive/`, P0–P3 screenshot evidence, stale March docs, retired UI-critique probes, unreachable source files ([details](#what-the-2026-09-26-cleanup-removed)) | `fa04025f6ecbd90ffd14689ad9a31778370836dc` |
 
 `fa04025f` is the `main` commit the cleanup started from ("Merge pull request #110"). It stays in
 `main`'s history however the cleanup PR is merged. Browse it on GitHub:
