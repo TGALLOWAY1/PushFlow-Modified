@@ -9,7 +9,7 @@ const URL = process.env.URL || 'http://localhost:5173';
 const SCEN = process.argv[2] || 'manual';
 const W = parseInt(process.argv[3] || '1600', 10);
 const H = parseInt(process.argv[4] || '1000', 10);
-const MIDI = 'archive/v1-reference/test-data/Scenario 1 Tests/TEST MIDI 1.mid';
+const MIDI = 'test/fixtures/midi/TEST MIDI 1.mid';
 const OUT = resolve(DIR, 'shots');
 mkdirSync(OUT, { recursive: true });
 const LOG = resolve(DIR, `log-${SCEN}-${W}.txt`);

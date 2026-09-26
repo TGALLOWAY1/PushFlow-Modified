@@ -5,7 +5,7 @@ import { resolve } from 'path';
 
 export const DIR = '.ui-repro-out/C9';
 export const URL = process.env.URL || 'http://localhost:5173';
-export const MIDI = 'archive/v1-reference/test-data/Scenario 1 Tests/TEST MIDI 1.mid';
+export const MIDI = 'test/fixtures/midi/TEST MIDI 1.mid';
 export const PRESET_TYPE = 'application/x-pushflow-composer-preset';
 
 export function makeLogger(name) {

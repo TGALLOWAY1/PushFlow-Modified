@@ -39,7 +39,7 @@ import { type PadFingerAssignment } from '../../../src/types/executionPlan';
 import { padKey } from '../../../src/types/padGrid';
 import { DEFAULT_TEST_INSTRUMENT_CONFIG, DEFAULT_ENGINE_CONFIG } from '../../helpers/testHelpers';
 
-const MIDI_PATH = '../../../archive/v1-reference/test-data/Scenario 1 Tests/TEST MIDI 1.mid';
+const MIDI_PATH = '../../fixtures/midi/TEST MIDI 1.mid';
 
 function voice(id: string, midi: number): Voice {
   return { id, name: id, sourceType: 'midi_track', sourceFile: '', originalMidiNote: midi, color: '#444' };

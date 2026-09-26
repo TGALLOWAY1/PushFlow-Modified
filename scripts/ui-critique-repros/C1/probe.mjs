@@ -8,7 +8,7 @@ const URL = process.env.URL || 'http://localhost:5173';
 const W = parseInt(process.env.W || '1600', 10);
 const H = parseInt(process.env.H || '1000', 10);
 const TAG = `${W}x${H}`;
-const MIDI = 'archive/v1-reference/test-data/Scenario 1 Tests/TEST MIDI 1.mid';
+const MIDI = 'test/fixtures/midi/TEST MIDI 1.mid';
 mkdirSync(OUT, { recursive: true });
 
 const log = [];

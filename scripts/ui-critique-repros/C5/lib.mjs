@@ -5,7 +5,7 @@ import { resolve } from 'path';
 
 export const OUT = '.ui-repro-out/C5';
 export const URL = process.env.URL || 'http://localhost:5173';
-export const MIDI = 'archive/v1-reference/test-data/Scenario 1 Tests/TEST MIDI 1.mid';
+export const MIDI = 'test/fixtures/midi/TEST MIDI 1.mid';
 mkdirSync(OUT, { recursive: true });
 
 export async function launch(W = 1600, H = 1000) {

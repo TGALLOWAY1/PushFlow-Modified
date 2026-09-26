@@ -1,7 +1,7 @@
 // Why does the menu stretch when rendered with the viewport as containing block? (fix-shape question)
 import { chromium } from 'playwright';
 const URL = 'http://localhost:5173';
-const MIDI = 'archive/v1-reference/test-data/Scenario 1 Tests/TEST MIDI 1.mid';
+const MIDI = 'test/fixtures/midi/TEST MIDI 1.mid';
 const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined });
 const page = await (await browser.newContext({ viewport: { width: 1600, height: 1000 } })).newPage();
 await page.goto(URL, { waitUntil: 'networkidle' });

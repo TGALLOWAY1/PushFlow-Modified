@@ -10,7 +10,7 @@ const H = parseInt(process.env.H || '1000', 10);
 const SCEN = process.env.SCEN || 'partial'; // partial | suggest
 const NPLACE = parseInt(process.env.NPLACE || '3', 10);
 const TAG = `${process.env.TAGP || SCEN}-${W}x${H}`;
-const MIDI = 'archive/v1-reference/test-data/Scenario 1 Tests/TEST MIDI 1.mid';
+const MIDI = 'test/fixtures/midi/TEST MIDI 1.mid';
 mkdirSync(OUT, { recursive: true });
 
 const log = [];

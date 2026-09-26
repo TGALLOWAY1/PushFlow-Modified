@@ -15,7 +15,7 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const SCREENSHOTS_DIR = resolve(ROOT, 'docs/screenshots');
-const TEST_MIDI = resolve(ROOT, 'archive/v1-reference/test-data/Scenario 1 Tests/TEST MIDI 1.mid');
+const TEST_MIDI = resolve(ROOT, 'test/fixtures/midi/TEST MIDI 1.mid');
 
 const DEV_SERVER_URL = 'http://localhost:5173';
 

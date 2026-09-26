@@ -6,7 +6,7 @@ import { resolve } from 'path';
 
 const OUT = '.ui-repro-out/C7';
 const URL = process.env.URL || 'http://localhost:5173';
-const MIDI = 'archive/v1-reference/test-data/Scenario 1 Tests/TEST MIDI 1.mid';
+const MIDI = 'test/fixtures/midi/TEST MIDI 1.mid';
 const log = [];
 const note = (s) => { console.log(s); log.push(s); };
 
