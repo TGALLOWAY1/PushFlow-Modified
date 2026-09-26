@@ -6,6 +6,7 @@
  * Discard; a candidate's Use as my draft, Promote, Keep as variant and Back to
  * my draft; Active over the draft's "Viewing Active · your draft is kept". A
  * one-time note explains "Use as my draft" on the first candidate shown.
+ * S3.4: a trace replay reads "Replaying step 3/92 · Esc to exit".
  */
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
@@ -241,5 +242,18 @@ describe('the layout-state bar', () => {
     expect(screen.getByTestId('toast').textContent).toContain('Draft discarded');
     fireEvent.click(within(screen.getByTestId('toast')).getByRole('button', { name: 'Undo' }));
     expect(api.state.workingLayout).not.toBeNull();
+  });
+
+  it('a trace replay reads "Replaying step 2/3 · Esc to exit", read-only, and Exit replay leaves it (S3.4, T33)', async () => {
+    let state = await project();
+    const replay = state.candidates[0]!;
+    const steps = [0, 1, 2].map(i => ({ iterationIndex: i, phase: 'hill-climb', stateBefore: { layout: replay.layout, assignment: {} } }));
+    state = reduce(state, { type: 'SET_CANDIDATES', payload: [{ ...replay, iterationTrace: steps } as unknown as CandidateSolution] }, { type: 'INSPECT_LAYOUT', payload: null });
+    mount({ ...state, moveHistoryIndex: 1 });
+    expect(within(bar()).getByTestId('state-bar-replay').textContent).toBe('Replaying step 2/3 · Esc to exit');
+    expect(bar().dataset.readOnly).toBe('true');
+    fireEvent.click(within(bar()).getByRole('button', { name: 'Exit replay' }));
+    expect(api.state.moveHistoryIndex).toBeNull();
+    expect(within(bar()).queryByTestId('state-bar-replay')).toBeNull();
   });
 });

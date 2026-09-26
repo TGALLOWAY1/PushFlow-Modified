@@ -393,6 +393,30 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     expect(selectedTime()).toBe(t1);
   },
 
+  'exit-replay': async () => {
+    // A step of candidate A's trace replayed on the grid (S3.4, T33): Esc leaves
+    // the replay before anything else, and the edits it refused work again.
+    let state = await suggestedTestMidi1();
+    const replay = readOnlyCandidate(state);
+    const steps = [0, 1, 2].map(i => ({ iterationIndex: i, phase: 'hill-climb', stateBefore: { layout: replay.layout, assignment: {} } }));
+    state = projectReducer(state, { type: 'SET_CANDIDATES', payload: [{ ...replay, iterationTrace: steps } as CandidateSolution] });
+    state = projectReducer(state, { type: 'INSPECT_LAYOUT', payload: null });
+    mount({ ...state, moveHistoryIndex: 2 });
+    expect(api.state.iterationTrace).toHaveLength(3);
+    const key = Object.keys(shownPads())[0]!;
+    fireEvent.click(pad(key));
+    press('Delete');
+    expect(shownPads()[key]).toBeDefined();
+    expect(api.state.moveHistoryIndex).toBe(2);
+    press('Escape');
+    expect(api.state.moveHistoryIndex).toBeNull();
+    // Not replaying: Esc goes on to the next layer (the selected pad).
+    fireEvent.click(pad(key));
+    expect(api.state.selectedPadKey).toBe(key);
+    press('Escape');
+    expect(api.state.selectedPadKey).toBeNull();
+  },
+
   'escape': async () => {
     const state = await analysedProject();
     const first = getDisplayedExecutionPlan(state)!.fingerAssignments.find(a => a.row !== undefined)!;

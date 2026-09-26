@@ -25,6 +25,7 @@ export type InputRowId =
   | 'space'
   | 'step-events'
   | 'events-list-keys'
+  | 'exit-replay'
   | 'escape'
   | 'delete'
   | 'rename-sound'
@@ -152,6 +153,13 @@ export const INPUT_TABLE: readonly InputRow[] = [
     does: 'Selects the previous or next event.',
     keys: e => plain(e) && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'j' || e.key === 'k'),
     within: EVENTS_LIST_SCOPE,
+  },
+  // Before 'escape': while a step is replayed, Esc leaves the replay first.
+  {
+    id: 'exit-replay', group: 'Playback and events',
+    input: ['Esc'], when: 'A step of the optimizer trace is replayed on the grid',
+    does: 'Leaves the replay: the grid shows the layout on screen again, and edits work as before.',
+    keys: e => plain(e) && e.key === 'Escape',
   },
   {
     id: 'escape', group: 'Playback and events',

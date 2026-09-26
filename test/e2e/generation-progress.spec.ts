@@ -86,7 +86,8 @@ test.describe('Generation progress and Cancel', () => {
     // Every candidate carries its own stop reason (T33).
     expect(run.candidates.every(c => typeof c.stopReason === 'string' && c.moveCount > 0)).toBe(true);
     await expect(page.getByTestId('trace-stop-reason')).toHaveText(/^Stopped: [a-z]/);
-    await expect(page.getByText('Optimization Trace')).toBeVisible();
+    // The panel names whose trace it is (T33): the run's candidate A, shown read-only.
+    await expect(page.getByTestId('trace-title')).toHaveText(/^How candidate A was found · Stopped: [a-z]/);
     const count = run.candidates.length;
     await expect(page.getByTestId('generation-announcer')).toHaveText(`Generation finished: ${count} candidate${count === 1 ? '' : 's'}.`);
     // A normal finish needs no toast: the list fills.

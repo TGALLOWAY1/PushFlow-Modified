@@ -208,11 +208,19 @@ export function LayoutStateBar({ hint, scoring, onVariantSaved }: {
   let detail: ReactNode = null;
   let actions: ReactNode = null;
   if (replaying) {
+    // A step of the optimizer trace is on the grid, read-only (T33); Esc, or
+    // Exit replay, shows the layout on screen again (the input table's
+    // exit-replay row).
     const trace = getActiveTrace(state) ?? [];
-    detail = `Replaying trace step ${(state.moveHistoryIndex ?? 0) + 1} of ${trace.length} · read-only`;
+    detail = (
+      <span data-testid="state-bar-replay">
+        Replaying step {(state.moveHistoryIndex ?? 0) + 1}/{trace.length} {'·'} Esc to exit
+      </span>
+    );
     actions = (
       <button type="button" data-testid="state-bar-exit-replay" className={SUBTLE}
-        onClick={() => dispatch({ type: 'SET_MOVE_HISTORY_INDEX', payload: null })}>
+        onClick={() => dispatch({ type: 'SET_MOVE_HISTORY_INDEX', payload: null })}
+        title="Show the layout on screen again (Esc)">
         Exit replay
       </button>
     );

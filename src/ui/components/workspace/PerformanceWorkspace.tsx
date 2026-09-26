@@ -24,7 +24,7 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { exportProjectToFile } from '../../persistence/projectStorage';
 import { useToast } from '../shared/Toast';
 import { useViewSettings, ViewSettingsProvider } from '../../state/viewSettings';
-import { getActiveTrace, getDisplayedCandidate, getInspectedCandidate, isPadLocked, resolveInspectedLayout, type SoundStream } from '../../state/projectState';
+import { getActiveTrace, getDisplayedCandidate, hasTraceOnScreen, isPadLocked, resolveInspectedLayout, type SoundStream } from '../../state/projectState';
 import { liveCompareIds, canCompare } from '../../state/compareSet';
 import { resolvePresetDrop, soundForPresetLane, FOREIGN_PRESET_MESSAGE } from '../../state/presetDrop';
 
@@ -582,18 +582,11 @@ function PerformanceWorkspaceInner() {
   const displayedCandidate = getDisplayedCandidate(state);
   const assignments = displayedCandidate?.executionPlan.fingerAssignments;
 
-  // The trace for the Visual Debugger follows the inspected candidate (the
-  // top-ranked one when none is inspected); its step-through replay shows on
-  // the grid, read-only too. Every candidate carries its own moves and stop
-  // reason (T33): the inspected one's win; with none inspected the panel reads
-  // state.moveHistory, which Generate sets to the top-ranked candidate's.
+  // The trace on screen (T33): the reducer keeps state.moveHistory,
+  // iterationTrace, moveHistoryStopReason and traceSubject on the inspected
+  // candidate's trace, else the run's candidate A's or the promoted one's.
+  // A step of it replays on the grid, read-only.
   const activeTrace = getActiveTrace(state);
-  const inspectedCandidate = getInspectedCandidate(state);
-  const traceCandidate = inspectedCandidate?.moveHistory || inspectedCandidate?.iterationTrace
-    ? inspectedCandidate
-    : null;
-  const activeMoves = traceCandidate ? traceCandidate.moveHistory ?? null : state.moveHistory;
-  const activeStopReason = traceCandidate ? traceCandidate.stopReason ?? null : state.moveHistoryStopReason;
   const debuggerIteration = (activeTrace && state.moveHistoryIndex !== null)
     ? activeTrace[state.moveHistoryIndex]
     : undefined;
@@ -975,12 +968,15 @@ function PerformanceWorkspaceInner() {
                       onCompare={handleOpenCompare}
                       onRetryGenerate={handleGenerate}
                     />
-                    {((activeMoves && activeMoves.length > 0) || (activeTrace && activeTrace.length > 0)) && (
+                    {hasTraceOnScreen(state) && (
                       <div className="p-2.5">
+                        {/* A new candidate's trace starts unfiltered and collapsed. */}
                         <MoveTracePanel
-                          moves={activeMoves}
-                          trace={activeTrace}
-                          stopReason={activeStopReason}
+                          key={state.traceSubject?.candidateId ?? 'trace'}
+                          moves={state.moveHistory}
+                          trace={state.iterationTrace}
+                          stopReason={state.moveHistoryStopReason}
+                          subject={state.traceSubject}
                         />
                       </div>
                     )}

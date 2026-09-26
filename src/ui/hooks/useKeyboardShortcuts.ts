@@ -6,8 +6,8 @@
  * - Mod+S saves now; Mod+Z undoes; Mod+Shift+Z or Mod+Y redoes;
  * - Space plays and stops (the Composer binds its own while its tab is open);
  * - ←/→ select the previous or next event while stopped, stopping at the ends;
- * - Escape steps back one layer: the armed Sound, then the pad selection, then
- *   the event (an open overlay closes itself first);
+ * - Escape steps back one layer: a trace replay, then the armed Sound, then
+ *   the pad selection, then the event (an open overlay closes itself first);
  * - Delete/Backspace take the selected pad's Sound off the grid, with Undo;
  *   with no pad selected they do nothing (T28), and on a read-only layout
  *   they say how to edit it (S3.2);
@@ -16,7 +16,7 @@
 
 import { useRef } from 'react';
 import { useProject } from '../state/ProjectContext';
-import { getDisplayedExecutionPlan, getDisplayedLayout, isPadLocked } from '../state/projectState';
+import { getDisplayedExecutionPlan, getDisplayedLayout, isPadLocked, isReplayingTrace } from '../state/projectState';
 import { useInputHandler } from '../input/inputRegistry';
 import { useRemovePadWithUndo } from './useRemovePadWithUndo';
 import { useReadOnlyHint } from './useReadOnlyHint';
@@ -70,6 +70,12 @@ export function useKeyboardShortcuts({ onSave, onOpenShortcuts }: KeyboardShortc
     // At the first or last event the selection stays put: no wrapping.
     const first = assignments.find(a => a.startTime === times[target]);
     dispatch({ type: 'SELECT_EVENT', payload: first?.eventIndex ?? null });
+  });
+
+  // A trace replay (T33): "Replaying step 3/92 · Esc to exit".
+  useInputHandler('exit-replay', () => {
+    if (!isReplayingTrace(stateRef.current)) return false;
+    dispatch({ type: 'SET_MOVE_HISTORY_INDEX', payload: null });
   });
 
   useInputHandler('escape', () => {
