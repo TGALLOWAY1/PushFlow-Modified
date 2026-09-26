@@ -97,6 +97,9 @@ describe('Compare on the cache (T08, P3-4)', () => {
   it('names the candidate by its session letter, after a delete: Candidate B', async () => {
     const { candidate } = await openCompare();
     expect(within(candidate).getByTestId('compare-subject').getAttribute('data-chip')).toBe('Candidate B');
+    // The summary names the sides as they are shown, never by position ("Candidate A" is gone).
+    expect(screen.getByTestId('compare-summary').textContent).toMatch(/^(Overall difficulty is similar|(Active Layout|Candidate B) is \d+% easier overall)\./);
+    expect(screen.getByTestId('compare-dialog').textContent).not.toContain('Candidate A');
   }, 60_000);
 
   it('Keep saves a side as a variant; Promote is the one Promote and closes Compare', async () => {

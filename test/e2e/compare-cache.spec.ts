@@ -63,6 +63,9 @@ test.describe('S3.3 · Compare on the cache (P3-4)', () => {
     expect(await percent(activeSide.getByTestId('compare-score')), 'Active\'s side equals its standalone analysis').toBe(activeStandalone);
     expect(await percent(candidateSide.getByTestId('compare-score')), 'the candidate\'s side equals its row').toBe(rowScore);
     await expect(candidateSide.getByTestId('compare-subject')).toHaveAttribute('data-chip', `Candidate ${letter}`);
+    // The summary names each side as shown, never by its position (it read "Candidate B" for the right side).
+    await expect(page.getByTestId('compare-summary'))
+      .toHaveText(new RegExp(`^(Overall difficulty is similar|(Active Layout|Candidate ${letter}) is \\d+% easier overall)\\.`));
     // Every placed pad on both grids (7 Sounds each) shows the fingers of that layout's own plan.
     const dialog = page.getByTestId('compare-dialog');
     await expect(dialog.locator('[title*=" · Fingers "]')).toHaveCount(14);
