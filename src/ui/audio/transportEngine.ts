@@ -116,7 +116,10 @@ export interface TransportEngineDeps {
 /** Which clock the transport runs on right now, for tests and the e2e hook. */
 export type TransportClockKind = 'audio' | 'wall' | 'none';
 
-/** The count-in while it counts: the click sounding now (0-based) of how many. */
+/**
+ * The count-in, from Play until the music starts: the click sounding now
+ * (0-based; -1 before the first, while audio starts) of how many.
+ */
 export interface CountInBeat {
   beat: number;
   beats: number;
@@ -136,7 +139,7 @@ export interface TransportDebug {
   region: PlayRegion;
   /** Sounds skipped because the scheduler ran too late for them. */
   skipped: number;
-  /** The count-in's click now, while it counts in. */
+  /** The count-in now, from Play until the music starts; null otherwise. */
   countIn: CountInBeat | null;
 }
 
@@ -219,7 +222,7 @@ export class TransportEngine {
     return this.published;
   }
 
-  /** The count-in's click now, published with the position; null unless it counts in. */
+  /** The count-in now, published with the position; null unless it counts in. */
   get countIn(): CountInBeat | null {
     return this.publishedCountIn;
   }
@@ -315,6 +318,7 @@ export class TransportEngine {
     // A context waiting to resume: hold the playhead a moment, so the first
     // notes sound when audio starts; start silently if it doesn't.
     this.pending = true;
+    this.publishCountIn(this.countInNow());
     void this.audio.resume().then(() => this.audioResumed(token));
     this.pendingTimer = this.timers.set(() => {
       this.pendingTimer = null;
@@ -407,6 +411,7 @@ export class TransportEngine {
       this.scheduler.tick(now);
     }
     this.publish(start);
+    this.publishCountIn(this.countInNow());
   }
 
   /** The time left before the run's anchor while it counts in, else null. */
@@ -454,11 +459,18 @@ export class TransportEngine {
     }
   }
 
-  /** The count-in click sounding now (at the heard clock time), else null. */
+  /**
+   * The count-in now, at the heard clock time: from Play (beat -1 until its
+   * first click, and while audio starts) until the music starts; else null.
+   */
   private countInNow(): CountInBeat | null {
-    if (!this.running || !this.run?.countIn || !this.clock) return null;
-    const beat = countInBeatAt(this.run, this.clock.now() - this.clock.latency());
-    return beat === null ? null : { beat, beats: this.run.countIn.beats };
+    if (!this.running) return null;
+    if (!this.run || !this.clock) return this.pendingCountIn ? { beat: -1, beats: this.pendingCountIn.beats } : null;
+    const countIn = this.run.countIn;
+    if (!countIn) return null;
+    const heard = this.clock.now() - this.clock.latency();
+    if (heard >= this.run.anchorClock) return null;
+    return { beat: countInBeatAt(this.run, heard) ?? -1, beats: countIn.beats };
   }
 
   private tick = (): void => {

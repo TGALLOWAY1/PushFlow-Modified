@@ -297,8 +297,22 @@ export function useTransportPosition(): number {
     engine ? engine.subscribe : noSubscription,
     () => (engine ? engine.snapshot : null),
   );
-  // Until the engine has stopped (its effect runs after this render), its
-  // position is the true one; stopped, currentTime already holds any seek.
-  if (engine && live !== null && (state.isPlaying || engine.isRunning())) return live;
+  // While the engine runs its position is the true one, until its Stop effect
+  // too; before it starts (its effect runs after this render), currentTime
+  // already holds where it will start.
+  if (engine && live !== null && engine.isRunning()) return live;
   return state.currentTime;
+}
+
+/**
+ * Whether the transport is actually playing: false in the render between
+ * Play and the engine's start, when nothing has sounded yet (S4.3b: no pad may
+ * flash before a count-in). Outside a workspace, isPlaying.
+ */
+export function useTransportRunning(): boolean {
+  const api = useContext(TransportContext);
+  const { state } = useProject();
+  const engine = api?.engine ?? null;
+  const running = useSyncExternalStore(engine ? engine.subscribe : noSubscription, () => (engine ? engine.isRunning() : null));
+  return running ?? state.isPlaying;
 }

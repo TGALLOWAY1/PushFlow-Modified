@@ -16,7 +16,8 @@ export function CountInOverlay({ width, height, padSize, offsetX = 0 }: {
   offsetX?: number;
 }) {
   const countIn = useCountIn();
-  if (!countIn) return null;
+  // Before its first click (beat -1) the grid is already held still, but there is nothing to count yet.
+  if (!countIn || countIn.beat < 0) return null;
   const beat = (countIn.beat % BEATS_PER_BAR) + 1;
   const bar = Math.floor(countIn.beat / BEATS_PER_BAR) + 1;
   const bars = Math.max(1, Math.round(countIn.beats / BEATS_PER_BAR));

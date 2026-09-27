@@ -319,6 +319,8 @@ describe('the count-in (S4.3b, T59)', () => {
     e.play(4, { countInBars: 1 });
     // The clicks start after the usual lead, 2/3 s apart (0.5 s beats at 0.75x): 8/3 s in all.
     const anchor = t0 + START_LEAD + 8 / 3;
+    // From Play, before its first click: counting in, nothing to count yet.
+    expect(e.countIn).toEqual({ beat: -1, beats: 4 });
     advance(0.2);
     expect(e.countIn).toEqual({ beat: 0, beats: 4 });
     expect(e.debug().countIn).toEqual({ beat: 0, beats: 4 });
@@ -342,6 +344,15 @@ describe('the count-in (S4.3b, T59)', () => {
     advance(4.2);
     expect(audio.clickLog.map(c => c.downbeat)).toEqual([true, false, false, false, true, false, false, false]);
     expect(e.position()).toBeCloseTo(4.2 - START_LEAD - 4, 6);
+  });
+
+  it('a seek during the count-in ends it at once, not a frame later', () => {
+    const e = engine();
+    e.play(0, { countInBars: 1 });
+    advance(0.3);
+    expect(e.countIn).not.toBeNull();
+    e.seek(2);
+    expect(e.countIn).toBeNull();
   });
 
   it('Stop during the count-in rests at the start and cancels the clicks still to come', () => {
@@ -388,6 +399,8 @@ describe('the count-in (S4.3b, T59)', () => {
     audio.resumeResolves = false;
     const e = engine();
     e.play(4, { countInBars: 1 });
+    // Waiting for audio: counting in already, so nothing on the grid flashes.
+    expect(e.countIn).toEqual({ beat: -1, beats: 4 });
     timers.fire(); // no audio yet: the wall clock counts in, silently
     advance(0.6);
     expect(e.countIn).toEqual({ beat: 1, beats: 4 });

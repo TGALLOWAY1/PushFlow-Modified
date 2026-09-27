@@ -28,7 +28,7 @@ import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { type GridLabelSettings, type MomentView } from '../state/viewSettings';
 import { playheadEventIndex } from '../analysis/selectionModel';
-import { useCountIn, useTransportPosition } from '../audio/TransportProvider';
+import { useCountIn, useTransportPosition, useTransportRunning } from '../audio/TransportProvider';
 import { CountInOverlay } from './CountInOverlay';
 import { playbackOverlayAt, selectionOverlay, type PadStrike } from '../analysis/momentOverlay';
 import { getEventTimeline } from '../analysis/eventTimeline';
@@ -239,9 +239,12 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
   // The playhead, from the workspace's transport (S4.3a): it moves every
   // frame while playing without the project state changing.
   const playhead = useTransportPosition();
-  // Counting in (S4.3b): the playhead waits at the start, the grid shows the
-  // strikes the music starts with, and no pad flashes until it does.
+  // Counting in (S4.3b), from Play until the music starts: the playhead waits
+  // at the start, the grid shows the strikes the music starts with, and no pad
+  // flashes until it does, nor in the render before the engine starts.
   const countingIn = useCountIn() !== null;
+  const running = useTransportRunning();
+  const silent = countingIn || (playing && !running);
   const playheadIndex = playing ? playheadEventIndex(timeline, assignments, playhead) : null;
   const overlay = useMemo(
     () => playing
@@ -376,7 +379,7 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
 
   const activePadKeys = useMemo(() => {
     const keys = new Set<string>();
-    if (!assignments || (!state.isPlaying && playhead === 0) || countingIn) return keys;
+    if (!assignments || (!state.isPlaying && playhead === 0) || silent) return keys;
 
     // Map event keys to durations
     const durationMap = new Map<string, number>();
@@ -401,13 +404,14 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
       }
     }
     return keys;
-  }, [assignments, playhead, state.isPlaying, state.soundStreams, countingIn]);
+  }, [assignments, playhead, state.isPlaying, state.soundStreams, silent]);
 
   // Detect new note-on events: pads that just became active (weren't active last frame)
   useEffect(() => {
-    if (!state.isPlaying) {
+    // Stopped, or not sounding yet: no flash may linger into the music.
+    if (!state.isPlaying || silent) {
       prevActivePadsRef.current = new Set();
-      setBlinkingPads(new Map());
+      setBlinkingPads(prev => (prev.size === 0 ? prev : new Map()));
       return;
     }
 
@@ -434,7 +438,7 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
 
     if (hasNew) setBlinkingPads(newBlinks);
     prevActivePadsRef.current = new Set(activePadKeys);
-  }, [activePadKeys, state.isPlaying]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activePadKeys, state.isPlaying, silent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Build ghost preview pad map for rendering
   const ghostPads = useMemo(() => {
