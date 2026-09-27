@@ -32,6 +32,8 @@ export interface TimelineEvent {
   /** The eventKeys of its notes. */
   noteKeys: ReadonlySet<string>;
   noteCount: number;
+  /** The Sounds struck, by id, in note order (each once). */
+  soundIds: readonly string[];
 }
 
 export interface EventTimeline {
@@ -59,6 +61,7 @@ export function buildEventTimeline(notes: readonly TimelineNote[]): EventTimelin
       endTime: moment.items[moment.items.length - 1]!.startTime,
       noteKeys,
       noteCount: moment.items.length,
+      soundIds: [...new Set(moment.items.map(n => n.voiceId).filter((id): id is string => id !== undefined))],
     };
     byKey.set(event.key, event);
     for (const k of noteKeys) byNoteKey.set(k, event);

@@ -2,11 +2,9 @@ import { useMemo, useState } from 'react';
 import { useProject } from '../../state/ProjectContext';
 import { resolveInspectedLayout } from '../../state/projectState';
 import { inspectedSubject } from '../../state/layoutSubject';
-import { buildSelectedTransitionModel } from '../../analysis/selectionModel';
 import { SubjectChip } from '../shared/SubjectChip';
 import { CostBreakdownBars, FeasibilityBadge } from './CostBreakdownBars';
-import { SelectedEventCard } from './SelectedEventCard';
-import { findSelectedEvent, getEventTimeline } from '../../analysis/eventTimeline';
+import { getEventTimeline } from '../../analysis/eventTimeline';
 import { analysisScope, analysisScopeLine, planSoundIds, scopeLineOf } from '../../analysis/analysisScope';
 import { EventCostChart } from './EventCostChart';
 import { scoreTile } from '../../analysis/planScore';
@@ -27,16 +25,6 @@ export function PerformanceCostsPanel() {
   const { candidate: shownCandidate, score: layoutScore, updating } = useShownAnalysis();
   const currentPlan = shownCandidate?.executionPlan ?? null;
   const timeline = getEventTimeline(state);
-  const transition = useMemo(
-    () => buildSelectedTransitionModel(timeline, currentPlan?.fingerAssignments ?? null, state.selectedMomentKey),
-    [timeline, currentPlan, state.selectedMomentKey],
-  );
-
-  // The selected event, whole (S4.1), costed once (never summed per note).
-  const selectedEvent = useMemo(
-    () => findSelectedEvent(timeline, currentPlan?.fingerAssignments, state.selectedMomentKey),
-    [timeline, currentPlan, state.selectedMomentKey],
-  );
   // The plan's own scope (the Sounds it analysed), so a mute made since it was
   // computed never relabels an old verdict; the live scope when there is no
   // plan. Its placement makes a partly placed layout "Unfinished" (S3.3).
@@ -182,10 +170,6 @@ export function PerformanceCostsPanel() {
             </div>
 
             <UnplacedSounds />
-
-            {selectedEvent && (
-              <SelectedEventCard selected={selectedEvent} tempo={state.tempo} scope={scope} subject={subject} transition={transition} />
-            )}
 
             {currentPlan.fingerAssignments.length > 0 && (
               <div>

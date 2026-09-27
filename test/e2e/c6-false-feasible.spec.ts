@@ -23,7 +23,8 @@ async function badgeLevelsWhileSelecting(page: Page, pf: PfHandle, n: number): P
     await selectMoment(page, i);
     await page.getByRole('button', { name: 'Costs', exact: true }).click();
     await expect.poll(async () => (await pf.call('status')).selectedEvent).toBe(i);
-    // The selected event gets its own card, beside the pinned layout verdict.
+    // The selected event gets its own verdict in the inspector docked beside
+    // the grid (S4.2), apart from the pinned layout verdict.
     await expect(page.getByTestId('selected-event-card')).toBeVisible();
     for (const badge of await page.getByTestId('verdict-badge').all()) {
       seen.add(`${await badge.getAttribute('data-level')}: ${(await badge.innerText()).replace(/\s+/g, ' ')}`);

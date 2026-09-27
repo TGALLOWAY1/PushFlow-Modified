@@ -28,12 +28,25 @@ export interface GridLabelSettings {
   showSoundNames: boolean;
   /** Color pads by assigned hand (left/right) instead of voice color */
   showHandColors: boolean;
-  /**
-   * Arrows from the selected event's pads to the next event's. Its toggle
-   * lived beside the transition preview above the grid until S3.2 gave that
-   * slot to the layout-state bar.
-   */
-  showTransitionArrows: boolean;
+}
+
+/**
+ * What the moment view shows around the current event (S4.2, T09): its
+ * strikes only, also the next event's (with the moves to them), or also the
+ * previous event's. It replaces the onion-skin and Arrows toggles.
+ */
+export type MomentView = 'now' | 'now-next' | 'prev-now-next';
+
+export const MOMENT_VIEWS: ReadonlyArray<{ id: MomentView; label: string; description: string }> = [
+  { id: 'now', label: 'Now', description: 'The event’s own strikes' },
+  { id: 'now-next', label: 'Now + Next', description: 'Also the next event’s strikes, and each finger’s move to them' },
+  { id: 'prev-now-next', label: 'Prev · Now · Next', description: 'Also the previous event’s strikes' },
+];
+
+/** The view after `view`, for the O key: Now → Now + Next → Prev · Now · Next → Now. */
+export function nextMomentView(view: MomentView): MomentView {
+  const i = MOMENT_VIEWS.findIndex(v => v.id === view);
+  return MOMENT_VIEWS[(i + 1) % MOMENT_VIEWS.length]!.id;
 }
 
 /**
@@ -42,6 +55,7 @@ export interface GridLabelSettings {
  */
 export interface ViewSettings {
   gridLabels: GridLabelSettings;
+  momentView: MomentView;
 }
 
 export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
@@ -51,8 +65,8 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
     showFingerAssignment: true,
     showSoundNames: true,
     showHandColors: false,
-    showTransitionArrows: true,
   },
+  momentView: 'now-next',
 };
 
 const STORAGE_KEY = 'pushflow:view-settings';
@@ -66,13 +80,14 @@ export function loadViewSettings(): ViewSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_VIEW_SETTINGS;
-    const parsed = JSON.parse(raw) as { gridLabels?: Record<string, unknown> };
+    const parsed = JSON.parse(raw) as { gridLabels?: Record<string, unknown>; momentView?: unknown };
     const gridLabels = { ...DEFAULT_VIEW_SETTINGS.gridLabels };
     for (const key of Object.keys(gridLabels) as Array<keyof GridLabelSettings>) {
       const value = parsed?.gridLabels?.[key];
       if (typeof value === 'boolean') gridLabels[key] = value;
     }
-    return { gridLabels };
+    const momentView = MOMENT_VIEWS.find(v => v.id === parsed?.momentView)?.id ?? DEFAULT_VIEW_SETTINGS.momentView;
+    return { gridLabels, momentView };
   } catch {
     return DEFAULT_VIEW_SETTINGS;
   }
@@ -110,6 +125,7 @@ interface ViewSettingsContextValue {
   setSettings: (s: ViewSettings) => void;
   updateGridLabels: (updates: Partial<GridLabelSettings>) => void;
   toggleGridLabel: (key: keyof GridLabelSettings) => void;
+  setMomentView: (view: MomentView) => void;
 }
 
 const ViewSettingsContext = createContext<ViewSettingsContextValue | null>(null);
@@ -135,8 +151,12 @@ export function ViewSettingsProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const setMomentView = useCallback((momentView: MomentView) => {
+    setSettings(prev => (prev.momentView === momentView ? prev : { ...prev, momentView }));
+  }, []);
+
   return (
-    <ViewSettingsContext.Provider value={{ settings, setSettings, updateGridLabels, toggleGridLabel }}>
+    <ViewSettingsContext.Provider value={{ settings, setSettings, updateGridLabels, toggleGridLabel, setMomentView }}>
       {children}
     </ViewSettingsContext.Provider>
   );

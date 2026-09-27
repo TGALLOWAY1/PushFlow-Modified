@@ -59,7 +59,8 @@ import {
 } from '../../../engine/mapping/presetTransform';
 import { generateId } from '../../../utils/idGenerator';
 import { padKey } from '../../../types/padGrid';
-import { useMeasuredPadSize } from './gridSizing';
+import { gridRegionMinHeight, useMeasuredPadSize } from './gridSizing';
+import { MomentDock } from './MomentDock';
 import { DrawerSplitter } from './DrawerSplitter';
 import { CENTER_MIN_WIDTH, fitSidePanels, maxPanelWidth } from './panelSizing';
 import { ArmedSoundHint, GridStartCard, NothingPlacedHint } from './GridEmptyState';
@@ -78,6 +79,8 @@ import {
   type DrawerPrefs,
 } from './drawerSizing';
 import { timelineContentHeight } from '../timelineLayout';
+import { EventsNavigationProvider, type EventsNavigation } from './eventsNavigation';
+import { type EventsFilter } from '../../analysis/eventDifficulty';
 
 type LeftPanelTab = 'sounds' | 'events' | 'presets';
 type RightPanelTab = 'costs' | 'layouts';
@@ -165,8 +168,20 @@ function PerformanceWorkspaceInner() {
   const [leftTab, setLeftTab] = useState<LeftPanelTab>(initialView === 'presets' ? 'presets' : 'sounds');
   const [rightTab, setRightTab] = useState<RightPanelTab>(initialView === 'presets' ? 'costs' : 'layouts');
   const [rightCollapsed, setRightCollapsed] = useState(initialView === 'presets');
-  const [onionSkin, setOnionSkin] = useState(false);
   const [timelineTab, setTimelineTab] = useState<TimelineTab>(initialView === 'presets' ? 'composer' : 'timeline');
+
+  // The Events list's filter (T27): the Analysis panel's "N need attention"
+  // applies one and brings the Events tab up.
+  const [eventsFilter, setEventsFilter] = useState<EventsFilter>('all');
+  const showEvents = useCallback((filter: EventsFilter) => {
+    setEventsFilter(filter);
+    setLeftTab('events');
+    setLeftCollapsed(false);
+  }, []);
+  const eventsNavigation = useMemo<EventsNavigation>(
+    () => ({ filter: eventsFilter, setFilter: setEventsFilter, showEvents }),
+    [eventsFilter, showEvents],
+  );
 
   // Composer preset library state
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
@@ -349,8 +364,11 @@ function PerformanceWorkspaceInner() {
   const panelLayout = useRef({ room: panelRoom, left: shownPanels.left, right: shownPanels.right });
   panelLayout.current = { room: panelRoom, left: shownPanels.left, right: shownPanels.right };
 
-  // Measured grid (T04): the pads are sized to the grid region, never scaled.
-  const [gridRegionRef, padSize] = useMeasuredPadSize();
+  // Measured grid (T04): the pads are sized to the grid region, never scaled;
+  // the moment dock sits beside the frame, or under it in a narrow centre (S4.2).
+  const [gridRegionRef, padSize, dockPlacement] = useMeasuredPadSize();
+  // What the grid region needs at its smallest: the drawer never takes it.
+  const gridMin = gridRegionMinHeight(dockPlacement);
 
   // Bottom drawer: fits the timeline's content (at most ~40% of the centre
   // column) unless the viewer dragged the splitter; remembered per viewer.
@@ -381,7 +399,7 @@ function PerformanceWorkspaceInner() {
     ? Number.POSITIVE_INFINITY
     : timelineContentHeight(state.soundStreams.length);
   const drawerHeight = centerHeight > 0
-    ? drawerHeightFor(centerHeight, drawerContentHeight, drawerPrefs)
+    ? drawerHeightFor(centerHeight, drawerContentHeight, drawerPrefs, gridMin)
     : undefined;
   const drawerCollapsed = drawerPrefs.collapsed;
   const setDrawerCollapsed = useCallback((collapsed: boolean) => {
@@ -662,6 +680,7 @@ function PerformanceWorkspaceInner() {
   }, [revealVariantId, state.savedVariants, rightTab]);
 
   return (
+    <EventsNavigationProvider value={eventsNavigation}>
     <div className="h-full flex flex-col bg-[var(--bg-app)] overflow-hidden">
       {/* ─── Top Toolbar ──────────────────────────────────────── */}
       <WorkspaceToolbar
@@ -747,7 +766,7 @@ function PerformanceWorkspaceInner() {
                 {leftTab === 'sounds' ? (
                   <VoicePalette />
                 ) : leftTab === 'events' ? (
-                  <EventsPanel onionSkin={onionSkin} onToggleOnionSkin={() => setOnionSkin(!onionSkin)} />
+                  <EventsPanel />
                 ) : (
                   <PresetLibraryPanel
                     selectedPresetId={selectedPresetId}
@@ -810,7 +829,9 @@ function PerformanceWorkspaceInner() {
               )}
               assignments={assignments}
               layoutOverride={currentLayoutOverride}
-              onionSkin={onionSkin}
+              momentView={viewSettings.momentView}
+              dock={<MomentDock />}
+              dockPlacement={dockPlacement}
               voiceConstraints={state.voiceConstraints}
               gridLabels={viewSettings.gridLabels}
               highlightedInstancePads={highlightedInstancePads}
@@ -832,8 +853,8 @@ function PerformanceWorkspaceInner() {
 
           <DrawerSplitter
             height={drawerHeight ?? DRAWER_TAB_BAR_HEIGHT}
-            maxHeight={maxDrawerHeight(centerHeight)}
-            minHeight={minDrawerHeight(centerHeight)}
+            maxHeight={maxDrawerHeight(centerHeight, gridMin)}
+            minHeight={minDrawerHeight(centerHeight, gridMin)}
             collapsed={drawerCollapsed}
             onResize={(height, commit) => {
               const next = { height, collapsed: false };
@@ -999,5 +1020,6 @@ function PerformanceWorkspaceInner() {
       {/* ─── Keyboard and mouse ('?') ─────────────────────────── */}
       {shortcutsOpen && <ShortcutSheet onClose={() => setShortcutsOpen(false)} />}
     </div>
+    </EventsNavigationProvider>
   );
 }

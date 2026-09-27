@@ -90,8 +90,25 @@ test.describe('S2.1 · measured grid (P2-1)', () => {
     const before = await page.getByTestId('pad-0-0').boundingBox();
     const [first] = await pf.call('events');
     await pf.call('dispatch', { type: 'SELECT_EVENT', payload: { key: first!.key, startTime: first!.startTime } });
-    // The transition preview moved from the state-bar slot to the selected-event card (S3.2).
-    await expect(page.getByTestId('transition-preview').first()).toContainText('Transition preview');
+    // The transition preview sits in the moment inspector, docked beside the
+    // grid at a fixed size (S4.2), so selecting an event moves no pad.
+    await expect(page.getByTestId('transition-preview')).toHaveText(/^Next: Event 2 in \d+ ms/);
+    expect(await page.getByTestId('pad-0-0').boundingBox()).toEqual(before);
+
+    // The dock sits beside the frame, as tall as it, 248 to 360 px wide, and
+    // fully visible; opening the pad inspector in it moves no pad either.
+    const dock = page.getByTestId('grid-dock');
+    await expect(dock).toHaveAttribute('data-placement', 'side');
+    const [box, frame] = [(await dock.boundingBox())!, (await page.getByTestId('grid-frame').boundingBox())!];
+    expect(box.x).toBeGreaterThan(frame.x + frame.width);
+    expect(Math.abs(box.height - frame.height)).toBeLessThanOrEqual(1);
+    expect(box.width).toBeGreaterThanOrEqual(248);
+    expect(box.width).toBeLessThanOrEqual(360);
+    expect(await clippedOf(page, ['grid-dock', 'selected-event-label', 'dock-next-hard', 'play-from-here'])).toEqual([]);
+    const state = await pf.call('state');
+    const key = Object.keys((state.workingLayout ?? state.activeLayout).padToVoice)[0]!;
+    await page.getByTestId(`pad-${key.replace(',', '-')}`).click();
+    await expect(page.getByTestId('pad-inspector')).toBeVisible();
     expect(await page.getByTestId('pad-0-0').boundingBox()).toEqual(before);
   });
 });

@@ -89,7 +89,7 @@ describe('FACTOR_META is the only source of factor names and colours (P2-9)', ()
       'components/CandidateCompare.tsx',
       'components/panels/CompareModal.tsx',
       'components/panels/PerformanceCostsPanel.tsx',
-      'components/panels/SelectedEventCard.tsx',
+      'components/workspace/MomentInspector.tsx',
     ].map(f => path.join(SRC_UI, f));
     // The --factor-* token values, written out by hand.
     const css = fs.readFileSync(path.resolve(__dirname, '../../../src/index.css'), 'utf8');

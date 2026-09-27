@@ -15,6 +15,7 @@ import {
   explainEvent,
   explainTransition,
   identifyHardMoments,
+  transitionLevel,
 } from '../../../src/engine/analysis/eventExplainer';
 
 // ============================================================================
@@ -326,6 +327,17 @@ describe('explainTransition', () => {
     const explanation = explainTransition(transition);
 
     expect(explanation.explanation).toContain('moderately hard');
+  });
+
+  it('names the level in words, on the same thresholds as the explanation', () => {
+    const from = makeMoment(0.0, [makeAssignment({ startTime: 0.0 })]);
+    const to = makeMoment(0.5, [makeAssignment({ startTime: 0.5 })]);
+    for (const [score, level] of [[0.1, 'easy'], [0.3, 'slightly difficult'], [0.5, 'moderately hard'], [0.8, 'very hard']] as const) {
+      const explanation = explainTransition(makeTransition(from, to, { compositeDifficultyScore: score }));
+      expect(explanation.level).toBe(level);
+      expect(explanation.explanation).toContain(level);
+    }
+    expect([0.2, 0.4, 0.7].map(transitionLevel)).toEqual(['slightly difficult', 'slightly difficult', 'moderately hard']);
   });
 });
 

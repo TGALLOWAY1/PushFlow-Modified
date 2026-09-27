@@ -1,4 +1,5 @@
 import { type FingerType } from '../types/fingerModel';
+import { fingerLabel } from './fingerNotation';
 
 const FINGER_NUM_TO_TYPE: Record<string, FingerType> = {
   '1': 'thumb',
@@ -6,14 +7,6 @@ const FINGER_NUM_TO_TYPE: Record<string, FingerType> = {
   '3': 'middle',
   '4': 'ring',
   '5': 'pinky',
-};
-
-const FINGER_TYPE_TO_NUM: Record<FingerType, string> = {
-  thumb: '1',
-  index: '2',
-  middle: '3',
-  ring: '4',
-  pinky: '5',
 };
 
 const LEGACY_FINGER_MAP: Record<string, FingerType> = {
@@ -33,7 +26,7 @@ export function formatFingerConstraint(
   hand: 'left' | 'right',
   finger: FingerType,
 ): string {
-  return `${hand === 'left' ? 'L' : 'R'}${FINGER_TYPE_TO_NUM[finger]}`;
+  return fingerLabel(hand, finger);
 }
 
 export function parseFingerConstraint(

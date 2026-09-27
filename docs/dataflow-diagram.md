@@ -91,6 +91,7 @@ flowchart TD
 
         subgraph GridLayer["Grid"]
             GRID["InteractiveGrid\n(8×8 pad grid)"]
+            EVENT_DETAIL["MomentDock\n(moment + pad inspectors)"]
             COMPARE_GRID["CompareGridView"]
         end
 
@@ -104,7 +105,6 @@ flowchart TD
             TRACE_P["MoveTracePanel\n(optimizer step trace)"]
             CANDIDATE_C["CandidatePreviewCard\n(Inspect / Promote / Keep)"]
             COMPARE_M["CompareModal\n(side-by-side diff)"]
-            EVENT_DETAIL["SelectedEventCard\n(selected event verdict)"]
             LEARN_MORE["LearnMoreModal"]
         end
 

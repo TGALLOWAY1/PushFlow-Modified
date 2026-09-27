@@ -17,6 +17,8 @@ import {
   type VerdictLevel,
 } from '../../analysis/verdictTiers';
 import { FACTOR_KEYS, FACTOR_META, factorsFromBreakdown, type FactorKey } from '../../analysis/factorMeta';
+import { type EventsFilter } from '../../analysis/eventDifficulty';
+import { useEventsNavigation } from '../workspace/eventsNavigation';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Props
@@ -199,11 +201,27 @@ function DifficultySummary({ hardCount, unplayableCount, mediumCount, unplayable
   unplayableNotes?: number;
   noteCount?: number;
 }) {
+  // Each count opens the Events list filtered to those events (T27), when
+  // there is a workspace to show it in.
+  const nav = useEventsNavigation();
   if (hardCount === undefined && unplayableCount === undefined) return null;
   const hard = hardCount ?? 0;
   const unplay = unplayableCount ?? 0;
   const medium = mediumCount ?? 0;
   const total = hard + unplay;
+  const showing = (filter: EventsFilter, text: string, className: string, title?: string) => nav ? (
+    <button
+      type="button"
+      data-testid={`show-events-${filter}`}
+      className={`underline decoration-dotted underline-offset-2 hover:decoration-solid focus-ring rounded-pf-sm ${className}`}
+      title={title ?? 'Show them in the Events list'}
+      onClick={() => nav.showEvents(filter)}
+    >
+      {text}
+    </button>
+  ) : (
+    <span className={className} title={title}>{text}</span>
+  );
 
   return (
     <div className="space-y-1">
@@ -218,23 +236,19 @@ function DifficultySummary({ hardCount, unplayableCount, mediumCount, unplayable
         medium > 0 ? (
           <div className="text-pf-xs text-[var(--text-secondary)]">
             Nothing hard or unplayable, but{' '}
-            <span className="text-[var(--text-primary)]">{medium}</span> event
-            {medium !== 1 ? 's' : ''} need attention
+            {showing('medium-up', `${medium} event${medium !== 1 ? 's' : ''} need attention`, 'text-[var(--text-primary)]')}
           </div>
         ) : (
           <div className="text-pf-xs text-green-400">Comfortable throughout</div>
         )
       ) : (
         <div className="flex gap-3 text-pf-xs">
-          {hard > 0 && (
-            <span className="text-amber-400">
-              {hard} hard event{hard !== 1 ? 's' : ''}
-            </span>
-          )}
-          {unplay > 0 && (
-            <span className="text-red-400" title={unplayableNotes !== undefined && noteCount !== undefined ? `${unplayableNotes} of ${noteCount} notes can't be played` : undefined}>
-              {unplay} unplayable event{unplay !== 1 ? 's' : ''}
-            </span>
+          {hard > 0 && showing('hard', `${hard} hard event${hard !== 1 ? 's' : ''}`, 'text-amber-400')}
+          {unplay > 0 && showing(
+            'unplayable',
+            `${unplay} unplayable event${unplay !== 1 ? 's' : ''}`,
+            'text-red-400',
+            unplayableNotes !== undefined && noteCount !== undefined ? `${unplayableNotes} of ${noteCount} notes can't be played` : undefined,
           )}
         </div>
       )}

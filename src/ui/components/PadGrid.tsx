@@ -6,7 +6,7 @@
  *   then the plan's assignments over them (S3.3, T08), so a placed Sound the
  *   plan doesn't play (muted, or no notes) still shows on its pad
  * - Which fingers play each pad
- * - Hand zones (left blue, right purple)
+ * - Hand zones, in the --hand-left and --hand-right colours (S4.2, T42)
  * - Hit counts and selection state
  */
 
@@ -16,6 +16,7 @@ import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { padLabel, sharedNamePrefix } from '../analysis/padLabels';
 import { formatPadLocator, formatPadPosition } from '../../utils/padPosition';
+import { fingerLabel, handColor } from '../../utils/fingerNotation';
 
 interface PadGridProps {
   layout: Layout;
@@ -32,14 +33,10 @@ interface PadGridProps {
   labelColor?: string;
 }
 
-/** Abbreviated finger names for display */
-const FINGER_ABBREV: Record<string, string> = {
-  thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
-};
-
+/** Hands in their tokens (the same on every surface, T42); the L or R letter is the second cue. */
 const HAND_COLORS = {
-  left: { bg: 'rgba(59,130,246,0.25)', border: '#3b82f6', text: '#93c5fd' },
-  right: { bg: 'rgba(168,85,247,0.25)', border: '#a855f7', text: '#d8b4fe' },
+  left: { bg: 'color-mix(in srgb, var(--hand-left) 25%, transparent)', border: 'var(--hand-left)', text: 'var(--text-primary)' },
+  right: { bg: 'color-mix(in srgb, var(--hand-right) 25%, transparent)', border: 'var(--hand-right)', text: 'var(--text-primary)' },
   Unplayable: { bg: 'rgba(239,68,68,0.2)', border: '#ef4444', text: '#fca5a5' },
   mixed: { bg: 'rgba(234,179,8,0.2)', border: '#eab308', text: '#fde68a' },
 };
@@ -108,7 +105,8 @@ export function PadGrid({ layout, voices, assignments, onPadClick, compact, diff
           map.set(key, summary);
         }
         summary.hands.add(a.assignedHand);
-        if (a.finger) summary.fingers.add(`${a.assignedHand[0].toUpperCase()}${FINGER_ABBREV[a.finger] ?? a.finger}`);
+        const label = fingerLabel(a.assignedHand, a.finger);
+        if (label) summary.fingers.add(label);
         summary.hitCount++;
         summary.assignments.push(a);
       }
@@ -239,10 +237,10 @@ export function PadGrid({ layout, voices, assignments, onPadClick, compact, diff
         {/* Zone labels */}
         {!compact && (
           <div className={`flex ${colLabelMl} mt-1 gap-1`}>
-            <div className={`${zoneWidth} text-center ${textSize} text-blue-400/70 border-t border-blue-500/20 pt-0.5`}>
+            <div className={`${zoneWidth} text-center ${textSize} text-[var(--text-secondary)] border-t-2 border-hand-left/60 pt-0.5`}>
               Left Hand
             </div>
-            <div className={`${zoneWidth} text-center ${textSize} text-purple-400/70 border-t border-purple-500/20 pt-0.5`}>
+            <div className={`${zoneWidth} text-center ${textSize} text-[var(--text-secondary)] border-t-2 border-hand-right/60 pt-0.5`}>
               Right Hand
             </div>
           </div>
@@ -256,14 +254,12 @@ export function PadGrid({ layout, voices, assignments, onPadClick, compact, diff
           <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-pf-sm">
             {usedPads.map(([padKey, summary]) => {
               const hands = [...summary.hands];
-              const handColor = hands.length === 1 && hands[0] === 'left' ? 'text-blue-400'
-                : hands.length === 1 && hands[0] === 'right' ? 'text-purple-400'
-                : 'text-yellow-400';
+              const fingersColor = (hands.length === 1 ? handColor(hands[0]) : null) ?? 'var(--status-warn)';
               return (
                 <div key={padKey} className="flex items-center gap-2 text-[var(--text-secondary)]">
                   <span className="font-mono text-[var(--text-secondary)] w-14 tabular-nums" title={formatPadPosition(padKey)}>{formatPadLocator(padKey)}</span>
                   <span className="text-[var(--text-primary)] font-medium truncate w-16">{summary.voiceName}</span>
-                  <span className={`${handColor} w-16`}>{[...summary.fingers].join(', ')}</span>
+                  <span className="w-16" style={{ color: fingersColor }}>{[...summary.fingers].join(', ')}</span>
                   <span className="text-[var(--text-secondary)]">{summary.hitCount}x</span>
                 </div>
               );

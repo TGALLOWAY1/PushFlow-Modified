@@ -22,6 +22,7 @@ import { VERDICT_TIERS, verdictHeadline } from '../../analysis/verdictTiers';
 import { FACTOR_KEYS, FACTOR_META, type FactorKey } from '../../analysis/factorMeta';
 import { ROLE_META, ROLE_ORDER, candidateLetter } from '../../state/layoutSubject';
 import { LIFECYCLE_ACTIONS } from '../../state/lifecycleActions';
+import { MOMENT_VIEWS } from '../../state/viewSettings';
 import { layoutLabel } from '../../state/layoutLabels';
 import { suggestVariantName } from '../../state/variantNames';
 import { strategyLabel } from '../../analysis/strategyLabels';
@@ -270,12 +271,20 @@ function OverviewInfographic() {
               </svg>
             </div>
             <div className="text-[9px] text-gray-500 space-y-1">
-              <div className="text-[10px] text-gray-400">Onion view:</div>
-              <p className="text-gray-600 leading-snug" data-testid="learn-more-onion">
-                With an event selected, its pads are highlighted, the next event&apos;s pads get a dashed outline, and every other pad dims. Onion skin adds a dotted outline on the previous event&apos;s pads, empty or not.
+              <div className="text-[10px] text-gray-400">Moment view:</div>
+              <p className="text-gray-600 leading-snug" data-testid="learn-more-moment-view">
+                The selected event&apos;s pads keep their Sound&apos;s colour and name and gain a ring in the hand&apos;s colour and a finger badge (L2); every other pad dims. The view beside the grid (O cycles it):
               </p>
-              <p className="text-[8px] text-gray-700">
-                During playback the selection overlay pauses so struck pads flash normally; Stop brings it back.
+              <ul data-testid="learn-more-moment-views" className="text-gray-600 leading-snug space-y-0.5">
+                {MOMENT_VIEWS.map(view => (
+                  <li key={view.id} data-view={view.id}><span className="text-gray-400">{view.label}</span>: {view.description}</li>
+                ))}
+              </ul>
+              <p className="text-gray-600 leading-snug" data-testid="learn-more-moment-marks">
+                The next event&apos;s pads get a dashed outline in the hand&apos;s colour, &ldquo;+1&rdquo; and their finger; the previous event&apos;s a faint outline and &ldquo;&minus;1&rdquo;. An arrow runs from each finger&apos;s last pad (else its hand&apos;s) to its next strike when it moves.
+              </p>
+              <p className="text-[8px] text-gray-700" data-testid="learn-more-moment-playback">
+                During playback the playhead drives the same view: strikes flash at full intensity with their fingers, and the next fingers, shown large, and nothing dims. Stop brings the selected event back.
               </p>
             </div>
           </div>

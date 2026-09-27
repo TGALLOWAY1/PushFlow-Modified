@@ -6,11 +6,17 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  DOCK_BELOW_HEIGHT,
+  DOCK_GAP,
+  DOCK_WIDTH,
   GRID_REGION_MIN_HEIGHT,
   PAD_MAX,
   PAD_MIN,
+  dockPlacementFor,
   gridFrameWidth,
   gridRegionHeight,
+  gridRegionMinHeight,
+  gridRegionWidth,
   padSizeFor,
 } from '../../../src/ui/components/workspace/gridSizing';
 import {
@@ -38,17 +44,37 @@ import {
 } from '../../../src/ui/components/timelineLayout';
 
 describe('padSizeFor', () => {
-  it('returns the largest integer pad whose grid fits both dimensions', () => {
-    for (const [w, h] of [[670, 412], [900, 548], [700, 700], [1200, 900], [500, 460]]) {
+  it('returns the largest integer pad whose grid and moment dock fit both dimensions', () => {
+    for (const [w, h] of [[670, 412], [900, 548], [700, 700], [1200, 900], [500, 460], [560, 700]]) {
+      const placement = dockPlacementFor(w);
       const pad = padSizeFor(w, h);
       expect(Number.isInteger(pad)).toBe(true);
       if (pad > PAD_MIN && pad < PAD_MAX) {
-        expect(gridFrameWidth(pad)).toBeLessThanOrEqual(w);
-        expect(gridRegionHeight(pad)).toBeLessThanOrEqual(h);
+        expect(gridRegionWidth(pad, placement)).toBeLessThanOrEqual(w);
+        expect(gridRegionHeight(pad, placement)).toBeLessThanOrEqual(h);
         // One pixel more would not fit one of them.
-        expect(gridFrameWidth(pad + 1) > w || gridRegionHeight(pad + 1) > h).toBe(true);
+        expect(gridRegionWidth(pad + 1, placement) > w || gridRegionHeight(pad + 1, placement) > h).toBe(true);
       }
     }
+  });
+
+  it('puts the moment dock beside the frame when it fits next to 32 px pads, else under it (S4.2)', () => {
+    const beside = gridFrameWidth(PAD_MIN) + DOCK_GAP + DOCK_WIDTH;
+    expect(dockPlacementFor(beside)).toBe('side');
+    expect(dockPlacementFor(beside - 1)).toBe('below');
+    // The centre column at 1366x768 and 1600x1000 with default panels.
+    expect(dockPlacementFor(666)).toBe('side');
+    expect(dockPlacementFor(900)).toBe('side');
+    // Under the frame the region needs the dock's height too, and the drawer yields it.
+    expect(gridRegionMinHeight('below')).toBe(GRID_REGION_MIN_HEIGHT + DOCK_GAP + DOCK_BELOW_HEIGHT);
+    expect(900 - SPLITTER_HEIGHT - maxDrawerHeight(900, gridRegionMinHeight('below'))).toBe(gridRegionMinHeight('below'));
+    expect(padSizeFor(560, gridRegionMinHeight('below'))).toBe(PAD_MIN);
+  });
+
+  it('the dock beside the frame costs no pad size at 1366x768 or 1600x1000 (the grid regions measured there)', () => {
+    // Height-bound pads leave the width the dock uses: 34 px and 51 px, as without it.
+    expect(padSizeFor(666, 409)).toBe(34);
+    expect(padSizeFor(900, 549)).toBe(51);
   });
 
   it('clamps to 32–72 px', () => {

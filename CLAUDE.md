@@ -152,8 +152,9 @@ src/
 │   ├── components/                # React components; at the top level: InteractiveGrid, PadGrid, CompareGridView,
 │   │   │                          #   UnifiedTimeline, TimelineToolbar, EventsPanel, VoicePalette, PadContextMenu, CandidateCompare
 │   │   ├── panels/                # ActiveLayoutSummary, LayoutOptionsPanel, CandidatePreviewCard, MoveTracePanel,
-│   │   │                          #   AnnealingTraceChart, PerformanceCostsPanel, SelectedEventCard, CompareModal, LearnMoreModal
-│   │   ├── workspace/             # PerformanceWorkspace, WorkspaceToolbar, LayoutStateBar, WorkspacePatternStudio, sizing
+│   │   │                          #   AnnealingTraceChart, PerformanceCostsPanel, CompareModal, LearnMoreModal
+│   │   ├── workspace/             # PerformanceWorkspace, WorkspaceToolbar, LayoutStateBar, WorkspacePatternStudio, sizing,
+│   │   │                          #   MomentDock beside the grid (MomentInspector, PadInspector, MomentViewControl)
 │   │   ├── shared/                # Primitives: Overlay (Dialog/Popover), Toast, Tabs, Checkbox, Card, FingerAssignmentInput
 │   │   ├── composer/              # Composer preset library, cards, inspector
 │   │   ├── loop-editor/           # LoopGridCanvas, LoopLaneRow, LoopLaneSidebar

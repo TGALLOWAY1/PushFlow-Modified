@@ -29,8 +29,13 @@ import { VoicePalette } from '../../../src/ui/components/VoicePalette';
 import { InteractiveGrid } from '../../../src/ui/components/InteractiveGrid';
 import { EventsPanel } from '../../../src/ui/components/EventsPanel';
 import { ShortcutSheet } from '../../../src/ui/components/shared/ShortcutSheet';
+import { MomentViewControl } from '../../../src/ui/components/workspace/MomentViewControl';
+import { PadInspector } from '../../../src/ui/components/workspace/PadInspector';
+import { UnifiedTimeline } from '../../../src/ui/components/UnifiedTimeline';
+import { ViewSettingsProvider, useViewSettings } from '../../../src/ui/state/viewSettings';
 import { Popover } from '../../../src/ui/components/shared/Overlay';
 import { analyzeLayout } from '../../../src/ui/analysis/analyzeLayout';
+import { eventCostsOf, filterEvents } from '../../../src/ui/analysis/eventDifficulty';
 import {
   INPUT_TABLE,
   PAD_TAKEN_MESSAGE,
@@ -56,17 +61,21 @@ beforeEach(() => {
   onSave.mockReset();
   onOpenShortcuts.mockReset();
   buttonClick.mockReset();
+  // The moment view is remembered per viewer; every test starts from the default.
+  localStorage.removeItem('pushflow:view-settings');
 });
 
 /** The editor's input surfaces: the Sounds list, the grid and the key handlers, plus a few plain controls. */
 function Editor({ children }: { children?: ReactNode }) {
   api = useProject();
   useKeyboardShortcuts({ onSave, onOpenShortcuts });
+  const { settings } = useViewSettings();
   const plan = getDisplayedExecutionPlan(api.state);
   return (
     <>
       <VoicePalette />
-      <InteractiveGrid padSize={48} assignments={plan?.fingerAssignments} />
+      <InteractiveGrid padSize={48} assignments={plan?.fingerAssignments} momentView={settings.momentView} />
+      <MomentViewControl />
       <button type="button" data-testid="plain-button" onClick={buttonClick}>Loop</button>
       <select data-testid="plain-select" defaultValue="1"><option value="1">1</option><option value="2">2</option></select>
       <input data-testid="plain-input" />
@@ -78,16 +87,30 @@ function Editor({ children }: { children?: ReactNode }) {
 function mount(state: ProjectState, children?: ReactNode) {
   return render(
     <ToastProvider>
-      <ProjectProvider initialState={state}>
-        <Editor>{children}</Editor>
-      </ProjectProvider>
+      <ViewSettingsProvider>
+        <ProjectProvider initialState={state}>
+          <Editor>{children}</Editor>
+        </ProjectProvider>
+      </ViewSettingsProvider>
     </ToastProvider>,
   );
 }
 
 /** TEST MIDI 1 with the suggested layout, analysed, so events exist. */
 async function analysedProject(): Promise<ProjectState> {
-  const state = await suggestedTestMidi1();
+  return analysed(await suggestedTestMidi1());
+}
+
+/** TEST MIDI 1 with its Sounds spread over the grid (the C1 layout), analysed: many Hard events. */
+async function spreadProject(): Promise<ProjectState> {
+  let state = await importTestMidi1();
+  ['0,0', '7,0', '4,3', '3,7', '7,7', '0,7', '5,5'].forEach((padKey, i) => {
+    state = projectReducer(state, { type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey, stream: state.soundStreams[i]! } });
+  });
+  return analysed(state);
+}
+
+async function analysed(state: ProjectState): Promise<ProjectState> {
   const layout = getDisplayedLayout(state)!;
   const analysis = await analyzeLayout({
     performance: getActivePerformance(state), layout,
@@ -196,30 +219,57 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
   },
 
   'pad-click-moment': async () => {
-    mount(await analysedProject());
-    const first = getEventTimeline(api.state).events[0]!;
-    selectEvent(first);
+    // P4-11a: with an event selected, a pad click keeps the event, outlines
+    // every hit of the pad's Sound in the timeline, and Prev hit / Next hit
+    // step through them from the event.
+    mount(await analysedProject(), <><PadInspector /><UnifiedTimeline /></>);
+    const events = getEventTimeline(api.state).events;
+    const event = events[8]!;
+    selectEvent(event);
     const key = Object.keys(shownPads()).find(k => pad(k).dataset.struck !== 'true')!;
+    const soundId = shownPads()[key]!.id;
     fireEvent.click(pad(key));
-    // The event stays; the pad and its Sound are selected.
-    expect(api.state.selectedMomentKey).toBe(first.key);
+    // The event stays, still struck on the grid; the pad and its Sound are selected.
+    expect(api.state.selectedMomentKey).toBe(event.key);
+    expect(document.querySelectorAll('[data-struck="true"]').length).toBeGreaterThan(0);
     expect(api.state.selectedPadKey).toBe(key);
-    expect(api.state.selectedStreamId).toBe(shownPads()[key]!.id);
+    expect(api.state.selectedStreamId).toBe(soundId);
     expect(pad(key).dataset.selected).toBe('true');
+    // Every hit of the Sound is outlined in the timeline, and nothing else.
+    const outlined = [...document.querySelectorAll<HTMLElement>('[data-testid="timeline-pill"][data-sound-selected="true"]')];
+    const sound = api.state.soundStreams.find(s => s.id === soundId)!;
+    expect(outlined).toHaveLength(sound.events.length);
+    expect(outlined.every(p => p.dataset.soundId === soundId)).toBe(true);
+    // Prev hit and Next hit go to the Sound's hits either side of the event
+    // (which the Sound doesn't play in: its pad isn't struck).
+    const hits = events.filter(e => e.soundIds.includes(soundId)).map(e => e.index);
+    const before = hits.filter(i => i < event.index), after = hits.filter(i => i > event.index);
+    expect(before.length * after.length).toBeGreaterThan(0);
+    const selectedIndex = () => resolveEventKey(getEventTimeline(api.state), api.state.selectedMomentKey)?.index;
+    fireEvent.click(screen.getByTestId('pad-prev-hit'));
+    expect(selectedIndex()).toBe(before[before.length - 1]);
+    expect(screen.getByTestId('pad-inspector-hits').textContent).toBe(`hit ${before.length} of ${hits.length}`);
+    fireEvent.click(screen.getByTestId('pad-next-hit'));
+    expect(selectedIndex()).toBe(after[0]);
+    expect(api.state.selectedPadKey).toBe(key);
   },
 
   'pad-click-idle': async () => {
-    mount(await analysedProject());
+    mount(await analysedProject(), <PadInspector />);
     const key = occupiedPad();
     fireEvent.click(pad(key));
     expect(api.state.selectedPadKey).toBe(key);
     expect(api.state.selectedStreamId).toBe(shownPads()[key]!.id);
-    // Selecting a pad no longer selects that Sound's first hit (T28).
+    // Selecting a pad no longer selects that Sound's first hit (T28): nothing dims.
     expect(api.state.selectedMomentKey).toBeNull();
-    // An empty pad clears the selection.
+    expect(document.querySelectorAll('[data-struck="true"]')).toHaveLength(0);
+    // The pad inspector opens on it.
+    expect(screen.getByTestId('pad-inspector').textContent).toContain(api.state.soundStreams.find(s => s.id === shownPads()[key]!.id)!.name);
+    // An empty pad clears the selection, and the inspector closes.
     fireEvent.click(pad(emptyPad()));
     expect(api.state.selectedPadKey).toBeNull();
     expect(api.state.selectedStreamId).toBeNull();
+    expect(screen.queryByTestId('pad-inspector')).toBeNull();
   },
 
   'pad-alt-click': async () => {
@@ -257,6 +307,29 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     expect(JSON.stringify(shownPads())).toBe(before);
     expect(api.state.selectedPadKey).toBeNull();
     expect(boundRows().map(r => r.id)).not.toContain('pad-enter');
+  },
+
+  'empty-space-click': async () => {
+    // S4.2 (T42): a click on empty space clears the pad and Sound selection; the event stays.
+    const state = await analysedProject();
+    const first = getEventTimeline(state).events[0]!;
+    mount({ ...state, selectedMomentKey: first.key });
+    const key = occupiedPad();
+    fireEvent.click(pad(key));
+    expect(api.state.selectedPadKey).toBe(key);
+    // Inside the frame (between pads) is not empty space: a near miss changes nothing.
+    fireEvent.click(screen.getByTestId('grid-frame'));
+    expect(api.state.selectedPadKey).toBe(key);
+    fireEvent.click(screen.getByTestId('grid-area'));
+    expect(api.state.selectedPadKey).toBeNull();
+    expect(api.state.selectedStreamId).toBeNull();
+    expect(api.state.selectedMomentKey).toBe(first.key);
+    // Under the Sounds list: placing stops, as with Esc.
+    fireEvent.click(soundRow(0));
+    expect(api.state.armedStreamId).not.toBeNull();
+    fireEvent.click(screen.getByTestId('sounds-list'));
+    expect(api.state.armedStreamId).toBeNull();
+    expect(api.state.selectedStreamId).toBeNull();
   },
 
   'read-only-edit': async () => {
@@ -374,8 +447,33 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     expect(selectedTime()).toBe(times[times.length - 1]);
   },
 
+  'step-hard-events': async () => {
+    // S4.2 (T27): Shift+←/→ select the previous or next Hard event, in time order, stopping at the ends.
+    mount(await spreadProject());
+    const timeline = getEventTimeline(api.state);
+    const hard = filterEvents(timeline, eventCostsOf(timeline, getDisplayedExecutionPlan(api.state)!.fingerAssignments), 'hard')
+      .map(e => e.startTime);
+    expect(hard.length).toBeGreaterThan(2);
+    const seen: Array<number | null> = [];
+    for (let i = 0; i < hard.length; i++) {
+      press('ArrowRight', { shiftKey: true });
+      seen.push(selectedTime());
+    }
+    expect(seen).toEqual(hard);
+    // At the last Hard event, Shift+→ means nothing (no wrapping).
+    expect(press('ArrowRight', { shiftKey: true })).toBe(true);
+    expect(selectedTime()).toBe(hard[hard.length - 1]);
+    press('ArrowLeft', { shiftKey: true });
+    expect(selectedTime()).toBe(hard[hard.length - 2]);
+    // Not from a text field, and not while playing.
+    expect(press('ArrowLeft', { shiftKey: true }, screen.getByTestId('plain-input'))).toBe(true);
+    act(() => api.dispatch({ type: 'SET_IS_PLAYING', payload: true }));
+    press('ArrowLeft', { shiftKey: true });
+    expect(selectedTime()).toBe(hard[hard.length - 2]);
+  },
+
   'events-list-keys': async () => {
-    mount(await analysedProject(), <EventsPanel onionSkin={false} onToggleOnionSkin={() => {}} />);
+    mount(await analysedProject(), <EventsPanel />);
     const rows = document.querySelectorAll<HTMLElement>('[data-input-scope="events"] [data-moment-index]');
     expect(rows.length).toBeGreaterThan(2);
     // Outside the list, ↓ means nothing to the list.
@@ -395,6 +493,33 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     // ArrowDown on a focused select changes the select, not the event (P2-10).
     expect(press('ArrowDown', {}, screen.getByTestId('plain-select'))).toBe(true);
     expect(selectedTime()).toBe(t1);
+  },
+
+  'moment-view': async () => {
+    // S4.2 (T09): O cycles the moment view, which the grid follows.
+    const state = await analysedProject();
+    const event = getEventTimeline(state).events[4]!;
+    mount({ ...state, selectedMomentKey: event.key });
+    const pressed = () => screen.getAllByRole('button', { pressed: true })
+      .map(b => b.dataset.testid).filter(id => id?.startsWith('moment-view-'));
+    const layered = (attr: 'next' | 'prev') => document.querySelectorAll(`[data-${attr}="true"]`).length;
+    expect(pressed()).toEqual(['moment-view-now-next']);
+    expect(layered('next')).toBeGreaterThan(0);
+    expect(layered('prev')).toBe(0);
+    press('o');
+    expect(pressed()).toEqual(['moment-view-prev-now-next']);
+    expect(layered('prev')).toBeGreaterThan(0);
+    press('o');
+    expect(pressed()).toEqual(['moment-view-now']);
+    expect(layered('next')).toBe(0);
+    press('o');
+    expect(pressed()).toEqual(['moment-view-now-next']);
+    // Not while typing an "o".
+    expect(press('o', {}, screen.getByTestId('plain-input'))).toBe(true);
+    expect(pressed()).toEqual(['moment-view-now-next']);
+    // A click on a view picks it too.
+    fireEvent.click(screen.getByTestId('moment-view-now'));
+    expect(pressed()).toEqual(['moment-view-now']);
   },
 
   'exit-replay': async () => {
@@ -640,7 +765,7 @@ describe('the registry', () => {
   });
 
   it('the editor binds every bound key row, and nothing reserved', async () => {
-    mount(await importTestMidi1(), <EventsPanel onionSkin={false} onToggleOnionSkin={() => {}} />);
+    mount(await importTestMidi1(), <EventsPanel />);
     const keyRows = INPUT_TABLE.filter(r => r.keys && !r.from).map(r => r.id);
     // group-sounds binds only while Sounds are selected.
     fireEvent.click(soundRow(0), { ctrlKey: true });

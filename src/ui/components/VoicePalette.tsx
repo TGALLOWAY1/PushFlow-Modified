@@ -21,10 +21,7 @@ import { generateId } from '../../utils/idGenerator';
 import { formatPadLocator, formatPadPosition } from '../../utils/padPosition';
 import { FingerAssignmentInput, type FingerAssignmentValue } from './shared/FingerAssignmentInput';
 import { type FingerType, type HandSide } from '../../types/fingerModel';
-
-const FINGER_ABBREV: Record<string, string> = {
-  thumb: '1', index: '2', middle: '3', ring: '4', pinky: '5',
-};
+import { fingerLabel } from '../../utils/fingerNotation';
 
 const COLOR_PALETTE = [
   '#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6',
@@ -169,7 +166,7 @@ export function VoicePalette() {
       const stream = soundStreamLookup.forAssignment(fa.voiceId);
       if (!stream || map.has(stream.id) || fa.assignedHand === 'Unplayable' || !fa.finger) continue;
       map.set(stream.id, {
-          label: `${fa.assignedHand[0].toUpperCase()}${FINGER_ABBREV[fa.finger] ?? fa.finger}`,
+          label: fingerLabel(fa.assignedHand, fa.finger),
           hand: fa.assignedHand,
           finger: fa.finger,
       });
@@ -285,8 +282,19 @@ export function VoicePalette() {
 
   const hasGroups = sortedGroups.length > 0;
 
+  // A click on the list's empty space clears the Sound selection (T42), as
+  // Escape does: placing stops, and a multi-selection for Mod+G ends.
+  const handleBackgroundClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    setSelectedStreamIds(new Set());
+    if (state.armedStreamId !== null) dispatch({ type: 'ARM_SOUND', payload: null });
+    else if (state.selectedStreamId !== null || state.selectedPadKey !== null) {
+      dispatch({ type: 'SELECT_PAD', payload: { padKey: null, streamId: null } });
+    }
+  };
+
   return (
-    <div className="space-y-0.5">
+    <div data-testid="sounds-list" className="space-y-0.5 min-h-full" onClick={handleBackgroundClick}>
       {state.soundStreams.length > 0 && (
         <div data-testid="sounds-header" className="px-2 pb-1.5">
           <div className="flex items-center justify-between gap-2">

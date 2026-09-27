@@ -22,9 +22,12 @@ export type InputRowId =
   | 'pad-menu'
   | 'pad-enter'
   | 'read-only-edit'
+  | 'empty-space-click'
   | 'space'
   | 'step-events'
+  | 'step-hard-events'
   | 'events-list-keys'
+  | 'moment-view'
   | 'exit-replay'
   | 'escape'
   | 'delete'
@@ -96,12 +99,12 @@ export const INPUT_TABLE: readonly InputRow[] = [
   {
     id: 'pad-click-moment', group: 'Pads',
     input: ['Click a pad'], when: 'An event is selected',
-    does: 'Selects the pad and keeps the event.',
+    does: 'Selects the pad and its Sound, and keeps the event. The timeline outlines every hit of the Sound; Prev hit and Next hit in the pad inspector step through them.',
   },
   {
     id: 'pad-click-idle', group: 'Pads',
     input: ['Click a pad'], when: 'Nothing armed or selected',
-    does: 'Selects the pad and its Sound. An empty pad clears the selection.',
+    does: 'Selects the pad and its Sound and opens the pad inspector beside the grid; it never selects an event. An empty pad clears the selection.',
   },
   {
     id: 'pad-alt-click', group: 'Pads',
@@ -130,6 +133,11 @@ export const INPUT_TABLE: readonly InputRow[] = [
     keys: e => plain(e) && (e.key === 'Delete' || e.key === 'Backspace'),
   },
   {
+    id: 'empty-space-click', group: 'Pads',
+    input: ['Click empty space'], when: 'Around the grid, or under the Sounds list',
+    does: 'Clears the pad and Sound selection and stops placing, as Esc does. The selected event stays.',
+  },
+  {
     id: 'read-only-edit', group: 'Pads',
     input: ['Any edit on the grid'], when: 'A candidate, a saved variant, or Active over your draft is shown',
     does: 'Changes nothing and says "Use as my draft to edit": drops, pad drags, click-to-place, the pad menu and Delete are all refused. Looking never changes your draft.',
@@ -148,11 +156,23 @@ export const INPUT_TABLE: readonly InputRow[] = [
     keys: e => plain(e) && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'),
   },
   {
+    id: 'step-hard-events', group: 'Playback and events',
+    input: ['Shift+←', 'Shift+→'], when: 'Stopped',
+    does: 'Selects the previous or next Hard event, stopping at the first and last (Prev hard and Next hard in the Events list).',
+    keys: e => noModifiers(e) && e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'),
+  },
+  {
     id: 'events-list-keys', group: 'Playback and events',
     input: ['↑', '↓', 'K', 'J'], when: 'In the Events list, stopped',
     does: 'Selects the previous or next event.',
     keys: e => plain(e) && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'j' || e.key === 'k'),
     within: EVENTS_LIST_SCOPE,
+  },
+  {
+    id: 'moment-view', group: 'Playback and events',
+    input: ['O'], when: 'Outside text fields',
+    does: 'Cycles the moment view on the grid: Now, Now + Next (the next event\'s strikes and the moves to them), Prev · Now · Next.',
+    keys: e => plain(e) && letter(e, 'o'),
   },
   // Before 'escape': while a step is replayed, Esc leaves the replay first.
   {
