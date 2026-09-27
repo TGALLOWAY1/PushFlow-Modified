@@ -34,6 +34,17 @@ const RANGE_LABEL_ROOM = 70;
 /** A pointer that moved less than this was a click, not a drag. */
 const DRAG_THRESHOLD_PX = 3;
 
+/** Keeps a drag's pointer events on the strip when the pointer leaves it (T58: a loop drag ended at the ruler's edge). */
+function capture(e: ReactPointerEvent<HTMLElement>): void {
+  try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* not an active pointer: nothing to capture */ }
+}
+
+function release(e: ReactPointerEvent<HTMLElement>): void {
+  try {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+  } catch { /* already released */ }
+}
+
 export interface TimelineRulerProps {
   minTime: number;
   maxTime: number;
@@ -114,7 +125,7 @@ export function TimelineRuler({ minTime, maxTime, zoom, width, bars, barWidth, o
     else if (stored && part === 'body') loop = { kind: 'move', grab: t - stored.start, length: stored.end - stored.start };
     else loop = { kind: 'create', anchor: t };
     drag.current = { loop, startX: e.clientX, moved: false };
-    e.currentTarget.setPointerCapture?.(e.pointerId);
+    capture(e);
   };
 
   const onStripMove = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -128,7 +139,7 @@ export function TimelineRuler({ minTime, maxTime, zoom, width, bars, barWidth, o
   const onStripUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     drag.current = null;
-    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    release(e);
     if (!d || !d.moved) {
       show(null);
       return;
@@ -156,7 +167,7 @@ export function TimelineRuler({ minTime, maxTime, zoom, width, bars, barWidth, o
     if (e.button !== 0) return;
     e.preventDefault();
     scrubbing.current = true;
-    e.currentTarget.setPointerCapture?.(e.pointerId);
+    capture(e);
     // The handle is grabbed where it is; anywhere else, the playhead jumps there.
     if (!(e.target as HTMLElement).closest('[data-testid="playhead-handle"]')) transport.seek(timeAt(e.clientX));
   };
@@ -165,7 +176,7 @@ export function TimelineRuler({ minTime, maxTime, zoom, width, bars, barWidth, o
   };
   const onNumbersUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     scrubbing.current = false;
-    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    release(e);
   };
 
   const shown = preview ?? stored;
