@@ -86,10 +86,12 @@ test.describe('S4.2 · the moment view (T09)', () => {
     await page.getByTestId('moment-view-now-next').click();
     await page.getByTestId('transport-play').click();
     await expect.poll(async () => (await pf.call('status')).isPlaying).toBe(true);
-    // Sample every frame for 2 s: flashes, dimming and the next finger shown.
+    // Sample 40 frames of playback (a slow runner draws fewer frames a
+    // second, so a count, not a time; at most 8 s, well before the song
+    // ends): flashes, dimming and the next finger shown.
     const seen = await page.evaluate(() => new Promise<{ frames: number; dimmed: number; flashes: number; nextFingers: number; bigFingers: number }>(resolve => {
       const out = { frames: 0, dimmed: 0, flashes: 0, nextFingers: 0, bigFingers: 0 };
-      const end = performance.now() + 2000;
+      const end = performance.now() + 8000;
       const tick = () => {
         out.frames++;
         const pads = [...document.querySelectorAll<HTMLElement>('[data-testid^="pad-"]')].filter(el => /^pad-\d-\d$/.test(el.dataset.testid ?? ''));
@@ -98,12 +100,12 @@ test.describe('S4.2 · the moment view (T09)', () => {
         const next = document.querySelectorAll<HTMLElement>('[data-next="true"] [data-testid="moment-finger"][data-layer="next"]');
         if (next.length > 0) out.nextFingers++;
         if ([...document.querySelectorAll<HTMLElement>('[data-testid="moment-finger"]')].some(b => b.style.fontSize === '16px')) out.bigFingers++;
-        if (performance.now() < end) requestAnimationFrame(tick); else resolve(out);
+        if (out.frames < 40 && performance.now() < end) requestAnimationFrame(tick); else resolve(out);
       };
       requestAnimationFrame(tick);
     }));
     await page.getByTestId('transport-play').click();
-    expect(seen.frames).toBeGreaterThan(30);
+    expect(seen.frames).toBeGreaterThanOrEqual(20);
     expect({ dimmedFrames: seen.dimmed }).toEqual({ dimmedFrames: 0 });
     expect(seen.flashes, 'frames with a pad flashing').toBeGreaterThan(0);
     expect(seen.nextFingers / seen.frames, 'share of frames showing the next finger').toBeGreaterThan(0.8);
