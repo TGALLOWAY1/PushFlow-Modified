@@ -46,14 +46,17 @@ export interface UndoRedoOptions<S, D, A> {
   /** Whether two slices differ; equal slices record no history entry. */
   changed: (a: D, b: D) => boolean;
   /**
-   * Puts a slice back under the current state's session (Undo, Redo). On Undo,
-   * `returned` is what `returnOnUndo` captured when the step was recorded.
+   * Puts a slice back under the current state's session (Undo, Redo).
+   * `returned` is what `returnOnUndo` captured when the step was made, or
+   * when an Undo or Redo last crossed it.
    */
   restore: (state: S, doc: D, returned?: unknown) => S;
   /**
    * Session data a step removed that its Undo should give back (e.g. the
-   * candidate a Promote took out of the list). Nothing else of the session is
-   * ever restored.
+   * candidate a Promote took out of the list). An Undo or Redo that removes
+   * some itself (restore dropping candidates of Sounds it takes away) has it
+   * given back by the Redo or Undo after. Nothing else of the session is ever
+   * restored.
    */
   returnOnUndo?: (before: S, after: S) => unknown;
   /**
@@ -68,7 +71,7 @@ export interface UndoRedoOptions<S, D, A> {
 interface Step<D> {
   doc: D;
   label: string;
-  /** From returnOnUndo; only on past steps. */
+  /** From returnOnUndo: what crossing this step removed, given back when it is crossed the other way. */
   returned?: unknown;
 }
 
@@ -158,26 +161,30 @@ export function useUndoRedo<S, D, A extends { type: string }>(
   }, [record]);
 
   const undo = useCallback(() => {
-    const { pick, restore } = optionsRef.current;
+    const { pick, restore, returnOnUndo } = optionsRef.current;
     const h = historyRef.current;
     if (h.past.length === 0) return null;
     const current = presentRef.current;
     const previous = h.past[h.past.length - 1];
-    commit(restore(current, previous.doc, previous.returned), {
+    const restored = restore(current, previous.doc, previous.returned);
+    const returned = returnOnUndo?.(current, restored);
+    commit(restored, {
       past: h.past.slice(0, -1),
-      future: [{ doc: pick(current), label: previous.label }, ...h.future],
+      future: [{ doc: pick(current), label: previous.label, ...(returned !== undefined ? { returned } : {}) }, ...h.future],
     });
     return previous.label;
   }, [commit]);
 
   const redo = useCallback(() => {
-    const { pick, restore } = optionsRef.current;
+    const { pick, restore, returnOnUndo } = optionsRef.current;
     const h = historyRef.current;
     if (h.future.length === 0) return null;
     const current = presentRef.current;
     const [next, ...future] = h.future;
-    commit(restore(current, next.doc), {
-      past: [...h.past, { doc: pick(current), label: next.label }],
+    const restored = restore(current, next.doc, next.returned);
+    const returned = returnOnUndo?.(current, restored);
+    commit(restored, {
+      past: [...h.past, { doc: pick(current), label: next.label, ...(returned !== undefined ? { returned } : {}) }],
       future,
     });
     return next.label;

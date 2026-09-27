@@ -54,11 +54,16 @@ export interface SoundGrouping {
   toggleGroup: (ids: readonly string[]) => void;
 }
 
+/** The ids that are Sounds of the project: a selection can outlive a deleted one, which must not make an empty group. */
+export function soundsIn(state: GroupState, ids: readonly string[]): string[] {
+  return ids.filter(id => state.performanceLanes.some(l => l.id === id));
+}
+
 export function useSoundGrouping(): SoundGrouping {
   const { state, dispatch, transact } = useProject();
 
   const moveToGroup = useCallback((ids: readonly string[], groupId: string | null) => {
-    const moving = ids.filter(id => (state.performanceLanes.find(l => l.id === id)?.groupId ?? null) !== groupId);
+    const moving = soundsIn(state, ids).filter(id => (state.performanceLanes.find(l => l.id === id)?.groupId ?? null) !== groupId);
     if (moving.length === 0) return;
     transact(groupId ? 'Group' : 'Ungroup', () => {
       for (const id of moving) dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: id, groupId } });
@@ -67,18 +72,21 @@ export function useSoundGrouping(): SoundGrouping {
   }, [state, dispatch, transact]);
 
   const groupInNew = useCallback((ids: readonly string[]) => {
-    if (ids.length === 0) return;
+    const sounds = soundsIn(state, ids);
+    if (sounds.length === 0) return;
     const group = newGroup(state);
     transact('Group', () => {
       dispatch({ type: 'CREATE_LANE_GROUP', payload: group });
-      for (const id of ids) dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: id, groupId: group.groupId } });
-      for (const emptied of groupsEmptiedBy(state, ids, group.groupId)) dispatch({ type: 'DELETE_LANE_GROUP', payload: emptied });
+      for (const id of sounds) dispatch({ type: 'SET_LANE_GROUP', payload: { laneId: id, groupId: group.groupId } });
+      for (const emptied of groupsEmptiedBy(state, sounds, group.groupId)) dispatch({ type: 'DELETE_LANE_GROUP', payload: emptied });
     });
   }, [state, dispatch, transact]);
 
   const toggleGroup = useCallback((ids: readonly string[]) => {
-    if (allInOneGroup(state, ids)) moveToGroup(ids, null);
-    else groupInNew(ids);
+    const sounds = soundsIn(state, ids);
+    if (sounds.length === 0) return;
+    if (allInOneGroup(state, sounds)) moveToGroup(sounds, null);
+    else groupInNew(sounds);
   }, [state, moveToGroup, groupInNew]);
 
   return { moveToGroup, groupInNew, toggleGroup };

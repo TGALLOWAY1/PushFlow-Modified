@@ -318,6 +318,24 @@ describe('the row\'s menu', () => {
     expect((screen.getByTestId('sound-menu-delete') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText('A Composer lane: delete it in the Composer')).toBeTruthy();
   });
+
+  it('a deleted Sound leaves the selection: the bar counts the others, and Group makes no empty group', () => {
+    mount(suggested);
+    const [a, b] = api.state.soundStreams;
+    ctrlClick(within(rowOf(a!.id)).getByTestId('sound-hits'));
+    ctrlClick(within(rowOf(b!.id)).getByTestId('sound-hits'));
+    expect(screen.getByTestId('sounds-selection-bar').getAttribute('aria-label')).toBe('2 selected Sounds');
+
+    openMenu(a!.id);
+    fireEvent.click(screen.getByTestId('sound-menu-delete'));
+    expect(screen.getByTestId('sounds-selection-bar').getAttribute('aria-label')).toBe('1 selected Sounds');
+    expect([api.state.armedStreamId, api.state.selectedStreamId]).not.toContain(a!.id);
+
+    fireEvent.click(screen.getByTestId('sounds-selection-group'));
+    expect(api.state.laneGroups).toHaveLength(1);
+    const members = api.state.performanceLanes.filter(l => l.groupId === api.state.laneGroups[0]!.groupId).map(l => l.id);
+    expect(members).toEqual([b!.id]);
+  });
 });
 
 describe('reordering by the handle only; the timeline shares the order', () => {

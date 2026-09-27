@@ -17,7 +17,7 @@
  *   one is dragged the panel lights up as the drop zone (T46).
  */
 
-import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
+import { useMemo, useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { useInputHandler } from '../input/inputRegistry';
 import { getInspectedLayout, type SoundStream } from '../state/projectState';
@@ -103,6 +103,13 @@ export function VoicePalette() {
     if (was === null || was === armed) return;
     setSelectedStreamIds(prev => (prev.size === 1 && prev.has(was) ? new Set(armed ? [armed] : []) : prev));
   }, [state.armedStreamId]);
+
+  // A deleted Sound leaves the selection before the next paint, so the
+  // selection bar and Mod+G never count or act on it (S5.1).
+  useLayoutEffect(() => {
+    const live = new Set(state.soundStreams.map(s => s.id));
+    setSelectedStreamIds(prev => ([...prev].every(id => live.has(id)) ? prev : new Set([...prev].filter(id => live.has(id)))));
+  }, [state.soundStreams]);
 
   const handleSelect = useCallback((streamId: string, e: React.MouseEvent) => {
     const multiSelect = e.metaKey || e.ctrlKey || (e.shiftKey && selectedStreamIds.size > 0);

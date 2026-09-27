@@ -145,13 +145,36 @@ function withoutOrphanedVoices(next: ProjectState): ProjectState {
     voiceConstraints[voiceId] = constraint;
   }
 
-  return {
+  const gone = (id: string | null) => id !== null && !liveIds.has(id);
+  return withoutStaleCandidates({
     ...next,
     activeLayout: prune(next.activeLayout),
     workingLayout: next.workingLayout ? prune(next.workingLayout) : next.workingLayout,
     savedVariants: next.savedVariants.map(prune),
     recoveredDrafts: (next.recoveredDrafts ?? []).map(prune),
     voiceConstraints: constraintsChanged ? voiceConstraints : next.voiceConstraints,
+    // Nothing stays armed or selected that is gone (S5.1).
+    armedStreamId: gone(next.armedStreamId) ? null : next.armedStreamId,
+    selectedStreamId: gone(next.selectedStreamId) ? null : next.selectedStreamId,
+  }, liveIds);
+}
+
+/**
+ * Drops the candidates that place a Sound the project no longer has (S5.1):
+ * they were proposed for Sounds that are gone, and promoting one would put the
+ * Sound back as a pad with nothing behind it. The inspection or Compare pick of
+ * one goes with it. Undo gives them back with the Sound (candidatesRemovedBy).
+ */
+export function withoutStaleCandidates(state: ProjectState, liveIds: ReadonlySet<string>): ProjectState {
+  const stale = new Set(state.candidates
+    .filter(c => Object.values(c.layout.padToVoice).some(voice => !!voice?.id && !liveIds.has(voice.id)))
+    .map(c => c.id));
+  if (stale.size === 0) return state;
+  return {
+    ...state,
+    candidates: state.candidates.filter(c => !stale.has(c.id)),
+    inspectedLayout: state.inspectedLayout?.kind === 'candidate' && stale.has(state.inspectedLayout.id) ? null : state.inspectedLayout,
+    compareCandidateId: state.compareCandidateId !== null && stale.has(state.compareCandidateId) ? null : state.compareCandidateId,
   };
 }
 
@@ -359,12 +382,25 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
         ),
       });
 
-    case 'DELETE_LANE':
+    case 'DELETE_LANE': {
+      const deleted = state.performanceLanes.find(l => l.id === action.payload);
+      if (!deleted) return state;
+      const performanceLanes = state.performanceLanes.filter(l => l.id !== action.payload);
+      // Its source file and its group go with their last Sound (S5.1): a source
+      // left behind would make the next import into the emptied project not a
+      // first one (midiImportPlan.ts), so its tempo wouldn't be adopted.
+      const sourceLanes = performanceLanes.filter(l => l.sourceFileId === deleted.sourceFileId).length;
+      const groupEmptied = deleted.groupId !== null && !performanceLanes.some(l => l.groupId === deleted.groupId);
       return withSyncedStreams(state, {
         ...state,
         updatedAt: now,
-        performanceLanes: state.performanceLanes.filter(l => l.id !== action.payload),
+        performanceLanes,
+        sourceFiles: sourceLanes > 0
+          ? state.sourceFiles.map(sf => (sf.id === deleted.sourceFileId ? { ...sf, laneCount: sourceLanes } : sf))
+          : state.sourceFiles.filter(sf => sf.id !== deleted.sourceFileId),
+        laneGroups: groupEmptied ? state.laneGroups.filter(g => g.groupId !== deleted.groupId) : state.laneGroups,
       });
+    }
 
     // ---- Group Operations ----
 
