@@ -590,32 +590,32 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
 
 #### S4.2 — Moment view, Events list and docked inspector ∥ S4.3a
 
-- **Status:** Done (this PR)
+- **Status:** Done (PR #113)
 - **Prerequisites:** S4.1, S2.4, S3.2.
 - **Decisions:** Q7 (Events list, inspector and pad-inspector labels say "Event" and "notes").
 
 **Deliverables**
-- [x] Rebuilt moment view (T09), with Learn More's view-mode text · *PR / verified by:* this PR.
+- [x] Rebuilt moment view (T09), with Learn More's view-mode text · *PR / verified by:* PR #113.
   - **Strikes.** A struck pad keeps its Sound's colour and name and gains a ring in its hand's colour and a finger badge ("L2", or "✗" for a note that can't be played). The next event's pads get a dashed outline in the hand's colour, "+1" and the finger that will strike them; the previous event's a dotted, fainter outline and "−1". Every other pad sits at 45 %. The layers come from `src/ui/analysis/momentOverlay.ts`; `InteractiveGrid.tsx` draws them.
   - **Arrows** run from each finger's last pad at or before the event (else its hand's last pad) to its next strike, and only when it moves (`selectionModel.ts`). On TEST MIDI 1 every Sound keeps one finger, so most moves are holds and draw no arrow.
   - **One control**, Now | Now + Next | Prev · Now · Next (`MomentViewControl`, aria-pressed; O cycles it, new input-table row `moment-view`), replaces the onion-skin toggle and "Show Transition Arrows". The choice is remembered per viewer with the other view settings.
   - **Playback.** The playhead drives the same overlay (`playbackOverlayAt`): its strikes flash at full intensity, nothing dims, and the fingers, the next ones too, show at 16 px. Stop brings the selected event back.
   - **Learn More** (step 5) lists the three views from `MOMENT_VIEWS`, the marks and what playback shows.
-- [x] Hand tokens and finger notation (T42 part) · *PR / verified by:* this PR.
+- [x] Hand tokens and finger notation (T42 part) · *PR / verified by:* PR #113.
   - `--hand-left` and `--hand-right` (and `--difficulty-*` for the timeline's markers) live in `index.css` and are exposed to Tailwind. The grid, the timeline pills (a hand-coloured left edge), Compare's grids, the Sounds panel's finger chips, the layout summary, the Composer's preset inspector and the new inspectors use them; the right hand is no longer purple in Compare.
   - `src/utils/fingerNotation.ts` is the one notation: L1–R5, with the finger's name ("Left index finger") in tooltips. The "TH IN MI RI PI" and "L-IN" codes are gone, and a grep test keeps finger-number maps and hand hexes out of the product surfaces.
   - The selected Sound gets a neutral outline on the grid, its notes a neutral outline in the timeline and its lane a neutral tint. A click on empty space around the grid or under the Sounds list clears it, as Escape does (new row `empty-space-click`).
-- [x] Pad vs moment selection (T28) · *PR / verified by:* this PR.
+- [x] Pad vs moment selection (T28) · *PR / verified by:* PR #113.
   - A pad click selects the pad (an outline) and its Sound and opens the pad inspector in the dock. It never selects an event, so nothing dims. With an event selected, the event stays: the timeline outlines every hit of the Sound (and tints its lane), and Prev hit and Next hit step through them from the event. With none, "Show its hits" selects the first.
   - The pad inspector (`PadInspector.tsx`) shows the Sound and its hits ("8 hits", "hit 3 of 8") and its soft finger preference, in the Sounds panel's control: it writes `voiceConstraints` (invariant 6) and shows the plan's finger faintly when none is set. It has Lock, and Remove with the Undo toast ("Removed … from Row 4 · Col 4"); on a read-only layout both are refused with the S3.2 hint. Esc or × closes it.
   - The input table's `pad-click-moment` and `pad-click-idle` rows say this, and their registry tests check it through the real grid, pad inspector and timeline.
-- [x] Events list for finding problems (T27) · *PR / verified by:* this PR.
+- [x] Events list for finding problems (T27) · *PR / verified by:* PR #113.
   - Rows read bar.beat.sixteenth, then the Sounds struck, each with its finger chip, then a text difficulty badge (Easy, Med, Hard, ✗ Unplayable) in the timeline's colours. The cost and factors are in the badge's tooltip, and "Infinity" is gone. Rows sit under "Bar n" headers.
   - Filter chips All / Medium+ / Hard / Unplayable show their counts. Medium+ is Medium, Hard and Unplayable; Hard and Unplayable are exact. Prev hard and Next hard, with "Hard n of N", step through the Hard events (Shift+←/→, new row `step-hard-events`). They never wrap; with nothing selected, Next takes the first and Prev the last.
   - The Analysis panel's "N hard events", "N unplayable" and "N events need attention" are buttons that open the list with that filter.
   - A click anywhere on a row selects it. Its chevron expands its factors, one row at a time, with aria-expanded; ↑/↓ move within the filtered rows.
   - The chart draws an unplayable event as a full-height hatched bar with its own tooltip (S1b.1's follow-up).
-- [x] Docked moment inspector under the grid (T27) · *PR / verified by:* this PR.
+- [x] Docked moment inspector under the grid (T27) · *PR / verified by:* PR #113.
   - The dock (`MomentDock.tsx`) sits beside the grid frame (see Deviations), as tall as the frame and 248–360 px wide. It takes the width the height-bound pads leave, so it costs no pad size: pads stay 34 px at 1366×768 and 51 px at 1600×1000. In a region too narrow for it, it moves under the frame and the drawer gives way. Its size never changes with the selection. It holds the moment-view control, the pad inspector and the moment inspector, or a hint.
   - The moment inspector (`MomentInspector.tsx`) shows, from top to bottom:
     - "Event 5 · 2.1.1" with its difficulty badge and the scope line;
@@ -628,10 +628,17 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
   - Screenshots in `docs/screenshots/S4.2/` at 1366 and 1600, before (main) and after: `01-moment-view`, `02-pad-click-with-event` and `03-playing-with-event-selected`. After only: `04-pad-inspector`, `05-prev-now-next` and `06-events-hard-filter`.
 
 **Exit criteria**
-- [x] **P4-2** The three view modes produce distinct pixel output, and next and previous strikes keep their Sound's colour and name. · *PR / verified by:* this PR. `moment-view.spec.ts` (Chromium 1366 and 1600) selects an event with a chord between two others. Screenshots of the grid in the three views differ pairwise. In Prev · Now · Next, every struck, next and previous pad shows its Sound's name and its Sound's colour (within 2 per channel), with the "+1" and "−1" tags. C5's spec compares Now + Next with Prev · Now · Next. `momentOverlay.test.ts` and `momentView.test.tsx` cover the layers, views, arrows and the playback overlay.
-- [x] **P4-3a** With a moment selected, Play shows full-intensity pad flashes and the next-finger preview. · *PR / verified by:* this PR. `moment-view.spec.ts`: with an event selected in Now + Next, Play is sampled every frame for 2 s. No pad dims in any frame, pads flash, and more than 80 % of frames show the next finger and 16 px finger badges. Stop brings the struck pads back. C8's spec still passes.
-- [x] **P4-8** Each Events filter chip shows exactly the matching moments. Prev/Next hard visits every Hard moment in time order and stops at the ends. · *PR / verified by:* this PR. `events-list.spec.ts` (1366 and 1600) runs on TEST MIDI 1 with its Sounds spread over the grid (16 Hard events of 32). The expected sets are computed from the plan's notes (each event's worst note), not from the list. Each chip's rows and count equal its set. Next hard, from no selection, visits the 16 in time order and stops at the last; Shift+← walks back one Hard event at a time and stays on the first. `eventsList.test.tsx` and `eventDifficulty.test.ts` check the same in happy-dom and in node.
-- [x] **P4-11a** The updated input-table row "pad click with a moment selected" passes its registry test. · *PR / verified by:* this PR. In `inputTable.test.tsx`, row `pad-click-moment`: with event 9 selected, a click on a pad it doesn't strike keeps the event (still struck on the grid) and selects the pad and its Sound. The timeline outlines exactly that Sound's notes, and Prev hit and Next hit go to its hits either side of the event. Row `pad-click-idle` checks the pad inspector opens without selecting an event. `padInspector.test.tsx` covers Show its hits, the ends, the finger preference, Lock, and Remove with Undo.
+- [x] **P4-2** The three view modes produce distinct pixel output, and next and previous strikes keep their Sound's colour and name. · *PR / verified by:* PR #113. `moment-view.spec.ts` (Chromium 1366 and 1600) selects an event with a chord between two others. Screenshots of the grid in the three views differ pairwise. In Prev · Now · Next, every struck, next and previous pad shows its Sound's name and its Sound's colour (within 2 per channel), with the "+1" and "−1" tags. C5's spec compares Now + Next with Prev · Now · Next. `momentOverlay.test.ts` and `momentView.test.tsx` cover the layers, views, arrows and the playback overlay.
+- [x] **P4-3a** With a moment selected, Play shows full-intensity pad flashes and the next-finger preview. · *PR / verified by:* PR #113. `moment-view.spec.ts`: with an event selected in Now + Next, Play is sampled every frame for 2 s. No pad dims in any frame, pads flash, and more than 80 % of frames show the next finger and 16 px finger badges. Stop brings the struck pads back. C8's spec still passes.
+- [x] **P4-8** Each Events filter chip shows exactly the matching moments. Prev/Next hard visits every Hard moment in time order and stops at the ends. · *PR / verified by:* PR #113. `events-list.spec.ts` (1366 and 1600) runs on TEST MIDI 1 with its Sounds spread over the grid (16 Hard events of 32). The expected sets are computed from the plan's notes (each event's worst note), not from the list. Each chip's rows and count equal its set. Next hard, from no selection, visits the 16 in time order and stops at the last; Shift+← walks back one Hard event at a time and stays on the first. `eventsList.test.tsx` and `eventDifficulty.test.ts` check the same in happy-dom and in node.
+- [x] **P4-11a** The updated input-table row "pad click with a moment selected" passes its registry test. · *PR / verified by:* PR #113. In `inputTable.test.tsx`, row `pad-click-moment`: with event 9 selected, a click on a pad it doesn't strike keeps the event (still struck on the grid) and selects the pad and its Sound. The timeline outlines exactly that Sound's notes, and Prev hit and Next hit go to its hits either side of the event. Row `pad-click-idle` checks the pad inspector opens without selecting an event. `padInspector.test.tsx` covers Show its hits, the ends, the finger preference, Lock, and Remove with Undo.
+
+**Session checks**
+- [x] Full suite before push. · *PR / verified by:* on 8c70d85 and aed2288:
+  - `npm run typecheck`: clean.
+  - `npm run test:run`: 132 files, 1,463 passed, 4 `runIf` skips. That includes `testMidi1Integration.test.ts` (37 passed, 4 skipped): 0 unplayable events for Greedy, Beam and Annealing Quick, with and without the lock.
+  - `npm run build` + `npm run check:no-test-hook`: OK.
+  - Playwright at chromium-1366 and -1600, and C1 at -1920: 241 passed, 2 failed (11.4 min). The 2 are the Library screenshot comparisons (8,514 and 8,479 pixels), which differ only in a cloud container and pass in CI. C9's expected-fail case is unchanged.
 
 #### S4.3a — A DAW-grade transport ∥ S4.2
 
