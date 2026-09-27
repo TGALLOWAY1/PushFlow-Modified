@@ -41,6 +41,7 @@ import { padKey } from '../../types/padGrid';
 import { createDefaultPose0, getPose0PadsWithOffset } from '../../engine/prior/naturalHandPose';
 import { formatFingerConstraint, parseFingerConstraint } from '../../utils/fingerConstraints';
 import { type RehearsalAudioOptions, DEFAULT_REHEARSAL_AUDIO } from '../audio/rehearsalAudio';
+import { DEFAULT_REHEARSE_SPEED } from '../audio/transportMath';
 import { gmDrumRenames } from '../../utils/gmDrumMap';
 import { uniqueName } from '../../utils/uniqueName';
 import { suggestVariantName } from './variantNames';
@@ -203,6 +204,12 @@ export interface ProjectSession {
   selectedMomentKey: string | null;
   /** The note a timeline click named within the selected event (its eventKey), else null. */
   selectedNoteKey: string | null;
+  /**
+   * The selected event is where playback was last stopped, not one the user
+   * picked (S4.3b, T10): the next stop moves it to the playhead's event, and
+   * the song's end clears it. A pick (SELECT_EVENT) is never moved by a stop.
+   */
+  selectionFromPause: boolean;
   /** Currently selected sound stream (for cross-panel highlighting). */
   selectedStreamId: string | null;
   /**
@@ -267,8 +274,14 @@ export interface ProjectSession {
   /** Loop region bounds in seconds; null means the whole performance. */
   loopStart: number | null;
   loopEnd: number | null;
-  /** Bars of metronome count-in before the performance starts. */
+  /**
+   * Bars of clicks before playback starts from stopped (S4.3b, T59): 0 (Off),
+   * 1 or 2. Rehearse always counts in at least one. For this session, like
+   * Metronome and Hits; never saved.
+   */
   countInBars: number;
+  /** The speed Rehearse sets (S4.3b, T10): 1, 0.75 or 0.5. For this session; never saved. */
+  rehearseRate: number;
   /** Rehearsal audio settings (click track and audible hits). */
   rehearsalAudio: RehearsalAudioOptions;
 }
@@ -739,6 +752,13 @@ export type ProjectAction =
   | { type: 'TICK_TIME'; payload: number }
   | { type: 'SET_IS_PLAYING'; payload: boolean }
   | { type: 'TOGGLE_PLAYING' }
+  /**
+   * The transport stopped at `time` (S4.3b, T10): Stop mid-song, with the
+   * playhead's event as `momentKey`, or the song's end with Loop off, with
+   * null. Unless the user picked an event, it becomes the selection.
+   */
+  | { type: 'PLAYBACK_STOPPED'; payload: { time: number; momentKey: string | null } }
+  | { type: 'SET_REHEARSE_RATE'; payload: number }
   | { type: 'SET_PLAYBACK_RATE'; payload: number }
   | { type: 'SET_LOOP_ENABLED'; payload: boolean }
   | { type: 'SET_LOOP_REGION'; payload: { start: number | null; end: number | null } }
@@ -1231,6 +1251,7 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
         inspectedAnalysis: null,
         selectedMomentKey: null,
         selectedNoteKey: null,
+        selectionFromPause: false,
         armedStreamId: null,
         selectedPadKey: null,
         compareCandidateId: null,
@@ -1244,6 +1265,7 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
         loopStart: null,
         loopEnd: null,
         countInBars: 0,
+        rehearseRate: DEFAULT_REHEARSE_SPEED,
         rehearsalAudio: { ...DEFAULT_REHEARSAL_AUDIO },
       };
 
@@ -2028,19 +2050,22 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
         // Clearing an already-empty selection changes nothing (T06: an Escape
         // that closes an overlay must not also re-render the whole editor).
         if (state.selectedMomentKey === null && state.selectedNoteKey === null) return state;
-        return { ...state, selectedMomentKey: null, selectedNoteKey: null };
+        return { ...state, selectedMomentKey: null, selectedNoteKey: null, selectionFromPause: false };
       }
       const noteKey = selection.noteKey ?? null;
-      const same = selection.key === state.selectedMomentKey && noteKey === state.selectedNoteKey;
+      // A pick of the event a stop selected makes it the user's own (S4.3b).
+      const same = selection.key === state.selectedMomentKey && noteKey === state.selectedNoteKey && !state.selectionFromPause;
       // Selecting an event while stopped moves the playhead to it, so Play
       // starts there (T10 slice); selecting it again seeks back to it. While
       // playing, the playhead is left alone.
       if (!state.isPlaying) {
         if (same && state.currentTime === selection.startTime) return state;
-        return { ...state, selectedMomentKey: selection.key, selectedNoteKey: noteKey, currentTime: selection.startTime };
+        return {
+          ...state, selectedMomentKey: selection.key, selectedNoteKey: noteKey, selectionFromPause: false, currentTime: selection.startTime,
+        };
       }
       if (same) return state;
-      return { ...state, selectedMomentKey: selection.key, selectedNoteKey: noteKey };
+      return { ...state, selectedMomentKey: selection.key, selectedNoteKey: noteKey, selectionFromPause: false };
     }
 
     case 'SET_COMPARE_CANDIDATE':
@@ -2065,6 +2090,23 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
     case 'TOGGLE_PLAYING':
       return { ...state, isPlaying: !state.isPlaying };
 
+    // One current moment (S4.3b, T10): stopped, it is the selection. A stop
+    // mid-song with no event picked selects the playhead's event, so the grid
+    // shows where the hands are (F7-V02) and ←/→ step on from there; a later
+    // stop moves it, and the song's end clears it. A picked event stays: Stop
+    // brings it back. The playhead stays where it stopped either way.
+    case 'PLAYBACK_STOPPED': {
+      const { time, momentKey } = action.payload;
+      const next = state.currentTime === time ? state : { ...state, currentTime: time };
+      if (state.selectedMomentKey !== null && !state.selectionFromPause) return next;
+      if (momentKey === state.selectedMomentKey && state.selectedNoteKey === null) return next;
+      return { ...next, selectedMomentKey: momentKey, selectedNoteKey: null, selectionFromPause: momentKey !== null };
+    }
+
+    case 'SET_REHEARSE_RATE':
+      if (action.payload === state.rehearseRate) return state;
+      return { ...state, rehearseRate: action.payload };
+
     // The loop and speed are rehearsal preferences, saved with the project
     // (S4.3a): a change bumps updatedAt so it is autosaved. Never analysis
     // inputs, and never in undo history (session state).
@@ -2088,8 +2130,10 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
       return { ...state, loopStart, loopEnd, updatedAt: new Date().toISOString() };
     }
 
-    case 'SET_COUNT_IN_BARS':
-      return { ...state, countInBars: Math.min(4, Math.max(0, Math.round(action.payload))) };
+    case 'SET_COUNT_IN_BARS': {
+      const countInBars = Math.min(2, Math.max(0, Math.round(action.payload)));
+      return countInBars === state.countInBars ? state : { ...state, countInBars };
+    }
 
     case 'SET_REHEARSAL_AUDIO':
       return { ...state, rehearsalAudio: { ...state.rehearsalAudio, ...action.payload } };
@@ -2188,6 +2232,7 @@ export function createEmptyProjectState(): ProjectState {
     sourceFiles: [],
     selectedMomentKey: null,
     selectedNoteKey: null,
+    selectionFromPause: false,
     selectedStreamId: null,
     armedStreamId: null,
     selectedPadKey: null,
@@ -2210,6 +2255,7 @@ export function createEmptyProjectState(): ProjectState {
     loopStart: null,
     loopEnd: null,
     countInBars: 0,
+    rehearseRate: DEFAULT_REHEARSE_SPEED,
     rehearsalAudio: { ...DEFAULT_REHEARSAL_AUDIO },
   };
 }

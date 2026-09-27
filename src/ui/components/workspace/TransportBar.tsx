@@ -5,32 +5,43 @@
  *
  * Play/Stop, Return (to the loop start while looping a region), the playhead
  * (bar.beat.sixteenth, drawn from the transport every frame), Speed with its
- * BPM, Loop with its presets, Metronome and Hits. Fixed widths and no
- * breakpoints (desktop-only): a window too narrow for it scrolls it.
+ * BPM, Loop with its presets, Metronome with the count-in, and Hits. Fixed
+ * widths and no breakpoints (desktop-only): a window too narrow for it
+ * scrolls it.
  *
  * Loop off plays once to the end; Loop on repeats the loop region, or the
  * whole song when there is none. A region is dragged out on the timeline
  * ruler's loop strip, or set here from the playhead: "This bar" or two bars.
+ *
+ * The count-in (S4.3b, T59) sits in the Metronome's menu, as in a DAW: Off, 1
+ * bar or 2 bars of clicks before playback starts from stopped, while the grid
+ * counts 1-2-3-4. Its menu half shows the bars while it is on.
  */
 
 import { useRef, useState } from 'react';
 import { ChevronDown, Play, Repeat, SkipBack, Square, Timer, Volume2 } from 'lucide-react';
 import { useProject } from '../../state/ProjectContext';
 import { useTransport, useTransportPosition } from '../../audio/TransportProvider';
-import { barsAt, loopRegionOf } from '../../audio/transportMath';
+import { COUNT_IN_CHOICES, REHEARSAL_SPEEDS, barsAt, loopRegionOf } from '../../audio/transportMath';
 import { Popover } from '../shared/Overlay';
 import { IconButton } from '../shared/IconButton';
 import { ToggleButton } from '../shared/ToggleButton';
 import { formatBarBeat, formatBarRange, formatRate, formatSeconds } from '../../../utils/musicalTime';
 import {
   LOOP_MENU_WIDTH,
+  METRONOME_MENU_WIDTH,
   TRANSPORT_BAR_HEIGHT,
   TRANSPORT_GAP,
   TRANSPORT_PADDING,
   TRANSPORT_WIDTHS,
 } from './transportLayout';
 
-const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5];
+/** "a 1-bar count-in", for titles; null when it is off. */
+export function countInPhrase(bars: number): string | null {
+  return bars > 0 ? `a ${bars}-bar count-in` : null;
+}
+
+const MENU_BUTTON = 'focus-ring h-7 flex items-center justify-center rounded-r-pf-sm border border-l-0 border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors';
 
 /** The playhead, redrawn from the transport every frame while it plays; nothing else in the bar re-renders. */
 function PositionReadout({ songStart, tempo }: { songStart: number; tempo: number }) {
@@ -63,6 +74,12 @@ export function TransportBar() {
     const r = menuButton.current?.getBoundingClientRect();
     if (r) setMenuAt({ x: r.left, y: r.bottom + 4 });
   };
+
+  // The Metronome's menu: the count-in.
+  const clickMenuButton = useRef<HTMLButtonElement>(null);
+  const [clickMenuAt, setClickMenuAt] = useState<{ x: number; y: number } | null>(null);
+  const countIn = COUNT_IN_CHOICES.find(c => c.bars === state.countInBars) ?? COUNT_IN_CHOICES[0]!;
+  const countInWords = countInPhrase(state.countInBars);
 
   // Presets take the bar the playhead is in. The engine is read here, when
   // the menu opens, rather than subscribed to: the bar doesn't redraw per frame.
@@ -105,7 +122,7 @@ export function TransportBar() {
           }`}
           style={{ width: TRANSPORT_WIDTHS.play }}
           onClick={() => dispatch({ type: 'TOGGLE_PLAYING' })}
-          title={state.isPlaying ? 'Stop playback' : 'Play from the playhead'}
+          title={state.isPlaying ? 'Stop playback' : `Play from the playhead${countInWords ? ` after ${countInWords}` : ''}`}
         >
           {state.isPlaying
             ? <Square size={11} fill="currentColor" aria-hidden="true" />
@@ -136,7 +153,7 @@ export function TransportBar() {
             onChange={(e) => dispatch({ type: 'SET_PLAYBACK_RATE', payload: Number(e.target.value) })}
             title="Rehearsal speed — the layout and analysis are unchanged"
           >
-            {SPEEDS.map(rate => (
+            {REHEARSAL_SPEEDS.map(rate => (
               <option key={rate} value={rate}>{formatRate(rate, state.tempo)}</option>
             ))}
           </select>
@@ -161,7 +178,7 @@ export function TransportBar() {
             aria-haspopup="dialog"
             aria-expanded={menuAt !== null}
             title="Loop presets: this bar, two bars, the whole song"
-            className="focus-ring h-7 flex items-center justify-center rounded-r-pf-sm border border-l-0 border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+            className={MENU_BUTTON}
             style={{ width: LOOP_MENU_WIDTH }}
             onClick={() => {
               if (menuAt) { setMenuAt(null); return; }
@@ -172,16 +189,41 @@ export function TransportBar() {
             <ChevronDown size={12} aria-hidden="true" />
           </button>
         </div>
-        <ToggleButton
-          testId="transport-metronome"
-          pressed={state.rehearsalAudio.metronome}
-          onPressedChange={pressed => dispatch({ type: 'SET_REHEARSAL_AUDIO', payload: { metronome: pressed } })}
-          icon={<Timer size={12} />}
-          label="Metronome"
-          title="Click track at the project tempo"
-          className="h-7 flex-shrink-0"
-          style={{ width: TRANSPORT_WIDTHS.metronome }}
-        />
+        {/* Metronome: the toggle and, joined to it, the count-in. */}
+        <div className="flex items-center flex-shrink-0" style={{ width: TRANSPORT_WIDTHS.metronome }}>
+          <ToggleButton
+            testId="transport-metronome"
+            pressed={state.rehearsalAudio.metronome}
+            onPressedChange={pressed => dispatch({ type: 'SET_REHEARSAL_AUDIO', payload: { metronome: pressed } })}
+            icon={<Timer size={12} />}
+            label="Metronome"
+            title="Click track at the project tempo"
+            className="h-7 rounded-r-none"
+            style={{ width: TRANSPORT_WIDTHS.metronome - METRONOME_MENU_WIDTH }}
+          />
+          <button
+            ref={clickMenuButton}
+            type="button"
+            data-testid="transport-count-in"
+            data-bars={state.countInBars}
+            aria-label={`Count-in: ${countIn.label}`}
+            aria-haspopup="dialog"
+            aria-expanded={clickMenuAt !== null}
+            title={`Count-in: ${countIn.label} · clicks before playback starts`}
+            className={`${MENU_BUTTON} gap-px ${state.countInBars > 0 ? 'text-[var(--text-primary)] bg-[var(--bg-hover)]' : ''}`}
+            style={{ width: METRONOME_MENU_WIDTH }}
+            onClick={() => {
+              if (clickMenuAt) { setClickMenuAt(null); return; }
+              const r = clickMenuButton.current?.getBoundingClientRect();
+              if (r) setClickMenuAt({ x: r.left, y: r.bottom + 4 });
+            }}
+          >
+            {state.countInBars > 0 && (
+              <span aria-hidden="true" className="text-pf-xs font-semibold tabular-nums leading-none">{state.countInBars}</span>
+            )}
+            <ChevronDown size={state.countInBars > 0 ? 10 : 12} aria-hidden="true" />
+          </button>
+        </div>
         <ToggleButton
           testId="transport-hits"
           pressed={state.rehearsalAudio.hits}
@@ -231,6 +273,48 @@ export function TransportBar() {
           </button>
           <p className="px-3 pt-1.5 pb-1 mt-1 border-t border-[var(--border-subtle)] text-pf-micro text-[var(--text-tertiary)]">
             Or drag on the ruler&rsquo;s loop strip: it snaps to bars; hold Shift for beats, Alt for no snapping.
+          </p>
+        </Popover>
+      )}
+
+      {clickMenuAt && (
+        <Popover
+          x={clickMenuAt.x}
+          y={clickMenuAt.y}
+          role="dialog"
+          ariaLabel="Count-in"
+          onClose={() => setClickMenuAt(null)}
+          returnFocusTo={clickMenuButton.current}
+          testId="transport-count-in-menu"
+          className="w-[252px] py-2 px-3 rounded-pf-md border border-[var(--border-default)] bg-[var(--bg-card)] shadow-[var(--shadow-lg)]"
+        >
+          <fieldset>
+            <legend className="text-pf-sm font-semibold text-[var(--text-primary)]">Count-in</legend>
+            <div className="mt-1.5 flex gap-1.5">
+              {COUNT_IN_CHOICES.map(choice => (
+                <label
+                  key={choice.bars}
+                  className={`flex-1 flex items-center justify-center gap-1 h-7 rounded-pf-sm border text-pf-xs cursor-pointer transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-[var(--border-focus)] ${
+                    choice.bars === state.countInBars
+                      ? 'border-[var(--accent-primary)] bg-[var(--accent-muted)] text-[var(--text-primary)]'
+                      : 'border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="count-in"
+                    className="sr-only"
+                    data-testid={`count-in-${choice.bars}`}
+                    checked={choice.bars === state.countInBars}
+                    onChange={() => dispatch({ type: 'SET_COUNT_IN_BARS', payload: choice.bars })}
+                  />
+                  {choice.label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <p className="mt-2 text-pf-micro leading-snug text-[var(--text-tertiary)]">
+            Clicks before playback starts, counted 1‑2‑3‑4 over the grid, so your hands are on the pads when the music comes in. Rehearse always counts in at least a bar.
           </p>
         </Popover>
       )}

@@ -5,7 +5,8 @@
  * It lists every strike of the selected event by Sound id (its finger and its
  * pad, or "not placed"), says why the event is as hard as it is and what the
  * move to the next event asks, and plays from just before the event. While
- * playing, the grid follows the playhead and the inspector says so.
+ * playing, it follows the playhead with the grid (S4.3b: the current moment)
+ * and says Stop comes back to the picked event.
  */
 
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
@@ -103,8 +104,9 @@ describe('the moment inspector (T27)', () => {
     });
   });
 
-  it('Play from here starts at the event itself (the transport plays its start, S4.3a), and while playing says the grid follows the playhead', () => {
-    const event = getEventTimeline(suggested).events[6]!;
+  it('Play from here starts at the event itself (the transport plays its start, S4.3a), and while playing it follows the playhead (S4.3b)', () => {
+    const timeline = getEventTimeline(suggested);
+    const event = timeline.events[6]!;
     mount(suggested, event);
     act(() => { fireEvent.click(screen.getByTestId('play-from-here')); });
     expect(api.state.isPlaying).toBe(true);
@@ -112,6 +114,34 @@ describe('the moment inspector (T27)', () => {
     // The selection stays; the button gives way to the note.
     expect(api.state.selectedMomentKey).toBe(event.key);
     expect(screen.queryByTestId('play-from-here')).toBeNull();
-    expect(screen.getByTestId('moment-playing-note').textContent).toMatch(/grid follows the playhead/);
+    expect(screen.getByTestId('moment-playing-note').textContent)
+      .toBe('Playing: this follows the playhead. Stop comes back to Event 7.');
+    // The playhead moves on (outside a workspace, currentTime stands in for
+    // the transport): the inspector shows the event there, not the pick.
+    const later = timeline.events[10]!;
+    act(() => api.dispatch({ type: 'SET_CURRENT_TIME', payload: later.startTime + 0.1 }));
+    const card = screen.getByTestId('selected-event-card');
+    expect(card.getAttribute('data-following')).toBe('true');
+    expect(within(card).getByTestId('selected-event-label').textContent).toBe(formatEventLabel(later, suggested.tempo));
+    expect(api.state.selectedMomentKey).toBe(event.key);
+    // Rehearse is there while playing too; Prev/Next hard (about the selection) are not.
+    expect(within(card).getByTestId('dock-rehearse')).toBeTruthy();
+    expect(within(card).queryByTestId('dock-next-hard')).toBeNull();
+    // Stopped (outside a workspace nothing selects the paused event): the pick again.
+    act(() => api.dispatch({ type: 'SET_IS_PLAYING', payload: false }));
+    expect(within(screen.getByTestId('selected-event-card')).getByTestId('selected-event-label').textContent)
+      .toBe(formatEventLabel(event, suggested.tempo));
+  });
+
+  it('while playing with nothing picked, says it stays on the event where playback stops', () => {
+    const timeline = getEventTimeline(suggested);
+    render(
+      <ProjectProvider initialState={{ ...suggested, isPlaying: true, currentTime: timeline.events[3]!.startTime + 0.05 }}>
+        <Inspector />
+      </ProjectProvider>,
+    );
+    expect(screen.getByTestId('selected-event-label').textContent).toBe(formatEventLabel(timeline.events[3]!, suggested.tempo));
+    expect(screen.getByTestId('moment-playing-note').textContent)
+      .toBe('Playing: this follows the playhead, and stays on the event where you stop.');
   });
 });

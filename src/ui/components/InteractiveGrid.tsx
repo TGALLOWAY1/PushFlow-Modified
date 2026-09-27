@@ -28,7 +28,8 @@ import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { type GridLabelSettings, type MomentView } from '../state/viewSettings';
 import { playheadEventIndex } from '../analysis/selectionModel';
-import { useTransportPosition } from '../audio/TransportProvider';
+import { useCountIn, useTransportPosition } from '../audio/TransportProvider';
+import { CountInOverlay } from './CountInOverlay';
 import { playbackOverlayAt, selectionOverlay, type PadStrike } from '../analysis/momentOverlay';
 import { getEventTimeline } from '../analysis/eventTimeline';
 import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
@@ -238,6 +239,9 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
   // The playhead, from the workspace's transport (S4.3a): it moves every
   // frame while playing without the project state changing.
   const playhead = useTransportPosition();
+  // Counting in (S4.3b): the playhead waits at the start, the grid shows the
+  // strikes the music starts with, and no pad flashes until it does.
+  const countingIn = useCountIn() !== null;
   const playheadIndex = playing ? playheadEventIndex(timeline, assignments, playhead) : null;
   const overlay = useMemo(
     () => playing
@@ -372,7 +376,7 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
 
   const activePadKeys = useMemo(() => {
     const keys = new Set<string>();
-    if (!assignments || (!state.isPlaying && playhead === 0)) return keys;
+    if (!assignments || (!state.isPlaying && playhead === 0) || countingIn) return keys;
 
     // Map event keys to durations
     const durationMap = new Map<string, number>();
@@ -397,7 +401,7 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
       }
     }
     return keys;
-  }, [assignments, playhead, state.isPlaying, state.soundStreams]);
+  }, [assignments, playhead, state.isPlaying, state.soundStreams, countingIn]);
 
   // Detect new note-on events: pads that just became active (weren't active last frame)
   useEffect(() => {
@@ -1097,6 +1101,7 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
             })}
           </svg>
         )}
+        <CountInOverlay width={8 * padSize + 7 * PAD_GAP} height={8 * gridStep - PAD_GAP} padSize={padSize} offsetX={GRID_OFFSET_X} />
         <div className="flex flex-col" style={{ gap: PAD_GAP }}>
           {rows}
           {/* Column labels */}

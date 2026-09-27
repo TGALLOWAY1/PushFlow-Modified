@@ -2,11 +2,13 @@
  * The moment inspector, docked beside the grid (S4.2, T27). It replaces the
  * Selected event card the side panels showed.
  *
- * For the selected event, under the plan of the layout on screen (the state
- * bar right above the grid and the dock names it; the scope line says which
- * Sounds the plan analysed):
+ * For the current moment (S4.3b: the selected event when stopped, the event at
+ * the playhead while playing), under the plan of the layout on screen (the
+ * state bar right above the grid and the dock names it; the scope line says
+ * which Sounds the plan analysed):
  * - "Event 12 · 3.2.3" and its difficulty, costed once for the whole event;
- * - Prev hard / Next hard, and Play from here, where they stay in view;
+ * - Prev hard / Next hard, Play from here and Rehearse, where they stay in
+ *   view; while playing, Rehearse and a note that it follows the playhead;
  * - every strike, resolved by Sound id: the Sound, its finger ("L2") and its
  *   pad, and any Sound struck then that this layout doesn't place;
  * - one line on why it is as hard as it is, and one on the move to the next
@@ -18,7 +20,9 @@ import { useMemo } from 'react';
 import { Play } from 'lucide-react';
 import { useProject } from '../../state/ProjectContext';
 import { getDisplayedExecutionPlan, getInspectedLayout } from '../../state/projectState';
-import { formatEventLabel, getEventTimeline, findSelectedEvent } from '../../analysis/eventTimeline';
+import { formatEventLabel, getEventTimeline, findSelectedEvent, resolveEventKey } from '../../analysis/eventTimeline';
+import { useCurrentMoment } from '../../hooks/useCurrentMoment';
+import { RehearseButton } from '../shared/RehearseButton';
 import { buildSelectedTransitionModel } from '../../analysis/selectionModel';
 import { explainMomentCost, explainMomentTransition } from '../../analysis/momentExplanation';
 import { analysisScope, planSoundIds, scopeLineOf } from '../../analysis/analysisScope';
@@ -31,16 +35,17 @@ import { StrikeChip } from '../shared/StrikeChip';
 
 export function MomentInspector() {
   const { state, dispatch } = useProject();
+  const current = useCurrentMoment();
   const timeline = getEventTimeline(state);
   const plan = getDisplayedExecutionPlan(state);
   const assignments = plan?.fingerAssignments;
   const selected = useMemo(
-    () => findSelectedEvent(timeline, assignments, state.selectedMomentKey),
-    [timeline, assignments, state.selectedMomentKey],
+    () => findSelectedEvent(timeline, assignments, current.key),
+    [timeline, assignments, current.key],
   );
   const transition = useMemo(
-    () => buildSelectedTransitionModel(timeline, assignments, state.selectedMomentKey),
-    [timeline, assignments, state.selectedMomentKey],
+    () => buildSelectedTransitionModel(timeline, assignments, current.key),
+    [timeline, assignments, current.key],
   );
   const soundById = useMemo(() => new Map(state.soundStreams.map(s => [s.id, s])), [state.soundStreams]);
   const namePrefix = useMemo(() => sharedNamePrefix(state.soundStreams.map(s => s.name)), [state.soundStreams]);
@@ -55,17 +60,29 @@ export function MomentInspector() {
   const max = factors ? Math.max(...FACTOR_KEYS.map(k => factors[k]), 0.01) : 1;
 
   // The transport's first window after Play includes its start (S4.3a), so
-  // playing from the event itself sounds its notes.
+  // playing from the event itself sounds its notes (after the count-in set).
   const playFromHere = () => {
     dispatch({ type: 'SET_CURRENT_TIME', payload: event.startTime });
     dispatch({ type: 'SET_IS_PLAYING', payload: true });
   };
+  // While playing, the event Stop will come back to: the user's pick, if any.
+  const picked = current.following && !state.selectionFromPause ? resolveEventKey(timeline, state.selectedMomentKey) : null;
 
   return (
-    <div data-testid="selected-event-card" role="group" aria-label="Selected event" className="flex flex-col gap-2 min-w-0 border-t border-[var(--border-subtle)] pt-2">
+    <div
+      data-testid="selected-event-card"
+      data-following={current.following ? 'true' : undefined}
+      role="group"
+      aria-label={current.following ? 'Event at the playhead' : 'Selected event'}
+      className="flex flex-col gap-2 min-w-0 border-t border-[var(--border-subtle)] pt-2"
+    >
       <div className="flex flex-col gap-0.5">
         <div className="flex items-center justify-between gap-2">
-          <h3 data-testid="selected-event-label" className="text-pf-sm font-semibold font-mono text-[var(--text-primary)] truncate" title="The selected event">
+          <h3
+            data-testid="selected-event-label"
+            className="text-pf-sm font-semibold font-mono text-[var(--text-primary)] truncate"
+            title={current.following ? 'The event at the playhead' : 'The selected event'}
+          >
             {formatEventLabel(event, state.tempo)}
           </h3>
           <DifficultyBadge cost={cost} testId="moment-verdict" />
@@ -74,23 +91,28 @@ export function MomentInspector() {
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
-        <HardEventStepper testIdPrefix="dock" />
-        {state.isPlaying ? (
-          // The grid follows the playhead while playing (T09); this stays the selected event.
-          <span data-testid="moment-playing-note" className="text-pf-micro text-[var(--text-tertiary)]">
-            Playing: the grid follows the playhead, and Stop comes back here.
+        {current.following ? (
+          // Playing: this follows the playhead with the grid (S4.3b, T10).
+          <span data-testid="moment-playing-note" className="w-full text-pf-micro text-[var(--text-tertiary)]">
+            {picked
+              ? `Playing: this follows the playhead. Stop comes back to Event ${picked.index + 1}.`
+              : 'Playing: this follows the playhead, and stays on the event where you stop.'}
           </span>
         ) : (
-          <button
-            type="button"
-            data-testid="play-from-here"
-            className="focus-ring inline-flex items-center gap-1 h-6 px-1.5 rounded-pf-sm border border-[var(--border-default)] bg-[var(--bg-card)] text-pf-micro font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-            title={`Play from ${formatEventLabel(event, state.tempo)}`}
-            onClick={playFromHere}
-          >
-            <Play size={11} aria-hidden="true" />Play from here
-          </button>
+          <>
+            <HardEventStepper testIdPrefix="dock" />
+            <button
+              type="button"
+              data-testid="play-from-here"
+              className="focus-ring inline-flex items-center gap-1 h-6 px-1.5 rounded-pf-sm border border-[var(--border-default)] bg-[var(--bg-card)] text-pf-micro font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              title={`Play from ${formatEventLabel(event, state.tempo)}`}
+              onClick={playFromHere}
+            >
+              <Play size={11} aria-hidden="true" />Play from here
+            </button>
+          </>
         )}
+        <RehearseButton event={event} variant="split" testId="dock-rehearse" />
       </div>
 
       {/* Every strike, by Sound id: its finger and its pad. */}
