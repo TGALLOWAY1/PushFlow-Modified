@@ -83,7 +83,9 @@ describe('a pad click (T28)', () => {
     expect(within(inspector).getByTestId('pad-inspector-sound').textContent).toBe(sound.name);
     expect(within(inspector).getByTestId('pad-inspector-hits').textContent).toBe(`${hitsOf(soundId).length} hits`);
     // The plan's finger, as a faint suggestion (never the "(XX)" format).
-    const finger = within(inspector).getByRole('button', { name: /^[LR][1-5]$/ });
+    const finger = within(inspector).getByTestId('pad-inspector-finger');
+    expect(finger.textContent).toMatch(/^[LR][1-5](\/[LR][1-5])?$|^mixed$/);
+    expect(finger.getAttribute('aria-label')).toMatch(/^Hand & finger preference \(soft\) for .+: none; the plan uses [LR][1-5]/);
     expect(finger.style.opacity).toBe('0.5');
     expect(inspector.textContent).not.toMatch(/\([LR][1-5]\)/);
   });
@@ -129,18 +131,23 @@ describe('a pad click (T28)', () => {
     mount(analysed);
     const { key, soundId } = busiestPad();
     fireEvent.click(pad(key));
-    fireEvent.click(within(screen.getByTestId('pad-inspector')).getByRole('button', { name: /^[LR][1-5]$/ }));
+    const chip = () => screen.getByTestId('pad-inspector-finger');
+    // No preference yet: the plan's finger, faint (S5.1).
+    expect(chip().getAttribute('data-preference')).toBe('');
+    expect(chip().textContent).toMatch(/^[LR][1-5](\/[LR][1-5])?$|^mixed$/);
+    fireEvent.click(chip());
     const input = screen.getByTestId('finger-input') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'R3' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(api.state.voiceConstraints[soundId]).toEqual({ hand: 'right', finger: 'middle' });
     // The layout's pad preference follows (derived from voiceConstraints).
     expect(getDisplayedLayout(api.state)!.fingerConstraints[key]).toBe('R3');
-    fireEvent.click(within(screen.getByTestId('pad-inspector')).getByRole('button', { name: 'R3' }));
-    const again = screen.getByTestId('finger-input') as HTMLInputElement;
-    fireEvent.change(again, { target: { value: '' } });
-    fireEvent.keyDown(again, { key: 'Enter' });
+    expect(chip().getAttribute('data-preference')).toBe('R3');
+    // Auto (solver) clears it.
+    fireEvent.click(chip());
+    fireEvent.click(screen.getByTestId('finger-auto'));
     expect(api.state.voiceConstraints[soundId]).toBeUndefined();
+    expect(getDisplayedLayout(api.state)!.fingerConstraints[key]).toBeUndefined();
   });
 
   it('locks, refuses Remove while locked, and removes with Undo', () => {

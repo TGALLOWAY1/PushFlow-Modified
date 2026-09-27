@@ -12,7 +12,7 @@ import { useProject } from '../state/ProjectContext';
 import { useInputHandler } from '../input/inputRegistry';
 import { gmDrumName, gmDrumRenames } from '../../utils/gmDrumMap';
 import { DisabledReason, useDisabledReason } from './shared/DisabledReason';
-import { getDisplayedCandidate, getInspectedLayout, isShownLayoutReadOnly, type SoundStream } from '../state/projectState';
+import { getInspectedLayout, isShownLayoutReadOnly, type SoundStream } from '../state/projectState';
 import { placeRemainingLabel, usePlaceRemaining } from '../hooks/usePlaceRemaining';
 import type { LaneGroup } from '../../types/performanceLane';
 import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
@@ -20,8 +20,8 @@ import { setSoundDragData } from './dragTypes';
 import { generateId } from '../../utils/idGenerator';
 import { formatPadLocator, formatPadPosition } from '../../utils/padPosition';
 import { FingerAssignmentInput, type FingerAssignmentValue } from './shared/FingerAssignmentInput';
-import { type FingerType, type HandSide } from '../../types/fingerModel';
-import { fingerLabel } from '../../utils/fingerNotation';
+import { preferenceOf, usePlanFingers, useSetFingerPreference } from '../hooks/useFingerPreference';
+import { type PlanFingers } from '../analysis/planFingers';
 
 const COLOR_PALETTE = [
   '#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6',
@@ -35,7 +35,6 @@ export function VoicePalette() {
   // Where each Sound is, and its suggested finger, on the layout on screen
   // (S3.2): an inspected candidate's pads, not the draft's behind it.
   const layout = getInspectedLayout(state);
-  const displayedCandidate = getDisplayedCandidate(state);
   // "Place remaining N Sounds" for the layout being edited (S3.3, T37).
   const placeRemaining = usePlaceRemaining();
   const layoutReadOnly = isShownLayoutReadOnly(state);
@@ -156,23 +155,10 @@ export function VoicePalette() {
     return map;
   }, [state.performanceLanes]);
   
-  // Build solver finger summary
-  const solverSummary = useMemo(() => {
-    const map = new Map<string, { label: string; hand: string; finger: string }>();
-    const { fingerAssignments } = displayedCandidate?.executionPlan ?? {};
-    if (!fingerAssignments) return map;
-    // Map voiceId to its first assignment's finger info
-    for (const fa of fingerAssignments) {
-      const stream = soundStreamLookup.forAssignment(fa.voiceId);
-      if (!stream || map.has(stream.id) || fa.assignedHand === 'Unplayable' || !fa.finger) continue;
-      map.set(stream.id, {
-          label: fingerLabel(fa.assignedHand, fa.finger),
-          hand: fa.assignedHand,
-          finger: fa.finger,
-      });
-    }
-    return map;
-  }, [displayedCandidate, soundStreamLookup]);
+  // What the plan plays each Sound with: the whole Sound, not its first
+  // strike (T19), shown faintly where it has no preference.
+  const planFingers = usePlanFingers();
+  const setPreference = useSetFingerPreference();
   // Organize streams by group, then by grid assignment
   const { groupedStreams, ungroupedAssigned, ungroupedUnassigned } = useMemo(() => {
     const grouped = new Map<string, SoundStream[]>();
@@ -249,7 +235,7 @@ export function VoicePalette() {
       padKeys={streamPadLocations.get(stream.id) ?? []}
       isLocked={!!layout?.placementLocks[stream.id] && (streamPadLocations.get(stream.id) ?? []).includes(layout.placementLocks[stream.id])}
       voiceConstraint={state.voiceConstraints[stream.id]}
-      solverAssignment={solverSummary.get(stream.id)}
+      fingerPlan={planFingers.get(stream.id) ?? null}
       groups={state.laneGroups}
       currentGroupId={streamGroupMap.get(stream.id) ?? null}
       isSelected={selectedStreamIds.has(stream.id)}
@@ -259,10 +245,7 @@ export function VoicePalette() {
       onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: stream.id })}
       onSolo={() => dispatch({ type: 'SOLO_STREAM', payload: stream.id })}
       onDragStart={handleDragStart}
-      onSetConstraint={(hand, finger) => dispatch({
-        type: 'SET_VOICE_CONSTRAINT',
-        payload: { streamId: stream.id, hand, finger },
-      })}
+      onSetPreference={value => setPreference(stream.id, value)}
       onChangeColor={(color) => dispatch({
         type: 'SET_SOUND_COLOR',
         payload: { streamId: stream.id, color },
@@ -513,7 +496,7 @@ function StreamRow({
   padKeys,
   isLocked,
   voiceConstraint,
-  solverAssignment,
+  fingerPlan,
   groups,
   currentGroupId,
   isSelected,
@@ -524,7 +507,7 @@ function StreamRow({
   onToggleMute,
   onSolo,
   onDragStart,
-  onSetConstraint,
+  onSetPreference,
   onChangeColor,
   onSetGroup,
   isRenaming,
@@ -538,7 +521,8 @@ function StreamRow({
   padKeys: string[];
   isLocked: boolean;
   voiceConstraint?: { hand?: 'left' | 'right'; finger?: string };
-  solverAssignment?: { label: string; hand: string; finger: string };
+  /** The fingers the plan uses for it, shown faintly with no preference. */
+  fingerPlan: PlanFingers | null;
   isSelected: boolean;
   isGlobalSelected: boolean;
   /** Armed for click-to-place: the next click on an empty pad places it. */
@@ -550,7 +534,7 @@ function StreamRow({
   onToggleMute: () => void;
   onSolo: () => void;
   onDragStart: (e: React.DragEvent, stream: SoundStream) => void;
-  onSetConstraint: (hand?: 'left' | 'right' | null, finger?: string | null) => void;
+  onSetPreference: (value: FingerAssignmentValue | null) => void;
   onChangeColor: (color: string) => void;
   onSetGroup: (groupId: string | null) => void;
   isRenaming: boolean;
@@ -752,25 +736,15 @@ function StreamRow({
         </span>
       )}
 
-      {/* Finger assignment — show user constraint or solver suggestion */}
+      {/* The Sound's "Hand & finger preference (soft)": the one control (S5.1) */}
       <div onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
         <FingerAssignmentInput
-          value={
-            voiceConstraint?.hand && voiceConstraint?.finger
-              ? { hand: voiceConstraint.hand, finger: voiceConstraint.finger as FingerType }
-              : solverAssignment
-                ? { hand: solverAssignment.hand as HandSide, finger: solverAssignment.finger as FingerType }
-                : null
-          }
-          isSuggestion={!(voiceConstraint?.hand && voiceConstraint?.finger) && !!solverAssignment}
-          onChange={(assignment: FingerAssignmentValue | null) => {
-            if (assignment) {
-              onSetConstraint(assignment.hand, assignment.finger);
-            } else {
-              onSetConstraint(null, null);
-            }
-          }}
+          value={preferenceOf(voiceConstraint)}
+          plan={fingerPlan}
+          onChange={onSetPreference}
+          soundName={stream.name}
           size="md"
+          testId="sound-finger"
         />
       </div>
 

@@ -11,6 +11,7 @@ import { type LoopEditorAction } from '../../state/loopEditorReducer';
 import { type FingerType, type HandSide } from '../../../types/fingerModel';
 import { formatPadLocator, formatPadPosition } from '../../../utils/padPosition';
 import { FingerAssignmentInput, type FingerAssignmentValue } from '../shared/FingerAssignmentInput';
+import { type PlanFingers } from '../../analysis/planFingers';
 
 /** A hand+finger assignment for a lane. */
 export interface LaneFingerAssignment {
@@ -23,6 +24,8 @@ interface LoopLaneRowProps {
   dispatch: React.Dispatch<LoopEditorAction>;
   /** Current finger assignment for this lane (if set). */
   fingerAssignment?: LaneFingerAssignment;
+  /** The fingers the plan uses for the lane's Sound, shown faintly with no preference. */
+  fingerPlan?: PlanFingers | null;
   /** Callback when finger assignment changes; null clears it. */
   onFingerAssignmentChange?: (laneId: string, assignment: LaneFingerAssignment | null) => void;
   /** Pad position string (e.g. "3,5") if lane is assigned to a pad. */
@@ -31,7 +34,7 @@ interface LoopLaneRowProps {
 
 const ROW_HEIGHT = 32;
 
-export function LoopLaneRow({ lane, dispatch, fingerAssignment, onFingerAssignmentChange, padPosition }: LoopLaneRowProps) {
+export function LoopLaneRow({ lane, dispatch, fingerAssignment, fingerPlan, onFingerAssignmentChange, padPosition }: LoopLaneRowProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(lane.name);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -96,11 +99,14 @@ export function LoopLaneRow({ lane, dispatch, fingerAssignment, onFingerAssignme
         </span>
       )}
 
-      {/* Finger assignment — type L1, R5, etc. */}
+      {/* The lane's Sound's "Hand & finger preference (soft)": the one control (S5.1) */}
       <FingerAssignmentInput
         value={fingerAssignment ?? null}
+        plan={fingerPlan}
         onChange={handleFingerChange}
+        soundName={lane.name}
         size="sm"
+        testId="composer-lane-finger"
       />
 
       {/* Pad position label */}

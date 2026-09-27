@@ -22,20 +22,25 @@ afterEach(cleanup);
 
 describe('FingerAssignmentInput (T19)', () => {
   const suggestion = { hand: 'left' as const, finger: 'index' as const };
+  // The plan plays the Sound with L2: the chip's faint suggestion (S5.1).
+  const plan = { fingers: [{ ...suggestion, label: 'L2', count: 3 }], label: 'L2' };
+  const chip = () => screen.getByTestId('finger-preference');
+  const escape = () => fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
 
   it('opens empty on a suggestion, with the suggestion as the placeholder', () => {
-    render(<FingerAssignmentInput value={suggestion} isSuggestion onChange={() => {}} />);
-    fireEvent.click(screen.getByRole('button'));
+    render(<FingerAssignmentInput value={null} plan={plan} onChange={() => {}} />);
+    fireEvent.click(chip());
     const input = screen.getByTestId('finger-input') as HTMLInputElement;
     expect(input.value).toBe('');
     expect(input.placeholder).toBe('L2');
   });
 
-  it('blur without typing changes nothing', () => {
+  it('blur without typing changes nothing, and Escape closes it', () => {
     const onChange = vi.fn();
-    render(<FingerAssignmentInput value={suggestion} isSuggestion onChange={onChange} />);
-    fireEvent.click(screen.getByRole('button'));
+    render(<FingerAssignmentInput value={null} plan={plan} onChange={onChange} />);
+    fireEvent.click(chip());
     fireEvent.blur(screen.getByTestId('finger-input'));
+    escape();
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.queryByTestId('finger-input')).toBeNull();
   });
@@ -43,17 +48,18 @@ describe('FingerAssignmentInput (T19)', () => {
   it('Escape without typing changes nothing, also on a user preference', () => {
     const onChange = vi.fn();
     render(<FingerAssignmentInput value={suggestion} onChange={onChange} />);
-    fireEvent.click(screen.getByRole('button'));
-    fireEvent.keyDown(screen.getByTestId('finger-input'), { key: 'Escape' });
-    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(chip());
+    escape();
+    fireEvent.click(chip());
     fireEvent.blur(screen.getByTestId('finger-input'));
+    escape();
     expect(onChange).not.toHaveBeenCalled();
   });
 
   it('flags invalid input inline and sets nothing; blur then discards it', () => {
     const onChange = vi.fn();
     render(<FingerAssignmentInput value={null} onChange={onChange} />);
-    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(chip());
     const input = screen.getByTestId('finger-input');
     fireEvent.change(input, { target: { value: 'X9' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -61,17 +67,21 @@ describe('FingerAssignmentInput (T19)', () => {
     expect(screen.getByRole('alert').textContent).toContain('L1–L5 or R1–R5');
     fireEvent.blur(input);
     expect(onChange).not.toHaveBeenCalled();
+    expect(input.getAttribute('aria-invalid')).toBeNull();
+    expect((input as HTMLInputElement).value).toBe('');
   });
 
   it('a typed value is set, and emptying a preference clears it', () => {
     const onChange = vi.fn();
     const { rerender } = render(<FingerAssignmentInput value={null} onChange={onChange} />);
-    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(chip());
     fireEvent.change(screen.getByTestId('finger-input'), { target: { value: 'r3' } });
     fireEvent.keyDown(screen.getByTestId('finger-input'), { key: 'Enter' });
     expect(onChange).toHaveBeenLastCalledWith({ hand: 'right', finger: 'middle' });
+    expect(screen.queryByTestId('finger-input')).toBeNull();
     rerender(<FingerAssignmentInput value={{ hand: 'right', finger: 'middle' }} onChange={onChange} />);
-    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(chip());
+    expect((screen.getByTestId('finger-input') as HTMLInputElement).value).toBe('R3');
     fireEvent.change(screen.getByTestId('finger-input'), { target: { value: '' } });
     fireEvent.keyDown(screen.getByTestId('finger-input'), { key: 'Enter' });
     expect(onChange).toHaveBeenLastCalledWith(null);
