@@ -447,6 +447,103 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     expect(selectedTime()).toBe(times[times.length - 1]);
   },
 
+  'seek-events': async () => {
+    // S4.3b (T10, P4-11c): while playing, ←/→ move the playhead to the event
+    // before or after the one playing, stopping at the ends, inside the loop
+    // while looping a passage; they never select, so Stop still brings the
+    // picked event back.
+    mount(await analysedProject(), <WidgetControls />);
+    const times = eventTimes();
+    selectEvent(getEventTimeline(api.state).events[2]!);
+    const picked = api.state.selectedMomentKey;
+    act(() => api.dispatch({ type: 'SET_CURRENT_TIME', payload: times[5]! + 0.1 }));
+    act(() => api.dispatch({ type: 'SET_IS_PLAYING', payload: true }));
+    expect(press('ArrowRight')).toBe(false);
+    expect(api.state.currentTime).toBe(times[6]);
+    press('ArrowLeft');
+    expect(api.state.currentTime).toBe(times[5]);
+    press('ArrowLeft');
+    expect(api.state.currentTime).toBe(times[4]);
+    expect(api.state.selectedMomentKey).toBe(picked);
+    // At the last event, → leaves the playhead where it is: no wrapping.
+    const last = times[times.length - 1]!;
+    act(() => api.dispatch({ type: 'SET_CURRENT_TIME', payload: last + 0.1 }));
+    expect(press('ArrowRight')).toBe(false);
+    expect(api.state.currentTime).toBe(last + 0.1);
+    // Looping bars 3–4 (4 s to 8 s): the steps stay inside the loop.
+    act(() => api.dispatch({ type: 'SET_LOOP_REGION', payload: { start: 4, end: 8 } }));
+    act(() => api.dispatch({ type: 'SET_LOOP_ENABLED', payload: true }));
+    const inLoop = times.filter(t => t >= 4 && t < 8);
+    expect(inLoop.length).toBeGreaterThan(2);
+    act(() => api.dispatch({ type: 'SET_CURRENT_TIME', payload: inLoop[inLoop.length - 1]! + 0.05 }));
+    press('ArrowRight');
+    expect(api.state.currentTime).toBe(inLoop[inLoop.length - 1]! + 0.05);
+    act(() => api.dispatch({ type: 'SET_CURRENT_TIME', payload: inLoop[0]! }));
+    press('ArrowLeft');
+    expect(api.state.currentTime).toBe(inLoop[0]);
+    press('ArrowRight');
+    expect(api.state.currentTime).toBe(inLoop[1]);
+    // A text field keeps its arrows.
+    expect(press('ArrowRight', {}, screen.getByTestId('plain-input'))).toBe(true);
+    expect(api.state.currentTime).toBe(inLoop[1]);
+    // Stopped, they select again (step-events), from the picked event.
+    act(() => api.dispatch({ type: 'SET_IS_PLAYING', payload: false }));
+    press('ArrowRight');
+    expect(selectedTime()).toBe(times[3]);
+  },
+
+  'toggle-loop': async () => {
+    // S4.3b (T61): L turns Loop on and off, from anywhere but a text field.
+    mount(await analysedProject(), <WidgetControls />);
+    expect(api.state.loopEnabled).toBe(false);
+    expect(press('l')).toBe(false);
+    expect(api.state.loopEnabled).toBe(true);
+    press('L');
+    expect(api.state.loopEnabled).toBe(false);
+    // Not in a text field, and not with Ctrl or ⌘ (the browser's).
+    expect(press('l', {}, screen.getByTestId('plain-input'))).toBe(true);
+    expect(press('l', { ctrlKey: true })).toBe(true);
+    expect(press('l', { metaKey: true })).toBe(true);
+    expect(api.state.loopEnabled).toBe(false);
+  },
+
+  'change-speed': async () => {
+    // S4.3b (T61): [ and ] step the speed through the Speed menu's steps and
+    // stop at either end; the layout and analysis are untouched.
+    mount(await analysedProject(), <WidgetControls />);
+    const hash = hashLayout(getDisplayedLayout(api.state)!);
+    expect(api.state.playbackRate).toBe(1);
+    expect(press('[')).toBe(false);
+    expect(api.state.playbackRate).toBe(0.75);
+    for (let i = 0; i < 5; i++) press('[');
+    expect(api.state.playbackRate).toBe(0.25);
+    for (let i = 0; i < 8; i++) press(']');
+    expect(api.state.playbackRate).toBe(1.5);
+    // A focused select keeps its keys.
+    expect(press('[', {}, screen.getByTestId('plain-select'))).toBe(true);
+    expect(api.state.playbackRate).toBe(1.5);
+    expect(api.state.analysisStale).toBe(false);
+    expect(hashLayout(getDisplayedLayout(api.state)!)).toBe(hash);
+  },
+
+  'return-to-start': async () => {
+    // S4.3b (T61): Home returns to the start, or to the loop start while
+    // looping a passage, as the transport's Return does; playing stays playing.
+    mount(await analysedProject(), <WidgetControls />);
+    act(() => api.dispatch({ type: 'SET_CURRENT_TIME', payload: 9.3 }));
+    expect(press('Home')).toBe(false);
+    expect(api.state.currentTime).toBe(0);
+    act(() => api.dispatch({ type: 'SET_LOOP_REGION', payload: { start: 4, end: 8 } }));
+    act(() => api.dispatch({ type: 'SET_LOOP_ENABLED', payload: true }));
+    act(() => api.dispatch({ type: 'SET_IS_PLAYING', payload: true }));
+    act(() => api.dispatch({ type: 'SET_CURRENT_TIME', payload: 6.2 }));
+    press('Home');
+    expect(api.state.currentTime).toBe(4);
+    expect(api.state.isPlaying).toBe(true);
+    // A text field keeps Home for its caret.
+    expect(press('Home', {}, screen.getByTestId('plain-input'))).toBe(true);
+  },
+
   'step-hard-events': async () => {
     // S4.2 (T27): Shift+←/→ select the previous or next Hard event, in time order, stopping at the ends.
     mount(await spreadProject());
@@ -529,22 +626,39 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
 
   'ruler-seek': async () => {
     // S4.3a (T58): a click on the bar numbers moves the playhead there, and a
-    // drag scrubs; the handle is grabbed where it is.
+    // drag scrubs; the handle is grabbed where it is. S4.3b (T10): stopped,
+    // the playhead lands on the nearest event when the pointer is released,
+    // and that event is selected; while playing it goes exactly where it is
+    // put, and nothing is selected. TEST MIDI 1 has an event every 0.5 s.
     mount(await importTestMidi1(), <UnifiedTimeline />);
     const numbers = screen.getByTestId('ruler-numbers');
-    fireEvent.pointerDown(numbers, { clientX: 4.5 * 30, button: 0 });
-    expect(api.state.currentTime).toBeCloseTo(4.5, 9);
-    fireEvent.pointerMove(numbers, { clientX: 3 * 30 });
-    expect(api.state.currentTime).toBeCloseTo(3, 9);
-    fireEvent.pointerUp(numbers, { clientX: 3 * 30 });
+    fireEvent.pointerDown(numbers, { clientX: 4.6 * 30, button: 0 });
+    expect(api.state.currentTime).toBeCloseTo(4.6, 9);
+    fireEvent.pointerUp(numbers, { clientX: 4.6 * 30 });
+    expect(api.state.currentTime).toBe(4.5);
+    expect(selectedTime()).toBe(4.5);
+    // A drag scrubs, then lands on the event nearest where it ends.
+    fireEvent.pointerDown(numbers, { clientX: 2 * 30, button: 0 });
+    fireEvent.pointerMove(numbers, { clientX: 3.2 * 30 });
+    expect(api.state.currentTime).toBeCloseTo(3.2, 9);
+    fireEvent.pointerUp(numbers, { clientX: 3.2 * 30 });
+    expect(api.state.currentTime).toBe(3);
+    expect(selectedTime()).toBe(3);
     fireEvent.pointerMove(numbers, { clientX: 9 * 30 });
-    expect(api.state.currentTime).toBeCloseTo(3, 9);
+    expect(api.state.currentTime).toBe(3);
     // Grabbing the handle doesn't jump; moving it scrubs.
     fireEvent.pointerDown(screen.getByTestId('playhead-handle'), { clientX: 1, button: 0 });
-    expect(api.state.currentTime).toBeCloseTo(3, 9);
-    fireEvent.pointerMove(numbers, { clientX: 7 * 30 });
-    fireEvent.pointerUp(numbers, { clientX: 7 * 30 });
-    expect(api.state.currentTime).toBeCloseTo(7, 9);
+    expect(api.state.currentTime).toBe(3);
+    fireEvent.pointerMove(numbers, { clientX: 7.1 * 30 });
+    fireEvent.pointerUp(numbers, { clientX: 7.1 * 30 });
+    expect(api.state.currentTime).toBe(7);
+    // Playing: exactly where it is put, and the selection is left alone.
+    act(() => api.dispatch({ type: 'SELECT_EVENT', payload: null }));
+    act(() => api.dispatch({ type: 'SET_IS_PLAYING', payload: true }));
+    fireEvent.pointerDown(numbers, { clientX: 5.3 * 30, button: 0 });
+    fireEvent.pointerUp(numbers, { clientX: 5.3 * 30 });
+    expect(api.state.currentTime).toBeCloseTo(5.3, 9);
+    expect(api.state.selectedMomentKey).toBeNull();
   },
 
   'moment-view': async () => {

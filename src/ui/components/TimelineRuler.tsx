@@ -8,7 +8,9 @@
  *   "4.1.1") and its bars ("Bars 2–3"); with Loop off it stays, dimmed.
  * - The bar numbers under it, and the playhead's handle. Click to move the
  *   playhead there, or drag (from anywhere on the numbers, or the handle) to
- *   scrub; while playing, playback follows.
+ *   scrub; while playing, playback follows. Stopped, the playhead lands on
+ *   the nearest event when the pointer is released, and that event is
+ *   selected: the one current moment (S4.3b, T10).
  *
  * Positions come from the transport (useTransport, useTransportPosition), so
  * the ruler shows and moves what the workspace's transport plays.
@@ -19,6 +21,7 @@ import { useProject } from '../state/ProjectContext';
 import { useTransport, useTransportPosition } from '../audio/TransportProvider';
 import { MIN_LOOP_SECONDS, loopRegionOf, snapModeOf, snapTime, type SnapMode } from '../audio/transportMath';
 import { barSeconds, formatBarBeat, formatBarRange } from '../../utils/musicalTime';
+import { getEventTimeline, nearestEvent } from '../analysis/eventTimeline';
 import { BAR_HEADER_HEIGHT, LOOP_STRIP_HEIGHT } from './timelineLayout';
 
 interface Region { start: number; end: number }
@@ -175,6 +178,15 @@ export function TimelineRuler({ minTime, maxTime, zoom, width, bars, barWidth, o
     if (scrubbing.current) transport.seek(timeAt(e.clientX));
   };
   const onNumbersUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const wasScrubbing = scrubbing.current;
+    scrubbing.current = false;
+    release(e);
+    // Stopped: the playhead lands on the nearest event, and it is selected (T10).
+    if (!wasScrubbing || state.isPlaying) return;
+    const event = nearestEvent(getEventTimeline(state), timeAt(e.clientX));
+    if (event) dispatch({ type: 'SELECT_EVENT', payload: { key: event.key, startTime: event.startTime } });
+  };
+  const onNumbersCancel = (e: ReactPointerEvent<HTMLDivElement>) => {
     scrubbing.current = false;
     release(e);
   };
@@ -247,11 +259,11 @@ export function TimelineRuler({ minTime, maxTime, zoom, width, bars, barWidth, o
         data-testid="ruler-numbers"
         className="absolute left-0 right-0 bottom-0 cursor-pointer"
         style={{ height: numbersHeight }}
-        title="Click to move the playhead, or drag to scrub"
+        title="Click to move the playhead (stopped, to the nearest event), or drag to scrub"
         onPointerDown={onNumbersDown}
         onPointerMove={onNumbersMove}
         onPointerUp={onNumbersUp}
-        onPointerCancel={onNumbersUp}
+        onPointerCancel={onNumbersCancel}
       >
         <div className="flex h-full" style={{ width }}>
           {bars.map(bar => (
