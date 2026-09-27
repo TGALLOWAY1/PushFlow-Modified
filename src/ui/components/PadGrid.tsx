@@ -31,6 +31,8 @@ interface PadGridProps {
   label?: string;
   /** Tailwind color class for the label (e.g., "text-blue-400"). */
   labelColor?: string;
+  /** Sounds' short labels by Sound id (S5.1): shown instead of their names. */
+  shortLabels?: ReadonlyMap<string, string>;
 }
 
 /** Hands in their tokens (the same on every surface, T42); the L or R letter is the second cue. */
@@ -42,6 +44,7 @@ const HAND_COLORS = {
 };
 
 interface PadSummary {
+  voiceId: string | null;
   voiceName: string | null;
   voiceColor: string | null;
   noteNumber: number | null;
@@ -51,7 +54,7 @@ interface PadSummary {
   assignments: FingerAssignment[];
 }
 
-export function PadGrid({ layout, voices, assignments, onPadClick, compact, diffPads, label, labelColor }: PadGridProps) {
+export function PadGrid({ layout, voices, assignments, onPadClick, compact, diffPads, label, labelColor, shortLabels }: PadGridProps) {
   const padSize = compact ? 'w-10 h-10' : 'w-14 h-14';
   const padSizeClass = compact ? 'w-10' : 'w-14';
   // Text never goes below 11 px (T64): compact pads show one line of name
@@ -76,6 +79,7 @@ export function PadGrid({ layout, voices, assignments, onPadClick, compact, diff
     for (const [key, placed] of Object.entries(layout.padToVoice)) {
       const voice = voiceById.get(placed.id);
       map.set(key, {
+        voiceId: placed.id,
         voiceName: voice?.name ?? placed.name ?? 'Unknown Sound',
         voiceColor: voice?.color ?? placed.color ?? null,
         noteNumber: placed.originalMidiNote ?? null,
@@ -94,6 +98,7 @@ export function PadGrid({ layout, voices, assignments, onPadClick, compact, diff
         if (!summary) {
           const voice = a.voiceId ? voiceById.get(a.voiceId) : undefined;
           summary = {
+            voiceId: a.voiceId ?? null,
             voiceName: voice?.name ?? 'Unknown Sound',
             voiceColor: voice?.color ?? null,
             noteNumber: a.noteNumber,
@@ -184,7 +189,7 @@ export function PadGrid({ layout, voices, assignments, onPadClick, compact, diff
                 className="block w-full px-0.5 text-center text-pf-micro font-semibold text-white/90 leading-[13px] overflow-hidden [overflow-wrap:anywhere]"
                 style={{ display: '-webkit-box', WebkitLineClamp: nameLines, WebkitBoxOrient: 'vertical' }}
               >
-                {padLabel(summary.voiceName ?? '', namePrefix, padPx, nameLines)}
+                {(summary.voiceId && shortLabels?.get(summary.voiceId)) || padLabel(summary.voiceName ?? '', namePrefix, padPx, nameLines)}
               </span>
               {/* Fingers */}
               <span className="block text-pf-micro leading-none mt-0.5" style={{ color: textColor }}>

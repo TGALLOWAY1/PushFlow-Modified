@@ -150,11 +150,12 @@ describe('persistence round trip', () => {
     // the role words out of the layout names: "Default (suggested)" is a
     // suggestion called Default, and "Default (suggested) (draft)" a draft of it.
     // S4.3a's starts the rehearsal preferences at Loop off, no region, 1x.
+    // S5.1's (short labels) finds none to clean.
     expect(saved.activeLayout.name).toBe('Default (suggested)');
     expect(saved.workingLayout.name).toBe('Default (suggested) (draft)');
     expect(resavedFields).toEqual({
       ...savedFields,
-      schemaVersion: 6,
+      schemaVersion: 7,
       recoveredDrafts: [],
       lastOpenedAt: saved.updatedAt,
       activeLayout: { ...saved.activeLayout, name: 'Default', provenance: 'suggested' },

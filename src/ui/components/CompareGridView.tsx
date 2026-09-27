@@ -78,6 +78,10 @@ export function CompareGridView({
 }: CompareGridViewProps) {
   // Convert SoundStreams to Voices for PadGrid
   const voices = useMemo(() => streamsToVoices(soundStreams), [soundStreams]);
+  const shortLabels = useMemo(
+    () => new Map(soundStreams.flatMap(s => (s.shortLabel ? [[s.id, s.shortLabel] as const] : []))),
+    [soundStreams],
+  );
 
   // Compute diff pads: pads where layout or finger assignments differ.
   // Sounds moved are counted by unique Sound id and pads by unique pad key
@@ -117,6 +121,7 @@ export function CompareGridView({
           assignments={candidateA.executionPlan.fingerAssignments}
           compact
           diffPads={diffPads}
+          shortLabels={shortLabels}
           label={candidateALabel}
           labelColor="text-blue-400"
         />
@@ -126,6 +131,7 @@ export function CompareGridView({
           assignments={candidateB.executionPlan.fingerAssignments}
           compact
           diffPads={diffPads}
+          shortLabels={shortLabels}
           label={candidateBLabel}
           labelColor="text-purple-400"
         />

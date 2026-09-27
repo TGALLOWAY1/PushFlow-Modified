@@ -4,9 +4,9 @@
  * selects an event: only an explicit event action dims the grid.
  *
  * - The pad and its Sound, and how many times the Sound is struck.
- * - Its soft finger preference, in the Sounds panel's control: it writes the
- *   Sound's voiceConstraints, the one source of truth (invariant 6), and shows
- *   the plan's finger as a faint suggestion when none is set.
+ * - Its "Hand & finger preference (soft)", the one control (S5.1): it writes
+ *   the Sound's voiceConstraints, the one source of truth (invariant 6), and
+ *   shows the plan's fingers faintly when none is set.
  * - Lock and Remove (with Undo), refused on a read-only layout (S3.2).
  * - Its hits: "Show its hits" selects the first; with an event selected,
  *   Prev hit and Next hit step through them. The timeline outlines all of them
@@ -16,13 +16,13 @@
 import { useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Lock, X } from 'lucide-react';
 import { useProject } from '../../state/ProjectContext';
-import { getDisplayedExecutionPlan, getInspectedLayout, isPadLocked } from '../../state/projectState';
+import { getInspectedLayout, isPadLocked } from '../../state/projectState';
 import { getEventTimeline, resolveEventKey, type TimelineEvent } from '../../analysis/eventTimeline';
 import { buildSoundStreamLookup } from '../../analysis/soundStreamLookup';
 import { formatPadPosition } from '../../../utils/padPosition';
-import { type FingerType, type HandSide } from '../../../types/fingerModel';
 import { useReadOnlyHint } from '../../hooks/useReadOnlyHint';
 import { useRemovePadWithUndo } from '../../hooks/useRemovePadWithUndo';
+import { useFingerPreference } from '../../hooks/useFingerPreference';
 import { FingerAssignmentInput } from '../shared/FingerAssignmentInput';
 import { IconButton } from '../shared/IconButton';
 import { ToggleButton } from '../shared/ToggleButton';
@@ -47,6 +47,7 @@ export function PadInspector() {
   );
   const locked = !!padKey && isPadLocked(layout, padKey);
   const removeReason = useDisabledReason(locked ? 'Locked · Unlock to remove' : null);
+  const finger = useFingerPreference(sound?.id);
   if (!padKey || !voice || !sound) return null;
 
   const selectedIndex = resolveEventKey(timeline, state.selectedMomentKey)?.index ?? null;
@@ -56,17 +57,6 @@ export function PadInspector() {
   const select = (event: TimelineEvent | null | undefined) => {
     if (event) dispatch({ type: 'SELECT_EVENT', payload: { key: event.key, startTime: event.startTime } });
   };
-
-  // The finger: the Sound's own preference, else the plan's choice as a faint suggestion.
-  const constraint = state.voiceConstraints[sound.id];
-  const planned = getDisplayedExecutionPlan(state)?.fingerAssignments
-    .find(a => a.voiceId === sound.id && a.assignedHand !== 'Unplayable' && a.finger);
-  const preference = constraint?.hand && constraint?.finger
-    ? { hand: constraint.hand, finger: constraint.finger as FingerType }
-    : null;
-  const suggestion = !preference && planned
-    ? { hand: planned.assignedHand as HandSide, finger: planned.finger as FingerType }
-    : null;
 
   return (
     <div data-testid="pad-inspector" className="flex flex-col gap-2 min-w-0 border-t border-[var(--border-subtle)] pt-2">
@@ -117,16 +107,8 @@ export function PadInspector() {
       </div>
 
       <div className="flex items-center gap-2">
-        <span className="text-pf-micro text-[var(--text-tertiary)]" title="A soft preference: the solver tries to use it, and may not">Finger (soft)</span>
-        <FingerAssignmentInput
-          value={preference ?? suggestion}
-          isSuggestion={!preference && !!suggestion}
-          size="md"
-          onChange={value => dispatch({
-            type: 'SET_VOICE_CONSTRAINT',
-            payload: { streamId: sound.id, hand: value?.hand ?? null, finger: value?.finger ?? null },
-          })}
-        />
+        <span className="text-pf-micro text-[var(--text-tertiary)]" title="A soft preference: the solver tries to use it, and may not">Hand &amp; finger (soft)</span>
+        <FingerAssignmentInput {...finger} soundName={sound.name} size="md" testId="pad-inspector-finger" />
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">

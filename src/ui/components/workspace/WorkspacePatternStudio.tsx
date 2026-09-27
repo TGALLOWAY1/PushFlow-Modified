@@ -34,10 +34,13 @@ import {
 } from './composerLaneIdentity';
 import { useToast } from '../shared/Toast';
 import { useInputHandler } from '../../input/inputRegistry';
+import { usePlanFingers } from '../../hooks/useFingerPreference';
+import { COMPOSER_SOURCE_ID } from '../../state/composerSource';
+import { type PlanFingers } from '../../analysis/planFingers';
 
 const LANE_COLORS = ['#ef4444', '#f97316', '#22c55e', '#eab308', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6'];
 const DEFAULT_MIDI_NOTES = [36, 38, 42, 46, 48, 60, 62, 64];
-const WORKSPACE_PATTERN_SOURCE_ID = 'workspace_pattern_source';
+const WORKSPACE_PATTERN_SOURCE_ID = COMPOSER_SOURCE_ID;
 const WORKSPACE_PATTERN_GROUP_ID = 'workspace_pattern_group';
 const WORKSPACE_PATTERN_NAME = 'Workspace Pattern';
 const CLEAR_LABEL = 'Clear Composer';
@@ -312,6 +315,18 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
     }
     return assignments;
   }, [loopState.lanes, projectState.voiceConstraints]);
+
+  // What the plan of the layout on screen plays each lane's Sound with, shown
+  // faintly when it has no preference (S5.1, the one control).
+  const planFingers = usePlanFingers();
+  const laneFingerPlans = useMemo(() => {
+    const plans: Record<string, PlanFingers> = {};
+    for (const lane of loopState.lanes) {
+      const plan = planFingers.get(projectSoundIdForLane(lane.id));
+      if (plan) plans[lane.id] = plan;
+    }
+    return plans;
+  }, [loopState.lanes, planFingers]);
 
   // A Composer finger edit sets (or, with null, clears) the lane's Sound's preference.
   const handleFingerAssignmentChange = useCallback((laneId: string, assignment: LaneFingerAssignment | null) => {
@@ -650,6 +665,7 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
             lanes={displayLanes}
             dispatch={laneDispatch}
             fingerAssignments={laneFingerAssignments}
+            fingerPlans={laneFingerPlans}
             onFingerAssignmentChange={handleFingerAssignmentChange}
             onAddLane={handleAddLane}
             padPositions={lanePadPositions}

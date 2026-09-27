@@ -17,10 +17,7 @@ import {
 import { useShownAnalysis } from '../../hooks/useShownAnalysis';
 import { UnplacedSounds } from './UnplacedSounds';
 import { inspectedSubject } from '../../state/layoutSubject';
-import { readOnlyHint } from '../../hooks/useReadOnlyHint';
 import { SubjectChip } from '../shared/SubjectChip';
-import { DisabledReason, useDisabledReason } from '../shared/DisabledReason';
-import { type FingerType, ALL_FINGERS } from '../../../types/fingerModel';
 import { type ConstraintRelaxationSummary } from '../../../types/executionPlan';
 import { CostBreakdownBars, FeasibilityBadge } from './CostBreakdownBars';
 import { findSelectedEvent, getEventTimeline } from '../../analysis/eventTimeline';
@@ -29,11 +26,12 @@ import { EventCostChart } from './EventCostChart';
 import { LearnMoreModal } from './LearnMoreModal';
 import { buildSelectedTransitionModel } from '../../analysis/selectionModel';
 import { scoreTile } from '../../analysis/planScore';
-import { formatFingerConstraint, parseFingerConstraint } from '../../../utils/fingerConstraints';
 import { formatPadLocator, formatPadPosition } from '../../../utils/padPosition';
 import { formatBarBeat, formatMilliseconds, formatSeconds } from '../../../utils/musicalTime';
 import { SoundLabel } from '../shared/SoundLabel';
-import { FINGER_NUMBER, fingerLabel, fingerName, fingerOnlyName, handColor, handName } from '../../../utils/fingerNotation';
+import { fingerLabel, fingerName, handColor, handName } from '../../../utils/fingerNotation';
+import { FingerAssignmentInput } from '../shared/FingerAssignmentInput';
+import { useFingerPreference } from '../../hooks/useFingerPreference';
 import { momentDifficultyCounts } from '../../analysis/momentCounts';
 
 export function ActiveLayoutSummary() {
@@ -53,9 +51,6 @@ export function ActiveLayoutSummary() {
   const activeStreams = getActiveStreams(state);
   const currentPlan = displayedCandidate?.executionPlan;
   const assignments = currentPlan?.fingerAssignments;
-  // A read-only layout's finger controls say how to edit it instead (S3.2).
-  const editHint = readOnlyHint(state);
-  const fingerReason = useDisabledReason(editHint);
 
   // The selected event, whole (S4.1), costed once (never summed per note).
   const timeline = getEventTimeline(state);
@@ -88,20 +83,10 @@ export function ActiveLayoutSummary() {
   const padKey = assignment?.row !== undefined && assignment?.col !== undefined
     ? `${assignment.row},${assignment.col}`
     : null;
-  const currentConstraint = padKey && displayedLayout ? displayedLayout.fingerConstraints[padKey] : undefined;
-  const parsed = currentConstraint ? parseFingerConstraint(currentConstraint) : null;
-  const effectiveHand = parsed?.hand ?? (assignment?.assignedHand === 'Unplayable' ? null : assignment?.assignedHand ?? null);
-  const effectiveFinger = parsed?.finger ?? assignment?.finger ?? null;
-
-  const handleSetConstraint = (hand: 'left' | 'right', finger: FingerType) => {
-    if (!padKey) return;
-    dispatch({ type: 'SET_FINGER_CONSTRAINT', payload: { padKey, constraint: formatFingerConstraint(hand, finger) } });
-  };
-
-  const handleClearConstraint = () => {
-    if (!padKey) return;
-    dispatch({ type: 'SET_FINGER_CONSTRAINT', payload: { padKey, constraint: null } });
-  };
+  // The note as the plan plays it; the Sound's own preference is its control below.
+  const playedHand = assignment && assignment.assignedHand !== 'Unplayable' ? assignment.assignedHand : null;
+  const playedFinger = playedHand ? assignment?.finger ?? null : null;
+  const finger = useFingerPreference(stream?.id);
 
   const mappedCount = displayedLayout ? Object.keys(displayedLayout.padToVoice).length : 0;
   // Events are moments for both solvers (T23); a plan's own counts mix notes and moments.
@@ -288,67 +273,22 @@ export function ActiveLayoutSummary() {
                 <DetailChip label="Pad" value={padKey ? formatPadPosition(padKey) : '—'} />
                 <DetailChip
                   label="Hand"
-                  value={effectiveHand ? handName(effectiveHand) : 'Unplayable'}
-                  color={handColor(effectiveHand) ?? 'var(--status-bad)'}
+                  value={playedHand ? handName(playedHand) : 'Unplayable'}
+                  color={handColor(playedHand) ?? 'var(--status-bad)'}
                 />
                 <DetailChip
                   label="Finger"
-                  value={fingerLabel(effectiveHand, effectiveFinger) || 'none'}
-                  title={fingerName(effectiveHand, effectiveFinger) || undefined}
+                  value={fingerLabel(playedHand, playedFinger) || 'none'}
+                  title={fingerName(playedHand, playedFinger) || undefined}
                 />
               </div>
 
-              {/* Finger constraint controls: the layout being edited only (S3.2) */}
-              {padKey && (
-                <div className="space-y-1.5" data-testid="selected-note-fingers">
-                  <div className="flex items-center gap-2">
-                    <span className="text-pf-micro text-[var(--text-tertiary)] w-10">Hand:</span>
-                    <div className="flex gap-1">
-                      {(['left', 'right'] as const).map(hand => (
-                        <button
-                          key={hand}
-                          disabled={!!editHint}
-                          aria-describedby={fingerReason.describedBy}
-                          className={`px-2 py-0.5 text-pf-xs rounded-pf-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                            effectiveHand === hand
-                              ? hand === 'left' ? 'bg-hand-left/20 text-[var(--text-primary)] border border-hand-left/60' : 'bg-hand-right/20 text-[var(--text-primary)] border border-hand-right/60'
-                              : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border border-[var(--border-default)] hover:text-[var(--text-secondary)]'
-                          }`}
-                          title={handName(hand)}
-                          onClick={() => handleSetConstraint(hand, effectiveFinger ?? 'index')}
-                        >
-                          {hand === 'left' ? 'L' : 'R'}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="flex gap-1 ml-2">
-                      {ALL_FINGERS.map(finger => (
-                        <button
-                          key={finger}
-                          disabled={!!editHint}
-                          aria-describedby={fingerReason.describedBy}
-                          className={`px-1.5 py-0.5 text-pf-xs rounded-pf-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                            effectiveFinger === finger
-                              ? 'bg-[var(--bg-active)] text-[var(--text-primary)] border border-[var(--border-strong)]'
-                              : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border border-[var(--border-default)] hover:text-[var(--text-secondary)]'
-                          }`}
-                          title={fingerOnlyName(finger)}
-                          onClick={() => handleSetConstraint(effectiveHand ?? 'right', finger)}
-                        >
-                          {FINGER_NUMBER[finger]}
-                        </button>
-                      ))}
-                    </div>
-                    {currentConstraint && !editHint && (
-                      <button
-                        className="text-pf-micro text-amber-400 hover:text-amber-300 ml-auto transition-colors"
-                        onClick={handleClearConstraint}
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                  <DisabledReason id={fingerReason.id} reason={editHint} />
+              {/* The Sound's "Hand & finger preference (soft)" (S5.1): the one
+                  control, a Sound setting, so it applies whichever layout is shown (S3.2). */}
+              {stream && (
+                <div className="flex items-center gap-2" data-testid="selected-note-fingers">
+                  <span className="text-pf-micro text-[var(--text-tertiary)]" title="A soft preference: the solver tries to use it, and may not">Hand &amp; finger (soft)</span>
+                  <FingerAssignmentInput {...finger} soundName={stream.name} testId="selected-note-finger" />
                 </div>
               )}
             </div>

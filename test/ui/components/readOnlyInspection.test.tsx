@@ -4,7 +4,9 @@
  * inspected, every edit path through the real grid, Sounds panel and key
  * handlers is refused with "Use as my draft to edit", one test per path for
  * drag, the pad menu, click-to-place and Delete; the other paths (a preset
- * drop, the pad's ×, the selected note's finger controls) share one.
+ * drop, the pad's ×) share one. A Sound's finger preference is not a layout
+ * edit (S3.2): the selected note's control (S5.1, the one control) sets it,
+ * and the candidate stays on screen.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -184,26 +186,29 @@ describe('while a candidate is inspected, each edit path is refused with the hin
     expectRefused(before, draftHash);
   });
 
-  it('the rest: a preset drop, the pad\'s ×, and the selected note\'s finger controls', async () => {
+  it('the rest: a preset drop and the pad\'s ×', async () => {
     const { before, draftHash } = mount(await inspectingCandidate());
     // A preset dropped on the grid never reaches its handler.
     fireEvent.drop(pad(emptyPad()), { dataTransfer: dataTransfer({ [COMPOSER_PRESET_DRAG_TYPE]: JSON.stringify({ presetId: 'p', isMirrored: false }) }) });
     expect(presetDrops).toBe(0);
     // No remove button on a read-only layout's pads.
     expect(within(pad(occupiedPad())).queryByTitle('Remove from pad')).toBeNull();
-    // The selected note's finger controls are disabled and say how to edit.
-    const note = getDisplayedExecutionPlan(api.state)!.fingerAssignments.find(a => a.row !== undefined)!;
+    expectRefused(before, draftHash);
+  });
+
+  it('the selected note\'s finger control sets the Sound\'s preference, and the candidate stays on screen', async () => {
+    mount(await inspectingCandidate());
+    const note = getDisplayedExecutionPlan(api.state)!.fingerAssignments.find(a => a.row !== undefined && a.voiceId)!;
     const event = eventOfNote(getEventTimeline(api.state), note)!;
     act(() => api.dispatch({ type: 'SELECT_EVENT', payload: { key: event.key, startTime: event.startTime, noteKey: note.eventKey } }));
-    const controls = screen.getByTestId('selected-note-fingers');
-    const buttons = within(controls).getAllByRole('button');
-    expect(buttons.length).toBeGreaterThan(0);
-    for (const button of buttons) expect((button as HTMLButtonElement).disabled).toBe(true);
-    expect(within(controls).getByTestId('disabled-reason').textContent).toBe(HINT);
-    fireEvent.click(buttons[0]!);
-    expect(documentChanged(before, pickDocument(api.state))).toBe(false);
-    expect(hashLayout(api.state.workingLayout!)).toBe(draftHash);
-    expect(api.canUndo).toBe(false);
+    const control = within(screen.getByTestId('selected-note-fingers')).getByTestId('selected-note-finger');
+    expect((control as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(control);
+    fireEvent.click(screen.getByTestId('finger-hand-left'));
+    fireEvent.click(screen.getByTestId('finger-finger-1'));
+    expect(api.state.voiceConstraints[note.voiceId!]).toEqual({ hand: 'left', finger: 'thumb' });
+    expect(resolveInspectedLayout(api.state)).toMatchObject({ role: 'candidate', readOnly: true });
+    expect(screen.queryByText(HINT)).toBeNull();
   });
 
   it('and all of it works again after "Back to my draft"', async () => {

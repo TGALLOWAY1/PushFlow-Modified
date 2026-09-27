@@ -14,6 +14,16 @@
 /** Whether a lane's color is inherited from its group or explicitly overridden. */
 export type LaneColorMode = 'inherited' | 'overridden';
 
+/** The longest short label a Sound may have (S5.1, T17: 4–6 characters read on a pad). */
+export const SHORT_LABEL_MAX = 6;
+
+/** A short label as it is kept: trimmed, at most SHORT_LABEL_MAX characters, or none. */
+export function cleanShortLabel(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim().slice(0, SHORT_LABEL_MAX).trim();
+  return trimmed || undefined;
+}
+
 // ============================================================================
 // Lane Event
 // ============================================================================
@@ -51,6 +61,11 @@ export interface PerformanceLane {
   orderIndex: number;
   color: string;
   colorMode: LaneColorMode;
+  /**
+   * What pads show for it instead of its name, at most SHORT_LABEL_MAX
+   * characters ("Kick", "HH"); none when absent (S5.1, T17).
+   */
+  shortLabel?: string;
   events: LaneEvent[];
   isHidden: boolean;
   isMuted: boolean;

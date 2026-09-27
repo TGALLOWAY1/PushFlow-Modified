@@ -23,6 +23,7 @@
  */
 
 import { PERSISTED_SCHEMA_VERSION, rehearsalPreferencesOf } from './persistedProject';
+import { cleanShortLabel } from '../../types/performanceLane';
 import { FALLBACK_LAYOUT_NAME, legacyRoleWords, withoutLegacyRoleWords } from '../state/layoutLabels';
 import { variantStamp } from '../state/variantNames';
 import { uniqueName } from '../../utils/uniqueName';
@@ -124,7 +125,32 @@ export const MIGRATIONS: readonly Migration[] = [
       rehearsal: rehearsalPreferencesOf(record.rehearsal),
     }),
   },
+  {
+    // S5.1 (T17): a Sound may carry a short label, what pads show instead of
+    // its name. A project saved before has none, so nothing changes for it; a
+    // stored label is kept trimmed to SHORT_LABEL_MAX characters, and one that
+    // isn't text is dropped.
+    from: 6,
+    to: 7,
+    name: 'sound-short-labels',
+    up: record => {
+      const next: StoredRecord = { ...record };
+      for (const key of ['performanceLanes', 'soundStreams'] as const) {
+        if (Array.isArray(record[key])) next[key] = (record[key] as unknown[]).map(withCleanShortLabel);
+      }
+      return next;
+    },
+  },
 ];
+
+/** A stored lane or stream with its short label cleaned (cleanShortLabel), or as it was. */
+function withCleanShortLabel(item: unknown): unknown {
+  if (!item || typeof item !== 'object' || !('shortLabel' in item)) return item;
+  const { shortLabel, ...rest } = item as { shortLabel: unknown };
+  const clean = cleanShortLabel(shortLabel);
+  if (clean === shortLabel) return item;
+  return clean ? { ...rest, shortLabel: clean } : rest;
+}
 
 type StoredLayout = { name?: unknown; provenance?: unknown; savedAt?: unknown };
 

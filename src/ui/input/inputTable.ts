@@ -19,6 +19,7 @@ export type InputRowId =
   | 'pad-click-idle'
   | 'pad-alt-click'
   | 'drag-pad'
+  | 'drag-pad-to-sounds'
   | 'pad-menu'
   | 'pad-enter'
   | 'read-only-edit'
@@ -38,6 +39,8 @@ export type InputRowId =
   | 'escape'
   | 'delete'
   | 'rename-sound'
+  | 'reorder-sound'
+  | 'select-lane'
   | 'group-sounds'
   | 'undo'
   | 'redo'
@@ -99,7 +102,7 @@ export const INPUT_TABLE: readonly InputRow[] = [
   {
     id: 'drag-sound', group: 'Placing Sounds',
     input: ['Drag a Sound onto a pad'], when: 'Any time',
-    does: 'Places it there. A Sound already on that pad comes off the grid.',
+    does: 'Places it there. While dragging, the pad shows it and a line says what a drop does: "Place Kick here", "Move from Row 4 · Col 4", or "Replace: Snare goes back to To place", which the toast then offers to undo.',
   },
   // Pads
   {
@@ -120,12 +123,17 @@ export const INPUT_TABLE: readonly InputRow[] = [
   {
     id: 'drag-pad', group: 'Pads',
     input: ['Drag a pad onto another'], when: 'Any time',
-    does: 'Swaps the two pads, or moves the Sound to an empty pad.',
+    does: 'Swaps the two pads ("Swap with Snare"), or moves the Sound to an empty pad ("Move from Row 4 · Col 4"). A refused drop says why.',
+  },
+  {
+    id: 'drag-pad-to-sounds', group: 'Pads',
+    input: ['Drag a pad onto the Sounds panel'], when: 'Any time',
+    does: 'Takes its Sound off the grid, back to To place, with Undo in the toast. The panel lights up while a pad is dragged.',
   },
   {
     id: 'pad-menu', group: 'Pads',
     input: ['Right-click a pad'], when: 'Any time',
-    does: 'Opens its menu: lock, finger preference, remove.',
+    does: 'Opens its menu: remove, lock, and its Sound\'s hand & finger preference.',
   },
   {
     id: 'pad-enter', group: 'Pads',
@@ -234,9 +242,19 @@ export const INPUT_TABLE: readonly InputRow[] = [
     does: 'Renames it. Enter or Tab moves on to the next Sound; Esc keeps the old name.',
   },
   {
+    id: 'reorder-sound', group: 'Editing',
+    input: ['Drag a Sound\'s handle'], when: 'Sounds panel',
+    does: 'Moves it up or down the list, and the timeline\'s lanes follow. Onto a group\'s heading it joins that group; onto Ungrouped it leaves its group.',
+  },
+  {
+    id: 'select-lane', group: 'Editing',
+    input: ['Click a lane\'s name'], when: 'The timeline',
+    does: 'Selects its Sound in every panel: its Sounds row, its pad and its notes. Double-click renames it.',
+  },
+  {
     id: 'group-sounds', group: 'Editing',
     input: ['Mod+G'], when: 'Sounds selected (Mod- or Shift-click)',
-    does: 'Groups them, or ungroups them if they are all in one group.',
+    does: 'Groups them, or ungroups them if they are all in one group; a group left empty goes too.',
     keys: e => mod(e) && !e.shiftKey && letter(e, 'g'),
   },
   {

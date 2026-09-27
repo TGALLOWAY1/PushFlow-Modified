@@ -31,6 +31,12 @@ export const SOUND_PALETTE: readonly string[] = [
   '#22949F', // teal
 ];
 
+/** Each palette colour's name, for the colour pickers' accessible names. */
+export const SOUND_PALETTE_NAMES: readonly string[] = [
+  'Orange', 'Sky blue', 'Bluish green', 'Yellow', 'Blue', 'Vermillion', 'Reddish purple', 'Olive',
+  'Aqua', 'Peach', 'Mint', 'Crimson', 'Lavender', 'Violet', 'Sage', 'Teal',
+];
+
 /**
  * Colours for `count` new Sounds: the palette's colours not yet used in the
  * project, in palette order, so a second import continues where the first

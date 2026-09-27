@@ -42,6 +42,7 @@ export function buildSoundStreamsFromLanes(
       id: lane.id,
       name: lane.name,
       color: lane.color,
+      ...(lane.shortLabel ? { shortLabel: lane.shortLabel } : {}),
       originalMidiNote: lane.events[0]?.rawPitch ?? 0,
       events,
       muted: soloActive

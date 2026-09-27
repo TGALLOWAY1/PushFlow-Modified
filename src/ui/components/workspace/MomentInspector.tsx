@@ -10,7 +10,8 @@
  * - Prev hard / Next hard, Play from here and Rehearse, where they stay in
  *   view; while playing, Rehearse and a note that it follows the playhead;
  * - every strike, resolved by Sound id: the Sound, its finger ("L2") and its
- *   pad, and any Sound struck then that this layout doesn't place;
+ *   pad, and any Sound struck then that this layout doesn't place; each with
+ *   the Sound's "Hand & finger preference (soft)" (S5.1, the one control);
  * - one line on why it is as hard as it is, and one on the move to the next
  *   event (momentExplanation.ts);
  * - the five factors from FACTOR_META, or why it can't be played.
@@ -32,6 +33,8 @@ import { formatPadPosition } from '../../../utils/padPosition';
 import { DifficultyBadge } from '../shared/DifficultyBadge';
 import { HardEventStepper } from '../shared/HardEventStepper';
 import { StrikeChip } from '../shared/StrikeChip';
+import { FingerAssignmentInput } from '../shared/FingerAssignmentInput';
+import { preferenceOf, usePlanFingers, useSetFingerPreference } from '../../hooks/useFingerPreference';
 
 export function MomentInspector() {
   const { state, dispatch } = useProject();
@@ -49,6 +52,8 @@ export function MomentInspector() {
   );
   const soundById = useMemo(() => new Map(state.soundStreams.map(s => [s.id, s])), [state.soundStreams]);
   const namePrefix = useMemo(() => sharedNamePrefix(state.soundStreams.map(s => s.name)), [state.soundStreams]);
+  const planFingers = usePlanFingers();
+  const setPreference = useSetFingerPreference();
   if (!selected) return null;
 
   const { event, notes, cost } = selected;
@@ -122,10 +127,21 @@ export function MomentInspector() {
           const sound = soundById.get(id);
           const pad = note && note.row !== undefined && note.col !== undefined ? `${note.row},${note.col}` : null;
           return (
-            <li key={id} data-testid="moment-strike" className="flex items-center justify-between gap-2 min-w-0">
+            <li key={id} data-testid="moment-strike" data-sound-id={id} className="flex items-center justify-between gap-2 min-w-0">
               <StrikeChip sound={sound} shortName={sound ? withoutSharedPrefix(sound.name, namePrefix) : '?'} note={note} />
-              <span className="text-pf-micro text-[var(--text-tertiary)] whitespace-nowrap flex-shrink-0">
-                {pad ? formatPadPosition(pad) : 'not placed'}
+              <span className="flex items-center gap-1.5 flex-shrink-0">
+                <span className="text-pf-micro text-[var(--text-tertiary)] whitespace-nowrap">
+                  {pad ? formatPadPosition(pad) : 'not placed'}
+                </span>
+                {sound && (
+                  <FingerAssignmentInput
+                    value={preferenceOf(state.voiceConstraints[id])}
+                    plan={planFingers.get(id) ?? null}
+                    onChange={value => setPreference(id, value)}
+                    soundName={sound.name}
+                    testId="moment-strike-finger"
+                  />
+                )}
               </span>
             </li>
           );

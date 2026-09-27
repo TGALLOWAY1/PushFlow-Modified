@@ -114,7 +114,7 @@ describe('recovered-drafts-store (schema 1 → 2)', () => {
 
   it('a schema-1 project runs every later step too and lands on the current schema', () => {
     const { record, applied } = runMigrations(savedByMain());
-    expect(applied).toEqual(['recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names', 'rehearsal-preferences']);
+    expect(applied).toEqual(['recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names', 'rehearsal-preferences', 'sound-short-labels']);
     expect(record.schemaVersion).toBe(PERSISTED_SCHEMA_VERSION);
   });
 
@@ -227,8 +227,8 @@ describe('clean-layout-names (schema 4 → 5)', () => {
 
   it('P3-10a: afterwards no stored layout name contains "(draft)" or "(suggested)", and none is empty', () => {
     const { record, applied } = runMigrations(withRoleSuffixes());
-    expect(applied).toEqual(['clean-layout-names', 'rehearsal-preferences']);
-    expect(record.schemaVersion).toBe(6);
+    expect(applied).toEqual(['clean-layout-names', 'rehearsal-preferences', 'sound-short-labels']);
+    expect(record.schemaVersion).toBe(7);
     const names = allLayouts(record).map(l => l.name);
     expect(names).toHaveLength(9);
     expect(names.filter(n => ROLE_WORD.test(n) || !n.trim())).toEqual([]);
@@ -321,9 +321,53 @@ describe('rehearsal-preferences (schema 5 → 6)', () => {
       async (_record, fromVersion) => { log.push(`backup v${fromVersion}`); },
       record => runMigrations(record, MIGRATIONS.map(m => ({ ...m, up: (r: StoredRecord) => { log.push(m.name); return m.up(r); } }))).record,
     );
-    expect(log).toEqual(['backup v5', 'rehearsal-preferences']);
+    expect(log).toEqual(['backup v5', 'rehearsal-preferences', 'sound-short-labels']);
     expect(runMigrations(structuredClone(once)).applied).toEqual([]);
     expect(onlyStep('rehearsal-preferences')[0].up(structuredClone(once))).toEqual(once);
+  });
+});
+
+// S5.1 (T17): a Sound may carry a short label, what pads show instead of its name.
+describe('sound-short-labels (schema 6 → 7)', () => {
+  const at6 = () => runMigrations(savedByMain(), MIGRATIONS.filter(m => m.to <= 6)).record;
+  const lane = (extra: Record<string, unknown>) => ({ id: 'lane-1', name: 'Kick', ...extra });
+
+  it('changes nothing in a project saved before it but its schema', () => {
+    const before = at6();
+    expect(before.schemaVersion).toBe(6);
+    const { record, applied } = runMigrations(before, onlyStep('sound-short-labels'));
+    expect(applied).toEqual(['sound-short-labels']);
+    expect(record.schemaVersion).toBe(7);
+    const { schemaVersion: _a, ...rest } = record;
+    const { schemaVersion: _b, ...unchanged } = before;
+    expect(rest).toEqual(unchanged);
+  });
+
+  it('keeps a stored label trimmed to six characters, on lanes and streams, and drops one that isn\'t text', () => {
+    const { record } = runMigrations({
+      id: 'p',
+      schemaVersion: 6,
+      performanceLanes: [lane({ shortLabel: '  Kick  ' }), lane({ shortLabel: 'Closed hat' }), lane({ shortLabel: 42 }), lane({ shortLabel: '  ' }), lane({})],
+      soundStreams: [lane({ shortLabel: 'HH' }), lane({ shortLabel: null })],
+    });
+    expect(record.performanceLanes).toEqual([
+      lane({ shortLabel: 'Kick' }), lane({ shortLabel: 'Closed' }), lane({}), lane({}), lane({}),
+    ]);
+    expect(record.soundStreams).toEqual([lane({ shortLabel: 'HH' }), lane({})]);
+  });
+
+  it('runs once after its backup, and running it again changes nothing', async () => {
+    const before = { ...at6(), performanceLanes: [lane({ shortLabel: ' Snare drum ' })] };
+    const log: string[] = [];
+    const once = await migrateWithBackup(
+      before,
+      async (_record, fromVersion) => { log.push(`backup v${fromVersion}`); },
+      record => runMigrations(record, MIGRATIONS.map(m => ({ ...m, up: (r: StoredRecord) => { log.push(m.name); return m.up(r); } }))).record,
+    );
+    expect(log).toEqual(['backup v6', 'sound-short-labels']);
+    expect(once.performanceLanes).toEqual([lane({ shortLabel: 'Snare' })]);
+    expect(runMigrations(structuredClone(once)).applied).toEqual([]);
+    expect(onlyStep('sound-short-labels')[0].up(structuredClone(once))).toEqual(once);
   });
 });
 
@@ -342,7 +386,7 @@ describe('migrateWithBackup', () => {
       },
       record => runMigrations(record, [...MIGRATIONS.map(m => ({ ...m, up: (r: StoredRecord) => { log.push(m.name); return m.up(r); } }))]),
     );
-    expect(log).toEqual(['backup v1', 'recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names', 'rehearsal-preferences']);
+    expect(log).toEqual(['backup v1', 'recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names', 'rehearsal-preferences', 'sound-short-labels']);
     expect(backedUp).toEqual(untouched);
     expect(result.record.schemaVersion).toBe(PERSISTED_SCHEMA_VERSION);
   });
