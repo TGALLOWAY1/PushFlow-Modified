@@ -34,6 +34,8 @@ export type InputRowId =
   | 'escape'
   | 'delete'
   | 'rename-sound'
+  | 'reorder-sound'
+  | 'select-lane'
   | 'group-sounds'
   | 'undo'
   | 'redo'
@@ -121,7 +123,7 @@ export const INPUT_TABLE: readonly InputRow[] = [
   {
     id: 'pad-menu', group: 'Pads',
     input: ['Right-click a pad'], when: 'Any time',
-    does: 'Opens its menu: lock, finger preference, remove.',
+    does: 'Opens its menu: remove, lock, and its Sound\'s hand & finger preference.',
   },
   {
     id: 'pad-enter', group: 'Pads',
@@ -206,9 +208,19 @@ export const INPUT_TABLE: readonly InputRow[] = [
     does: 'Renames it. Enter or Tab moves on to the next Sound; Esc keeps the old name.',
   },
   {
+    id: 'reorder-sound', group: 'Editing',
+    input: ['Drag a Sound\'s handle'], when: 'Sounds panel',
+    does: 'Moves it up or down the list, and the timeline\'s lanes follow. Onto a group\'s heading it joins that group; onto Ungrouped it leaves its group.',
+  },
+  {
+    id: 'select-lane', group: 'Editing',
+    input: ['Click a lane\'s name'], when: 'The timeline',
+    does: 'Selects its Sound in every panel: its Sounds row, its pad and its notes. Double-click renames it.',
+  },
+  {
     id: 'group-sounds', group: 'Editing',
     input: ['Mod+G'], when: 'Sounds selected (Mod- or Shift-click)',
-    does: 'Groups them, or ungroups them if they are all in one group.',
+    does: 'Groups them, or ungroups them if they are all in one group; a group left empty goes too.',
     keys: e => mod(e) && !e.shiftKey && letter(e, 'g'),
   },
   {

@@ -11,6 +11,16 @@ export const LOCKED_SOUND_DRAG_TYPE = 'application/pushflow-locked';
 /** A Sound dragged onto the grid (the grid places it on the pad it is dropped on). */
 export const SOUND_DRAG_TYPE = 'application/pushflow-stream';
 
+/** A pad dragged from the grid: onto another pad it swaps or moves; onto the Sounds panel it unplaces (S5.1). */
+export const PAD_DRAG_TYPE = 'application/pushflow-pad';
+
+/**
+ * A Sounds row dragged by its handle, to reorder the Sounds or move one into a
+ * group (S5.1, T46). Only this type reorders: a Sound or pad dragged over the
+ * list never does.
+ */
+export const SOUND_REORDER_DRAG_TYPE = 'application/pushflow-sound-order';
+
 /**
  * Starts dragging a Sound onto the grid: the Sounds panel's rows and the
  * Analysis panels' list of unplaced Sounds (S3.3) carry the same data, so the

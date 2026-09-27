@@ -33,8 +33,9 @@ import { type CandidateSolution } from '../../types/candidateSolution';
  * 4: lastOpenedAt (S2.3).
  * 5: layout names without role words; provenance instead (S3.2, T32).
  * 6: rehearsal preferences, the loop and speed (S4.3a, T58).
+ * 7: a Sound's optional short label, on its lane and its stream (S5.1, T17).
  */
-export const PERSISTED_SCHEMA_VERSION = 6;
+export const PERSISTED_SCHEMA_VERSION = 7;
 
 // ============================================================================
 // Rehearsal preferences

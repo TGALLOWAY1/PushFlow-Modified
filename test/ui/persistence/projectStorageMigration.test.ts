@@ -58,7 +58,7 @@ describe('loadProjectAsync migrates behind a backup', () => {
 
     const state = await loadProjectAsync(saved.id);
     expect(state?.recoveredDrafts).toEqual([]);
-    expect(log).toEqual(['putBackup v1', 'putProject v6']);
+    expect(log).toEqual(['putBackup v1', 'putProject v7']);
 
     const backup = await getLatestBackup(saved.id);
     expect(backup?.key).toBe(`${saved.id}@v1`);
@@ -79,7 +79,7 @@ describe('loadProjectAsync migrates behind a backup', () => {
     projects.set(saved.id, saved);
 
     const state = await loadProjectAsync(saved.id);
-    expect(log).toEqual(['putBackup v2', 'putProject v6']);
+    expect(log).toEqual(['putBackup v2', 'putProject v7']);
     const backup = await getLatestBackup(saved.id);
     expect(backup?.key).toBe(`${saved.id}@v2`);
     // The backup is the untouched record, ghost locks and all.
@@ -95,7 +95,7 @@ describe('loadProjectAsync migrates behind a backup', () => {
       }
     }
     expect(state!.activeLayout.placementLocks).toEqual({ 'lane_1790212333742_q33d4p': '3,3' });
-    expect((projects.get(saved.id) as { schemaVersion: number }).schemaVersion).toBe(6);
+    expect((projects.get(saved.id) as { schemaVersion: number }).schemaVersion).toBe(7);
 
     log.length = 0;
     const again = await loadProjectAsync(saved.id);
@@ -115,7 +115,7 @@ describe('loadProjectAsync migrates behind a backup', () => {
     expect(storedNames().filter(n => /\((draft|suggested)\)/.test(n))).toHaveLength(6);
 
     const state = await loadProjectAsync(saved.id);
-    expect(log).toEqual(['putBackup v4', 'putProject v6']);
+    expect(log).toEqual(['putBackup v4', 'putProject v7']);
     // The backup is the untouched record, role words and all.
     expect((await getLatestBackup(saved.id))?.record).toEqual(saved);
     // Stored and loaded names are clean.

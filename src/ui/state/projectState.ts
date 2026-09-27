@@ -23,7 +23,7 @@ import { type BeamSearchSummary, type CandidateSolution, type CandidateGeneratio
 import { type Layout, type LayoutProvenance, cloneLayout, createEmptyLayout, reconcileLayoutVoices } from '../../types/layout';
 import { type AnnealingIterationSnapshot, type ExecutionPlanResult } from '../../types/executionPlan';
 import { type Section, type VoiceProfile } from '../../types/performanceStructure';
-import { type PerformanceLane, type LaneGroup, type SourceFile } from '../../types/performanceLane';
+import { type PerformanceLane, type LaneGroup, type SourceFile, cleanShortLabel } from '../../types/performanceLane';
 import { type LaneAction, isLaneAction, lanesReducer } from './lanesReducer';
 import { type CostToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
 import { type PerformanceCostBreakdown } from '../../types/costBreakdown';
@@ -75,6 +75,8 @@ export interface SoundStream {
   id: string;
   name: string;
   color: string;
+  /** What pads show instead of the name (S5.1); from its lane. */
+  shortLabel?: string;
   originalMidiNote: number;
   events: SoundEvent[];
   muted: boolean;
@@ -659,6 +661,7 @@ export type ProjectAction =
   | { type: 'TOGGLE_MUTE'; payload: string }
   | { type: 'SOLO_STREAM'; payload: string }
   | { type: 'SET_SOUND_COLOR'; payload: { streamId: string; color: string } }
+  | { type: 'SET_SOUND_SHORT_LABEL'; payload: { streamId: string; shortLabel: string | null } }
   | { type: 'SET_VOICE_CONSTRAINT'; payload: { streamId: string; hand?: 'left' | 'right' | null; finger?: string | null } }
   | { type: 'SELECT_STREAM'; payload: string | null }
   /** Arms a Sound for click-to-place (null disarms); it is also the selected Sound. */
@@ -1385,8 +1388,10 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
         soundStreams: state.soundStreams.map(s =>
           s.id === colorStreamId ? { ...s, color } : s
         ),
+        // The Sound's own colour from now on (T45): a group's colour no
+        // longer repaints it.
         performanceLanes: state.performanceLanes.map(l =>
-          l.id === colorStreamId ? { ...l, color } : l
+          l.id === colorStreamId ? { ...l, color, colorMode: 'overridden' as const } : l
         ),
         activeLayout: {
           ...state.activeLayout,
@@ -1409,6 +1414,27 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
           ...state.analysisResult,
           layout: { ...state.analysisResult.layout, padToVoice: recolorPadVoices(state.analysisResult.layout.padToVoice) },
         } : null,
+      };
+    }
+
+    case 'SET_SOUND_SHORT_LABEL': {
+      // What pads show for the Sound (S5.1, T17). Display only: the analysis
+      // reads none of it.
+      const { streamId } = action.payload;
+      const shortLabel = cleanShortLabel(action.payload.shortLabel);
+      const lane = state.performanceLanes.find(l => l.id === streamId);
+      const stream = state.soundStreams.find(s => s.id === streamId);
+      if ((lane?.shortLabel ?? stream?.shortLabel) === shortLabel) return state;
+      const withLabel = <T extends { id: string; shortLabel?: string }>(item: T): T => {
+        if (item.id !== streamId) return item;
+        const { shortLabel: _old, ...rest } = item;
+        return (shortLabel ? { ...rest, shortLabel } : rest) as T;
+      };
+      return {
+        ...state,
+        updatedAt: new Date().toISOString(),
+        performanceLanes: state.performanceLanes.map(withLabel),
+        soundStreams: state.soundStreams.map(withLabel),
       };
     }
 

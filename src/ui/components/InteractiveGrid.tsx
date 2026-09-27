@@ -17,6 +17,7 @@ import chroma from 'chroma-js';
 import { Lock } from 'lucide-react';
 import { useProject } from '../state/ProjectContext';
 import { getDisplayedLayout, isPadLocked, type SoundStream } from '../state/projectState';
+import { orderSounds } from '../state/soundOrder';
 import { padClickMeaning, PAD_TAKEN_MESSAGE } from '../input/inputTable';
 import { useToast } from './shared/Toast';
 import { type Layout } from '../../types/layout';
@@ -624,7 +625,7 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
         // One dispatch, so one undo step ("Place Sound").
         dispatch({ type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey, stream } });
         // Placing arms the next unplaced Sound; moving a placed one ends placing.
-        dispatch({ type: 'ARM_SOUND', payload: placedAlready ? null : nextUnplacedSound(state.soundStreams, editable, soundStreamLookup, stream.id) });
+        dispatch({ type: 'ARM_SOUND', payload: placedAlready ? null : nextUnplacedSound(orderSounds(state.soundStreams, state.performanceLanes, state.laneGroups), editable, soundStreamLookup, stream.id) });
         return;
       }
       case 'select-pad':
@@ -634,7 +635,7 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
         dispatch({ type: 'SELECT_PAD', payload: { padKey: null, streamId: null } });
         return;
     }
-  }, [livePadToVoice, state.workingLayout, state.activeLayout, state.soundStreams, soundStreamLookup, armedStream, state.selectedMomentKey, dispatch, toast, refuseEdit, readOnly]);
+  }, [livePadToVoice, state.workingLayout, state.activeLayout, state.soundStreams, state.performanceLanes, state.laneGroups, soundStreamLookup, armedStream, state.selectedMomentKey, dispatch, toast, refuseEdit, readOnly]);
 
   // The pad's ×: removes with an Undo toast (T28).
   const handleRemovePad = useRemovePadWithUndo();
@@ -918,7 +919,8 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
                     className="block w-full px-0.5 text-center text-[11px] font-semibold text-white/95 leading-[13px] overflow-hidden [overflow-wrap:anywhere]"
                     style={{ display: '-webkit-box', WebkitLineClamp: hasMomentBadge ? 1 : nameLines, WebkitBoxOrient: 'vertical' }}
                   >
-                    {padLabel(voice.name, namePrefix, padSize, hasMomentBadge ? 1 : nameLines)}
+                    {/* A short label the user gave it, else its name trimmed to fit (T17) */}
+                    {streamForVoice?.shortLabel ?? padLabel(voice.name, namePrefix, padSize, hasMomentBadge ? 1 : nameLines)}
                   </span>
                 )}
                 {/* The finger that strikes it now, else the one that strikes it next (T09) */}
@@ -1199,8 +1201,9 @@ function padRings(f: { isImpossible: boolean; isInstanceHighlighted: boolean; is
 }
 
 /**
- * The Sound to arm after `placedId` is placed: the next one in the Sounds list
- * (wrapping round) that no pad holds, or null when every Sound is placed.
+ * The Sound to arm after `placedId` is placed: the next one in the Sounds
+ * list's order (soundOrder.ts; wrapping round) that no pad holds, or null when
+ * every Sound is placed.
  */
 function nextUnplacedSound(
   streams: SoundStream[],

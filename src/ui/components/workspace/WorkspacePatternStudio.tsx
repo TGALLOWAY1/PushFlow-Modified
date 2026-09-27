@@ -35,11 +35,12 @@ import {
 import { useToast } from '../shared/Toast';
 import { useInputHandler } from '../../input/inputRegistry';
 import { usePlanFingers } from '../../hooks/useFingerPreference';
+import { COMPOSER_SOURCE_ID } from '../../state/composerSource';
 import { type PlanFingers } from '../../analysis/planFingers';
 
 const LANE_COLORS = ['#ef4444', '#f97316', '#22c55e', '#eab308', '#3b82f6', '#a855f7', '#ec4899', '#14b8a6'];
 const DEFAULT_MIDI_NOTES = [36, 38, 42, 46, 48, 60, 62, 64];
-const WORKSPACE_PATTERN_SOURCE_ID = 'workspace_pattern_source';
+const WORKSPACE_PATTERN_SOURCE_ID = COMPOSER_SOURCE_ID;
 const WORKSPACE_PATTERN_GROUP_ID = 'workspace_pattern_group';
 const WORKSPACE_PATTERN_NAME = 'Workspace Pattern';
 const CLEAR_LABEL = 'Clear Composer';
