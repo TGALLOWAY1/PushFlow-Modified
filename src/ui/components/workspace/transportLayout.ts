@@ -13,19 +13,25 @@ export const TRANSPORT_BAR_HEIGHT = 44;
 export const TRANSPORT_GAP = 8;
 export const TRANSPORT_PADDING = 24;
 
-/** Fixed widths of the transport's controls, left to right. Loop is a split button: the toggle and its menu. */
+/**
+ * Fixed widths of the transport's controls, left to right. Loop and Metronome
+ * are split buttons: the toggle and its menu (the loop presets; the count-in,
+ * S4.3b).
+ */
 export const TRANSPORT_WIDTHS = {
   play: 64,
   return: 30,
   position: 56,
-  speed: 140,
+  speed: 160,
   loop: 88,
-  metronome: 96,
+  metronome: 128,
   hits: 60,
 } as const;
 
 /** The loop split button's menu half. */
 export const LOOP_MENU_WIDTH = 24;
+/** The metronome split button's menu half: room for the count-in's bars beside its chevron. */
+export const METRONOME_MENU_WIDTH = 32;
 
 /** Width of the transport's controls, gaps included. */
 export const TRANSPORT_CLUSTER_WIDTH = Object.values(TRANSPORT_WIDTHS).reduce((a, b) => a + b, 0)

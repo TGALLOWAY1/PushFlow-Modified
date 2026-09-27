@@ -26,9 +26,13 @@ export type InputRowId =
   | 'empty-space-click'
   | 'space'
   | 'step-events'
+  | 'seek-events'
   | 'step-hard-events'
   | 'events-list-keys'
   | 'moment-view'
+  | 'toggle-loop'
+  | 'change-speed'
+  | 'return-to-start'
   | 'loop-strip'
   | 'ruler-seek'
   | 'exit-replay'
@@ -162,7 +166,13 @@ export const INPUT_TABLE: readonly InputRow[] = [
   {
     id: 'step-events', group: 'Playback and events',
     input: ['←', '→'], when: 'Stopped',
-    does: 'Selects the previous or next event, stopping at the first and last. In a row of tabs they move between the tabs instead.',
+    does: 'Selects the previous or next event (from where playback stopped, when nothing was selected), stopping at the first and last. In a row of tabs they move between the tabs instead.',
+    keys: e => plain(e) && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'),
+  },
+  {
+    id: 'seek-events', group: 'Playback and events',
+    input: ['←', '→'], when: 'Playing',
+    does: 'Moves the playhead to the event before or after the one playing, stopping at the first and last (inside the loop while looping a passage). Playback carries on from there; the selection stays.',
     keys: e => plain(e) && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'),
   },
   {
@@ -185,6 +195,24 @@ export const INPUT_TABLE: readonly InputRow[] = [
     keys: e => plain(e) && letter(e, 'o'),
   },
   {
+    id: 'toggle-loop', group: 'Playback and events',
+    input: ['L'], when: 'Outside text fields',
+    does: 'Turns Loop on or off: the loop passage, or the whole song when there is none.',
+    keys: e => plain(e) && letter(e, 'l'),
+  },
+  {
+    id: 'change-speed', group: 'Playback and events',
+    input: ['[', ']'], when: 'Outside text fields',
+    does: 'Slows playback down or speeds it up one step (0.25x to 1.5x). The layout and the analysis don\'t change.',
+    keys: e => plain(e) && (e.key === '[' || e.key === ']'),
+  },
+  {
+    id: 'return-to-start', group: 'Playback and events',
+    input: ['Home'], when: 'Outside text fields',
+    does: 'Moves the playhead to the start, or to the loop start while looping a passage, as Return does. Playing or stopped, it stays so.',
+    keys: e => plain(e) && e.key === 'Home',
+  },
+  {
     id: 'loop-strip', group: 'Playback and events',
     input: ['Drag on the loop strip'], when: 'The top strip of the timeline ruler',
     does: 'Sets a loop and turns Loop on. Its edges snap to bars; hold Shift for beats, Alt for no snapping. Drag the loop bar to move it, or an end to resize it.',
@@ -192,7 +220,7 @@ export const INPUT_TABLE: readonly InputRow[] = [
   {
     id: 'ruler-seek', group: 'Playback and events',
     input: ['Click the bar numbers', 'Drag the playhead handle'], when: 'The timeline ruler',
-    does: 'Moves the playhead there; dragging scrubs. While playing, playback carries on from there.',
+    does: 'Moves the playhead there; dragging scrubs. Stopped, it lands on the nearest event, which is selected. While playing, playback carries on from there.',
   },
   // Before 'escape': while a step is replayed, Esc leaves the replay first.
   {
@@ -286,7 +314,7 @@ export function displayInput(input: string, mac = isMacPlatform()): string {
   return parts.join(mac ? '' : '+');
 }
 
-const KEY_NAME = /^([A-Z0-9?←→↑↓]|F\d{1,2}|Space|Esc|Enter|Delete|Backspace|Tab)$/;
+const KEY_NAME = /^([A-Z0-9?←→↑↓[\]]|F\d{1,2}|Space|Esc|Enter|Delete|Backspace|Tab|Home)$/;
 
 /** Whether an input alternative is a key or chord (shown as keycaps) rather than a gesture. */
 export function isKeyInput(input: string): boolean {

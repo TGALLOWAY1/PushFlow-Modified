@@ -5,7 +5,9 @@
  * isGreyedOut → opacity-20 saturate-0) stays applied during playback, so it
  * overrides the playback pad flash. Arrow keys also select events while playing.
  *
- * Flips in S1b.4 (moment-view stop-gaps).
+ * Flipped in S1b.4 (moment-view stop-gaps). Since S4.3b (T10) → while playing
+ * moves the playhead to the next event; it still never goes back to the first
+ * or selects anything.
  */
 
 import { test, expect } from './fixtures';
@@ -70,7 +72,7 @@ test.describe('C8 · selected event during playback', () => {
       .toEqual({ greyedFramesWhilePlaying: 0, overlayBackAfterStop: true });
   });
 
-  test('ArrowRight during playback neither seeks nor selects the first event', async ({ page, pf }) => {
+  test('ArrowRight during playback never goes back to or selects the first event; it moves on to the next (S4.3b)', async ({ page, pf }) => {
     await page.getByTestId('transport-play').click();
     await expect.poll(async () => (await pf.call('status')).currentTime).toBeGreaterThan(1);
     const before = (await pf.call('status')).currentTime;
@@ -79,5 +81,9 @@ test.describe('C8 · selected event during playback', () => {
     const s = await pf.call('status');
     expect({ selectedMomentKey: s.selectedMomentKey, playing: s.isPlaying, seekedBack: s.currentTime < before })
       .toEqual({ selectedMomentKey: null, playing: true, seekedBack: false });
+    // It went to an event after the one playing when the key was pressed.
+    const events = await pf.call('events');
+    const next = events.find(e => e.startTime > before)!;
+    expect(s.currentTime).toBeGreaterThanOrEqual(next.startTime);
   });
 });

@@ -9,6 +9,8 @@
  * - Filtering cost categories on/off
  * - Hover inspection per event
  * - Enlarge to modal view
+ * - Rehearse the selected bar's event (S4.3b, T10), when the panel asks, under
+ *   the chart and in the enlarged view (which closes, so the grid shows it)
  */
 
 import { useState, useMemo, useCallback } from 'react';
@@ -21,6 +23,7 @@ import { formatEventLabel, planNotesByEvent, resolveEventKey, type EventTimeline
 import { type SelectEventPayload } from '../../state/projectState';
 import { type LayoutSubject } from '../../state/layoutSubject';
 import { SubjectChip } from '../shared/SubjectChip';
+import { RehearseButton } from '../shared/RehearseButton';
 
 interface EventCostChartProps {
   fingerAssignments: FingerAssignment[];
@@ -34,6 +37,8 @@ interface EventCostChartProps {
   onSelectEvent?: (selection: SelectEventPayload | null) => void;
   /** Project tempo, for bar.beat.sixteenth positions. */
   tempo?: number;
+  /** Offer Rehearse for the selected bar (S4.3b); needs the project, so panels ask for it. */
+  showRehearse?: boolean;
 }
 
 // One layer per canonical factor, named and coloured by FACTOR_META (T20), so
@@ -51,7 +56,7 @@ interface EventBar {
 /** An unplayable event's bar (S4.2): full height, hatched in the unplayable colour, so it is never an empty gap. */
 const UNPLAYABLE_BAR = 'repeating-linear-gradient(45deg, var(--difficulty-unplayable) 0 3px, transparent 3px 6px)';
 
-export function EventCostChart({ fingerAssignments, timeline, subject, selectedMomentKey, onSelectEvent, tempo = 120 }: EventCostChartProps) {
+export function EventCostChart({ fingerAssignments, timeline, subject, selectedMomentKey, onSelectEvent, tempo = 120, showRehearse = false }: EventCostChartProps) {
   const [enabledLayers, setEnabledLayers] = useState<Set<FactorKey>>(
     new Set(COST_LAYERS.map(l => l.key))
   );
@@ -97,8 +102,17 @@ export function EventCostChart({ fingerAssignments, timeline, subject, selectedM
     });
   }, [timeline, fingerAssignments, enabledLayers]);
   const selectedIndex = resolveEventKey(timeline, selectedMomentKey)?.index ?? null;
+  const selectedBar = selectedIndex === null ? null : eventBars.find(b => b.event.index === selectedIndex) ?? null;
 
   const maxTotal = useMemo(() => Math.max(...eventBars.map(b => b.total), 0.1), [eventBars]);
+
+  // The selected bar's event and its Rehearse (S4.3b, T10).
+  const selectedEventRow = (testId: string, rehearseTestId: string, className = '', onRehearse?: () => void) => showRehearse && selectedBar && (
+    <div data-testid={testId} className={`flex items-center justify-between gap-2 min-w-0 ${className}`}>
+      <span className="text-pf-xs font-mono text-[var(--text-secondary)] truncate">{formatEventLabel(selectedBar.event, tempo)}</span>
+      <RehearseButton event={selectedBar.event} variant="button" testId={rehearseTestId} onRehearse={onRehearse} />
+    </div>
+  );
 
   const chartContent = (height: number) => {
     if (eventBars.length === 0) {
@@ -250,6 +264,9 @@ export function EventCostChart({ fingerAssignments, timeline, subject, selectedM
             <span>{eventBars[eventBars.length - 1]!.event.index + 1}</span>
           </div>
         )}
+
+        {/* The selected bar: rehearse its event (S4.3b, T10). */}
+        {selectedEventRow('chart-selected-event', 'chart-rehearse')}
       </div>
 
       {/* Enlarged modal */}
@@ -308,6 +325,8 @@ export function EventCostChart({ fingerAssignments, timeline, subject, selectedM
                   <span>{formatEventLabel(eventBars[eventBars.length - 1]!.event, tempo)}</span>
                 </div>
               )}
+              {/* A bar picked here can be rehearsed from here; the dialog closes so the grid shows it. */}
+              {selectedEventRow('chart-dialog-selected-event', 'chart-dialog-rehearse', 'mt-3', closeEnlarged)}
             </div>
         </Dialog>
       )}

@@ -34,12 +34,12 @@ const SESSION_FIELDS = [
   'updatedAt', 'lastOpenedAt',
   'analysisResult', 'candidates', 'candidateRuns', 'inspectedLayout', 'inspectedAnalysis', 'generationSummary',
   'engineConfig', 'optimizerMethod', 'greedyStrategy', 'costToggles',
-  'selectedMomentKey', 'selectedNoteKey', 'selectedStreamId', 'armedStreamId', 'selectedPadKey', 'compareCandidateId',
+  'selectedMomentKey', 'selectedNoteKey', 'selectionFromPause', 'selectedStreamId', 'armedStreamId', 'selectedPadKey', 'compareCandidateId',
   'isProcessing', 'error', 'analysisStale', 'manualCostResult',
   'moveHistory', 'iterationTrace', 'moveHistoryStopReason', 'moveHistoryIndex', 'traceSubject', 'restingTrace',
   'lastGenerationRun',
   'currentTime', 'isPlaying', 'playbackRate', 'loopEnabled', 'loopStart', 'loopEnd',
-  'countInBars', 'rehearsalAudio',
+  'countInBars', 'rehearseRate', 'rehearsalAudio',
 ];
 
 const FIXTURE = path.resolve(__dirname, '../../fixtures/projects/saved-by-main.json');
