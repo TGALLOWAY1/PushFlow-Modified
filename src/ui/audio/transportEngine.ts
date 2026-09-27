@@ -262,7 +262,6 @@ export class TransportEngine {
     const readiness = this.audio.ensure();
     if (this.mode === 'frame') {
       // The old path: the wall clock, and audio triggered frame by frame.
-      this.audio.reset();
       this.begin(this.wallClock, false, start, 0);
       return;
     }
