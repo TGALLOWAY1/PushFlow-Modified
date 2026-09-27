@@ -22,6 +22,7 @@ import { getEventTimeline, planNotesByEvent } from '../../../src/ui/analysis/eve
 import { padLabel, sharedNamePrefix } from '../../../src/ui/analysis/padLabels';
 import { fingerLabel } from '../../../src/utils/fingerNotation';
 import { type MomentView } from '../../../src/ui/state/viewSettings';
+import { type FingerAssignment } from '../../../src/types/executionPlan';
 import { suggestedTestMidi1 } from '../../helpers/testMidi1';
 
 afterEach(cleanup);
@@ -39,16 +40,17 @@ beforeAll(async () => {
   analysed = { ...state, analysisResult: analysis, analysisStale: false };
 }, 60_000);
 
-function Grid({ view }: { view: MomentView }) {
+function Grid({ view, assignments }: { view: MomentView; assignments?: FingerAssignment[] }) {
   api = useProject();
-  return <InteractiveGrid padSize={48} assignments={getDisplayedExecutionPlan(api.state)?.fingerAssignments} momentView={view} />;
+  return <InteractiveGrid padSize={48} assignments={assignments ?? getDisplayedExecutionPlan(api.state)?.fingerAssignments} momentView={view} />;
 }
 
-function mount(view: MomentView, state: ProjectState) {
+/** Mounts the grid on `state`'s plan, or on `assignments` in its place. */
+function mount(view: MomentView, state: ProjectState, assignments?: FingerAssignment[]) {
   return render(
     <ToastProvider>
       <ProjectProvider initialState={state}>
-        <Grid view={view} />
+        <Grid view={view} assignments={assignments} />
       </ProjectProvider>
     </ToastProvider>,
   );
@@ -58,6 +60,8 @@ function mount(view: MomentView, state: ProjectState) {
 const EVENT = 4;
 const pads = (attr: string) => [...document.querySelectorAll<HTMLElement>(`[data-${attr}="true"]`)];
 const padKeyOf = (el: HTMLElement) => el.dataset.testid!.replace('pad-', '').replace('-', ',');
+const tag = (pad: HTMLElement, layer: 'next' | 'prev') => pad.querySelector<HTMLElement>(`[data-testid="moment-tag"][data-layer="${layer}"]`);
+const padOf = (note: FingerAssignment) => `${note.row},${note.col}`;
 
 function expectKeepsItsSound(pad: HTMLElement) {
   const layout = getDisplayedLayout(api.state)!;
@@ -102,7 +106,7 @@ describe('the moment view (T09)', () => {
     for (const pad of next) {
       expectKeepsItsSound(pad);
       expect(within(pad).getByTestId('moment-next-outline')).toBeTruthy();
-      expect(within(pad).getByTestId('moment-tag').textContent).toBe('+1');
+      expect(tag(pad, 'next')!.textContent).toBe('+1');
       if (pad.dataset.struck !== 'true') {
         expect(within(pad).getByTestId('moment-finger').dataset.layer).toBe('next');
         expect(pad.className).not.toContain('opacity-[0.45]');
@@ -119,10 +123,59 @@ describe('the moment view (T09)', () => {
     for (const pad of prev) {
       expectKeepsItsSound(pad);
       expect(within(pad).getByTestId('moment-prev-outline')).toBeTruthy();
-      expect(within(pad).getByTestId('moment-tag').textContent).toBe('−1');
+      expect(tag(pad, 'prev')!.textContent).toBe('−1');
       expect(pad.className).not.toContain('opacity-[0.45]');
     }
     expect(pads('next').length).toBeGreaterThan(0);
+  });
+
+  it('marks a pad struck before even when it is struck now too (Codex review on #113)', () => {
+    const timeline = getEventTimeline(analysed);
+    const byEvent = planNotesByEvent(timeline, getDisplayedExecutionPlan(analysed)!.fingerAssignments);
+    // An event that strikes again a pad the event before it struck (Event 17 on this layout).
+    const event = timeline.events.find(e => e.index > 0
+      && byEvent.get(e.index)?.some(n => byEvent.get(e.index - 1)?.some(p => padOf(p) === padOf(n))))!;
+    const shared = byEvent.get(event.index)!.map(padOf).filter(k => byEvent.get(event.index - 1)!.some(p => padOf(p) === k));
+    mount('prev-now-next', { ...analysed, selectedMomentKey: event.key });
+    for (const key of shared) {
+      const pad = screen.getByTestId(`pad-${key.replace(',', '-')}`);
+      expect(pad.dataset.struck).toBe('true');
+      expect(pad.dataset.prev).toBe('true');
+      expect(tag(pad, 'prev')!.textContent).toBe('−1');
+    }
+    // Prev · Now · Next draws something Now + Next doesn't, even here.
+    cleanup();
+    mount('now-next', { ...analysed, selectedMomentKey: event.key });
+    for (const key of shared) expect(screen.getByTestId(`pad-${key.replace(',', '-')}`).dataset.prev).toBeUndefined();
+  });
+
+  it('shows both tags, in opposite corners, on a pad struck before and after (Codex review on #113)', () => {
+    const timeline = getEventTimeline(analysed);
+    const plan = getDisplayedExecutionPlan(analysed)!.fingerAssignments;
+    const byEvent = planNotesByEvent(timeline, plan);
+    // Move one note of the next event onto a pad the previous event struck: A–B–A.
+    const index = EVENT + 2;
+    const nowPads = byEvent.get(index)!.map(padOf);
+    const prevPad = byEvent.get(index - 1)!.map(padOf).find(k => !nowPads.includes(k))!;
+    const moved = byEvent.get(index + 1)![0]!;
+    const [row, col] = prevPad.split(',').map(Number);
+    const assignments = plan.map(a => (a.eventKey === moved.eventKey ? { ...a, row, col } : a));
+    mount('prev-now-next', { ...analysed, selectedMomentKey: timeline.events[index]!.key }, assignments);
+
+    const pad = screen.getByTestId(`pad-${prevPad.replace(',', '-')}`);
+    expect(pad.dataset.next).toBe('true');
+    expect(pad.dataset.prev).toBe('true');
+    const [next, prev] = [tag(pad, 'next')!, tag(pad, 'prev')!];
+    expect(next.textContent).toBe('+1');
+    expect(prev.textContent).toBe('−1');
+    // Never on top of each other: "+1" top right, "−1" bottom left.
+    expect(next.className).toMatch(/-top-2/);
+    expect(next.className).toMatch(/-right-2/);
+    expect(prev.className).toMatch(/-bottom-2/);
+    expect(prev.className).toMatch(/-left-2/);
+    // The look-ahead outline is the one drawn.
+    expect(within(pad).getByTestId('moment-next-outline')).toBeTruthy();
+    expect(within(pad).queryByTestId('moment-prev-outline')).toBeNull();
   });
 
   it('while playing, the playhead drives it: 16 px fingers now and next, and nothing dims (P4-3a)', () => {

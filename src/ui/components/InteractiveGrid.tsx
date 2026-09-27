@@ -669,7 +669,9 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
       const nowStrike: PadStrike = overlay?.now.get(padKey) ?? null;
       const isNext = overlay?.next.has(padKey) ?? false;
       const nextStrike: PadStrike = overlay?.next.get(padKey) ?? null;
-      const isPrev = !isNow && (overlay?.prev.has(padKey) ?? false);
+      // A pad struck before is marked even when it is struck now or next too,
+      // so Prev · Now · Next always shows where the hands come from.
+      const isPrev = overlay?.prev.has(padKey) ?? false;
       const prevStrike: PadStrike = overlay?.prev.get(padKey) ?? null;
       // The selected event's strikes, while stopped: lifted out of the grid.
       const isInspected = isNow && !playing;
@@ -884,19 +886,23 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
                 className="absolute -inset-[4px] rounded-[11px] border-2 border-dashed pointer-events-none"
                 style={{ borderColor: nextColor! }}
               />
-              <MomentTag text="+1" color={nextColor!} title={`Next event${nextStrike ? `: ${nextStrike.name}` : ': can’t be played'}`} />
+              <MomentTag layer="next" color={nextColor!} title={`Next event${nextStrike ? `: ${nextStrike.name}` : ': can’t be played'}`} />
             </>
           )}
-          {/* The previous event's strike (Prev · Now · Next): a faint outline and "-1" */}
+          {/* The previous event's strike (Prev · Now · Next): a faint outline and
+              "-1" in the opposite corner, so a pad struck before and after shows
+              both tags. On a pad struck next too, the next outline is drawn. */}
           {isPrev && (
             <>
-              <div
-                data-testid="moment-prev-outline"
-                aria-hidden="true"
-                className="absolute -inset-[4px] rounded-[11px] border border-dotted pointer-events-none opacity-70"
-                style={{ borderColor: prevColor! }}
-              />
-              <MomentTag text="−1" color={prevColor!} faint title={`Previous event${prevStrike ? `: ${prevStrike.name}` : ''}`} />
+              {!isNext && (
+                <div
+                  data-testid="moment-prev-outline"
+                  aria-hidden="true"
+                  className="absolute -inset-[4px] rounded-[11px] border border-dotted pointer-events-none opacity-70"
+                  style={{ borderColor: prevColor! }}
+                />
+              )}
+              <MomentTag layer="prev" color={prevColor!} title={`Previous event${prevStrike ? `: ${prevStrike.name}` : ''}`} />
             </>
           )}
           {voice ? (
@@ -1155,16 +1161,22 @@ function FingerBadge({ strike, next, fontSize }: { strike: PadStrike; next: bool
   );
 }
 
-/** "+1" or "−1" on a pad's corner: the next or the previous event strikes it. */
-function MomentTag({ text, color, title, faint = false }: { text: string; color: string; title: string; faint?: boolean }) {
+/**
+ * "+1" on a pad's top-right corner when the next event strikes it; "−1",
+ * fainter, on its bottom-left when the previous one did. Opposite corners, so
+ * a pad struck before and after shows both, clear of the lock glyph.
+ */
+function MomentTag({ layer, color, title }: { layer: 'next' | 'prev'; color: string; title: string }) {
+  const prev = layer === 'prev';
   return (
     <span
       data-testid="moment-tag"
+      data-layer={layer}
       title={title}
-      className={`absolute -top-2 -right-2 z-30 px-1 rounded-sm border bg-[var(--bg-panel)] text-[11px] font-bold leading-[13px] pointer-events-none text-[var(--text-primary)] ${faint ? 'opacity-80 border-dotted' : ''}`}
+      className={`absolute z-30 px-1 rounded-sm border bg-[var(--bg-panel)] text-[11px] font-bold leading-[13px] pointer-events-none text-[var(--text-primary)] ${prev ? '-bottom-2 -left-2 opacity-80 border-dotted' : '-top-2 -right-2'}`}
       style={{ borderColor: color }}
     >
-      {text}
+      {prev ? '−1' : '+1'}
     </span>
   );
 }

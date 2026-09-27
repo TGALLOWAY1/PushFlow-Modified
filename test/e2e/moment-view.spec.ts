@@ -77,8 +77,8 @@ test.describe('S4.2 · the moment view (T09)', () => {
         expect(pad.ownColour, `${layer} ${pad.key} is in its Sound's colour`).toBe(true);
       }
     }
-    await expect(page.locator('[data-next="true"] [data-testid="moment-tag"]').first()).toHaveText('+1');
-    await expect(page.locator('[data-prev="true"] [data-testid="moment-tag"]').first()).toHaveText('−1');
+    await expect(page.locator('[data-next="true"] [data-testid="moment-tag"][data-layer="next"]').first()).toHaveText('+1');
+    await expect(page.locator('[data-prev="true"] [data-testid="moment-tag"][data-layer="prev"]').first()).toHaveText('−1');
   });
 
   test('P4-3a: with an event selected, Play shows full-intensity flashes and the next-finger preview', async ({ page, pf }) => {
