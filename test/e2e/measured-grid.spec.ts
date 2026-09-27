@@ -114,8 +114,43 @@ test.describe('S2.1 · measured grid (P2-1)', () => {
   });
 });
 
+test.describe('S4.3b · the grid with the inspector and the transport (P4-9b)', () => {
+  test('with an event in the inspector and the transport shown, all 64 pads are at least 32 px and inside the viewport, and the inspector\'s actions are in view', async ({ page, pf }) => {
+    await openTestMidi1(page, pf);
+    await suggestStartingLayout(page, pf);
+    await waitForAnalysis(pf);
+    const events = await pf.call('events');
+    await pf.call('dispatch', { type: 'SELECT_EVENT', payload: { key: events[8]!.key, startTime: events[8]!.startTime } });
+    await expect(page.getByTestId('selected-event-card')).toBeVisible();
+    await expect(page.getByTestId('transport-bar')).toBeVisible();
+
+    expect(await clippedOf(page, [...PAD_IDS, 'zone-label-left', 'zone-label-right'])).toEqual([]);
+    const sizes = await page.evaluate((ids) => ids.map(id => {
+      const r = document.querySelector(`[data-testid="${id}"]`)!.getBoundingClientRect();
+      return Math.min(r.width, r.height);
+    }), PAD_IDS);
+    expect(Math.min(...sizes)).toBeGreaterThanOrEqual(32);
+    // The inspector's controls, Rehearse included, are in view without scrolling the dock.
+    expect(await clippedOf(page, [
+      'grid-dock', 'selected-event-label', 'dock-prev-hard', 'dock-next-hard', 'play-from-here', 'dock-rehearse', 'dock-rehearse-menu',
+      'transport-bar', 'transport-play', 'transport-count-in',
+    ])).toEqual([]);
+
+    // While playing it follows the playhead, and the pads stay the same.
+    const before = await page.getByTestId('pad-0-0').boundingBox();
+    await page.getByTestId('transport-play').click();
+    await expect(page.getByTestId('selected-event-card')).toHaveAttribute('data-following', 'true');
+    expect(await clippedOf(page, [...PAD_IDS, 'selected-event-label', 'dock-rehearse'])).toEqual([]);
+    expect(await page.getByTestId('pad-0-0').boundingBox()).toEqual(before);
+    await page.getByTestId('transport-play').click();
+  });
+});
+
 test.describe('S2.1 · transport reach (P2-1)', () => {
-  const TRANSPORT = ['transport-play', 'transport-return', 'transport-speed', 'transport-loop', 'transport-loop-menu', 'transport-metronome', 'transport-hits'];
+  const TRANSPORT = [
+    'transport-play', 'transport-return', 'transport-speed', 'transport-loop', 'transport-loop-menu',
+    'transport-metronome', 'transport-count-in', 'transport-hits',
+  ];
 
   test('every transport control is inside the viewport and clickable', async ({ page, pf }) => {
     await openTestMidi1(page, pf);
@@ -150,6 +185,13 @@ test.describe('S2.1 · transport reach (P2-1)', () => {
     await pf.call('dispatch', { type: 'SET_CURRENT_TIME', payload: 3.5 });
     await page.getByTestId('transport-return').click();
     await expect.poll(async () => (await pf.call('status')).currentTime).toBe(0);
+
+    // The count-in (S4.3b): the Metronome's menu sets it, and its half shows the bars.
+    await page.getByTestId('transport-count-in').click();
+    await page.getByTestId('count-in-2').check({ force: true });
+    expect((await pf.call('state')).countInBars).toBe(2);
+    await expect(page.getByTestId('transport-count-in')).toHaveText('2');
+    await expect(page.getByTestId('transport-count-in')).toHaveAttribute('aria-label', 'Count-in: 2 bars');
   });
 
   test('the timeline\'s own controls sit in the drawer\'s tab row while it is shown, and work there (S4.3a)', async ({ page, pf }) => {
@@ -233,7 +275,7 @@ test.describe('S2.1 · the drawer splitter', () => {
 test.describe('S2.1 · short windows, narrow windows and wide panels (review on #107)', () => {
   const TRANSPORT_AND_TIMELINE = [
     'transport-play', 'transport-return', 'transport-position', 'transport-speed',
-    'transport-loop', 'transport-loop-menu', 'transport-metronome', 'transport-hits',
+    'transport-loop', 'transport-loop-menu', 'transport-metronome', 'transport-count-in', 'transport-hits',
     'timeline-import', 'timeline-fit',
   ];
 
