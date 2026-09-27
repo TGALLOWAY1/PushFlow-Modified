@@ -42,6 +42,7 @@ import {
   COLUMN_LABELS_HEIGHT,
   DOCK_BELOW_HEIGHT,
   DOCK_GAP,
+  DOCK_MAX_WIDTH,
   DOCK_WIDTH,
   FRAME_INSET,
   PAD_GAP,
@@ -1002,7 +1003,7 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
       {/* The frame and the moment dock (S4.2): the dock beside the frame, as
           tall as it, or under it in a narrow region; both sized by gridSizing. */}
       <div
-        className={`flex flex-shrink-0 ${dockPlacement === 'side' ? 'flex-row items-start' : 'flex-col items-center w-full'}`}
+        className={`flex flex-shrink-0 w-full ${dockPlacement === 'side' ? 'flex-row items-start justify-center' : 'flex-col items-center'}`}
         style={{ gap: dock ? DOCK_GAP : 0 }}
       >
       {/* Hardware frame, fitted to the matrix (no invisible blur layers). */}
@@ -1111,10 +1112,10 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
           data-grid-dock=""
           data-testid="grid-dock"
           data-placement={dockPlacement}
-          className="flex-shrink-0 min-h-0"
+          className="min-w-0 min-h-0"
           style={dockPlacement === 'side'
-            ? { width: DOCK_WIDTH, height: gridFrameHeight(padSize) }
-            : { width: '100%', height: DOCK_BELOW_HEIGHT }}
+            ? { flex: `0 1 ${DOCK_MAX_WIDTH}px`, minWidth: DOCK_WIDTH, height: gridFrameHeight(padSize) }
+            : { flexShrink: 0, width: '100%', height: DOCK_BELOW_HEIGHT }}
         >
           {dock}
         </div>

@@ -23,7 +23,6 @@ import { DisabledReason, useDisabledReason } from '../shared/DisabledReason';
 import { type FingerType, ALL_FINGERS } from '../../../types/fingerModel';
 import { type ConstraintRelaxationSummary } from '../../../types/executionPlan';
 import { CostBreakdownBars, FeasibilityBadge } from './CostBreakdownBars';
-import { SelectedEventCard } from './SelectedEventCard';
 import { findSelectedEvent, getEventTimeline } from '../../analysis/eventTimeline';
 import { analysisScope, planSoundIds, scopeLineOf } from '../../analysis/analysisScope';
 import { EventCostChart } from './EventCostChart';
@@ -245,10 +244,6 @@ export function ActiveLayoutSummary() {
 
           {/* A partly placed layout: what is left to place, and "Place remaining N Sounds" (T25, T37). */}
           <UnplacedSounds />
-
-          {currentPlan && selectedEvent && (
-            <SelectedEventCard selected={selectedEvent} tempo={state.tempo} scope={scope} subject={subject} transition={transition} />
-          )}
 
           {/* Event difficulty chart (collapsible) */}
           {currentPlan && currentPlan.fingerAssignments.length > 0 && (

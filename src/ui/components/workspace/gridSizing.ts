@@ -40,8 +40,13 @@ export const STATE_BAR_HEIGHT = 36;
 export const STATE_BAR_GAP = 6;
 /** Below this pad size, secondary labels (note, position, empty-pad coordinates) hide. */
 export const SECONDARY_LABEL_MIN_PAD = 40;
-/** The moment dock beside the frame (S4.2), and the gap between them. */
+/**
+ * The moment dock beside the frame (S4.2): at least DOCK_WIDTH, growing into
+ * the width the height-bound pads leave, up to DOCK_MAX_WIDTH; and the gap
+ * between them. Pads are sized for the minimum, so the dock never costs one.
+ */
 export const DOCK_WIDTH = 248;
+export const DOCK_MAX_WIDTH = 360;
 export const DOCK_GAP = 12;
 /** The dock under the frame instead, in a region too narrow for it beside. */
 export const DOCK_BELOW_HEIGHT = 136;

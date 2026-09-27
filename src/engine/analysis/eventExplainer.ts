@@ -64,10 +64,23 @@ export interface TransitionExplanation {
   fingerChange: boolean;
   speedPressure: number;
   compositeDifficulty: number;
+  /** How hard the move is, in words, from compositeDifficulty. */
+  level: TransitionLevel;
   /** Human-readable explanation of why this transition is hard. */
   explanation: string;
   /** List of contributing difficulty factors. */
   contributors: string[];
+}
+
+/** A transition's difficulty in words. */
+export type TransitionLevel = 'easy' | 'slightly difficult' | 'moderately hard' | 'very hard';
+
+/** Words for a composite difficulty score (0–1). */
+export function transitionLevel(compositeDifficulty: number): TransitionLevel {
+  if (compositeDifficulty < 0.2) return 'easy';
+  if (compositeDifficulty > 0.7) return 'very hard';
+  if (compositeDifficulty > 0.4) return 'moderately hard';
+  return 'slightly difficult';
 }
 
 /**
@@ -209,6 +222,7 @@ export function explainTransition(transition: Transition): TransitionExplanation
     fingerChange: m.fingerChange,
     speedPressure: m.speedPressure,
     compositeDifficulty: m.compositeDifficultyScore,
+    level: transitionLevel(m.compositeDifficultyScore),
     explanation,
     contributors,
   };
@@ -222,13 +236,10 @@ function buildTransitionExplanation(
   const fromTime = transition.fromMoment.timestamp.toFixed(2);
   const toTime = transition.toMoment.timestamp.toFixed(2);
 
-  if (m.compositeDifficultyScore < 0.2) {
+  const diffLabel = transitionLevel(m.compositeDifficultyScore);
+  if (diffLabel === 'easy') {
     return `Transition ${fromTime}s → ${toTime}s: easy.`;
   }
-
-  const diffLabel = m.compositeDifficultyScore > 0.7 ? 'very hard'
-    : m.compositeDifficultyScore > 0.4 ? 'moderately hard'
-    : 'slightly difficult';
 
   const parts = [`Transition ${fromTime}s → ${toTime}s: ${diffLabel}`];
 

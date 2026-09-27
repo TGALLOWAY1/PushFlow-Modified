@@ -27,6 +27,8 @@ import { InteractiveGrid } from '../../../src/ui/components/InteractiveGrid';
 import { EventsPanel } from '../../../src/ui/components/EventsPanel';
 import { UnifiedTimeline } from '../../../src/ui/components/UnifiedTimeline';
 import { PerformanceCostsPanel } from '../../../src/ui/components/panels/PerformanceCostsPanel';
+import { MomentDock } from '../../../src/ui/components/workspace/MomentDock';
+import { ViewSettingsProvider } from '../../../src/ui/state/viewSettings';
 import { analyzeLayout } from '../../../src/ui/analysis/analyzeLayout';
 import { formatEventLabel, getEventTimeline, type TimelineEvent } from '../../../src/ui/analysis/eventTimeline';
 import { getOptimizer } from '../../../src/engine/optimization/optimizerRegistry';
@@ -44,14 +46,14 @@ afterEach(cleanup);
 
 let api: ReturnType<typeof useProject>;
 
-/** The four surfaces, wired as the workspace wires them. */
+/** The four surfaces, and the moment inspector docked beside the grid (S4.2), wired as the workspace wires them. */
 function Surfaces() {
   api = useProject();
   useKeyboardShortcuts({});
   const shown = resolveInspectedLayout(api.state);
   return (
     <>
-      <InteractiveGrid padSize={48} assignments={getDisplayedExecutionPlan(api.state)?.fingerAssignments} layoutOverride={shown.readOnly ? shown.layout : undefined} />
+      <InteractiveGrid padSize={48} assignments={getDisplayedExecutionPlan(api.state)?.fingerAssignments} layoutOverride={shown.readOnly ? shown.layout : undefined} dock={<MomentDock />} />
       <EventsPanel />
       <UnifiedTimeline />
       <PerformanceCostsPanel />
@@ -60,7 +62,7 @@ function Surfaces() {
 }
 
 function mount(state: ProjectState) {
-  render(<ToastProvider><ProjectProvider initialState={state}><Surfaces /></ProjectProvider></ToastProvider>);
+  render(<ToastProvider><ViewSettingsProvider><ProjectProvider initialState={state}><Surfaces /></ProjectProvider></ViewSettingsProvider></ToastProvider>);
   fireEvent.click(screen.getByText('Event difficulty chart'));
 }
 

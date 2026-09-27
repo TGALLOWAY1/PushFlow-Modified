@@ -5,9 +5,11 @@
  * TEST MIDI 1 with four of seven Sounds placed, solved on the whole
  * performance (as every plan was before S3.3, so its unplaced Sounds' notes
  * can't be played), is Infeasible. Selecting any event keeps the whole-layout
- * verdict pinned (never "Feasible"), and shows the event's own verdict in a
- * separate "Selected event" card with all five factors from FACTOR_META, or
- * "Unplayable" instead of all-zero bars. Both analysis panels are checked.
+ * verdict pinned in both analysis panels (never "Feasible"), and shows the
+ * event's own verdict separately, with all five factors from FACTOR_META, or
+ * "Unplayable" instead of all-zero bars. Since S4.2 that is the moment
+ * inspector docked beside the grid, which replaced the panels' Selected event
+ * cards.
  *
  * Since S3.3 the app scores only placed Sounds' notes, so its own analysis of
  * the same layout reads "Unfinished · 4 of 7 Sounds placed", and never
@@ -19,6 +21,7 @@ import { render, screen, cleanup, act, within } from '@testing-library/react';
 import { ProjectProvider, useProject } from '../../../src/ui/state/ProjectContext';
 import { PerformanceCostsPanel } from '../../../src/ui/components/panels/PerformanceCostsPanel';
 import { ActiveLayoutSummary } from '../../../src/ui/components/panels/ActiveLayoutSummary';
+import { MomentInspector } from '../../../src/ui/components/workspace/MomentInspector';
 import { createBeamSolver } from '../../../src/engine/solvers/beamSolver';
 import { groupIntoMoments } from '../../../src/engine';
 import {
@@ -71,6 +74,7 @@ function renderPanels() {
       <Grab />
       <div data-testid="costs"><PerformanceCostsPanel /></div>
       <div data-testid="summary"><ActiveLayoutSummary /></div>
+      <div data-testid="dock"><MomentInspector /></div>
     </ProjectProvider>,
   );
 }
@@ -99,7 +103,7 @@ describe('verdict with an event selected', () => {
     }
   });
 
-  it('shows the selected event in its own card: all five factors, or "Unplayable" instead of zero bars', () => {
+  it('shows the selected event in the docked inspector: all five factors, or "Unplayable" instead of zero bars', () => {
     renderPanels();
     const timeline = getEventTimeline(analysed);
     const moments = groupIntoMoments(plan.fingerAssignments);
@@ -107,20 +111,20 @@ describe('verdict with an event selected', () => {
     expect(moments.map(m => m.key)).toEqual(timeline.events.map(e => e.key));
     for (const moment of moments) {
       select(timeline.events[moment.index]!);
-      for (const panel of ['costs', 'summary']) {
-        const card = within(screen.getByTestId(panel)).getByTestId('selected-event-card');
-        expect(within(card).getByTestId('selected-event-label').textContent).toBe(formatEventLabel(timeline.events[moment.index]!, analysed.tempo));
-        expect(within(card).getByTestId('verdict-scope')).toBeTruthy();
-        const level = within(card).getByTestId('moment-verdict').getAttribute('data-level');
-        const unplayable = moment.items.some(a => a.assignedHand === 'Unplayable');
-        if (unplayable) {
-          expect(level).toBe('Unplayable');
-          expect(within(card).queryByTestId('moment-factor-transition')).toBeNull();
-          expect(card.textContent).toContain('can’t be played');
-        } else {
-          expect(level).toBe(moment.items[0].difficulty);
-          for (const key of FACTOR_KEYS) expect(within(card).getByTestId(`moment-factor-${key}`)).toBeTruthy();
-        }
+      // The side panels no longer carry their own card (S4.2): one inspector, docked.
+      expect(screen.getAllByTestId('selected-event-card')).toHaveLength(1);
+      const card = within(screen.getByTestId('dock')).getByTestId('selected-event-card');
+      expect(within(card).getByTestId('selected-event-label').textContent).toBe(formatEventLabel(timeline.events[moment.index]!, analysed.tempo));
+      expect(within(card).getByTestId('verdict-scope')).toBeTruthy();
+      const level = within(card).getByTestId('moment-verdict').getAttribute('data-level');
+      const unplayable = moment.items.some(a => a.assignedHand === 'Unplayable');
+      if (unplayable) {
+        expect(level).toBe('Unplayable');
+        expect(within(card).queryByTestId('moment-factor-transition')).toBeNull();
+        expect(card.textContent).toContain('can’t be played');
+      } else {
+        expect(level).toBe(moment.items[0].difficulty);
+        for (const key of FACTOR_KEYS) expect(within(card).getByTestId(`moment-factor-${key}`)).toBeTruthy();
       }
     }
   });
@@ -171,6 +175,7 @@ describe('the app\'s own analysis of a partly placed layout (S3.3, T25)', () => 
         <Grab />
         <div data-testid="costs"><PerformanceCostsPanel /></div>
         <div data-testid="summary"><ActiveLayoutSummary /></div>
+        <div data-testid="dock"><MomentInspector /></div>
       </ProjectProvider>,
     );
     const check = () => {
@@ -192,11 +197,9 @@ describe('the app\'s own analysis of a partly placed layout (S3.3, T25)', () => 
     for (const event of timeline.events) {
       select(event);
       check();
-      for (const panel of ['costs', 'summary']) {
-        const level = within(within(screen.getByTestId(panel)).getByTestId('selected-event-card')).getByTestId('moment-verdict').getAttribute('data-level');
-        if (analysedEvents.has(event.index)) expect(level).not.toBe('unanalysed');
-        else expect(level).toBe('unanalysed');
-      }
+      const level = within(within(screen.getByTestId('dock')).getByTestId('selected-event-card')).getByTestId('moment-verdict').getAttribute('data-level');
+      if (analysedEvents.has(event.index)) expect(level).not.toBe('unanalysed');
+      else expect(level).toBe('unanalysed');
     }
     // The unplaced Sounds are listed, each draggable onto a pad, with "Place remaining 3 Sounds".
     for (const panel of ['costs', 'summary']) {

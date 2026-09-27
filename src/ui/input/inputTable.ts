@@ -99,12 +99,12 @@ export const INPUT_TABLE: readonly InputRow[] = [
   {
     id: 'pad-click-moment', group: 'Pads',
     input: ['Click a pad'], when: 'An event is selected',
-    does: 'Selects the pad and keeps the event.',
+    does: 'Selects the pad and its Sound, and keeps the event. The timeline outlines every hit of the Sound; Prev hit and Next hit in the pad inspector step through them.',
   },
   {
     id: 'pad-click-idle', group: 'Pads',
     input: ['Click a pad'], when: 'Nothing armed or selected',
-    does: 'Selects the pad and its Sound. An empty pad clears the selection.',
+    does: 'Selects the pad and its Sound and opens the pad inspector beside the grid; it never selects an event. An empty pad clears the selection.',
   },
   {
     id: 'pad-alt-click', group: 'Pads',

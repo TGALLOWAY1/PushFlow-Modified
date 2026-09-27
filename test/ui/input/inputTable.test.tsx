@@ -30,6 +30,8 @@ import { InteractiveGrid } from '../../../src/ui/components/InteractiveGrid';
 import { EventsPanel } from '../../../src/ui/components/EventsPanel';
 import { ShortcutSheet } from '../../../src/ui/components/shared/ShortcutSheet';
 import { MomentViewControl } from '../../../src/ui/components/workspace/MomentViewControl';
+import { PadInspector } from '../../../src/ui/components/workspace/PadInspector';
+import { UnifiedTimeline } from '../../../src/ui/components/UnifiedTimeline';
 import { ViewSettingsProvider, useViewSettings } from '../../../src/ui/state/viewSettings';
 import { Popover } from '../../../src/ui/components/shared/Overlay';
 import { analyzeLayout } from '../../../src/ui/analysis/analyzeLayout';
@@ -217,30 +219,57 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
   },
 
   'pad-click-moment': async () => {
-    mount(await analysedProject());
-    const first = getEventTimeline(api.state).events[0]!;
-    selectEvent(first);
+    // P4-11a: with an event selected, a pad click keeps the event, outlines
+    // every hit of the pad's Sound in the timeline, and Prev hit / Next hit
+    // step through them from the event.
+    mount(await analysedProject(), <><PadInspector /><UnifiedTimeline /></>);
+    const events = getEventTimeline(api.state).events;
+    const event = events[8]!;
+    selectEvent(event);
     const key = Object.keys(shownPads()).find(k => pad(k).dataset.struck !== 'true')!;
+    const soundId = shownPads()[key]!.id;
     fireEvent.click(pad(key));
-    // The event stays; the pad and its Sound are selected.
-    expect(api.state.selectedMomentKey).toBe(first.key);
+    // The event stays, still struck on the grid; the pad and its Sound are selected.
+    expect(api.state.selectedMomentKey).toBe(event.key);
+    expect(document.querySelectorAll('[data-struck="true"]').length).toBeGreaterThan(0);
     expect(api.state.selectedPadKey).toBe(key);
-    expect(api.state.selectedStreamId).toBe(shownPads()[key]!.id);
+    expect(api.state.selectedStreamId).toBe(soundId);
     expect(pad(key).dataset.selected).toBe('true');
+    // Every hit of the Sound is outlined in the timeline, and nothing else.
+    const outlined = [...document.querySelectorAll<HTMLElement>('[data-testid="timeline-pill"][data-sound-selected="true"]')];
+    const sound = api.state.soundStreams.find(s => s.id === soundId)!;
+    expect(outlined).toHaveLength(sound.events.length);
+    expect(outlined.every(p => p.dataset.soundId === soundId)).toBe(true);
+    // Prev hit and Next hit go to the Sound's hits either side of the event
+    // (which the Sound doesn't play in: its pad isn't struck).
+    const hits = events.filter(e => e.soundIds.includes(soundId)).map(e => e.index);
+    const before = hits.filter(i => i < event.index), after = hits.filter(i => i > event.index);
+    expect(before.length * after.length).toBeGreaterThan(0);
+    const selectedIndex = () => resolveEventKey(getEventTimeline(api.state), api.state.selectedMomentKey)?.index;
+    fireEvent.click(screen.getByTestId('pad-prev-hit'));
+    expect(selectedIndex()).toBe(before[before.length - 1]);
+    expect(screen.getByTestId('pad-inspector-hits').textContent).toBe(`hit ${before.length} of ${hits.length}`);
+    fireEvent.click(screen.getByTestId('pad-next-hit'));
+    expect(selectedIndex()).toBe(after[0]);
+    expect(api.state.selectedPadKey).toBe(key);
   },
 
   'pad-click-idle': async () => {
-    mount(await analysedProject());
+    mount(await analysedProject(), <PadInspector />);
     const key = occupiedPad();
     fireEvent.click(pad(key));
     expect(api.state.selectedPadKey).toBe(key);
     expect(api.state.selectedStreamId).toBe(shownPads()[key]!.id);
-    // Selecting a pad no longer selects that Sound's first hit (T28).
+    // Selecting a pad no longer selects that Sound's first hit (T28): nothing dims.
     expect(api.state.selectedMomentKey).toBeNull();
-    // An empty pad clears the selection.
+    expect(document.querySelectorAll('[data-struck="true"]')).toHaveLength(0);
+    // The pad inspector opens on it.
+    expect(screen.getByTestId('pad-inspector').textContent).toContain(api.state.soundStreams.find(s => s.id === shownPads()[key]!.id)!.name);
+    // An empty pad clears the selection, and the inspector closes.
     fireEvent.click(pad(emptyPad()));
     expect(api.state.selectedPadKey).toBeNull();
     expect(api.state.selectedStreamId).toBeNull();
+    expect(screen.queryByTestId('pad-inspector')).toBeNull();
   },
 
   'pad-alt-click': async () => {
