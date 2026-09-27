@@ -9,7 +9,6 @@ import { X } from 'lucide-react';
 import { useProject } from '../../state/ProjectContext';
 import { getInspectedLayout, isPadLocked } from '../../state/projectState';
 import { useReadOnlyHint } from '../../hooks/useReadOnlyHint';
-import { useUndoToast } from '../../hooks/useUndoToast';
 import { Popover } from '../shared/Overlay';
 import { ColorSwatches } from './ColorSwatches';
 import { allInOneGroup, useSoundGrouping } from './soundGroups';
@@ -17,9 +16,8 @@ import { allInOneGroup, useSoundGrouping } from './soundGroups';
 const ACTION = 'focus-ring h-6 px-2 rounded-pf-sm border border-[var(--border-default)] text-pf-micro font-semibold text-[var(--text-secondary)] enabled:hover:bg-[var(--bg-hover)] enabled:hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed';
 
 export function SoundsSelectionBar({ ids, onClear }: { ids: readonly string[]; onClear: () => void }) {
-  const { state, dispatch, transact } = useProject();
+  const { state, dispatch, transact, undoable } = useProject();
   const grouping = useSoundGrouping();
-  const undoToast = useUndoToast();
   const { refuse } = useReadOnlyHint();
   const colorRef = useRef<HTMLButtonElement>(null);
   const [colorAt, setColorAt] = useState<{ x: number; y: number } | null>(null);
@@ -71,10 +69,9 @@ export function SoundsSelectionBar({ ids, onClear }: { ids: readonly string[]; o
         title={unplaceable.length === 0 ? 'None of them is on the grid unlocked' : 'Take them off the grid, back to To place (with Undo)'}
         onClick={() => {
           if (refuse()) return;
-          transact('Unplace Sounds', () => {
+          undoable(`Unplaced ${unplaceable.length} ${unplaceable.length === 1 ? 'Sound' : 'Sounds'}`, () => transact('Unplace Sounds', () => {
             for (const padKey of unplaceable) dispatch({ type: 'REMOVE_VOICE_FROM_PAD', payload: { padKey } });
-          });
-          undoToast(`Unplaced ${unplaceable.length} ${unplaceable.length === 1 ? 'Sound' : 'Sounds'}`, 'Unplace Sounds');
+          }));
           onClear();
         }}
       >

@@ -34,6 +34,13 @@ interface ProjectContextValue {
   undoLabel: string | null;
   /** What Redo would re-apply, or null. */
   redoLabel: string | null;
+  /**
+   * Runs `edit` (dispatches, or a transact) and, if it made an undo step,
+   * shows `message` with an Undo that reverts that step and nothing else
+   * ("Deleted Kick · Undo"). The toast goes as soon as another step is the one
+   * Undo would revert, even after whatever showed it has closed (T28).
+   */
+  undoable: (message: string, edit: () => void) => void;
 }
 
 const HISTORY_OPTIONS: UndoRedoOptions<ProjectState, ReturnType<typeof pickDocument>, ProjectAction> = {
@@ -55,6 +62,7 @@ const ProjectContext = createContext<ProjectContextValue>({
   canRedo: false,
   undoLabel: null,
   redoLabel: null,
+  undoable: (_message, edit) => edit(),
 });
 
 export function ProjectProvider({
@@ -66,7 +74,7 @@ export function ProjectProvider({
 }) {
   const {
     state, dispatch, transact, undo: undoStep, redo: redoStep,
-    canUndo, canRedo, undoDepth, redoDepth, undoLabel, redoLabel,
+    canUndo, canRedo, undoDepth, redoDepth, undoLabel, redoLabel, undoStepId, lastStepId,
   } = useUndoRedo(
     projectReducer,
     initialState,
@@ -90,6 +98,30 @@ export function ProjectProvider({
     if (undoToastRef.current !== null) toast.dismiss(undoToastRef.current);
     undoToastRef.current = toast.show({ message: `Undone: ${label}`, action: { label: 'Redo', onClick: redo } });
   }, [undoStep, redo, toast]);
+
+  // The toasts whose Undo reverts one step: toast id → the step's id. They are
+  // kept here, not by the menu or bar that showed them, which often closes at
+  // once; so a later edit still withdraws them, and a stale one never undoes
+  // a step it doesn't name, even one with the same label.
+  const stepToastsRef = useRef(new Map<number, number>());
+  const undoable = useCallback((message: string, edit: () => void) => {
+    const before = lastStepId();
+    edit();
+    const step = lastStepId();
+    if (step === null || step === before) return;
+    const id = toast.show({
+      message,
+      action: { label: 'Undo', onClick: () => { if (lastStepId() === step) undo(); } },
+    });
+    stepToastsRef.current.set(id, step);
+  }, [lastStepId, toast, undo]);
+  useEffect(() => {
+    for (const [id, step] of stepToastsRef.current) {
+      if (step === undoStepId) continue;
+      toast.dismiss(id);
+      stepToastsRef.current.delete(id);
+    }
+  }, [undoStepId, toast]);
 
   // E2E test hook (window.__pf). The env check is a build-time constant, so
   // production builds drop the hook module entirely.
@@ -119,8 +151,9 @@ export function ProjectProvider({
       canRedo,
       undoLabel,
       redoLabel,
+      undoable,
     }),
-    [state, dispatch, transact, undo, redo, canUndo, canRedo, undoLabel, redoLabel],
+    [state, dispatch, transact, undo, redo, canUndo, canRedo, undoLabel, redoLabel, undoable],
   );
 
   return (

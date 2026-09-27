@@ -37,6 +37,10 @@ export interface UndoRedoControls<S> {
   undoLabel: string | null;
   /** Name of the step Redo would re-apply, or null. */
   redoLabel: string | null;
+  /** The id of the step Undo would revert, or null. Ids are never reused, and a step keeps its id through Undo and Redo. */
+  undoStepId: number | null;
+  /** The same, read at call time (it doesn't wait for a render): right after a dispatch it names the step it made. */
+  lastStepId: () => number | null;
   clearHistory: () => void;
 }
 
@@ -71,6 +75,8 @@ export interface UndoRedoOptions<S, D, A> {
 interface Step<D> {
   doc: D;
   label: string;
+  /** Which step this is; it keeps it when Undo and Redo move it between the stacks. */
+  id: number;
   /** From returnOnUndo: what crossing this step removed, given back when it is crossed the other way. */
   returned?: unknown;
 }
@@ -105,6 +111,7 @@ export function useUndoRedo<S, D, A extends { type: string }>(
   const optionsRef = useRef(options);
   optionsRef.current = options;
   const transactionRef = useRef<Transaction<S> | null>(null);
+  const nextStepIdRef = useRef(1);
 
   const commit = useCallback((state: S, nextHistory: History<D>) => {
     presentRef.current = state;
@@ -121,7 +128,7 @@ export function useUndoRedo<S, D, A extends { type: string }>(
     const doc = pick(before);
     if (!changed(doc, pick(presentRef.current))) return;
     const returned = returnOnUndo?.(before, presentRef.current);
-    const past = [...historyRef.current.past, { doc, label, ...(returned !== undefined ? { returned } : {}) }];
+    const past = [...historyRef.current.past, { doc, label, id: nextStepIdRef.current++, ...(returned !== undefined ? { returned } : {}) }];
     const next = {
       past: past.length > MAX_HISTORY_SIZE ? past.slice(-MAX_HISTORY_SIZE) : past,
       future: [],
@@ -170,7 +177,7 @@ export function useUndoRedo<S, D, A extends { type: string }>(
     const returned = returnOnUndo?.(current, restored);
     commit(restored, {
       past: h.past.slice(0, -1),
-      future: [{ doc: pick(current), label: previous.label, ...(returned !== undefined ? { returned } : {}) }, ...h.future],
+      future: [{ doc: pick(current), label: previous.label, id: previous.id, ...(returned !== undefined ? { returned } : {}) }, ...h.future],
     });
     return previous.label;
   }, [commit]);
@@ -184,7 +191,7 @@ export function useUndoRedo<S, D, A extends { type: string }>(
     const restored = restore(current, next.doc, next.returned);
     const returned = returnOnUndo?.(current, restored);
     commit(restored, {
-      past: [...h.past, { doc: pick(current), label: next.label, ...(returned !== undefined ? { returned } : {}) }],
+      past: [...h.past, { doc: pick(current), label: next.label, id: next.id, ...(returned !== undefined ? { returned } : {}) }],
       future,
     });
     return next.label;
@@ -194,6 +201,11 @@ export function useUndoRedo<S, D, A extends { type: string }>(
     const empty = { past: [], future: [] };
     historyRef.current = empty;
     setHistory(empty);
+  }, []);
+
+  const lastStepId = useCallback(() => {
+    const past = historyRef.current.past;
+    return past[past.length - 1]?.id ?? null;
   }, []);
 
   // Reset when initialState changes externally (e.g., loading a different project)
@@ -218,6 +230,8 @@ export function useUndoRedo<S, D, A extends { type: string }>(
     redoDepth: history.future.length,
     undoLabel: history.past[history.past.length - 1]?.label ?? null,
     redoLabel: history.future[0]?.label ?? null,
+    undoStepId: history.past[history.past.length - 1]?.id ?? null,
+    lastStepId,
     clearHistory,
   };
 }

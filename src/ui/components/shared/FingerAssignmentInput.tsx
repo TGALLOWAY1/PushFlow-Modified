@@ -97,6 +97,14 @@ export function FingerPreferencePanel({ value, plan, onChange, onDone, soundName
   // value. Blur without that changes nothing (T19).
   const [touched, setTouched] = useState(false);
   const [invalid, setInvalid] = useState(false);
+  // The field shows the preference as it is: after the hand or finger
+  // buttons, Accept, or a change from another panel, not the one it opened
+  // with (editing that one could bring the old hand back).
+  useEffect(() => {
+    setText(currentLabel);
+    setTouched(false);
+    setInvalid(false);
+  }, [currentLabel]);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { inputRef.current?.select(); }, []);
 

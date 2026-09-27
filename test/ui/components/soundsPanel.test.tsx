@@ -319,6 +319,28 @@ describe('the row\'s menu', () => {
     expect(screen.getByText('A Composer lane: delete it in the Composer')).toBeTruthy();
   });
 
+  it('a Delete toast goes once a later edit is the one Undo would revert, though the menu that showed it has closed', () => {
+    mount(suggested);
+    const [a, b] = api.state.soundStreams;
+    openMenu(a!.id);
+    fireEvent.click(screen.getByTestId('sound-menu-delete'));
+    expect(screen.queryByTestId('sound-menu')).toBeNull();
+    expect(screen.getByText(`Deleted ${a!.name}`)).toBeTruthy();
+
+    // Another Delete, from another menu, has the same label: A's toast still goes.
+    openMenu(b!.id);
+    fireEvent.click(screen.getByTestId('sound-menu-delete'));
+    expect(screen.queryByText(`Deleted ${a!.name}`)).toBeNull();
+    const undoB = within(screen.getByText(`Deleted ${b!.name}`).closest('[data-testid="toast"]') as HTMLElement).getByRole('button', { name: 'Undo' });
+
+    // Any later edit withdraws B's toast too; had it stayed, its Undo would have undone that edit.
+    act(() => api.dispatch({ type: 'RENAME_SOUND', payload: { streamId: api.state.soundStreams[0]!.id, name: 'Renamed' } }));
+    expect(screen.queryByText(`Deleted ${b!.name}`)).toBeNull();
+    fireEvent.click(undoB);
+    expect(api.state.soundStreams.map(s => s.id)).not.toContain(b!.id);
+    expect(api.state.soundStreams[0]!.name).toBe('Renamed');
+  });
+
   it('a deleted Sound leaves the selection: the bar counts the others, and Group makes no empty group', () => {
     mount(suggested);
     const [a, b] = api.state.soundStreams;
