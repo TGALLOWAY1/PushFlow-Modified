@@ -105,7 +105,7 @@ export function MomentInspector() {
           const sound = soundById.get(id);
           const pad = note && note.row !== undefined && note.col !== undefined ? `${note.row},${note.col}` : null;
           return (
-            <li key={id} data-testid="moment-strike" className="flex items-center justify-between gap-2 min-w-0">
+            <li key={id} data-testid="moment-strike" data-sound-id={id} className="flex items-center justify-between gap-2 min-w-0">
               <StrikeChip sound={sound} shortName={sound ? withoutSharedPrefix(sound.name, namePrefix) : '?'} note={note} />
               <span className="flex items-center gap-1.5 flex-shrink-0">
                 <span className="text-pf-micro text-[var(--text-tertiary)] whitespace-nowrap">
