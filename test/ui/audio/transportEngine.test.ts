@@ -8,6 +8,10 @@
  * holds the playhead and then starts on the audio clock, or starts silently on
  * the wall clock; Stop returns where it stopped; the dev switch's frame path
  * triggers audio frame by frame and schedules nothing ahead.
+ *
+ * S4.3b (T59): Play counts in (a bar or two of clicks at the speed it plays
+ * at) while the playhead waits at the start; Stop, a seek, a change of speed
+ * and the hand-over from the wall clock each do the right thing to it.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -29,6 +33,8 @@ class FakeAudio implements TransportAudio {
   latencySeconds = 0;
   hits: Array<{ id: string; when: number }> = [];
   clicks: number[] = [];
+  /** Every click scheduled, with its accent (cancelled ones included). */
+  clickLog: Array<{ when: number; downbeat: boolean }> = [];
   cancels: number[] = [];
   frameWindows: Array<[number, number]> = [];
   private resolveResume: (() => void) | null = null;
@@ -45,7 +51,7 @@ class FakeAudio implements TransportAudio {
     return this.readiness === 'running' ? { now: () => this.time, latency: () => this.latencySeconds } : null;
   }
   scheduleHit(id: string, when: number) { this.hits.push({ id, when }); }
-  scheduleClick(when: number) { this.clicks.push(when); }
+  scheduleClick(when: number, downbeat: boolean) { this.clicks.push(when); this.clickLog.push({ when, downbeat }); }
   cancelFrom(when: number) {
     this.cancels.push(when);
     this.hits = this.hits.filter(h => h.when < when);
@@ -300,5 +306,122 @@ describe('the transport engine', () => {
       expect(audio.frameWindows[i]![0]).toBeCloseTo(audio.frameWindows[i - 1]![1], 9);
     }
     expect(e.stop()).toBeCloseTo(1, 6);
+  });
+});
+
+describe('the count-in (S4.3b, T59)', () => {
+  const round = (xs: number[]) => xs.map(x => +x.toFixed(9));
+
+  it('Play with a one-bar count-in clicks four beats at the speed it plays at while the playhead waits, then plays from there', () => {
+    const e = engine();
+    e.setRate(0.75);
+    const t0 = audio.time;
+    e.play(4, { countInBars: 1 });
+    // The clicks start after the usual lead, 2/3 s apart (0.5 s beats at 0.75x): 8/3 s in all.
+    const anchor = t0 + START_LEAD + 8 / 3;
+    advance(0.2);
+    expect(e.countIn).toEqual({ beat: 0, beats: 4 });
+    expect(e.debug().countIn).toEqual({ beat: 0, beats: 4 });
+    advance(2.45);
+    expect(e.countIn).toEqual({ beat: 3, beats: 4 });
+    expect(e.position()).toBe(4);
+    expect(round(audio.clicks)).toEqual(round([0, 1, 2, 3].map(k => t0 + START_LEAD + (k * 2) / 3)));
+    expect(audio.clickLog.map(c => c.downbeat)).toEqual([true, false, false, false]);
+    expect(audio.hits.every(h => h.when >= anchor - 1e-9)).toBe(true);
+    advance(1);
+    expect(e.countIn).toBeNull();
+    expect(e.position()).toBeCloseTo(4 + (audio.time - anchor) * 0.75, 6);
+    // The note at 4 s sounds exactly where the count-in ends; the metronome (off) adds no clicks.
+    expect(audio.hits.some(h => h.id === 'a' && Math.abs(h.when - anchor) < 1e-9)).toBe(true);
+    expect(audio.clicks.length).toBe(4);
+  });
+
+  it('two bars count in eight clicks, a downbeat on each bar', () => {
+    const e = engine();
+    e.play(0, { countInBars: 2 });
+    advance(4.2);
+    expect(audio.clickLog.map(c => c.downbeat)).toEqual([true, false, false, false, true, false, false, false]);
+    expect(e.position()).toBeCloseTo(4.2 - START_LEAD - 4, 6);
+  });
+
+  it('Stop during the count-in rests at the start and cancels the clicks still to come', () => {
+    const e = engine();
+    e.play(6, { countInBars: 1 });
+    advance(0.8);
+    expect(e.stop()).toBe(6);
+    expect(e.isRunning()).toBe(false);
+    expect(e.countIn).toBeNull();
+    expect(audio.clicks.every(c => c < audio.time)).toBe(true);
+    expect(audio.hits).toEqual([]);
+  });
+
+  it('a seek during the count-in ends it: the target plays at once', () => {
+    const e = engine();
+    e.play(0, { countInBars: 2 });
+    advance(1);
+    const seekAt = audio.time;
+    e.seek(2);
+    advance(0.5);
+    expect(e.countIn).toBeNull();
+    expect(e.position()).toBeCloseTo(2 + 0.5 - START_LEAD, 6);
+    expect(audio.clicks.filter(c => c >= seekAt)).toEqual([]);
+    expect(audio.hits.some(h => h.id === 'a' && Math.abs(h.when - (seekAt + START_LEAD)) < 1e-9)).toBe(true);
+  });
+
+  it('a speed change during the count-in keeps its clicks and where it ends', () => {
+    const e = engine();
+    const t0 = audio.time;
+    e.play(4, { countInBars: 1 });
+    const anchor = t0 + START_LEAD + 2;
+    advance(0.7);
+    e.setRate(0.5);
+    advance(1.2);
+    expect(e.position()).toBe(4);
+    // The same four clicks, none twice.
+    expect(round([...audio.clicks].sort((a, b) => a - b))).toEqual(round([0, 0.5, 1, 1.5].map(x => t0 + START_LEAD + x)));
+    advance(1.5);
+    expect(e.position()).toBeCloseTo(4 + (audio.time - anchor) * 0.5, 6);
+  });
+
+  it('started silently on the wall clock, the hand-over to audio keeps what is left of the count-in', async () => {
+    audio.readiness = 'pending';
+    audio.resumeResolves = false;
+    const e = engine();
+    e.play(4, { countInBars: 1 });
+    timers.fire(); // no audio yet: the wall clock counts in, silently
+    advance(0.6);
+    expect(e.countIn).toEqual({ beat: 1, beats: 4 });
+    expect(audio.clicks).toEqual([]);
+    audio.finishResume();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(e.debug().clock).toBe('audio');
+    // 1.4 s were left: the last two clicks sound on the audio clock, then the music.
+    const handedOver = audio.time;
+    advance(1.5);
+    expect(round(audio.clicks)).toEqual(round([handedOver + 0.4, handedOver + 0.9]));
+    expect(e.debug().skipped).toBe(0);
+    expect(e.position()).toBeCloseTo(4 + (audio.time - (handedOver + 1.4)), 6);
+  });
+
+  it('publishes the count-in once per click, not every frame', () => {
+    const e = engine();
+    let notified = 0;
+    const off = e.subscribe(() => { notified++; });
+    e.play(4, { countInBars: 1 });
+    notified = 0;
+    advance(2);
+    off();
+    // Four clicks (the playhead holds, so it adds nothing).
+    expect(notified).toBe(4);
+  });
+
+  it('no count-in: Play plays at once, as before', () => {
+    const e = engine();
+    e.play(4, { countInBars: 0 });
+    advance(0.5);
+    expect(e.countIn).toBeNull();
+    expect(e.position()).toBeCloseTo(4.5 - START_LEAD, 6);
+    expect(audio.clicks).toEqual([]);
   });
 });

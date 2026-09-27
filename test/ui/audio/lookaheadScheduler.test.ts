@@ -9,11 +9,15 @@
  * through an OfflineAudioContext in test/e2e/transport-audio.spec.ts), loop
  * off schedules nothing past the end, and a stall skips notes instead of
  * bursting them.
+ *
+ * S4.3b (T59): a run's count-in clicks a bar or two before its anchor, at the
+ * speed it plays at, whether or not the metronome is on; the music starts
+ * exactly at the anchor.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { LookaheadScheduler, type SchedulerMaterial } from '../../../src/ui/audio/lookaheadScheduler';
-import { playRegion, songSpan, type LoopSettings, type TransportRun } from '../../../src/ui/audio/transportMath';
+import { countInFor, countInSeconds, playRegion, songSpan, type LoopSettings, type TransportRun } from '../../../src/ui/audio/transportMath';
 import { type RehearsalHit } from '../../../src/ui/audio/rehearsalAudio';
 import { createSeededRng } from '../../../src/utils/seededRng';
 import { importTestMidi1 } from '../../helpers/testMidi1';
@@ -212,5 +216,56 @@ describe('the look-ahead scheduler (P4-5c: timing against a fake clock)', () => 
     const want = expectedHits(run, 13.8);
     const got = rec.out.filter(s => s.when < 13.8);
     expect(got.map(s => [s.id, +s.when.toFixed(9)])).toEqual(want.map(w => [w.id, +w.when.toFixed(9)]));
+  });
+});
+
+describe('the count-in (S4.3b, T59)', () => {
+  /** A run from `startPos` whose count-in of `bars` starts at clock time 10.04. */
+  const countedRun = (bars: number, over: Partial<TransportRun> & { rate?: number } = {}): TransportRun => {
+    const countIn = countInFor(bars, TEMPO, over.rate ?? 1)!;
+    return runOf({ enabled: true, start: 4, end: 8 }, { startPos: 4, anchorClock: 10.04 + countInSeconds(countIn), countIn, ...over });
+  };
+
+  it('clicks a bar before the anchor at the speed it will play, the first accented, with the metronome off; the music starts at the anchor', () => {
+    const rng = createSeededRng(11);
+    const rec = recorder();
+    const scheduler = new LookaheadScheduler(rec.sink, material({ clicksOn: false }));
+    const run = countedRun(1, { rate: 0.75 });
+    scheduler.start(run, 10);
+    drive(scheduler, rec, 10, run.anchorClock + 3, () => 0.025 + rng() * 0.07);
+    const clicks = rec.out.filter(s => s.kind === 'click');
+    // 0.5 s beats at 0.75x: 2/3 s of clock time apart.
+    expect(clicks.map(c => +(c.when - 10.04).toFixed(9))).toEqual([0, 1, 2, 3].map(k => +(k * 2 / 3).toFixed(9)));
+    expect(clicks.map(c => c.downbeat)).toEqual([true, false, false, false]);
+    // The loop's opening hits sound at the anchor, and nothing before it.
+    const hitsAt = rec.out.filter(s => s.kind === 'hit');
+    expect(Math.min(...hitsAt.map(h => h.when))).toBe(run.anchorClock);
+    expect(hitsAt.filter(h => h.when === run.anchorClock).map(h => h.id).sort())
+      .toEqual(hits.filter(h => h.time === 4).map(h => h.soundId).sort());
+    expect(rec.out.every(s => s.when >= s.tickAt)).toBe(true);
+    expect(scheduler.skipped).toBe(0);
+  });
+
+  it('two bars: eight clicks, a downbeat on each bar; with the metronome on, its clicks carry on from the anchor on the beat', () => {
+    const rec = recorder();
+    const scheduler = new LookaheadScheduler(rec.sink, material({ hitsOn: false, clicksOn: true }));
+    const run = countedRun(2);
+    scheduler.start(run, 10);
+    drive(scheduler, rec, 10, run.anchorClock + 2, () => 0.025);
+    const clicks = rec.out.filter(s => s.kind === 'click' && s.when < run.anchorClock + 2 - 1e-9);
+    // 8 count-in clicks and then the metronome's 4, every 0.5 s without a gap or a double.
+    expect(clicks.map(c => +(c.when - 10.04).toFixed(9))).toEqual(Array.from({ length: 12 }, (_, i) => i * 0.5));
+    expect(clicks.map(c => c.downbeat)).toEqual(Array.from({ length: 12 }, (_, i) => i % 4 === 0));
+  });
+
+  it('carried over part-way (a change mid-count-in), schedules only the clicks still to come, and skips none', () => {
+    const rec = recorder();
+    const scheduler = new LookaheadScheduler(rec.sink, material({ clicksOn: false }));
+    const run = countedRun(1);
+    // Started again at 11.1: the clicks at 10.04 and 10.54 and 11.04 are past.
+    scheduler.start(run, 11.1);
+    drive(scheduler, rec, 11.1, run.anchorClock + 0.5, () => 0.025);
+    expect(rec.out.filter(s => s.kind === 'click').map(c => +c.when.toFixed(9))).toEqual([11.54]);
+    expect(scheduler.skipped).toBe(0);
   });
 });
