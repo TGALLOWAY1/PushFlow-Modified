@@ -6,7 +6,10 @@
  * - Mod+S saves now; Mod+Z undoes; Mod+Shift+Z or Mod+Y redoes;
  * - Space plays and stops (the Composer binds its own while its tab is open);
  * - ←/→ select the previous or next event while stopped, stopping at the ends;
+ *   while playing they move the playhead by an event (S4.3b, T10);
  * - Shift+←/→ select the previous or next Hard event (Prev/Next hard, T27);
+ * - L turns Loop on or off, [ and ] change the speed a step, and Home returns
+ *   to the start or the loop start (S4.3b, T61);
  * - Escape steps back one layer: a trace replay, then the armed Sound, then
  *   the pad selection, then the event (an open overlay closes itself first);
  * - Delete/Backspace take the selected pad's Sound off the grid, with Undo;
@@ -18,8 +21,10 @@
 import { useRef } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { getDisplayedLayout, isPadLocked, isReplayingTrace } from '../state/projectState';
-import { getEventTimeline, resolveEventKey } from '../analysis/eventTimeline';
+import { getEventTimeline, resolveEventKey, seekEventTarget } from '../analysis/eventTimeline';
 import { hardEventSteps } from '../analysis/eventDifficulty';
+import { useTransport } from '../audio/TransportProvider';
+import { loopRegionOf, stepSpeed } from '../audio/transportMath';
 import { useInputHandler } from '../input/inputRegistry';
 import { useRemovePadWithUndo } from './useRemovePadWithUndo';
 import { useReadOnlyHint } from './useReadOnlyHint';
@@ -37,6 +42,7 @@ export function useKeyboardShortcuts({ onSave, onOpenShortcuts }: KeyboardShortc
   const removePad = useRemovePadWithUndo();
   const { refuse: refuseEdit } = useReadOnlyHint();
   const toast = useToast();
+  const transport = useTransport();
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -54,8 +60,7 @@ export function useKeyboardShortcuts({ onSave, onOpenShortcuts }: KeyboardShortc
 
   useInputHandler('step-events', e => {
     const s = stateRef.current;
-    // While playing, the arrows do nothing for now (T10/T61 slice; P4 makes
-    // them seek by event).
+    // While playing, the arrows seek instead (the seek-events row).
     if (s.isPlaying) return false;
     // The project's events (S4.1): the same events, in the same order, as the
     // Events list, each everything struck at one instant.
@@ -70,6 +75,35 @@ export function useKeyboardShortcuts({ onSave, onOpenShortcuts }: KeyboardShortc
     // At the first or last event the selection stays put: no wrapping.
     const event = events[target]!;
     dispatch({ type: 'SELECT_EVENT', payload: { key: event.key, startTime: event.startTime } });
+  });
+
+  // While playing, ←/→ move the playhead to the event before or after the one
+  // playing (T10), inside the loop while looping a passage; the selection
+  // stays, so Stop still brings it back. At the first or last, nothing moves.
+  useInputHandler('seek-events', e => {
+    const s = stateRef.current;
+    if (!s.isPlaying) return false;
+    const timeline = getEventTimeline(s);
+    if (timeline.events.length === 0) return false;
+    const position = transport.engine ? transport.engine.position() : s.currentTime;
+    const region = s.loopEnabled ? loopRegionOf({ start: s.loopStart, end: s.loopEnd }) : null;
+    const target = seekEventTarget(timeline, position, e.key === 'ArrowRight' ? 1 : -1, region);
+    if (target) transport.seek(target.startTime);
+  });
+
+  // L, [ ], Home (T61): the transport's own controls from the keyboard.
+  useInputHandler('toggle-loop', () => {
+    dispatch({ type: 'SET_LOOP_ENABLED', payload: !stateRef.current.loopEnabled });
+  });
+
+  useInputHandler('change-speed', e => {
+    const s = stateRef.current;
+    const next = stepSpeed(s.playbackRate, e.key === ']' ? 1 : -1);
+    if (next !== s.playbackRate) dispatch({ type: 'SET_PLAYBACK_RATE', payload: next });
+  });
+
+  useInputHandler('return-to-start', () => {
+    transport.returnToStart();
   });
 
   // Shift+←/→: Prev and Next hard (T27), stopping at the first and last.

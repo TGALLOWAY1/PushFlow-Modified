@@ -49,6 +49,8 @@ import { ROLE_META, ROLE_ORDER } from '../../../src/ui/state/layoutSubject';
 import { USE_AS_DRAFT_HINT } from '../../../src/ui/hooks/useReadOnlyHint';
 import { LIFECYCLE_ACTIONS } from '../../../src/ui/state/lifecycleActions';
 import { MOMENT_VIEWS } from '../../../src/ui/state/viewSettings';
+import { COUNT_IN_CHOICES, REHEARSE_SPEEDS } from '../../../src/ui/audio/transportMath';
+import { rehearseSpeedWords } from '../../../src/ui/hooks/useRehearse';
 
 afterEach(cleanup);
 
@@ -327,5 +329,18 @@ describe('the moment view (S4.2, invariant 2)', () => {
     expect(screen.getByTestId('learn-more-moment-playback').textContent).toMatch(/playhead drives the same view.*nothing dims/s);
     // The onion-skin wording is gone with its toggle.
     expect(document.body.textContent).not.toMatch(/[Oo]nion/);
+  });
+
+  it('says what Stop, ←/→, Rehearse and the count-in do, from the lists the transport uses (S4.3b)', () => {
+    openTab('Overview');
+    const playback = screen.getByTestId('learn-more-moment-playback').textContent!;
+    expect(playback).toMatch(/panel beside the grid follows the playhead/);
+    expect(playback).toMatch(/Stop brings back the event you picked; with none picked, the grid stays on the event where playback stopped/);
+    expect(playback).toMatch(/←\/→ move the playhead by an event/);
+    const rehearse = screen.getByTestId('learn-more-rehearse').textContent!;
+    expect(rehearse).toContain(`at ${REHEARSE_SPEEDS.map(rehearseSpeedWords).join(', ')}`);
+    expect(rehearse).toContain(`(${COUNT_IN_CHOICES.map(c => c.label).join(', ')})`);
+    expect(rehearse).toMatch(/bar and the next/);
+    expect(rehearse).toMatch(/at least a bar/);
   });
 });

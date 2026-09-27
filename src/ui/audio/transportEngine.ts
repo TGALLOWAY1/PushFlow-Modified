@@ -17,12 +17,17 @@
  *   Metronome) starts a new run from where the transport is, and a seek from
  *   where it is sent; scheduled sounds that haven't started are cancelled.
  * - Loop off plays once and stops at the end (onEnded).
+ * - Play may count in (S4.3b, T59): clicks for a bar or two at the speed it
+ *   will play at, while the playhead waits at the start. A change of speed,
+ *   loop or material during the count-in keeps it; a seek ends it.
  * - The old frame-driven audio path stays selectable for one release through
- *   a dev-only localStorage switch (transportModeFromStorage).
+ *   a dev-only localStorage switch (transportModeFromStorage). It counts in
+ *   silently.
  *
- * The position is published once per animation frame (subscribe/snapshot) for
- * the few components that draw it; the project state holds only where the
- * transport rests (currentTime) and whether it plays (isPlaying).
+ * The position, and the count-in's beat while it counts in, are published
+ * once per animation frame (subscribe, snapshot, countIn) for the few
+ * components that draw them; the project state holds only where the transport
+ * rests (currentTime) and whether it plays (isPlaying).
  */
 
 import {
@@ -34,9 +39,13 @@ import {
 } from './rehearsalAudio';
 import { DEFAULT_SCHEDULER_OPTIONS, LookaheadScheduler, SCHEDULER_TICK_MS, type SchedulerMaterial } from './lookaheadScheduler';
 import {
+  countInBeatAt,
+  countInFor,
+  countInSeconds,
   playRegion,
   positionAt,
   startPosition,
+  type CountIn,
   type LoopSettings,
   type PlayRegion,
   type RunPosition,
@@ -107,6 +116,20 @@ export interface TransportEngineDeps {
 /** Which clock the transport runs on right now, for tests and the e2e hook. */
 export type TransportClockKind = 'audio' | 'wall' | 'none';
 
+/**
+ * The count-in, from Play until the music starts: the click sounding now
+ * (0-based; -1 before the first, while audio starts) of how many.
+ */
+export interface CountInBeat {
+  beat: number;
+  beats: number;
+}
+
+export interface PlayOptions {
+  /** Bars of clicks before the music starts (S4.3b); 0 or none plays at once. */
+  countInBars?: number;
+}
+
 export interface TransportDebug {
   running: boolean;
   pending: boolean;
@@ -116,6 +139,8 @@ export interface TransportDebug {
   region: PlayRegion;
   /** Sounds skipped because the scheduler ran too late for them. */
   skipped: number;
+  /** The count-in now, from Play until the music starts; null otherwise. */
+  countIn: CountInBeat | null;
 }
 
 const WALL_CLOCK: AudioClock = {
@@ -144,6 +169,8 @@ export class TransportEngine {
   /** Waiting for the audio clock: the playhead holds at pendingStart. */
   private pending = false;
   private pendingStart = 0;
+  /** The count-in the waiting Play asked for, counted once the clock starts. */
+  private pendingCountIn: CountIn | undefined;
   private pendingTimer: number | null = null;
   /** Bumped by every Play, so a late resume() from an earlier one is ignored. */
   private playToken = 0;
@@ -157,6 +184,8 @@ export class TransportEngine {
   private lastFrame: RunPosition = { position: 0, ended: false, pass: 0 };
 
   private published = 0;
+  /** The count-in's beat as last published; a new object only when it changes. */
+  private publishedCountIn: CountInBeat | null = null;
   private readonly listeners = new Set<() => void>();
 
   constructor(deps: TransportEngineDeps) {
@@ -193,6 +222,11 @@ export class TransportEngine {
     return this.published;
   }
 
+  /** The count-in now, published with the position; null unless it counts in. */
+  get countIn(): CountInBeat | null {
+    return this.publishedCountIn;
+  }
+
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
@@ -212,6 +246,7 @@ export class TransportEngine {
       position: this.position(),
       region: this.region(),
       skipped: this.scheduler.skipped,
+      countIn: this.countInNow(),
     };
   }
 
@@ -249,38 +284,47 @@ export class TransportEngine {
 
   // ─── Transport ─────────────────────────────────────────────────────────────
 
-  /** Plays from `from` (see startPosition for where a run actually starts). */
-  play(from: number): void {
+  /**
+   * Plays from `from` (see startPosition for where a run actually starts),
+   * after `countInBars` bars of clicks at the speed it will play at.
+   */
+  play(from: number, { countInBars = 0 }: PlayOptions = {}): void {
     if (this.running) return;
     this.running = true;
     const token = ++this.playToken;
     const start = startPosition(from, this.region(), this.material.song);
+    const countIn = countInFor(countInBars, this.material.tempo, this.rate);
+    const counted = countInSeconds(countIn);
     this.pendingStart = start;
+    this.pendingCountIn = countIn;
     this.publish(start);
     this.startFrames();
 
     const readiness = this.audio.ensure();
     if (this.mode === 'frame') {
-      // The old path: the wall clock, and audio triggered frame by frame.
-      this.begin(this.wallClock, false, start, 0);
+      // The old path: the wall clock, and audio triggered frame by frame (its count-in is silent).
+      this.begin(this.wallClock, false, start, counted, countIn);
       return;
     }
     const audioClock = readiness === 'running' ? this.audio.clock() : null;
     if (audioClock) {
-      this.begin(audioClock, true, start, START_LEAD);
+      this.begin(audioClock, true, start, START_LEAD + counted, countIn);
       return;
     }
     if (readiness === 'unavailable') {
-      this.begin(this.wallClock, false, start, 0);
+      this.begin(this.wallClock, false, start, counted, countIn);
       return;
     }
     // A context waiting to resume: hold the playhead a moment, so the first
     // notes sound when audio starts; start silently if it doesn't.
     this.pending = true;
+    this.publishCountIn(this.countInNow());
     void this.audio.resume().then(() => this.audioResumed(token));
     this.pendingTimer = this.timers.set(() => {
       this.pendingTimer = null;
-      if (token === this.playToken && this.pending) this.begin(this.wallClock, false, this.pendingStart, 0);
+      if (token === this.playToken && this.pending) {
+        this.begin(this.wallClock, false, this.pendingStart, countInSeconds(this.pendingCountIn), this.pendingCountIn);
+      }
     }, PENDING_MAX_MS);
   }
 
@@ -303,8 +347,11 @@ export class TransportEngine {
     }
     const start = startPosition(target, this.region(), this.material.song);
     if (!this.run || !this.clock) {
+      // Waiting for the clock: the start moves, and a seek ends the count-in here too.
       this.pendingStart = start;
+      this.pendingCountIn = undefined;
       this.publish(start);
+      this.publishCountIn(this.countInNow());
       return;
     }
     this.restart(start, START_LEAD);
@@ -338,7 +385,7 @@ export class TransportEngine {
     return positionAt(this.run, this.clock.now() - this.clock.latency());
   }
 
-  private begin(clock: AudioClock, onAudio: boolean, start: number, lead: number): void {
+  private begin(clock: AudioClock, onAudio: boolean, start: number, lead: number, countIn?: CountIn): void {
     this.pending = false;
     if (this.pendingTimer !== null) {
       this.timers.clear(this.pendingTimer);
@@ -346,24 +393,35 @@ export class TransportEngine {
     }
     this.clock = clock;
     this.onAudioClock = onAudio;
-    this.restart(start, lead);
+    this.restart(start, lead, countIn);
     if (onAudio && this.mode === 'lookahead') this.ticker.start(this.tick);
   }
 
-  /** A new run from `start`, `lead` seconds from now on the current clock. */
-  private restart(start: number, lead: number): void {
+  /**
+   * A new run from `start`, anchored `lead` seconds from now on the current
+   * clock; `countIn`'s clicks, if any, end at the anchor (lead includes them).
+   */
+  private restart(start: number, lead: number, countIn?: CountIn): void {
     const clock = this.clock!;
     const now = clock.now();
     if (this.onAudioClock) this.audio.cancelFrom(now);
-    this.run = { anchorClock: now + lead, startPos: start, rate: this.rate, region: this.region() };
+    this.run = { anchorClock: now + lead, startPos: start, rate: this.rate, region: this.region(), countIn };
     if (this.mode === 'frame') {
       this.audio.reset();
       this.lastFrame = { position: start, ended: false, pass: 0 };
     } else if (this.onAudioClock) {
-      this.scheduler.start(this.run);
+      this.scheduler.start(this.run, now);
       this.scheduler.tick(now);
     }
     this.publish(start);
+    this.publishCountIn(this.countInNow());
+  }
+
+  /** The time left before the run's anchor while it counts in, else null. */
+  private countInLeft(): number | null {
+    if (!this.run?.countIn || !this.clock) return null;
+    const left = this.run.anchorClock - this.clock.now();
+    return left > 0 ? left : null;
   }
 
   /** Something changed mid-run: carry on from where the transport is, under the new settings. */
@@ -376,6 +434,12 @@ export class TransportEngine {
     const now = positionAt(this.run, this.clock.now());
     if (now.ended) return; // the frame loop is about to stop it
     const start = startPosition(now.position, this.region(), this.material.song);
+    // Still counting in: the clicks left carry on, and the music starts where they end.
+    const left = this.countInLeft();
+    if (left !== null) {
+      this.restart(start, left, this.run.countIn);
+      return;
+    }
     this.restart(start, start === now.position ? 0 : START_LEAD);
   }
 
@@ -384,12 +448,32 @@ export class TransportEngine {
     const clock = this.audio.clock();
     if (!clock) return;
     if (this.pending) {
-      this.begin(clock, true, this.pendingStart, START_LEAD);
+      this.begin(clock, true, this.pendingStart, START_LEAD + countInSeconds(this.pendingCountIn), this.pendingCountIn);
     } else if (!this.onAudioClock && this.run) {
-      // Started silently on the wall clock; audio is here now, so hand over.
+      // Started silently on the wall clock; audio is here now, so hand over,
+      // with whatever is left of the count-in.
+      const left = this.countInLeft();
+      if (left !== null) {
+        this.begin(clock, true, this.run.startPos, left, this.run.countIn);
+        return;
+      }
       const at = this.live().position;
       this.begin(clock, true, at, 0);
     }
+  }
+
+  /**
+   * The count-in now, at the heard clock time: from Play (beat -1 until its
+   * first click, and while audio starts) until the music starts; else null.
+   */
+  private countInNow(): CountInBeat | null {
+    if (!this.running) return null;
+    if (!this.run || !this.clock) return this.pendingCountIn ? { beat: -1, beats: this.pendingCountIn.beats } : null;
+    const countIn = this.run.countIn;
+    if (!countIn) return null;
+    const heard = this.clock.now() - this.clock.latency();
+    if (heard >= this.run.anchorClock) return null;
+    return { beat: countInBeatAt(this.run, heard) ?? -1, beats: countIn.beats };
   }
 
   private tick = (): void => {
@@ -408,6 +492,7 @@ export class TransportEngine {
         this.finish();
         return;
       }
+      this.publishCountIn(this.countInNow());
       this.publish(at.position);
       this.frameId = this.frames.request(frame);
     };
@@ -459,6 +544,8 @@ export class TransportEngine {
     this.run = null;
     this.clock = null;
     this.onAudioClock = false;
+    this.pendingCountIn = undefined;
+    this.publishCountIn(null);
   }
 
   private rest(at: number): void {
@@ -469,6 +556,17 @@ export class TransportEngine {
   private publish(position: number): void {
     if (position === this.published) return;
     this.published = position;
+    this.notify();
+  }
+
+  private publishCountIn(next: CountInBeat | null): void {
+    const prev = this.publishedCountIn;
+    if (prev === next || (prev && next && prev.beat === next.beat && prev.beats === next.beats)) return;
+    this.publishedCountIn = next;
+    this.notify();
+  }
+
+  private notify(): void {
     for (const listener of [...this.listeners]) listener();
   }
 }

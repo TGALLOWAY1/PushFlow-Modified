@@ -112,6 +112,46 @@ export function eventAtTime(timeline: EventTimeline, t: number): TimelineEvent |
 }
 
 /**
+ * The event whose start is nearest time t (the earlier on a tie), or null in
+ * an empty timeline. A ruler click while stopped lands on it (S4.3b, T10).
+ */
+export function nearestEvent(timeline: EventTimeline, t: number): TimelineEvent | null {
+  const { events } = timeline;
+  if (events.length === 0) return null;
+  // The first event starting after t; the nearest is it or the one before.
+  let lo = 0;
+  let hi = events.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (events[mid]!.startTime <= t) lo = mid + 1; else hi = mid;
+  }
+  const after = events[lo];
+  const before = events[lo - 1];
+  if (!before) return after ?? null;
+  if (!after) return before;
+  return after.startTime - t < t - before.startTime ? after : before;
+}
+
+/**
+ * Where ←/→ send a playing transport (S4.3b, T10): the event before or after
+ * the one playing at `position` (the last starting at or before it), among
+ * the events inside `region` when one is looping; null past the first or last.
+ */
+export function seekEventTarget(
+  timeline: EventTimeline,
+  position: number,
+  direction: 1 | -1,
+  region?: { start: number; end: number } | null,
+): TimelineEvent | null {
+  const events = region
+    ? timeline.events.filter(e => e.startTime >= region.start - 1e-9 && e.startTime < region.end - 1e-9)
+    : timeline.events;
+  let at = -1;
+  for (let i = 0; i < events.length && events[i]!.startTime <= position + 1e-6; i++) at = i;
+  return events[at + direction] ?? null;
+}
+
+/**
  * The event a stored key names: that key, else the event at the key's time
  * (muting or unmuting a Sound changes which Sounds strike then), else none.
  */

@@ -12,6 +12,8 @@
  *   position, so a chord on the downbeat always sounds, on every repeat.
  * - A tick so late that notes are already past (a main-thread stall longer
  *   than the horizon) skips them rather than firing them all at once.
+ * - A run's count-in (S4.3b) is clicks before its anchor, the first of each
+ *   bar accented; they sound whether or not the metronome is on.
  *
  * It knows nothing about audio: it calls its sink with clock times (the
  * engine's sink is RehearsalAudio), and it is driven by explicit tick(now)
@@ -19,7 +21,7 @@
  */
 
 import { type RehearsalHit } from './rehearsalAudio';
-import { BEATS_PER_BAR, firstPass, nextPass, passAt, type Pass, type TransportRun } from './transportMath';
+import { BEATS_PER_BAR, countInStart, firstPass, nextPass, passAt, type Pass, type TransportRun } from './transportMath';
 
 export interface SchedulerSink {
   /** A hit of `soundId` at clock time `when` (MIDI velocity 0–127). */
@@ -61,11 +63,17 @@ export class LookaheadScheduler {
     private readonly options: SchedulerOptions = DEFAULT_SCHEDULER_OPTIONS,
   ) {}
 
-  /** Starts scheduling `run` from its anchor: the first window starts exactly at run.startPos. */
-  start(run: TransportRun): void {
+  /**
+   * Starts scheduling `run`: from its first count-in click, or its anchor
+   * when it has none, so the first window after the anchor starts exactly at
+   * run.startPos. Never from before `from` (the engine passes the clock time
+   * now): a count-in carried over mid-way skips the clicks already past rather
+   * than counting them as late.
+   */
+  start(run: TransportRun, from = -Infinity): void {
     this.run = run;
     this.pass = firstPass(run);
-    this.scheduledUntil = run.anchorClock;
+    this.scheduledUntil = Math.min(run.anchorClock, Math.max(countInStart(run), from));
   }
 
   stop(): void {
@@ -88,8 +96,8 @@ export class LookaheadScheduler {
    */
   rewind(from: number): void {
     if (!this.run) return;
-    const at = Math.max(from, this.run.anchorClock);
-    this.pass = passAt(this.run, at);
+    const at = Math.max(from, countInStart(this.run));
+    this.pass = passAt(this.run, Math.max(at, this.run.anchorClock));
     this.scheduledUntil = at;
   }
 
@@ -99,6 +107,12 @@ export class LookaheadScheduler {
     if (!run) return;
     const to = now + this.options.horizon;
     let from = this.scheduledUntil;
+    // The count-in's clicks come before the anchor, where the run's passes start.
+    if (run.countIn && from < run.anchorClock) {
+      const end = Math.min(to, run.anchorClock);
+      this.emitCountIn(run, from, end, now);
+      from = end;
+    }
     while (from < to && this.pass) {
       const pass = this.pass;
       if (from >= pass.endClock) {
@@ -117,15 +131,31 @@ export class LookaheadScheduler {
     this.scheduledUntil = Math.max(this.scheduledUntil, Math.min(to, from));
   }
 
+  /** Whether a sound due at `when` is too late to play at `now`; counts it as skipped if so. */
+  private late(when: number, now: number): boolean {
+    if (when >= now - this.options.lateTolerance) return false;
+    this.skipped++;
+    return true;
+  }
+
+  /** Emits the count-in clicks due in clock times [from, to): the first of each bar is a downbeat. */
+  private emitCountIn(run: TransportRun, from: number, to: number, now: number): void {
+    const { beats, beatClock } = run.countIn!;
+    const first = countInStart(run);
+    // The epsilon keeps a click that falls exactly on `from` in this window.
+    for (let k = Math.max(0, Math.ceil((from - first) / beatClock - 1e-9)); k < beats; k++) {
+      const when = first + k * beatClock;
+      if (when >= to) break;
+      if (when < from) continue;
+      if (!this.late(when, now)) this.sink.click(when, k % BEATS_PER_BAR === 0);
+    }
+  }
+
   /** Emits the hits and clicks with positions in [posFrom, posTo) of `pass`. */
   private emit(pass: Pass, posFrom: number, posTo: number, now: number): void {
     const run = this.run!;
     const clockOf = (position: number) => pass.startClock + (position - pass.startPos) / run.rate;
-    const late = (when: number) => {
-      if (when >= now - this.options.lateTolerance) return false;
-      this.skipped++;
-      return true;
-    };
+    const late = (when: number) => this.late(when, now);
     const { hits, tempo, hitsOn, clicksOn } = this.material;
     if (hitsOn) {
       for (let i = firstIndexAtOrAfter(hits, posFrom); i < hits.length && hits[i]!.time < posTo; i++) {

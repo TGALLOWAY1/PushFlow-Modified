@@ -14,6 +14,9 @@
  *   and Next hard (Shift+←/→ from anywhere).
  * - A click anywhere on a row selects its event (SELECT_EVENT with its
  *   momentKey). One row at a time opens its five factors (aria-expanded).
+ * - The selected row offers Rehearse under its line: it loops the event's bar
+ *   and the next and plays them after a count-in (S4.3b, T10; useRehearse).
+ *   Only there, so every row keeps the width its Sounds need.
  * - ↑/↓ and j/k step through the rows shown while focus is in the list.
  *
  * Costs come from the plan of the layout on screen (S3.2), which the
@@ -39,6 +42,7 @@ import { ToggleButton } from './shared/ToggleButton';
 import { DifficultyBadge, difficultyTitle } from './shared/DifficultyBadge';
 import { HardEventStepper } from './shared/HardEventStepper';
 import { StrikeChip, type StrikeSound } from './shared/StrikeChip';
+import { RehearseButton } from './shared/RehearseButton';
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -264,6 +268,13 @@ function EventRow({
           <span className="w-6 mr-0.5 flex-shrink-0" aria-hidden="true" />
         )}
       </div>
+
+      {/* The selected event: rehearse it (S4.3b). */}
+      {isSelected && (
+        <div className="ml-12 mr-2 mb-1.5 flex">
+          <RehearseButton event={event} variant="button" testId="event-rehearse" />
+        </div>
+      )}
 
       {/* The five factors, named and coloured by FACTOR_META (T20). */}
       {expanded && factors && (

@@ -186,6 +186,7 @@ export function PerformanceCostsPanel() {
                     timeline={timeline}
                     subject={subject}
                     tempo={state.tempo}
+                    showRehearse
                     selectedMomentKey={state.selectedMomentKey}
                     onSelectEvent={selection => dispatch({ type: 'SELECT_EVENT', payload: selection })}
                   />

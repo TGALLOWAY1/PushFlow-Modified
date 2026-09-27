@@ -197,6 +197,7 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
     // Ephemeral — always reset
     selectedMomentKey: null,
     selectedNoteKey: null,
+    selectionFromPause: false,
     selectedStreamId: null,
     armedStreamId: null,
     selectedPadKey: null,

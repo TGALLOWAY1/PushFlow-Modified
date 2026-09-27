@@ -23,6 +23,8 @@ import { FACTOR_KEYS, FACTOR_META, type FactorKey } from '../../analysis/factorM
 import { ROLE_META, ROLE_ORDER, candidateLetter } from '../../state/layoutSubject';
 import { LIFECYCLE_ACTIONS } from '../../state/lifecycleActions';
 import { MOMENT_VIEWS } from '../../state/viewSettings';
+import { COUNT_IN_CHOICES, REHEARSE_SPEEDS } from '../../audio/transportMath';
+import { rehearseSpeedWords } from '../../hooks/useRehearse';
 import { layoutLabel } from '../../state/layoutLabels';
 import { suggestVariantName } from '../../state/variantNames';
 import { strategyLabel } from '../../analysis/strategyLabels';
@@ -284,7 +286,10 @@ function OverviewInfographic() {
                 The next event&apos;s pads get a dashed outline in the hand&apos;s colour, &ldquo;+1&rdquo; and their finger; the previous event&apos;s a faint outline and &ldquo;&minus;1&rdquo;. An arrow runs from each finger&apos;s last pad (else its hand&apos;s) to its next strike when it moves.
               </p>
               <p className="text-[8px] text-gray-700" data-testid="learn-more-moment-playback">
-                During playback the playhead drives the same view: strikes flash at full intensity with their fingers, and the next fingers, shown large, and nothing dims. Stop brings the selected event back.
+                During playback the playhead drives the same view: strikes flash at full intensity with their fingers, and the next fingers, shown large, and nothing dims; the panel beside the grid follows the playhead too. Stop brings back the event you picked; with none picked, the grid stays on the event where playback stopped. While playing, &larr;/&rarr; move the playhead by an event.
+              </p>
+              <p className="text-[8px] text-gray-700" data-testid="learn-more-rehearse">
+                Rehearse (on the selected Events row, the panel beside the grid and the chart) loops the event&apos;s bar and the next, at {REHEARSE_SPEEDS.map(rehearseSpeedWords).join(', ')}, and plays after a count-in. The Metronome&apos;s menu sets the count-in for every Play ({COUNT_IN_CHOICES.map(c => c.label).join(', ')}), counted over the grid; Rehearse always counts in at least a bar.
               </p>
             </div>
           </div>

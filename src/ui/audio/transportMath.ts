@@ -13,6 +13,8 @@
  * - Loop on with a region plays into the region and repeats it; from at or
  *   past its end, it starts at the region's start.
  * - Loop on with no region repeats the whole song.
+ * - A start from stopped may count in first (S4.3b): clicks, and the playhead
+ *   waits at the start until they end.
  */
 
 import { barSeconds } from '../../utils/musicalTime';
@@ -94,6 +96,17 @@ export function startPosition(position: number, region: PlayRegion, song: SongSp
   return at;
 }
 
+/**
+ * A count-in before a run (S4.3b, T59): `beats` metronome clicks,
+ * `beatClock` clock seconds apart, the last a beat before the run's anchor.
+ * The playhead holds at the run's start until the anchor.
+ */
+export interface CountIn {
+  beats: number;
+  /** Clock seconds from one click to the next: a beat at the rehearsal speed. */
+  beatClock: number;
+}
+
 /** One play-through, from the clock time it starts. Changing anything mid-run starts a new run. */
 export interface TransportRun {
   /** Clock time at which the transport is at `startPos` and starts to move. */
@@ -101,6 +114,34 @@ export interface TransportRun {
   startPos: number;
   rate: number;
   region: PlayRegion;
+  /** Clicks before the anchor: only a start from stopped counts in, never a seek or a loop's repeat. */
+  countIn?: CountIn;
+}
+
+/** The count-in for `bars` bars at `tempo`, played at `rate`; none for 0 bars. */
+export function countInFor(bars: number, tempo: number, rate: number): CountIn | undefined {
+  const beats = Math.max(0, Math.round(bars)) * BEATS_PER_BAR;
+  if (beats === 0 || !(tempo > 0) || !(rate > 0)) return undefined;
+  return { beats, beatClock: 60 / tempo / rate };
+}
+
+/** How long a count-in lasts, in clock seconds. */
+export function countInSeconds(countIn: CountIn | undefined): number {
+  return countIn ? countIn.beats * countIn.beatClock : 0;
+}
+
+/** Clock time of a run's first count-in click (its anchor when it has none). */
+export function countInStart(run: TransportRun): number {
+  return run.anchorClock - countInSeconds(run.countIn);
+}
+
+/** The count-in click sounding at clock time `clock` (0-based), or null outside the count-in. */
+export function countInBeatAt(run: TransportRun, clock: number): number | null {
+  const countIn = run.countIn;
+  if (!countIn) return null;
+  const first = countInStart(run);
+  if (clock < first || clock >= run.anchorClock) return null;
+  return Math.min(countIn.beats - 1, Math.floor((clock - first) / countIn.beatClock + 1e-9));
 }
 
 /**
@@ -202,4 +243,39 @@ export function barsAt(time: number, tempo: number, count: number): { start: num
   const bar = barSeconds(tempo);
   const index = Math.floor(Math.max(0, time) / bar + 1e-6);
   return { start: index * bar, end: (index + count) * bar };
+}
+
+// ─── Rehearsal (S4.3b) ───────────────────────────────────────────────────────
+
+/** The transport's speeds, slowest first: the Speed menu, and [ and ] step through them. */
+export const REHEARSAL_SPEEDS: readonly number[] = [0.25, 0.5, 0.75, 1, 1.25, 1.5];
+
+/** The next speed from `rate`, slower (-1) or faster (1); `rate` itself past either end. */
+export function stepSpeed(rate: number, direction: 1 | -1): number {
+  if (direction > 0) return REHEARSAL_SPEEDS.find(s => s > rate + 1e-9) ?? rate;
+  return [...REHEARSAL_SPEEDS].reverse().find(s => s < rate - 1e-9) ?? rate;
+}
+
+/** The count-in's choices (T59): Off, or a bar or two of clicks before playback starts. */
+export const COUNT_IN_CHOICES: ReadonlyArray<{ bars: number; label: string }> = [
+  { bars: 0, label: 'Off' },
+  { bars: 1, label: '1 bar' },
+  { bars: 2, label: '2 bars' },
+];
+
+/** The speeds Rehearse offers: as written, or slowed to 75% or 50% (T10). */
+export const REHEARSE_SPEEDS: readonly number[] = [1, 0.75, 0.5];
+export const DEFAULT_REHEARSE_SPEED = 0.75;
+
+/**
+ * The loop Rehearse sets around a moment at `time` (T10): its bar and the
+ * next, on bar lines. In the song's last bar it is that bar and the one before,
+ * so the loop never runs past the song; a one-bar song loops its one bar.
+ */
+export function rehearseRegion(time: number, tempo: number, song: SongSpan): { start: number; end: number } {
+  const bar = barSeconds(tempo);
+  const { start } = barsAt(time, tempo, 1);
+  if (start + 2 * bar <= song.end + 1e-6) return { start, end: start + 2 * bar };
+  if (start - bar >= song.start - 1e-6) return { start: start - bar, end: start + bar };
+  return { start, end: start + bar };
 }

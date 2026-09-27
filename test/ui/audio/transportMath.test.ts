@@ -1,21 +1,30 @@
 /**
  * S4.3a · the transport's time (T58): what plays, from where, and where the
  * playhead is at a clock time (src/ui/audio/transportMath.ts).
+ * S4.3b · the count-in's clicks (T59), the loop Rehearse sets (T10) and the
+ * speeds [ and ] step through (T61).
  */
 
 import { describe, it, expect } from 'vitest';
 import {
+  REHEARSAL_SPEEDS,
   barsAt,
+  countInBeatAt,
+  countInFor,
+  countInSeconds,
+  countInStart,
   firstPass,
   loopRegionOf,
   nextPass,
   passAt,
   playRegion,
   positionAt,
+  rehearseRegion,
   snapModeOf,
   snapTime,
   songSpan,
   startPosition,
+  stepSpeed,
   type TransportRun,
 } from '../../../src/ui/audio/transportMath';
 import { formatBarBeat } from '../../../src/utils/musicalTime';
@@ -131,5 +140,68 @@ describe('snapping loop edges', () => {
     expect(barsAt(2.7, 120, 1)).toEqual({ start: 2, end: 4 });
     expect(barsAt(2.7, 120, 2)).toEqual({ start: 2, end: 6 });
     expect(barsAt(4, 120, 1)).toEqual({ start: 4, end: 6 });
+  });
+});
+
+describe('the count-in (S4.3b, T59)', () => {
+  it('is four clicks a bar, a beat apart at the speed it will play at; none for Off', () => {
+    expect(countInFor(0, 120, 1)).toBeUndefined();
+    expect(countInFor(1, 120, 1)).toEqual({ beats: 4, beatClock: 0.5 });
+    expect(countInFor(2, 120, 1)).toEqual({ beats: 8, beatClock: 0.5 });
+    // At 0.75x a 120 BPM beat takes 2/3 s of clock time; at 90 BPM and 0.5x, 4/3 s.
+    expect(countInFor(1, 120, 0.75)!.beatClock).toBeCloseTo(2 / 3, 12);
+    expect(countInFor(1, 90, 0.5)!.beatClock).toBeCloseTo(4 / 3, 12);
+    expect(countInSeconds(countInFor(1, 120, 0.75))).toBeCloseTo(8 / 3, 12);
+    expect(countInSeconds(undefined)).toBe(0);
+  });
+
+  it('ends at the run\'s anchor, and names the click sounding at a clock time', () => {
+    const countIn = countInFor(1, 120, 1)!;
+    const run: TransportRun = { anchorClock: 12, startPos: 4, rate: 1, region: { start: 0, end: 16, loops: false }, countIn };
+    expect(countInStart(run)).toBe(10);
+    expect(countInBeatAt(run, 9.99)).toBeNull();
+    expect([10, 10.49, 10.5, 11.2, 11.5, 11.99].map(t => countInBeatAt(run, t))).toEqual([0, 0, 1, 2, 3, 3]);
+    expect(countInBeatAt(run, 12)).toBeNull();
+    // Meanwhile the playhead waits at the run's start.
+    expect(positionAt(run, 11).position).toBe(4);
+    // A run with no count-in has none.
+    expect(countInBeatAt({ ...run, countIn: undefined }, 11)).toBeNull();
+    expect(countInStart({ ...run, countIn: undefined })).toBe(12);
+  });
+});
+
+describe('Rehearse\'s loop (S4.3b, T10)', () => {
+  it('is the moment\'s bar and the next, on bar lines, and holds the moment', () => {
+    for (const time of [0, 0.5, 2, 3.25, 9.9, 13.75]) {
+      const r = rehearseRegion(time, 120, song);
+      expect(r.end - r.start).toBe(4);
+      expect(r.start % 2).toBe(0);
+      expect(r.start).toBeLessThanOrEqual(time);
+      expect(r.end).toBeGreaterThan(time);
+    }
+    expect(rehearseRegion(3.25, 120, song)).toEqual({ start: 2, end: 6 });
+    // At another tempo: 90 BPM bars are 8/3 s.
+    const r90 = rehearseRegion(3, 90, { start: 0, end: 32 });
+    expect(r90.start).toBeCloseTo(8 / 3, 12);
+    expect(r90.end).toBeCloseTo(8, 12);
+  });
+
+  it('in the song\'s last bar, loops that bar and the one before; a one-bar song loops its bar', () => {
+    expect(rehearseRegion(15.5, 120, song)).toEqual({ start: 12, end: 16 });
+    expect(rehearseRegion(14, 120, song)).toEqual({ start: 12, end: 16 });
+    expect(rehearseRegion(1.5, 120, { start: 0, end: 2 })).toEqual({ start: 0, end: 2 });
+  });
+});
+
+describe('speed steps for [ and ] (S4.3b, T61)', () => {
+  it('step through the Speed menu\'s speeds and stop at either end', () => {
+    expect(REHEARSAL_SPEEDS).toEqual([0.25, 0.5, 0.75, 1, 1.25, 1.5]);
+    expect(stepSpeed(1, 1)).toBe(1.25);
+    expect(stepSpeed(1, -1)).toBe(0.75);
+    expect(stepSpeed(1.5, 1)).toBe(1.5);
+    expect(stepSpeed(0.25, -1)).toBe(0.25);
+    // A speed between two steps goes to the next one either way.
+    expect(stepSpeed(0.9, 1)).toBe(1);
+    expect(stepSpeed(0.9, -1)).toBe(0.75);
   });
 });
