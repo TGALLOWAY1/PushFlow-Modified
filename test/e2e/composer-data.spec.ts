@@ -147,21 +147,23 @@ test.describe('S1a.5 · Composer edits and project Sounds stay in sync', () => {
     await newProject(page, pf);
     await openComposer(page);
     const id = await addLaneWithNote(page, pf, 0, 0);
-    const soundsPanelFinger = page.getByTitle('Left index finger — click to edit').and(page.locator(':not([data-testid="drawer-panel-composer"] *)'));
+    const laneFinger = composer(page).getByTestId('composer-lane-finger');
+    const soundsPanelFinger = page.locator(`[data-testid="sound-row"][data-sound-id="${id}"]`).getByTestId('sound-finger');
 
-    await composer(page).getByTitle('Click to assign finger (e.g. L1, R5)').click();
-    await composer(page).locator('input[maxlength="2"]').fill('L2');
-    await composer(page).locator('input[maxlength="2"]').press('Enter');
+    // The one "Hand & finger preference (soft)" control (S5.1), typed.
+    await laneFinger.click();
+    await page.getByTestId('finger-input').fill('L2');
+    await page.getByTestId('finger-input').press('Enter');
 
     expect((await pf.call('state')).voiceConstraints[id]).toEqual({ hand: 'left', finger: 'index' });
-    await expect(soundsPanelFinger).toHaveCount(1);
+    await expect(soundsPanelFinger).toHaveAttribute('data-preference', 'L2');
 
-    await composer(page).getByTitle('Left index finger — click to edit').click();
-    await composer(page).locator('input[maxlength="2"]').fill('');
-    await composer(page).locator('input[maxlength="2"]').press('Enter');
+    await laneFinger.click();
+    await page.getByTestId('finger-auto').click();
 
     expect((await pf.call('state')).voiceConstraints[id]).toBeUndefined();
-    await expect(soundsPanelFinger).toHaveCount(0);
+    await expect(soundsPanelFinger).toHaveAttribute('data-preference', '');
+    await expect(laneFinger).toHaveAttribute('data-preference', '');
   });
 
   test('P1a-12c: Undo after Clear restores the notes, Sounds and pads', async ({ page, pf }) => {

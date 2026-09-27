@@ -7,12 +7,15 @@
 import { type LoopLane } from '../../../types/loopEditor';
 import { type LoopEditorAction } from '../../state/loopEditorReducer';
 import { LoopLaneRow, type LaneFingerAssignment } from './LoopLaneRow';
+import { type PlanFingers } from '../../analysis/planFingers';
 
 interface LoopLaneSidebarProps {
   lanes: LoopLane[];
   dispatch: React.Dispatch<LoopEditorAction>;
   /** Per-lane finger assignments, keyed by lane ID. */
   fingerAssignments?: Record<string, LaneFingerAssignment>;
+  /** The fingers the plan uses for each lane's Sound, keyed by lane ID (shown faintly with no preference). */
+  fingerPlans?: Record<string, PlanFingers>;
   /** Callback when a lane's finger assignment changes; null clears it. */
   onFingerAssignmentChange?: (laneId: string, assignment: LaneFingerAssignment | null) => void;
   /** Callback to add a new lane. */
@@ -26,7 +29,7 @@ interface LoopLaneSidebarProps {
 const HEADER_HEIGHT = 40;
 const SUB_HEADER_HEIGHT = 20;
 
-export function LoopLaneSidebar({ lanes, dispatch, fingerAssignments, onFingerAssignmentChange, onAddLane, padPositions, noteCount }: LoopLaneSidebarProps) {
+export function LoopLaneSidebar({ lanes, dispatch, fingerAssignments, fingerPlans, onFingerAssignmentChange, onAddLane, padPositions, noteCount }: LoopLaneSidebarProps) {
   const sortedLanes = [...lanes].sort((a, b) => a.orderIndex - b.orderIndex);
 
   return (
@@ -63,7 +66,7 @@ export function LoopLaneSidebar({ lanes, dispatch, fingerAssignments, onFingerAs
         style={{ height: SUB_HEADER_HEIGHT }}
       >
         <span className="flex-1">Name</span>
-        <span className="w-6 text-center">Fgr</span>
+        <span className="w-7 text-center" title="Hand & finger preference (soft)">Fgr</span>
         <span className="w-7 text-center">Pad</span>
         <span className="w-12 text-center">M S</span>
       </div>
@@ -76,6 +79,7 @@ export function LoopLaneSidebar({ lanes, dispatch, fingerAssignments, onFingerAs
             lane={lane}
             dispatch={dispatch}
             fingerAssignment={fingerAssignments?.[lane.id]}
+            fingerPlan={fingerPlans?.[lane.id]}
             onFingerAssignmentChange={onFingerAssignmentChange}
             padPosition={padPositions?.[lane.id]}
           />

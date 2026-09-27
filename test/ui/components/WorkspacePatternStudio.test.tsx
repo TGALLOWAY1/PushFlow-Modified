@@ -159,14 +159,17 @@ describe('P1a-12b · Composer finger edits are the Sound\'s finger preference', 
     const { project } = setup();
     const id = await addLaneWithNote(project, 0, 0);
 
-    fireEvent.click(screen.getByTitle('Click to assign finger (e.g. L1, R5)'));
-    let input = document.querySelector('input[maxlength="2"]') as HTMLInputElement;
+    // The lane's "Hand & finger preference (soft)" control (S5.1).
+    const chip = () => screen.getByTestId('composer-lane-finger');
+    fireEvent.click(chip());
+    let input = screen.getByTestId('finger-input') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'L2' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(project().state.voiceConstraints).toEqual({ [id]: { hand: 'left', finger: 'index' } });
+    expect(chip().textContent).toBe('L2');
 
-    fireEvent.click(screen.getByText('L2'));
-    input = document.querySelector('input[maxlength="2"]') as HTMLInputElement;
+    fireEvent.click(chip());
+    input = screen.getByTestId('finger-input') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(project().state.voiceConstraints).toEqual({});
@@ -176,7 +179,7 @@ describe('P1a-12b · Composer finger edits are the Sound\'s finger preference', 
     const { project } = setup();
     const id = await addLaneWithNote(project, 0, 0);
     act(() => project().dispatch({ type: 'SET_VOICE_CONSTRAINT', payload: { streamId: id, hand: 'right', finger: 'middle' } }));
-    expect(screen.getByText('R3')).toBeTruthy();
+    expect(screen.getByTestId('composer-lane-finger').textContent).toBe('R3');
   });
 });
 

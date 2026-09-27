@@ -50,12 +50,16 @@ interface OverlayBehaviourOptions {
   returnFocusTo?: HTMLElement | null;
   /** Presses on these elements don't count as "outside" (e.g. a Dialog's own backdrop handles itself). */
   closeOnOutsidePress?: boolean;
+  /** The control that opened it: a press on it isn't outside, so its own click can close the overlay. */
+  anchor?: HTMLElement | null;
 }
 
 /** Stack membership, Escape, outside press, focus trap and focus return. */
-function useOverlayBehaviour({ panelRef, onClose, returnFocusTo, closeOnOutsidePress = true }: OverlayBehaviourOptions) {
+function useOverlayBehaviour({ panelRef, onClose, returnFocusTo, closeOnOutsidePress = true, anchor = null }: OverlayBehaviourOptions) {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const anchorRef = useRef(anchor);
+  anchorRef.current = anchor;
   const returnRef = useRef<HTMLElement | null>(null);
 
   useLayoutEffect(() => {
@@ -101,6 +105,7 @@ function useOverlayBehaviour({ panelRef, onClose, returnFocusTo, closeOnOutsideP
     const onPointerDown = (e: MouseEvent) => {
       if (!closeOnOutsidePress || !isTop()) return;
       const target = e.target as Node | null;
+      if (target && anchorRef.current?.contains(target)) return;
       if (panelRef.current && target && !panelRef.current.contains(target)) onCloseRef.current();
     };
     // Capture phase on window: runs before any other key handler (the editor's
@@ -175,6 +180,8 @@ export interface PopoverProps {
   labelledBy?: string;
   ariaLabel?: string;
   returnFocusTo?: HTMLElement | null;
+  /** The button that opened it: pressing it doesn't close the popover, so that button can toggle it. */
+  anchor?: HTMLElement | null;
   className?: string;
   testId?: string;
   children: ReactNode;
@@ -195,7 +202,7 @@ export function clampToViewport(point: number, size: number, viewport: number): 
 
 /** A non-modal popover (a menu) opened at a point and clamped inside the viewport. */
 export function Popover({
-  onClose, x, y, role = 'menu', labelledBy, ariaLabel, returnFocusTo, className, testId, children,
+  onClose, x, y, role = 'menu', labelledBy, ariaLabel, returnFocusTo, anchor, className, testId, children,
 }: PopoverProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
@@ -205,7 +212,7 @@ export function Popover({
     const r = el.getBoundingClientRect();
     setPos({ left: clampToViewport(x, r.width, window.innerWidth), top: clampToViewport(y, r.height, window.innerHeight) });
   }, [x, y]);
-  useOverlayBehaviour({ panelRef, onClose, returnFocusTo });
+  useOverlayBehaviour({ panelRef, onClose, returnFocusTo, anchor });
   return createPortal(
     <div
       ref={panelRef}

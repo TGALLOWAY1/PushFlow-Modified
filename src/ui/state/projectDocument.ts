@@ -13,6 +13,7 @@ import { type CandidateSolution } from '../../types/candidateSolution';
 import { reconcileLayoutVoices } from '../../types/layout';
 import { deepEqual } from '../../utils/deepEqual';
 import { analysisInputsChanged } from './analysisInputs';
+import { withoutStaleCandidates } from './lanesReducer';
 
 /**
  * Every document field. A Record over keyof ProjectDocument, so adding a field to
@@ -113,9 +114,11 @@ export function restoreDocument(
   const inspectionGone = !!state.inspectedLayout && !resolveInspectedLayout(restored).readOnly;
   const candidates = returnedCandidates.length > 0 ? [...restored.candidates, ...returnedCandidates] : restored.candidates;
   const streams = restored.soundStreams;
+  const live = new Set(streams.map(s => s.id));
   // The trace follows the inspection like any reducer step (T33): ending an
-  // inspection shows the resting trace again.
-  return withTraceOnScreen(state, {
+  // inspection shows the resting trace again. Candidates placing a Sound the
+  // restored document doesn't have go, as in the reducers (S5.1).
+  return withTraceOnScreen(state, withoutStaleCandidates({
     ...restored,
     ...(soundsChanged || returnedCandidates.length > 0 ? {
       candidates: candidates.map(c => withSoundNames(c, streams)),
@@ -127,14 +130,16 @@ export function restoreDocument(
     ...(layoutsChanged || inspectionGone ? { inspectedLayout: null } : {}),
     ...(layoutsChanged ? { selectedPadKey: null } : {}),
     ...(soundsChanged ? { selectedMomentKey: null, selectedNoteKey: null } : {}),
-    ...(soundsChanged && !restored.soundStreams.some(s => s.id === state.armedStreamId) ? { armedStreamId: null } : {}),
-  });
+    ...(soundsChanged && !live.has(state.armedStreamId ?? '') ? { armedStreamId: null } : {}),
+    ...(soundsChanged && !live.has(state.selectedStreamId ?? '') ? { selectedStreamId: null } : {}),
+  }, live));
 }
 
 /**
- * Candidates a step took out of the list (Promote removes the promoted one).
- * Undo gives them back, so undoing a Promote never loses a generated result;
- * nothing else of the session is restored.
+ * Candidates a step took out of the list (Promote removes the promoted one; a
+ * Sound's delete removes those placing it). Reverting the step gives them back,
+ * so undoing a Promote never loses a generated result; nothing else of the
+ * session is restored.
  */
 export function candidatesRemovedBy(before: ProjectState, after: ProjectState): CandidateSolution[] | undefined {
   if (before.candidates === after.candidates) return undefined;

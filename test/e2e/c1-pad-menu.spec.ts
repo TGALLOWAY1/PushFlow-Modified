@@ -33,8 +33,8 @@ async function openMenuAt(page: Page, padKey: string): Promise<{ x: number; y: n
   return point;
 }
 
-function measureMenu(page: Page): Promise<MenuGeometry> {
-  return page.getByTestId('pad-menu').evaluate(menu => {
+function measureMenu(page: Page, testId = 'pad-menu'): Promise<MenuGeometry> {
+  return page.getByTestId(testId).evaluate(menu => {
     const r = menu.getBoundingClientRect();
     const buttons = [...menu.querySelectorAll('button')];
     const clickable = buttons.filter(b => {
@@ -82,15 +82,21 @@ test.describe('C1 · pad context menu', () => {
     expect(misplaced).toEqual([]);
   });
 
-  test('all 12 items of an occupied pad\'s menu are clickable', async ({ page }) => {
+  // Since S5.1 the menu's ten finger items are one item that opens the finger
+  // preference panel in its place, so the panel's buttons are checked too.
+  test('all 3 items of an occupied pad\'s menu are clickable, and so is the finger preference panel', async ({ page }) => {
     const results: string[] = [];
     for (const padKey of SPREAD_PADS) {
       await openMenuAt(page, padKey);
       const m = await measureMenu(page);
-      results.push(`[${padKey}] ${m.clickable}/${m.items}`);
-      await closeMenu(page);
+      await page.getByTestId('pad-menu-finger').click();
+      const f = await measureMenu(page, 'finger-preference-popover');
+      // Two hands, five fingers and Auto, plus "Accept L2" once the plan is in.
+      results.push(`[${padKey}] ${m.clickable}/${m.items} · panel ${f.clickable === f.items && f.items >= 8 ? 'ok' : `${f.clickable}/${f.items}`}`);
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('finger-preference-popover')).toHaveCount(0);
     }
-    expect(results).toEqual(SPREAD_PADS.map(p => `[${p}] 12/12`));
+    expect(results).toEqual(SPREAD_PADS.map(p => `[${p}] 3/3 · panel ok`));
   });
 
   test('the first Escape closes the menu and focus returns to the pad', async ({ page }) => {

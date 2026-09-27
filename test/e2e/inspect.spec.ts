@@ -154,13 +154,14 @@ test.describe('S3.2 · inspecting never writes (P3-1)', () => {
 
       await dragPad(page, occupied, empty);
       await expectHint(page);
-      // The row's own padding, left of its colour swatch (the name starts a rename).
-      const row = page.getByTestId('sound-row').first();
-      const from = (await row.boundingBox())!;
+      // The row's hit count: plain text (its left edge is the reorder handle, since S5.1).
+      const hits = page.getByTestId('sound-row').first().getByTestId('sound-hits');
+      const box = (await hits.boundingBox())!;
+      const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
       const to = await visiblePadPoint(page, empty);
-      await page.mouse.move(from.x + 3, from.y + from.height / 2);
+      await page.mouse.move(from.x, from.y);
       await page.mouse.down();
-      await page.mouse.move(from.x + 9, from.y + from.height / 2 + 6, { steps: 3 });
+      await page.mouse.move(from.x + 6, from.y + 6, { steps: 3 });
       await page.mouse.move(to.x, to.y, { steps: 12 });
       await page.mouse.up();
 
@@ -184,8 +185,8 @@ test.describe('S3.2 · inspecting never writes (P3-1)', () => {
       const shown = await gridSounds(page);
       const empty = ['7,7', '7,6', '6,7', '6,6', '7,5'].find(k => !shown[k])!;
       const history = await pf.call('history');
-      // A click on the row's own padding arms it (a click on its name would rename it).
-      await page.getByTestId('sound-row').first().click({ position: { x: 3, y: 10 } });
+      // A click on the row arms it (a double-click on its name renames it).
+      await page.getByTestId('sound-row').first().getByTestId('sound-hits').click();
       expect((await pf.call('status')).armedStreamId).not.toBeNull();
       await page.getByTestId(`pad-${empty.replace(',', '-')}`).click();
       await expectHint(page);

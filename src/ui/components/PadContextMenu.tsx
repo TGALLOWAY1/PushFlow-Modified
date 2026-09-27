@@ -1,14 +1,19 @@
 /**
  * PadContextMenu.
  *
- * Right-click context menu for grid pads.
- * Options: set finger constraint, remove voice, view reachability.
+ * Right-click context menu for grid pads: remove, lock, and the Sound's
+ * "Hand & finger preference (soft)". The preference item opens the one
+ * control's panel (S5.1, T19) in place of the menu, where the menu was; the
+ * menu's own ten "L1 (Thumb)" items and its "(L2)" header are gone.
  */
 
+import { useState } from 'react';
 import { useProject } from '../state/ProjectContext';
 import { getDisplayedLayout } from '../state/projectState';
 import { Popover, useOverlayTitleId } from './shared/Overlay';
+import { FingerPreferencePanel, fingerAssignmentLabel } from './shared/FingerAssignmentInput';
 import { useRemovePadWithUndo } from '../hooks/useRemovePadWithUndo';
+import { useFingerPreference } from '../hooks/useFingerPreference';
 import { formatPadPosition } from '../../utils/padPosition';
 
 interface PadContextMenuProps {
@@ -20,28 +25,36 @@ interface PadContextMenuProps {
   returnFocusTo?: HTMLElement | null;
 }
 
-const FINGER_OPTIONS = [
-  { label: 'L1 (Thumb)', value: 'L1' },
-  { label: 'L2 (Index)', value: 'L2' },
-  { label: 'L3 (Middle)', value: 'L3' },
-  { label: 'L4 (Ring)', value: 'L4' },
-  { label: 'L5 (Pinky)', value: 'L5' },
-  { label: 'R1 (Thumb)', value: 'R1' },
-  { label: 'R2 (Index)', value: 'R2' },
-  { label: 'R3 (Middle)', value: 'R3' },
-  { label: 'R4 (Ring)', value: 'R4' },
-  { label: 'R5 (Pinky)', value: 'R5' },
-];
+const ITEM = 'w-full px-3 py-1.5 text-left text-pf-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
 
 export function PadContextMenu({ padKey, x, y, onClose, returnFocusTo }: PadContextMenuProps) {
   const { state, dispatch } = useProject();
   const layout = getDisplayedLayout(state);
   const titleId = useOverlayTitleId();
+  const fingerTitleId = useOverlayTitleId();
   const removePad = useRemovePadWithUndo();
+  const [showFinger, setShowFinger] = useState(false);
 
   const voice = layout?.padToVoice[padKey];
-  const currentConstraint = layout?.fingerConstraints[padKey];
   const isLocked = !!voice && layout?.placementLocks[voice.id] === padKey;
+  const finger = useFingerPreference(voice?.id);
+
+  if (showFinger && voice) {
+    return (
+      <Popover
+        x={x}
+        y={y}
+        role="dialog"
+        labelledBy={fingerTitleId}
+        onClose={onClose}
+        returnFocusTo={returnFocusTo}
+        testId="finger-preference-popover"
+        className="rounded-pf-md border border-[var(--border-default)] bg-[var(--bg-panel)] shadow-pf-xl"
+      >
+        <FingerPreferencePanel {...finger} onDone={onClose} soundName={voice.name} titleId={fingerTitleId} />
+      </Popover>
+    );
+  }
 
   // Portalled to <body> and clamped inside the viewport by Popover (T06): it
   // opens at the cursor however the grid is scaled or filtered.
@@ -65,14 +78,14 @@ export function PadContextMenu({ padKey, x, y, onClose, returnFocusTo }: PadCont
       {voice && (
         <button
           role="menuitem"
-          className="w-full px-3 py-1.5 text-left text-pf-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className={ITEM}
           onClick={() => {
             removePad(padKey);
             onClose();
           }}
           disabled={isLocked}
           aria-disabled={isLocked}
-          title={isLocked ? 'Locked \u00b7 Unlock to remove' : undefined}
+          title={isLocked ? 'Locked · Unlock to remove' : undefined}
         >
           Remove from pad
         </button>
@@ -82,7 +95,7 @@ export function PadContextMenu({ padKey, x, y, onClose, returnFocusTo }: PadCont
       {voice && (
         <button
           role="menuitem"
-          className="w-full px-3 py-1.5 text-left text-pf-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+          className={ITEM}
           onClick={() => {
             dispatch({ type: 'TOGGLE_PLACEMENT_LOCK', payload: { voiceId: voice.id, padKey } });
             onClose();
@@ -92,49 +105,19 @@ export function PadContextMenu({ padKey, x, y, onClose, returnFocusTo }: PadCont
         </button>
       )}
 
-      {/* Finger constraint */}
+      {/* The Sound's finger preference: the one control's panel */}
       {voice && (
-        <>
-          <div className="px-3 py-1 text-pf-xs text-[var(--text-tertiary)] border-t border-[var(--border-subtle)] mt-1">
-            Finger Constraint {currentConstraint && `(${currentConstraint})`}
-          </div>
-          {FINGER_OPTIONS.map(opt => (
-            <button
-              role="menuitem"
-              key={opt.value}
-              className={`w-full px-3 py-1 text-left text-pf-sm hover:bg-[var(--bg-hover)] transition-colors ${
-                currentConstraint === opt.value ? 'text-purple-300' : 'text-[var(--text-secondary)]'
-              }`}
-              onClick={() => {
-                dispatch({
-                  type: 'SET_FINGER_CONSTRAINT',
-                  payload: {
-                    padKey,
-                    constraint: currentConstraint === opt.value ? null : opt.value,
-                  },
-                });
-                onClose();
-              }}
-            >
-              {currentConstraint === opt.value ? '* ' : '  '}{opt.label}
-            </button>
-          ))}
-          {currentConstraint && (
-            <button
-              role="menuitem"
-              className="w-full px-3 py-1.5 text-left text-pf-sm text-amber-400 hover:bg-[var(--bg-hover)] transition-colors border-t border-[var(--border-subtle)]"
-              onClick={() => {
-                dispatch({
-                  type: 'SET_FINGER_CONSTRAINT',
-                  payload: { padKey, constraint: null },
-                });
-                onClose();
-              }}
-            >
-              Clear constraint
-            </button>
-          )}
-        </>
+        <button
+          role="menuitem"
+          data-testid="pad-menu-finger"
+          className={`${ITEM} flex items-center justify-between gap-3 border-t border-[var(--border-subtle)] mt-1`}
+          onClick={() => setShowFinger(true)}
+        >
+          <span>Hand &amp; finger preference…</span>
+          <span className="text-pf-xs font-mono text-[var(--text-tertiary)]">
+            {finger.value ? fingerAssignmentLabel(finger.value) : 'Auto'}
+          </span>
+        </button>
       )}
     </Popover>
   );

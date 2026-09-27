@@ -16,6 +16,7 @@ const ACTION_LABELS: Partial<Record<ProjectAction['type'], string>> = {
   TOGGLE_MUTE: 'Mute',
   SOLO_STREAM: 'Solo',
   SET_SOUND_COLOR: 'Sound color',
+  SET_SOUND_SHORT_LABEL: 'Short label',
   SET_VOICE_CONSTRAINT: 'Finger preference',
   REORDER_STREAMS: 'Reorder Sounds',
   ASSIGN_VOICE_TO_PAD: 'Place Sound',

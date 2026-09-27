@@ -32,6 +32,7 @@ import { ShortcutSheet } from '../../../src/ui/components/shared/ShortcutSheet';
 import { MomentViewControl } from '../../../src/ui/components/workspace/MomentViewControl';
 import { PadInspector } from '../../../src/ui/components/workspace/PadInspector';
 import { UnifiedTimeline } from '../../../src/ui/components/UnifiedTimeline';
+import { SOUND_REORDER_DRAG_TYPE } from '../../../src/ui/components/dragTypes';
 import { ViewSettingsProvider, useViewSettings } from '../../../src/ui/state/viewSettings';
 import { Popover } from '../../../src/ui/components/shared/Overlay';
 import { analyzeLayout } from '../../../src/ui/analysis/analyzeLayout';
@@ -216,6 +217,20 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     const stream = api.state.soundStreams[2]!;
     fireEvent.drop(pad('2,5'), { dataTransfer: dataTransfer({ 'application/pushflow-stream': JSON.stringify({ id: stream.id }) }) });
     expect(shownPads()['2,5']?.id).toBe(stream.id);
+    // S5.1 (T46): onto a taken pad it says what happens while dragging, and
+    // the drop sends the other Sound back to To place, with Undo.
+    const other = api.state.soundStreams[4]!;
+    const dt = dataTransfer({ 'application/pushflow-stream': JSON.stringify({ id: other.id }) });
+    fireEvent.dragStart(soundRow(4), { dataTransfer: dt });
+    fireEvent.dragOver(pad('2,5'), { dataTransfer: dt });
+    expect(screen.getByTestId('drag-hint').textContent).toBe(`Replace: ${stream.name} goes back to To place`);
+    expect(screen.getByTestId('pad-drag-ghost')).toBeTruthy();
+    fireEvent.drop(pad('2,5'), { dataTransfer: dt });
+    expect(shownPads()['2,5']?.id).toBe(other.id);
+    expect(screen.queryByTestId('drag-hint')).toBeNull();
+    expect(screen.getByText(`Placed ${other.name} on Row 3 · Col 6: ${stream.name} went back to To place`)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(shownPads()['2,5']?.id).toBe(stream.id);
   },
 
   'pad-click-moment': async () => {
@@ -286,9 +301,37 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     mount(await suggestedTestMidi1());
     const [a, b] = Object.keys(shownPads());
     const [va, vb] = [shownPads()[a!]!.id, shownPads()[b!]!.id];
-    fireEvent.drop(pad(b!), { dataTransfer: dataTransfer({ 'application/pushflow-pad': a!, 'application/pushflow-stream': JSON.stringify({ id: va }) }) });
+    // S5.1 (T46): the hint says it before the drop: a swap, or a move to an empty pad.
+    const dt = dataTransfer({ 'application/pushflow-pad': a!, 'application/pushflow-stream': JSON.stringify({ id: va }) });
+    fireEvent.dragStart(pad(a!), { dataTransfer: dt });
+    fireEvent.dragOver(pad(b!), { dataTransfer: dt });
+    const nameOf = (id: string) => api.state.soundStreams.find(s => s.id === id)!.name;
+    expect(screen.getByTestId('drag-hint').textContent).toBe(`Swap with ${nameOf(vb)}`);
+    fireEvent.dragOver(pad(emptyPad()), { dataTransfer: dt });
+    expect(screen.getByTestId('drag-hint').textContent).toMatch(/^Move from Row \d · Col \d$/);
+    fireEvent.drop(pad(b!), { dataTransfer: dt });
     expect(shownPads()[a!]!.id).toBe(vb);
     expect(shownPads()[b!]!.id).toBe(va);
+  },
+
+  'drag-pad-to-sounds': async () => {
+    // S5.1 (T46): a pad dropped on the Sounds panel is unplaced, with Undo;
+    // while it is dragged, the panel is the drop zone.
+    mount(await suggestedTestMidi1());
+    const key = occupiedPad();
+    const soundId = shownPads()[key]!.id;
+    const dt = dataTransfer({ 'application/pushflow-pad': key, 'application/pushflow-stream': JSON.stringify({ id: soundId }) });
+    fireEvent.dragStart(pad(key), { dataTransfer: dt });
+    expect(screen.getByTestId('sounds-drop-zone').textContent).toContain('off the grid');
+    const list = screen.getByTestId('sounds-list');
+    expect(fireEvent.dragOver(list, { dataTransfer: dt })).toBe(false);
+    expect(list.dataset.dropZone).toBe('over');
+    fireEvent.drop(list, { dataTransfer: dt });
+    expect(shownPads()[key]).toBeUndefined();
+    expect(screen.queryByTestId('sounds-drop-zone')).toBeNull();
+    expect(screen.getByText(/^Removed .* from Row \d · Col \d$/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(shownPads()[key]?.id).toBe(soundId);
   },
 
   'pad-menu': async () => {
@@ -637,6 +680,40 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     expect(api.state.soundStreams[0]!.name).toBe('Kick');
   },
 
+  'reorder-sound': async () => {
+    // S5.1 (T46): only a row's handle reorders the Sounds (a drag with its own
+    // type); the order changes as one step.
+    mount(await importTestMidi1());
+    const ids = () => screen.getAllByTestId('sound-row').map(el => el.dataset.soundId);
+    const before = ids();
+    const dt = dataTransfer({ [SOUND_REORDER_DRAG_TYPE]: before[4]! });
+    fireEvent.dragStart(within(soundRow(4)).getByTestId('sound-reorder-handle'), { dataTransfer: dt });
+    // happy-dom lays nothing out, so a drop lands below the row: after the first.
+    fireEvent.dragOver(soundRow(0), { dataTransfer: dt });
+    fireEvent.drop(soundRow(0), { dataTransfer: dt });
+    expect(ids()).toEqual([before[0], before[4], ...before.slice(1, 4), ...before.slice(5)]);
+    expect(api.undoLabel).toBe('Reorder Sounds');
+    // A Sound dragged by its row (to place it) never reorders.
+    const again = ids();
+    fireEvent.dragOver(soundRow(3), { dataTransfer: dataTransfer({ 'application/pushflow-stream': JSON.stringify({ id: again[0] }) }) });
+    fireEvent.drop(soundRow(3), { dataTransfer: dataTransfer({ 'application/pushflow-stream': JSON.stringify({ id: again[0] }) }) });
+    expect(ids()).toEqual(again);
+  },
+
+  'select-lane': async () => {
+    // S5.1 (T45): a lane's header selects its Sound across panels.
+    mount(await importTestMidi1(), <UnifiedTimeline />);
+    const sound = api.state.soundStreams[3]!;
+    const header = screen.getAllByTestId('timeline-lane-header').find(el => el.dataset.soundId === sound.id)!;
+    fireEvent.click(header);
+    expect(api.state.selectedStreamId).toBe(sound.id);
+    expect(header.getAttribute('aria-pressed')).toBe('true');
+    // Nothing is armed or placed by it.
+    expect(api.state.armedStreamId).toBeNull();
+    fireEvent.doubleClick(header);
+    expect(screen.getByRole('textbox', { name: `Rename ${sound.name}` })).toBeTruthy();
+  },
+
   'group-sounds': async () => {
     mount(await importTestMidi1());
     const [a, b] = api.state.soundStreams;
@@ -655,6 +732,8 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     press('g', { ctrlKey: true });
     expect(groupOf(a!.id)).toBeNull();
     expect(groupOf(b!.id)).toBeNull();
+    // The emptied group goes with them (P2 audit follow-up).
+    expect(api.state.laneGroups).toEqual([]);
   },
 
   'undo': async () => {

@@ -14,6 +14,7 @@ export function buildPerformanceLanesFromStreams(soundStreams: SoundStream[]): P
     orderIndex: i,
     color: stream.color,
     colorMode: 'overridden' as LaneColorMode,
+    ...(stream.shortLabel ? { shortLabel: stream.shortLabel } : {}),
     events: stream.events.map((event, eventIndex) => ({
       eventId: event.eventKey || `${stream.id}-${eventIndex}`,
       laneId: stream.id,

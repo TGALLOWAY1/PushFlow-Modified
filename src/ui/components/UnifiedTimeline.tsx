@@ -27,6 +27,7 @@ import { useLaneImport } from '../hooks/useLaneImport';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { eventAtTime, eventOfNote, getEventTimeline, resolveEventKey } from '../analysis/eventTimeline';
 import { useTransport, useTransportPosition } from '../audio/TransportProvider';
+import { orderSounds } from '../state/soundOrder';
 import { loopRegionOf } from '../audio/transportMath';
 import { DrawerToolbarSlot, TimelineToolbar } from './TimelineToolbar';
 import { TimelineRuler } from './TimelineRuler';
@@ -119,8 +120,12 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
 
   // Timeline shows ALL sound streams, including muted ones (Product Invariant #4:
   // the timeline must never hide a stream). Muted streams are rendered distinctly
-  // (dimmed) and remain unmute-able from the sidebar.
-  const visibleStreams = state.soundStreams;
+  // (dimmed) and are unmuted from their Sounds row. The lanes follow the Sounds
+  // panel's one order: its groups, then Ungrouped (S5.1, T45).
+  const visibleStreams = useMemo(
+    () => orderSounds(state.soundStreams, state.performanceLanes, state.laneGroups),
+    [state.soundStreams, state.performanceLanes, state.laneGroups],
+  );
 
   // Beat duration (used for bar-quantization and grid lines)
   const beatDurationRaw = 60 / (state.tempo || 120);
@@ -453,8 +458,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
               isEven={i % 2 === 0}
               isGlobalSelected={state.selectedStreamId === stream.id}
               isInstanceHighlighted={highlightedStreamIds?.has(stream.id) ?? false}
-              onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: stream.id })}
-              onSolo={() => dispatch({ type: 'SOLO_STREAM', payload: stream.id })}
+              onSelect={() => dispatch({ type: 'SELECT_STREAM', payload: stream.id })}
               onRename={(name) => dispatch({ type: 'RENAME_SOUND', payload: { streamId: stream.id, name } })}
             />
           ))}
@@ -753,21 +757,24 @@ function PlayheadLine({ minTime, totalDuration, zoom, height, scrollRef }: {
   );
 }
 
+/**
+ * A lane's header (S5.1, T45): a click selects its Sound in every panel (its
+ * Sounds row, its pad, its notes); a double-click renames it. Solo and Mute
+ * live in the Sounds row only, one glance away.
+ */
 function VoiceRow({
   stream,
   isEven,
   isGlobalSelected,
   isInstanceHighlighted = false,
-  onToggleMute,
-  onSolo,
+  onSelect,
   onRename,
 }: {
   stream: SoundStream;
   isEven: boolean;
   isGlobalSelected: boolean;
   isInstanceHighlighted?: boolean;
-  onToggleMute: () => void;
-  onSolo: () => void;
+  onSelect: () => void;
   onRename: (name: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -796,55 +803,38 @@ function VoiceRow({
         ${stream.muted ? 'opacity-40' : ''}`}
       style={{ height: TRACK_HEIGHT }}
     >
-      {/* Color swatch */}
-      <span
-        className="w-2 h-2 rounded-pf-sm flex-shrink-0"
-        style={{ backgroundColor: stream.color }}
-      />
-
-      {/* Name (double-click to rename) */}
       {editing ? (
-        <input
-          ref={inputRef}
-          className="flex-1 min-w-0 bg-[var(--bg-input)] border border-blue-500 rounded-pf-sm px-1 py-0 text-pf-sm text-[var(--text-primary)] outline-none"
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onBlur={commitRename}
-          onKeyDown={e => {
-            if (e.key === 'Enter') commitRename();
-            if (e.key === 'Escape') setEditing(false);
-          }}
-        />
+        <>
+          <span aria-hidden="true" className="w-2 h-2 rounded-pf-sm flex-shrink-0" style={{ backgroundColor: stream.color }} />
+          <input
+            ref={inputRef}
+            aria-label={`Rename ${stream.name}`}
+            className="flex-1 min-w-0 bg-[var(--bg-input)] border border-blue-500 rounded-pf-sm px-1 py-0 text-pf-sm text-[var(--text-primary)] outline-none"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={e => {
+              if (e.key === 'Enter') commitRename();
+              if (e.key === 'Escape') { e.stopPropagation(); setEditing(false); }
+            }}
+          />
+        </>
       ) : (
-        <span
-          className="flex-1 truncate text-[var(--text-secondary)] text-pf-sm cursor-text"
-          title={`${stream.name} (double-click to rename)`}
+        <button
+          type="button"
+          data-testid="timeline-lane-header"
+          data-sound-id={stream.id}
+          aria-pressed={isGlobalSelected}
+          className="focus-ring flex-1 min-w-0 flex items-center gap-1.5 h-full text-left rounded-pf-sm"
+          title={`${stream.name}${stream.muted ? ' · muted' : ''} · click to select it, double-click to rename`}
+          onClick={onSelect}
           onDoubleClick={() => setEditing(true)}
+          onKeyDown={e => { if (e.key === 'F2') { e.preventDefault(); setEditing(true); } }}
         >
-          {stream.name}
-        </span>
+          <span aria-hidden="true" className="w-2 h-2 rounded-pf-sm flex-shrink-0" style={{ backgroundColor: stream.color }} />
+          <span className="flex-1 truncate text-[var(--text-secondary)] text-pf-sm">{stream.name}</span>
+        </button>
       )}
-
-      {/* Solo */}
-      <button
-        className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-pf-sm text-pf-xs transition-colors bg-[var(--bg-card)] text-[var(--text-tertiary)] hover:bg-amber-500/20 hover:text-amber-400"
-        onClick={e => { e.stopPropagation(); onSolo(); }}
-        title="Solo"
-      >
-        S
-      </button>
-
-      {/* Mute toggle */}
-      <button
-        className={`flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-pf-sm text-pf-xs transition-colors
-          ${stream.muted
-            ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-            : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}`}
-        onClick={e => { e.stopPropagation(); onToggleMute(); }}
-        title={stream.muted ? 'Unmute' : 'Mute'}
-      >
-        M
-      </button>
     </div>
   );
 }
