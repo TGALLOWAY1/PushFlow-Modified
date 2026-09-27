@@ -1,19 +1,18 @@
 /**
  * Side panel widths (Sounds | Events on the left, Costs | Layouts on the right)
- * that leave the centre column room for the timeline's transport.
+ * that leave the centre column room for the transport bar.
  *
- * The transport cluster and its "⋯" button are always shown (T05), so the
- * centre must be at least as wide as they are. The widths the viewer dragged
- * to are kept; each panel gives back only what the centre needs, in
- * proportion to what it has above its own minimum, and never goes below that
- * minimum. A window too narrow even then scrolls the timeline's toolbar
- * instead of clipping it.
+ * Every transport control is always shown (T05, S4.3a), so the centre must be
+ * at least as wide as the bar. The widths the viewer dragged to are kept; each
+ * panel gives back only what the centre needs, in proportion to what it has
+ * above its own minimum, and never goes below that minimum. A window too
+ * narrow even then scrolls the transport bar instead of clipping it.
  */
 
-import { TIMELINE_TOOLBAR_MIN_WIDTH } from '../timelineLayout';
+import { TRANSPORT_BAR_MIN_WIDTH } from './transportLayout';
 
-/** The centre column's narrowest: the timeline toolbar plus the drawer's frame and the column's padding. */
-export const CENTER_MIN_WIDTH = TIMELINE_TOOLBAR_MIN_WIDTH + 8;
+/** The centre column's narrowest: the transport bar plus the drawer's frame and the column's padding. */
+export const CENTER_MIN_WIDTH = TRANSPORT_BAR_MIN_WIDTH + 8;
 
 export interface PanelWidths {
   left: number;

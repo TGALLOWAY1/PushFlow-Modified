@@ -29,9 +29,6 @@ import { DifficultyBadge } from '../shared/DifficultyBadge';
 import { HardEventStepper } from '../shared/HardEventStepper';
 import { StrikeChip } from '../shared/StrikeChip';
 
-/** Play starts a few ms before the event, so its own notes sound (the transport plays what it crosses). */
-const PLAY_LEAD_SECONDS = 0.005;
-
 export function MomentInspector() {
   const { state, dispatch } = useProject();
   const timeline = getEventTimeline(state);
@@ -57,8 +54,10 @@ export function MomentInspector() {
   const factors = cost?.breakdown && cost.difficulty !== 'Unplayable' ? factorsFromBreakdown(cost.breakdown) : null;
   const max = factors ? Math.max(...FACTOR_KEYS.map(k => factors[k]), 0.01) : 1;
 
+  // The transport's first window after Play includes its start (S4.3a), so
+  // playing from the event itself sounds its notes.
   const playFromHere = () => {
-    dispatch({ type: 'SET_CURRENT_TIME', payload: Math.max(0, event.startTime - PLAY_LEAD_SECONDS) });
+    dispatch({ type: 'SET_CURRENT_TIME', payload: event.startTime });
     dispatch({ type: 'SET_IS_PLAYING', payload: true });
   };
 

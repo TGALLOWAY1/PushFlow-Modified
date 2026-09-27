@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 /**
- * S2.1 · the measured grid, the drawer's height and the toolbar's fitting are
- * pure functions of measured sizes (T04, T05).
+ * S2.1 · the measured grid, the drawer's height and the side panels' widths
+ * are pure functions of measured sizes (T04, T05). Since S4.3a the drawer's
+ * head is the transport bar and the tab bar, and the centre is never narrower
+ * than the transport bar.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -21,6 +23,7 @@ import {
 } from '../../../src/ui/components/workspace/gridSizing';
 import {
   DRAWER_CAP_RATIO,
+  DRAWER_HEAD_HEIGHT,
   DRAWER_MIN_HEIGHT,
   DRAWER_TAB_BAR_HEIGHT,
   DEFAULT_DRAWER_PREFS,
@@ -32,16 +35,15 @@ import {
   saveDrawerPrefs,
 } from '../../../src/ui/components/workspace/drawerSizing';
 import { CENTER_MIN_WIDTH, fitSidePanels, maxPanelWidth } from '../../../src/ui/components/workspace/panelSizing';
+import { TOTAL_HEADER_HEIGHT, timelineContentHeight } from '../../../src/ui/components/timelineLayout';
 import {
-  TOOLBAR_GAP,
-  TOOLBAR_MORE_WIDTH,
-  TOOLBAR_PADDING,
+  TRANSPORT_BAR_HEIGHT,
+  TRANSPORT_BAR_MIN_WIDTH,
   TRANSPORT_CLUSTER_WIDTH,
+  TRANSPORT_GAP,
+  TRANSPORT_PADDING,
   TRANSPORT_WIDTHS,
-  fitSecondaryControls,
-  timelineContentHeight,
-  type SecondaryControl,
-} from '../../../src/ui/components/timelineLayout';
+} from '../../../src/ui/components/workspace/transportLayout';
 
 describe('padSizeFor', () => {
   it('returns the largest integer pad whose grid and moment dock fit both dimensions', () => {
@@ -93,9 +95,12 @@ describe('padSizeFor', () => {
 });
 
 describe('drawerHeightFor', () => {
-  it('fits the timeline content when it is small', () => {
+  it('fits its head (the transport and the tabs) plus the timeline content when it is small', () => {
+    expect(DRAWER_HEAD_HEIGHT).toBe(TRANSPORT_BAR_HEIGHT + DRAWER_TAB_BAR_HEIGHT);
     const content = timelineContentHeight(2);
-    expect(drawerHeightFor(1000, content, DEFAULT_DRAWER_PREFS)).toBe(DRAWER_TAB_BAR_HEIGHT + content);
+    expect(drawerHeightFor(1000, content, DEFAULT_DRAWER_PREFS)).toBe(DRAWER_HEAD_HEIGHT + content);
+    // The transport left the timeline for the drawer's head: the drawer is no taller than before S4.3a.
+    expect(DRAWER_HEAD_HEIGHT + content).toBe(DRAWER_TAB_BAR_HEIGHT + TRANSPORT_BAR_HEIGHT + TOTAL_HEADER_HEIGHT + 2 * 32 + 8);
   });
 
   it('is capped at about 40% of the centre column', () => {
@@ -125,12 +130,12 @@ describe('drawerHeightFor', () => {
     expect(drawerHeightFor(center, 100, { height: 300, collapsed: false })).toBe(drawer);
     expect(minDrawerHeight(center)).toBe(drawer);
     expect(minDrawerHeight(900)).toBe(DRAWER_MIN_HEIGHT);
-    // Shorter still, the drawer is down to its tab bar.
-    expect(drawerHeightFor(400, 100, DEFAULT_DRAWER_PREFS)).toBe(DRAWER_TAB_BAR_HEIGHT);
+    // Shorter still, the drawer is down to its head: the transport and the tabs stay.
+    expect(drawerHeightFor(400, 100, DEFAULT_DRAWER_PREFS)).toBe(DRAWER_HEAD_HEIGHT);
   });
 
-  it('collapsed, it is just the tab bar', () => {
-    expect(drawerHeightFor(900, 400, { height: 300, collapsed: true })).toBe(DRAWER_TAB_BAR_HEIGHT);
+  it('collapsed, it is just its head: the transport bar and the tab bar', () => {
+    expect(drawerHeightFor(900, 400, { height: 300, collapsed: true })).toBe(DRAWER_HEAD_HEIGHT);
   });
 
   it('remembers prefs, and survives blocked or odd storage', () => {
@@ -145,29 +150,18 @@ describe('drawerHeightFor', () => {
   });
 });
 
-describe('fitSecondaryControls', () => {
-  const all = new Set<SecondaryControl>(['import', 'count', 'zoom', 'clearLoop']);
-
-  it('the transport cluster width is the sum of its controls and gaps', () => {
+describe('the transport bar (S4.3a)', () => {
+  it('its width is the sum of its controls and gaps, plus its padding', () => {
     const widths = Object.values(TRANSPORT_WIDTHS);
-    expect(TRANSPORT_CLUSTER_WIDTH).toBe(widths.reduce((a, b) => a + b, 0) + (widths.length - 1) * TOOLBAR_GAP);
+    expect(TRANSPORT_CLUSTER_WIDTH).toBe(widths.reduce((a, b) => a + b, 0) + (widths.length - 1) * TRANSPORT_GAP);
+    expect(TRANSPORT_BAR_MIN_WIDTH).toBe(TRANSPORT_PADDING + TRANSPORT_CLUSTER_WIDTH);
+    expect(CENTER_MIN_WIDTH).toBe(TRANSPORT_BAR_MIN_WIDTH + 8);
   });
 
-  it('shows everything inline, with no menu, when it all fits', () => {
-    expect(fitSecondaryControls(2000, all)).toEqual({ inline: ['import', 'count', 'zoom', 'clearLoop'], overflow: [] });
-  });
-
-  it('keeps priority order and moves the rest into the menu', () => {
-    const r = fitSecondaryControls(TOOLBAR_PADDING + TRANSPORT_CLUSTER_WIDTH + TOOLBAR_GAP + TOOLBAR_MORE_WIDTH + 2 * (TOOLBAR_GAP + 72), all);
-    expect(r).toEqual({ inline: ['import', 'count'], overflow: ['zoom', 'clearLoop'] });
-  });
-
-  it('puts everything in the menu when only the transport fits (1366x768)', () => {
-    expect(fitSecondaryControls(664, all)).toEqual({ inline: [], overflow: ['import', 'count', 'zoom', 'clearLoop'] });
-  });
-
-  it('leaves out controls with nothing to show', () => {
-    expect(fitSecondaryControls(2000, new Set(['import', 'count', 'zoom']))).toEqual({ inline: ['import', 'count', 'zoom'], overflow: [] });
+  it('fits the centre at 1366x768 with the default panels, so they keep their widths', () => {
+    // 1366 px wide: the body keeps 1346, the handles 16, the panels 320 and 340.
+    const room = 1346 - 16 - CENTER_MIN_WIDTH;
+    expect(fitSidePanels(room, { left: 320, right: 340 }, { left: 200, right: 280 })).toEqual({ left: 320, right: 340 });
   });
 });
 

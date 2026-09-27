@@ -28,6 +28,7 @@ import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { type GridLabelSettings, type MomentView } from '../state/viewSettings';
 import { playheadEventIndex } from '../analysis/selectionModel';
+import { useTransportPosition } from '../audio/TransportProvider';
 import { playbackOverlayAt, selectionOverlay, type PadStrike } from '../analysis/momentOverlay';
 import { getEventTimeline } from '../analysis/eventTimeline';
 import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
@@ -234,7 +235,10 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
   // changes when it does.
   const timeline = getEventTimeline(state);
   const playing = state.isPlaying;
-  const playheadIndex = playing ? playheadEventIndex(timeline, assignments, state.currentTime) : null;
+  // The playhead, from the workspace's transport (S4.3a): it moves every
+  // frame while playing without the project state changing.
+  const playhead = useTransportPosition();
+  const playheadIndex = playing ? playheadEventIndex(timeline, assignments, playhead) : null;
   const overlay = useMemo(
     () => playing
       ? playbackOverlayAt(timeline, assignments, playheadIndex, momentView)
@@ -368,7 +372,7 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
 
   const activePadKeys = useMemo(() => {
     const keys = new Set<string>();
-    if (!assignments || (!state.isPlaying && state.currentTime === 0)) return keys;
+    if (!assignments || (!state.isPlaying && playhead === 0)) return keys;
 
     // Map event keys to durations
     const durationMap = new Map<string, number>();
@@ -386,14 +390,14 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
       // which is the one thing the grid is meant to show during rehearsal.
       const noteDuration = (a.eventKey && durationMap.get(a.eventKey)) || STRIKE_WINDOW_SECONDS;
       const window = Math.min(noteDuration, STRIKE_WINDOW_SECONDS);
-      if (state.currentTime >= a.startTime && state.currentTime < a.startTime + window) {
+      if (playhead >= a.startTime && playhead < a.startTime + window) {
         if (a.row !== undefined && a.col !== undefined) {
           keys.add(`${a.row},${a.col}`);
         }
       }
     }
     return keys;
-  }, [assignments, state.currentTime, state.isPlaying, state.soundStreams]);
+  }, [assignments, playhead, state.isPlaying, state.soundStreams]);
 
   // Detect new note-on events: pads that just became active (weren't active last frame)
   useEffect(() => {
