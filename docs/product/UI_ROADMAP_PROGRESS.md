@@ -722,7 +722,7 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
 
 #### S5.1 — One soft finger-preference control; a real Sounds panel; drag feedback
 
-- **Status:** Not started
+- **Status:** In progress (stacked on S4.3a's branch, PR #114, for the schema order)
 - **Prerequisites:** S4.2, S3.3.
 - **Decisions:** Q4 (the Sounds panel's "Place remaining N" is S3.3's candidate-producing action).
 
