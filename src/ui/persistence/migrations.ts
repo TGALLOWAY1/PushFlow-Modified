@@ -22,7 +22,7 @@
  * (presetMigrations.ts, S1a.5 preset fingerings).
  */
 
-import { PERSISTED_SCHEMA_VERSION } from './persistedProject';
+import { PERSISTED_SCHEMA_VERSION, rehearsalPreferencesOf } from './persistedProject';
 import { FALLBACK_LAYOUT_NAME, legacyRoleWords, withoutLegacyRoleWords } from '../state/layoutLabels';
 import { variantStamp } from '../state/variantNames';
 import { uniqueName } from '../../utils/uniqueName';
@@ -110,6 +110,19 @@ export const MIGRATIONS: readonly Migration[] = [
       if (Array.isArray(record.savedVariants)) next.savedVariants = cleanVariantNames(record.savedVariants as unknown[]);
       return next;
     },
+  },
+  {
+    // S4.3a (T58): the loop and speed a project was last rehearsed with come
+    // back with it. A project saved before remembered neither, so it starts
+    // at Loop off, no region, 1x; stored preferences are kept (odd values
+    // reset).
+    from: 5,
+    to: 6,
+    name: 'rehearsal-preferences',
+    up: record => ({
+      ...record,
+      rehearsal: rehearsalPreferencesOf(record.rehearsal),
+    }),
   },
 ];
 

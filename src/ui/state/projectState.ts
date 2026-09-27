@@ -245,7 +245,12 @@ export interface ProjectSession {
    */
   lastGenerationRun: GenerationRunRecord | null;
 
-  // Transport
+  // Transport (the workspace's TransportProvider plays it, S4.3a)
+  /**
+   * Where the playhead rests: set by a seek and when playback stops. While
+   * playing, the live position is the transport's (useTransportPosition), not
+   * this.
+   */
   currentTime: number;
   isPlaying: boolean;
   /**
@@ -253,10 +258,11 @@ export interface ProjectSession {
    *
    * Practising a hard passage means slowing it down until it is clean and then
    * working back up, so the transport needs to run at a fraction of tempo
-   * without the analysis or the layout changing.
+   * without the analysis or the layout changing. Saved with the project, like
+   * the loop (a rehearsal preference, S4.3a).
    */
   playbackRate: number;
-  /** Loop the section between loopStart and loopEnd during playback. */
+  /** Loop on: repeat the region, or the whole performance when there is none. Off: play once to the end. */
   loopEnabled: boolean;
   /** Loop region bounds in seconds; null means the whole performance. */
   loopStart: number | null;
@@ -2059,24 +2065,27 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
     case 'TOGGLE_PLAYING':
       return { ...state, isPlaying: !state.isPlaying };
 
-    case 'SET_PLAYBACK_RATE':
+    // The loop and speed are rehearsal preferences, saved with the project
+    // (S4.3a): a change bumps updatedAt so it is autosaved. Never analysis
+    // inputs, and never in undo history (session state).
+    case 'SET_PLAYBACK_RATE': {
       // Clamped so the transport can never stall or run away.
-      return { ...state, playbackRate: Math.min(2, Math.max(0.1, action.payload)) };
+      const playbackRate = Math.min(2, Math.max(0.1, action.payload));
+      if (playbackRate === state.playbackRate) return state;
+      return { ...state, playbackRate, updatedAt: new Date().toISOString() };
+    }
 
     case 'SET_LOOP_ENABLED':
-      return { ...state, loopEnabled: action.payload };
+      if (action.payload === state.loopEnabled) return state;
+      return { ...state, loopEnabled: action.payload, updatedAt: new Date().toISOString() };
 
     case 'SET_LOOP_REGION': {
       const { start, end } = action.payload;
-      if (start === null || end === null) {
-        return { ...state, loopStart: null, loopEnd: null };
-      }
       // Normalise so dragging a region right-to-left still works.
-      return {
-        ...state,
-        loopStart: Math.min(start, end),
-        loopEnd: Math.max(start, end),
-      };
+      const loopStart = start === null || end === null ? null : Math.max(0, Math.min(start, end));
+      const loopEnd = start === null || end === null ? null : Math.max(start, end);
+      if (loopStart === state.loopStart && loopEnd === state.loopEnd) return state;
+      return { ...state, loopStart, loopEnd, updatedAt: new Date().toISOString() };
     }
 
     case 'SET_COUNT_IN_BARS':

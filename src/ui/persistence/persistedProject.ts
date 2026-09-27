@@ -32,8 +32,49 @@ import { type CandidateSolution } from '../../types/candidateSolution';
  * 3: ghost locks pruned from every stored layout (S1a.4).
  * 4: lastOpenedAt (S2.3).
  * 5: layout names without role words; provenance instead (S3.2, T32).
+ * 6: rehearsal preferences, the loop and speed (S4.3a, T58).
  */
-export const PERSISTED_SCHEMA_VERSION = 5;
+export const PERSISTED_SCHEMA_VERSION = 6;
+
+// ============================================================================
+// Rehearsal preferences
+// ============================================================================
+
+/**
+ * The loop and speed a project was last rehearsed with (S4.3a, T58): saved
+ * with the project so they come back with it, but rehearsal preferences, never
+ * layout truth or analysis inputs. Loop bounds are transport seconds.
+ */
+export interface RehearsalPreferences {
+  loopEnabled: boolean;
+  loopStart: number | null;
+  loopEnd: number | null;
+  playbackRate: number;
+}
+
+export const DEFAULT_REHEARSAL_PREFERENCES: RehearsalPreferences = {
+  loopEnabled: false,
+  loopStart: null,
+  loopEnd: null,
+  playbackRate: 1,
+};
+
+/** Stored rehearsal preferences, with anything missing or odd set to its default. */
+export function rehearsalPreferencesOf(raw: unknown): RehearsalPreferences {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_REHEARSAL_PREFERENCES };
+  const r = raw as Record<string, unknown>;
+  const time = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
+  let loopStart = time(r.loopStart);
+  let loopEnd = time(r.loopEnd);
+  if (loopStart === null || loopEnd === null) { loopStart = null; loopEnd = null; }
+  const rate = typeof r.playbackRate === 'number' && Number.isFinite(r.playbackRate) ? r.playbackRate : 1;
+  return {
+    loopEnabled: r.loopEnabled === true,
+    loopStart,
+    loopEnd,
+    playbackRate: Math.min(2, Math.max(0.1, rate)),
+  };
+}
 
 // ============================================================================
 // Persisted Project Document
@@ -109,6 +150,11 @@ export interface PersistedProject {
    * updatedAt.
    */
   lastOpenedAt?: string;
+  /**
+   * The loop and speed last rehearsed with (S4.3a). Added in schema 6; the
+   * migration starts it at Loop off, no region, 1x.
+   */
+  rehearsal?: RehearsalPreferences;
   schemaVersion: number;
 }
 

@@ -149,15 +149,17 @@ describe('persistence round trip', () => {
     // S2.3's migration starts lastOpenedAt at the saved updatedAt. S3.2's takes
     // the role words out of the layout names: "Default (suggested)" is a
     // suggestion called Default, and "Default (suggested) (draft)" a draft of it.
+    // S4.3a's starts the rehearsal preferences at Loop off, no region, 1x.
     expect(saved.activeLayout.name).toBe('Default (suggested)');
     expect(saved.workingLayout.name).toBe('Default (suggested) (draft)');
     expect(resavedFields).toEqual({
       ...savedFields,
-      schemaVersion: 5,
+      schemaVersion: 6,
       recoveredDrafts: [],
       lastOpenedAt: saved.updatedAt,
       activeLayout: { ...saved.activeLayout, name: 'Default', provenance: 'suggested' },
       workingLayout: { ...saved.workingLayout, name: 'Default' },
+      rehearsal: { loopEnabled: false, loopStart: null, loopEnd: null, playbackRate: 1 },
     });
 
     // And the document slice survives a second load unchanged.
