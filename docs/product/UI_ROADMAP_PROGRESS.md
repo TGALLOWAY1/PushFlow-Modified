@@ -707,12 +707,13 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
 - [x] **P4-11c** The updated input-table row "←/→ while playing" passes its registry test. · *PR / verified by:* PR #117. `inputTable.test.tsx` row `seek-events`: while playing, → from just after event 6 goes to event 7's start, ← to 6 and then 5; the picked event stays selected; at the last event → leaves the playhead; looping bars 3–4, the steps stay inside the loop; a text field keeps its arrows; stopped, the arrows select again. `current-moment.spec.ts` checks the same keys in Chromium at 0.25x, and C8's arrow case now checks → moves on to the next event.
 
 **Session checks**
-- [x] Full suite before push. · *PR / verified by:* PR #117, on 253129b (the last code commit; the tracker and screenshots after it change no code):
+- [x] Full suite before push. · *PR / verified by:* PR #117, on 253129b (the last code commit before review; the tracker and screenshots after it change no code), then the review fixes:
   - `npm run typecheck`: clean.
   - `npm run test:run`: 136 files, 1,534 passed, 4 `runIf` skips. That includes `testMidi1Integration.test.ts`, unchanged: no solver or optimizer changed.
   - `npm run build` + `npm run check:no-test-hook`: OK. The editor chunk is 599.37 kB (see Follow-ups).
   - Playwright at chromium-1366 and -1600, and C1 at -1920: 277 passed, 2 failed (15.4 min). The 2 are the Library screenshot comparisons (8,514 and 8,479 pixels), which differ only in a cloud container and pass in CI. No expected-fail case passed.
   - Mutation checks (scratch edits, reverted), each caught: a stop that never selects fails 2 tests; a Play that ignores the count-in, 7; arrows that don't seek while playing, 1; an inspector that ignores the playhead, 2; a Rehearse without its one-bar count-in, 2; a ruler click that doesn't snap, 1; a scheduler that drops the count-in's clicks, 7; pads that flash during the count-in fail `rehearse.spec.ts`'s P4-4.
+  - The review fixes (f822728, two Codex findings: a seek while audio starts ends the count-in; Rehearse in the enlarged chart): `npm run typecheck` clean; `npm run test:run` 136 files, 1,537 passed (3 new), 4 `runIf` skips; Playwright at chromium-1366 and -1600 on the specs they touch (`rehearse`, `transport`, `current-moment`, `c8`, `events-list`, `event-identity`, `measured-grid`, `overlays`): 80 passed. Removing the dialog's Rehearse, or its closing the dialog, fails the new component test.
 
 #### S4.4 — Mute is audio-only; practice aids; Rehearse view
 
