@@ -6,6 +6,9 @@
  * - with a Sound armed, a click on an empty pad places it (T62);
  * - otherwise a click selects the pad and its Sound, keeping any selected event;
  * - drag a Sound from VoicePalette onto a pad, or a pad onto another to swap;
+ *   while dragging, the pad under the pointer shows the incoming Sound and a
+ *   line saying what a drop would do ("Swap with Snare"), and a drop that
+ *   sends a Sound back to To place says so with Undo (S5.1, T46);
  * - right-click opens the pad menu.
  * While the grid shows a layout edits don't go to (an inspected candidate,
  * variant or recovered draft, Active over a differing draft, or a trace
@@ -16,12 +19,15 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import chroma from 'chroma-js';
 import { Lock } from 'lucide-react';
 import { useProject } from '../state/ProjectContext';
-import { getDisplayedLayout, isPadLocked, type SoundStream } from '../state/projectState';
+import { getDisplayedLayout, isPadLocked, placementBlockedByLock, type SoundStream } from '../state/projectState';
 import { orderSounds } from '../state/soundOrder';
 import { padClickMeaning, PAD_TAKEN_MESSAGE } from '../input/inputTable';
 import { useToast } from './shared/Toast';
 import { type Layout } from '../../types/layout';
-import { LOCKED_SOUND_DRAG_TYPE } from './dragTypes';
+import { LOCKED_SOUND_DRAG_TYPE, PAD_DRAG_TYPE, SOUND_DRAG_TYPE } from './dragTypes';
+import { endDrag, startDrag, useDragSession } from './dragSession';
+import { dropHint } from '../analysis/dropHint';
+import { useUndoToast } from '../hooks/useUndoToast';
 import { PadContextMenu } from './PadContextMenu';
 import { useRemovePadWithUndo } from '../hooks/useRemovePadWithUndo';
 import { useReadOnlyHint } from '../hooks/useReadOnlyHint';
@@ -152,6 +158,11 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
   const padDrumRackNote = (row: number, col: number) => bottomLeftNote + row * 8 + col;
   const [dragOverPad, setDragOverPad] = useState<string | null>(null);
   const [dragSourcePad, setDragSourcePad] = useState<string | null>(null);
+  // The drag in progress (a Sound from a list, or a pad), for the hint and the ghost (T46).
+  const dragSession = useDragSession();
+  // The pad under a drag: its hint shows even when the drop would be refused.
+  const [hintPad, setHintPad] = useState<string | null>(null);
+  const undoToast = useUndoToast();
   const [contextMenu, setContextMenu] = useState<{ padKey: string; x: number; y: number; pad: HTMLElement } | null>(null);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
@@ -165,6 +176,10 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
     [state.soundStreams],
   );
   const nameLines = padLabelLines(padSize);
+  const soundName = useCallback(
+    (id: string) => state.soundStreams.find(s => s.id === id)?.name ?? 'a removed Sound',
+    [state.soundStreams],
+  );
 
   // Build a live padToVoice that reflects current stream names/colors
   // (safety net: reducer should already sync, but this ensures display is always fresh)
@@ -455,9 +470,11 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
   const handleDrop = useCallback((e: React.DragEvent, padKey: string) => {
     e.preventDefault();
     setDragOverPad(null);
+    setHintPad(null);
     // Refused at dragover already; a drop that gets here anyway changes nothing.
     if (refuseEdit()) {
       setDragSourcePad(null);
+      endDrag();
       return;
     }
 
@@ -489,7 +506,8 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
 
     // Check pad-to-pad drag first (swap) — must come before stream check
     // because handlePadDragStart sets both data types
-    const padData = e.dataTransfer.getData('application/pushflow-pad');
+    const padData = e.dataTransfer.getData(PAD_DRAG_TYPE);
+    endDrag();
     if (padData === padKey) {
       // Dropped back on its own pad: nothing to do (T14). The reducer would
       // refuse it too; not dispatching keeps the gesture from looking like an edit.
@@ -503,13 +521,21 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
     }
 
     // Check if it's a palette drag (sound stream from VoicePalette)
-    const streamData = e.dataTransfer.getData('application/pushflow-stream');
+    const streamData = e.dataTransfer.getData(SOUND_DRAG_TYPE);
     if (streamData) {
       try {
         const data = JSON.parse(streamData);
         const stream = state.soundStreams.find(s => s.id === data.id);
         if (stream) {
+          // A Sound dropped on another's pad sends that one back to To place:
+          // say so, with Undo (T46). A drop the locks refuse evicts nothing.
+          const editable = state.workingLayout ?? state.activeLayout;
+          const occupant = editable.padToVoice[padKey];
+          const evicts = occupant && occupant.id !== stream.id && !placementBlockedByLock(editable, stream.id, padKey)
+            ? state.soundStreams.find(s => s.id === occupant.id)?.name ?? occupant.name
+            : null;
           dispatch({ type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey, stream } });
+          if (evicts) undoToast(`Placed ${stream.name} on ${formatPadPosition(padKey)}: ${evicts} went back to To place`, 'Place Sound');
         } else {
           dispatch({ type: 'SET_ERROR', payload: 'Could not assign sound — it no longer exists in this project.' });
         }
@@ -521,9 +547,11 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
     }
 
     setDragSourcePad(null);
-  }, [state.soundStreams, dispatch, layout, refuseEdit]);
+  }, [state.soundStreams, state.workingLayout, state.activeLayout, dispatch, layout, refuseEdit, undoToast]);
 
   const handleDragOver = useCallback((e: React.DragEvent, padKey: string) => {
+    // What a drop here would do (T46), refused or not: the hint beside the pad.
+    setHintPad(prev => (prev === padKey ? prev : padKey));
     // Nothing drops onto a read-only layout (a Sound, a pad or a preset): the
     // pointer says so, and the hint says how to edit it.
     if (refuseEdit()) {
@@ -553,8 +581,11 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
     }
   }, [onGridDragOver, layout, refuseEdit]);
 
-  const handleDragLeave = useCallback(() => {
-    setDragOverPad(null);
+  // Leaving a pad clears only its own marks: the browser tells the pad entered
+  // next first, and its hint must stay.
+  const handleDragLeave = useCallback((padKey: string) => {
+    setDragOverPad(prev => (prev === padKey ? null : prev));
+    setHintPad(prev => (prev === padKey ? null : prev));
     onGridDragLeave?.();
   }, [onGridDragLeave]);
 
@@ -565,8 +596,8 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
       e.preventDefault();
       return;
     }
-    e.dataTransfer.setData('application/pushflow-pad', padKey);
-    e.dataTransfer.setData('application/pushflow-stream', JSON.stringify({
+    e.dataTransfer.setData(PAD_DRAG_TYPE, padKey);
+    e.dataTransfer.setData(SOUND_DRAG_TYPE, JSON.stringify({
       id: voice.id,
       name: voice.name,
       color: voice.color,
@@ -574,6 +605,7 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
       source: 'grid',
     }));
     e.dataTransfer.effectAllowed = 'move';
+    startDrag({ kind: 'pad', soundId: voice.id, fromPad: padKey });
     setDragSourcePad(padKey);
   }, [refuseEdit]);
 
@@ -694,6 +726,11 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
       // not on a read-only layout, where nothing can be placed.
       const previewsArmed = !!armedStream && !voice && !readOnly;
       const ghostInfo = ghostPads?.get(padKey);
+      // A Sound or pad dragged over this pad: what a drop would do, and the incoming Sound (T46).
+      const dropInfo = hintPad === padKey && dragSession && layout
+        ? dropHint(dragSession, padKey, layout, soundName, readOnlyHint)
+        : null;
+      const incoming = dropInfo && dragSession ? state.soundStreams.find(s => s.id === dragSession.soundId) ?? null : null;
       const constraint = layout?.fingerConstraints[padKey];
       const isLocked = !!voice && layout?.placementLocks[voice.id] === padKey;
       // Uninvolved pads dim to about 45% without desaturating (T09), while an
@@ -847,11 +884,17 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
             setContextMenu({ padKey, x: e.clientX, y: e.clientY, pad: e.currentTarget });
           }}
           onDragOver={e => !isMuted && handleDragOver(e, padKey)}
-          onDragLeave={handleDragLeave}
+          // Entering a pad shows its hint at once; dragover keeps it (and says whether it drops).
+          onDragEnter={() => { if (!isMuted) setHintPad(padKey); }}
+          onDragLeave={e => {
+            // Moving onto the pad's own label is no leaving: the hint stays (T46).
+            if (e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return;
+            handleDragLeave(padKey);
+          }}
           onDrop={e => !isMuted && handleDrop(e, padKey)}
           draggable={!!voice && !isMuted && !isLocked}
           onDragStart={e => voice && !isMuted && !isLocked && handlePadDragStart(e, padKey, voice)}
-          onDragEnd={() => { setDragSourcePad(null); setDragOverPad(null); }}
+          onDragEnd={() => { setDragSourcePad(null); setDragOverPad(null); setHintPad(null); }}
           title={voice
             ? `${formatPadPosition(padKey)} · ${voice.name}${summary ? ` · ${summary.hitCount} hits` : ''}${constraint ? ` · Finger preference ${constraint}` : ''}${isLocked ? ' · Locked · Unlock to move' : ''}${readOnly ? ` · ${readOnlyHint}` : ''}`
             : readOnly
@@ -881,6 +924,35 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
                   : '2px solid rgba(255,50,50,0.6)',
               }}
             />
+          )}
+          {/* The incoming Sound, where it would land (T46) */}
+          {dropInfo && incoming && dropInfo.kind !== 'refused' && dropInfo.kind !== 'same' && (
+            <div
+              data-testid="pad-drag-ghost"
+              aria-hidden="true"
+              className="absolute inset-1 rounded-md border-2 border-dashed pointer-events-none z-20 flex items-center justify-center px-0.5 text-center text-[11px] font-semibold leading-[13px] text-white/95 overflow-hidden"
+              style={{ borderColor: incoming.color, backgroundColor: safeColorAlpha(incoming.color, 0.45, 'transparent') }}
+            >
+              {incoming.shortLabel ?? padLabel(incoming.name, namePrefix, padSize, 1)}
+            </div>
+          )}
+          {/* One line on what a drop here would do: "Swap with Snare" (T46) */}
+          {dropInfo && (
+            <div
+              data-testid="drag-hint"
+              data-kind={dropInfo.kind}
+              role="status"
+              aria-live="polite"
+              className={`absolute z-40 px-2 py-0.5 rounded-pf-sm text-pf-xs font-semibold font-sans whitespace-nowrap pointer-events-none shadow-pf-xl border ${
+                row === 7 ? 'top-full mt-1.5' : 'bottom-full mb-1.5'
+              } ${col <= 1 ? 'left-0' : col >= 6 ? 'right-0' : 'left-1/2 -translate-x-1/2'} ${
+                dropInfo.kind === 'refused'
+                  ? 'bg-[#2a1215] text-red-200 border-red-500/50'
+                  : 'bg-[var(--bg-card)] text-[var(--text-primary)] border-[var(--border-strong)]'
+              }`}
+            >
+              {dropInfo.text}
+            </div>
           )}
           {/* The next event's strike: a dashed outline in its hand's colour and "+1" (T09) */}
           {isNext && (

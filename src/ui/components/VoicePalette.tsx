@@ -13,6 +13,8 @@
  *   selection bar (SoundsSelectionBar).
  * - Reordering only by a row's handle, which can also drop a Sound into a
  *   group's section (T46).
+ * - A pad dragged from the grid onto the panel is unplaced, with Undo; while
+ *   one is dragged the panel lights up as the drop zone (T46).
  */
 
 import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
@@ -24,7 +26,9 @@ import { filterCounts, matchesFilter, matchesSearch, soundPlacements, type Sound
 import { preferenceOf, usePlanFingers, useSetFingerPreference } from '../hooks/useFingerPreference';
 import { sharedNamePrefix } from '../analysis/padLabels';
 import { useReadOnlyHint } from '../hooks/useReadOnlyHint';
-import { setSoundDragData } from './dragTypes';
+import { PAD_DRAG_TYPE, setSoundDragData } from './dragTypes';
+import { endDrag, useDragSession } from './dragSession';
+import { useRemovePadWithUndo } from '../hooks/useRemovePadWithUndo';
 import { SoundsHeader } from './sounds/SoundsHeader';
 import { SoundRow, type DropSide } from './sounds/SoundRow';
 import { SoundGroupHeader } from './sounds/SoundGroupHeader';
@@ -55,6 +59,11 @@ export function VoicePalette() {
   const [reordering, setReordering] = useState<string | null>(null);
   const [reorderTarget, setReorderTarget] = useState<ReorderTarget | null>(null);
   const endReorder = useCallback(() => { setReordering(null); setReorderTarget(null); }, []);
+  // A pad dragged from the grid: dropped here, it comes off the grid (T46).
+  const dragSession = useDragSession();
+  const padDrag = dragSession?.kind === 'pad' ? dragSession : null;
+  const [padOver, setPadOver] = useState(false);
+  const removePad = useRemovePadWithUndo();
 
   const ordered = useMemo(
     () => orderSounds(state.soundStreams, state.performanceLanes, state.laneGroups),
@@ -187,7 +196,7 @@ export function VoicePalette() {
           const r = anchor.getBoundingClientRect();
           setMenu(current => (current?.id === sound.id ? null : { id: sound.id, x: r.right - 236, y: r.bottom + 4, anchor }));
         }}
-        onDragStart={e => setSoundDragData(e.dataTransfer, sound, layout.placementLocks[sound.id])}
+        onDragStart={e => setSoundDragData(e.dataTransfer, sound, layout.placementLocks[sound.id], placement.padKeys[0] ?? null)}
         onReorderStart={() => setReordering(sound.id)}
         onReorderEnd={endReorder}
         dropSide={dropSide}
@@ -220,9 +229,44 @@ export function VoicePalette() {
   const ungroupedVisible = visible.filter(s => !groupOf.get(s.id));
 
   return (
-    <div data-testid="sounds-list" className="flex flex-col gap-0.5 min-h-full" onClick={handleBackgroundClick} onDragEnd={endReorder}>
+    <div
+      data-testid="sounds-list"
+      data-drop-zone={padDrag ? (padOver ? 'over' : 'ready') : undefined}
+      className={`flex flex-col gap-0.5 min-h-full rounded-pf-md transition-colors ${
+        padDrag ? `outline-dashed outline-2 -outline-offset-2 ${padOver ? 'outline-accent-primary bg-accent-primary/10' : 'outline-accent-primary/50'}` : ''
+      }`}
+      onClick={handleBackgroundClick}
+      onDragEnd={endReorder}
+      onDragOver={e => {
+        if (!e.dataTransfer.types.includes(PAD_DRAG_TYPE)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (!padOver) setPadOver(true);
+      }}
+      onDragLeave={e => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPadOver(false);
+      }}
+      onDrop={e => {
+        if (!e.dataTransfer.types.includes(PAD_DRAG_TYPE)) return;
+        e.preventDefault();
+        const padKey = e.dataTransfer.getData(PAD_DRAG_TYPE);
+        setPadOver(false);
+        endDrag();
+        if (padKey) removePad(padKey);
+      }}
+    >
       {state.soundStreams.length > 0 && (
         <SoundsHeader counts={counts} filter={filter} onFilter={setFilter} query={query} onQuery={setQuery} />
+      )}
+      {padDrag && (
+        <div
+          data-testid="sounds-drop-zone"
+          className={`mb-1 px-2 py-1.5 rounded-pf-sm border border-dashed text-center text-pf-xs font-semibold pointer-events-none ${
+            padOver ? 'border-accent-primary bg-accent-primary/25 text-[var(--text-primary)]' : 'border-accent-primary/60 bg-[var(--bg-panel)] text-[var(--accent-primary-soft)]'
+          }`}
+        >
+          Drop here to take {state.soundStreams.find(s => s.id === padDrag.soundId)?.name ?? 'it'} off the grid
+        </div>
       )}
 
       {hasGroups ? (

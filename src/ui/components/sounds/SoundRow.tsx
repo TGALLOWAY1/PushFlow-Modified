@@ -106,7 +106,7 @@ export function SoundRow({
       data-armed={isArmed ? 'true' : undefined}
       data-placement={placed ? 'on-grid' : 'to-place'}
       className={`
-        group relative flex items-center gap-1 py-1 pr-1.5 rounded-pf-sm text-pf-sm
+        group relative flex items-center gap-1 py-1 pr-1.5 rounded-pf-sm text-pf-sm select-none
         border transition-colors duration-fast
         cursor-grab active:cursor-grabbing
         ${isGrouped ? 'pl-6' : 'pl-3.5'}
@@ -164,7 +164,6 @@ export function SoundRow({
           onReorderStart();
         }}
         onDragEnd={onReorderEnd}
-        onClick={stop}
       >
         <GripVertical size={11} />
       </span>

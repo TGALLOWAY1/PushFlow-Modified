@@ -342,16 +342,22 @@ describe('reordering by the handle only; the timeline shares the order', () => {
     expect(screen.queryByTestId('sound-drop-line')).toBeNull();
   });
 
-  it('a Sound or pad dragged over the list never reorders it', () => {
+  it('a Sound or pad dragged over the list never reorders it; a pad dropped there is unplaced instead', () => {
     mount(suggested);
     const before = rows().map(r => r.dataset.soundId);
-    const pad = Object.keys(getDisplayedLayout(api.state)!.padToVoice)[0]!;
-    const over = dataTransfer({ [PAD_DRAG_TYPE]: pad, 'application/pushflow-stream': JSON.stringify({ id: before[2] }) });
-    // Not default-prevented by a row: no reorder target.
-    expect(fireEvent.dragOver(rowOf(before[0]!), { dataTransfer: over })).toBe(true);
-    fireEvent.drop(rowOf(before[0]!), { dataTransfer: over });
+    // A Sound on its way to the grid: the list doesn't take it.
+    const sound = dataTransfer({ 'application/pushflow-stream': JSON.stringify({ id: before[2] }) });
+    expect(fireEvent.dragOver(rowOf(before[0]!), { dataTransfer: sound })).toBe(true);
+    fireEvent.drop(rowOf(before[0]!), { dataTransfer: sound });
     expect(rows().map(r => r.dataset.soundId)).toEqual(before);
+    // A pad: the panel is its drop zone (T46), and no row becomes a reorder target.
+    const pad = Object.entries(getDisplayedLayout(api.state)!.padToVoice).find(([, v]) => v.id === before[2])![0];
+    const padDrag = dataTransfer({ [PAD_DRAG_TYPE]: pad, 'application/pushflow-stream': JSON.stringify({ id: before[2] }) });
+    fireEvent.dragOver(rowOf(before[0]!), { dataTransfer: padDrag });
     expect(screen.queryByTestId('sound-drop-line')).toBeNull();
+    fireEvent.drop(rowOf(before[0]!), { dataTransfer: padDrag });
+    expect(rows().map(r => r.dataset.soundId)).toEqual(before);
+    expect(placedIds().has(before[2]!)).toBe(false);
   });
 
   it('a handle drag onto a group\'s heading moves the Sound into it; with groups, the timeline lists them first', () => {

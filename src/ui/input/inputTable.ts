@@ -19,6 +19,7 @@ export type InputRowId =
   | 'pad-click-idle'
   | 'pad-alt-click'
   | 'drag-pad'
+  | 'drag-pad-to-sounds'
   | 'pad-menu'
   | 'pad-enter'
   | 'read-only-edit'
@@ -97,7 +98,7 @@ export const INPUT_TABLE: readonly InputRow[] = [
   {
     id: 'drag-sound', group: 'Placing Sounds',
     input: ['Drag a Sound onto a pad'], when: 'Any time',
-    does: 'Places it there. A Sound already on that pad comes off the grid.',
+    does: 'Places it there. While dragging, the pad shows it and a line says what a drop does: "Place Kick here", "Move from Row 4 · Col 4", or "Replace: Snare goes back to To place", which the toast then offers to undo.',
   },
   // Pads
   {
@@ -118,7 +119,12 @@ export const INPUT_TABLE: readonly InputRow[] = [
   {
     id: 'drag-pad', group: 'Pads',
     input: ['Drag a pad onto another'], when: 'Any time',
-    does: 'Swaps the two pads, or moves the Sound to an empty pad.',
+    does: 'Swaps the two pads ("Swap with Snare"), or moves the Sound to an empty pad ("Move from Row 4 · Col 4"). A refused drop says why.',
+  },
+  {
+    id: 'drag-pad-to-sounds', group: 'Pads',
+    input: ['Drag a pad onto the Sounds panel'], when: 'Any time',
+    does: 'Takes its Sound off the grid, back to To place, with Undo in the toast. The panel lights up while a pad is dragged.',
   },
   {
     id: 'pad-menu', group: 'Pads',
