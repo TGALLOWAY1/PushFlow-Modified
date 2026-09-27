@@ -642,7 +642,7 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
 
 #### S4.3a — A DAW-grade transport ∥ S4.2
 
-- **Status:** In progress (branch `claude/pushflow-ui-roadmap-5bj3zd`)
+- **Status:** Done (PR (this session))
 - **Prerequisites:** S4.1, S2.1, S2.4.
 - **Mode:** solo, so the old audio path stays selectable through a dev-only localStorage switch; record a follow-up to delete it.
 
@@ -657,7 +657,7 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
   - **The old audio path** (frame-driven, triggered at `ctx.currentTime`) stays selectable in dev builds: `localStorage['pushflow:dev:transport'] = 'frame'`, read when a project opens. It uses the new time and loop rules; only its audio is the old one. See Follow-ups for its removal.
   - **e2e hook:** `status().currentTime` is the transport's live position while playing; `transport()` gives its clock (audio, wall or none), region and skipped count.
   - **Learn More:** no metric, verdict tier or constraint changed (invariant 2). Its keyboard tab lists the two new ruler rows (generated from the input table).
-  - Screenshots in `docs/screenshots/S4.3a/`, at 1366 and 1600.
+  - Screenshots in `docs/screenshots/S4.3a/`, at 1366 and 1600, before (main) and after: `01-transport-and-loop` (a loop over bars 3–4) and `03-playing-with-composer-shown` (on main nothing shows that it plays), `05-drawer-collapsed`. After only: `02-loop-dragged-bar-2-to-4` and `04-loop-presets`.
 
 **Exit criteria**
 - [x] **P4-5a** Loop off stops at the end. · *PR / verified by:* PR (this session). `transport.spec.ts` (Chromium 1366 and 1600): the 4-bar clip played from 6.6 s stops by itself at 8 s, the position reads "5.1.1" and the button "Play"; Play from there starts over from the top; with Loop on and no region, playback from 7.4 s comes round to the top and carries on. `transportEngine.test.ts` checks the same on a fake audio clock, with nothing booked past the end. On main Loop off wraps (T58).
@@ -668,7 +668,12 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
 - [x] **P4-9a** The P2 timeline-width spec still passes after the transport lift. · *PR / verified by:* PR (this session). `measured-grid.spec.ts` "after importing a 4-bar clip at 120 BPM, the ruler is as wide as its container" passes at 1366 and 1600, as does `composer-data.spec.ts`'s re-measure case. The ruler is 484 px at 1366 and 718 px at 1600, as in the P3 audit.
 
 **Session checks**
-- [ ] Full suite before push. · *PR / verified by:* —
+- [x] Full suite before push. · *PR / verified by:* on 78c298d, then the fixes after it:
+  - `npm run typecheck`: clean.
+  - `npm run test:run`: 135 files, 1,499 passed, 4 `runIf` skips (the new `test/ui/audio/` files: 32 tests). That includes `testMidi1Integration.test.ts`, unchanged: no solver or optimizer changed.
+  - `npm run build` + `npm run check:no-test-hook`: OK. The editor chunk is 587.64 kB (see Follow-ups).
+  - Playwright at chromium-1366 and -1600, and C1 at -1920: 257 passed, 6 failed (14.0 min). Four were `clean-names.spec.ts` pinning the stored schema at 5 (now the current schema; re-run 4/4); two were the Library screenshot comparisons (8,514 and 8,479 pixels), which differ only in a cloud container and pass in CI. On the final commit, `transport`, `measured-grid`, `composer-data` and `c8` passed again at both sizes (58/58). No expected-fail case passed.
+  - Mutation checks (scratch edits, reverted): windows that exclude their start, as the old path did, fail 11 of the scheduler and engine tests, the opening chord on every repeat among them; Loop off that wraps, as on main, fails 4, P4-5a among them.
 
 #### S4.3b — Current moment, Rehearse and count-in
 
@@ -1632,4 +1637,5 @@ Record each one with the date, the session that found it, what and where (file:l
 - **2026-09-27 · S4.3a · Loop bounds are stored in seconds.** The saved `rehearsal.loopStart` and `loopEnd` are transport seconds, like the notes; S5.3's beats migration must convert them with the notes, or a tempo change moves the loop off its bars. Belongs to: S5.3.
 - **2026-09-27 · S4.3a · The count-in and the current moment build on the engine.** `countInBars` is still unread: the engine's `play` is where a count-in's clicks go (S4.3b), and a ruler click that snaps to the nearest event and the paused grid's moment are S4.3b's (T10). Belongs to: S4.3b.
 - **2026-09-27 · S4.3a · The grid still redraws every frame while playing.** Only the grid, the timeline's playhead and the position readout now do, but the grid is the heavy one; subscribing it to the playhead's event and struck pads (which change a few times a second) instead of the position would cut that further. Belongs to: P7 (performance).
+- **2026-09-27 · S4.3a · The editor chunk is now 587.64 kB.** S4.2 recorded 572.81 kB; the transport added about 15 kB. Same follow-up as S3.2's. Belongs to: S7.x.
 - **2026-09-27 · S4.3a · CLAUDE.md's architecture tree.** `src/ui/audio/` now holds the transport (`TransportProvider`, `transportEngine`, `lookaheadScheduler`, `transportMath`), `workspace/` has `TransportBar`, and `TimelineRuler` joins the top-level components; `TimelineToolbar` is now the timeline's own controls in the drawer's tab row. Not edited here. Owner: the repository owner.
