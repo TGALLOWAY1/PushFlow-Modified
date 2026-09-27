@@ -5,6 +5,8 @@
  * Centralizes all serialization/deserialization, validation, and default-filling.
  *
  * Key invariant: ephemeral UI state (selection, playback) is NEVER persisted.
+ * The loop and speed are saved (S4.3a) as rehearsal preferences, not analysis
+ * inputs; whether it plays and where the playhead is are not.
  * Analysis results and generated candidates are analysis-only state, not project
  * truth (see PUSHFLOW_CANON §"Analysis-only state is not project truth"). They are
  * NOT persisted; on load, analysis is reset and marked stale so it is recomputed
@@ -14,6 +16,7 @@
 import {
   type PersistedProject,
   PERSISTED_SCHEMA_VERSION,
+  rehearsalPreferencesOf,
 } from './persistedProject';
 import {
   type ProjectState,
@@ -72,6 +75,14 @@ export function serializeProject(state: ProjectState): PersistedProject {
     optimizerMethod: state.optimizerMethod,
     greedyStrategy: state.greedyStrategy,
     costToggles: state.costToggles,
+
+    // Rehearsal preferences (S4.3a): the loop and speed, never analysis inputs.
+    rehearsal: {
+      loopEnabled: state.loopEnabled,
+      loopStart: state.loopStart,
+      loopEnd: state.loopEnd,
+      playbackRate: state.playbackRate,
+    },
 
     // Metadata
     createdAt: state.createdAt,
@@ -172,6 +183,9 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
     costToggles: isValidCostToggles(persisted.costToggles)
       ? persisted.costToggles
       : ALL_COSTS_ENABLED,
+
+    // Rehearsal preferences: the loop and speed come back with the project.
+    ...rehearsalPreferencesOf(persisted.rehearsal),
 
     // Analysis — analysis-only state is not project truth; always reset on load
     // and mark stale so it is recomputed against the restored layout.
@@ -315,6 +329,7 @@ function applyPersistedDefaults(p: Partial<PersistedProject> & { id: string }): 
     createdAt: p.createdAt || new Date().toISOString(),
     updatedAt: p.updatedAt || new Date().toISOString(),
     lastOpenedAt: typeof p.lastOpenedAt === 'string' ? p.lastOpenedAt : p.updatedAt || new Date().toISOString(),
+    rehearsal: rehearsalPreferencesOf(p.rehearsal),
     schemaVersion: PERSISTED_SCHEMA_VERSION,
   };
 }

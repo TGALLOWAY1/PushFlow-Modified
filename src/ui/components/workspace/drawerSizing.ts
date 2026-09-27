@@ -1,23 +1,28 @@
 /**
  * The bottom drawer (Timeline | Composer tabs) under the grid (T04).
  *
- * By default it is as tall as the timeline's content, capped at about 40% of
- * the centre column, so the grid gets the rest. A splitter lets the viewer set
- * their own height or collapse the drawer to its tab bar (the Composer tab stays
- * reachable, invariant 3); both are remembered per viewer in localStorage.
- * Whatever the height, the grid region keeps room for 32 px pads.
+ * Its head is the workspace's transport bar and, under it, the tab bar
+ * (S4.3a). By default the drawer is as tall as its head plus the timeline's
+ * content, capped at about 40% of the centre column, so the grid gets the
+ * rest. A splitter lets the viewer set their own height or collapse the
+ * drawer to its head (the transport and the Composer tab stay reachable,
+ * invariant 3); both are remembered per viewer in localStorage. Whatever the
+ * height, the grid region keeps room for 32 px pads.
  */
 
 import { GRID_REGION_MIN_HEIGHT } from './gridSizing';
+import { TRANSPORT_BAR_HEIGHT } from './transportLayout';
 
 /*
  * `gridMin` is the grid region's minimum height (gridRegionMinHeight): more
  * when the moment dock sits under the frame (S4.2).
  */
 
-/** The drawer's tab bar (Timeline, Composer and the collapse control). */
+/** The drawer's tab bar (Timeline, Composer, the timeline's controls and the collapse control). */
 export const DRAWER_TAB_BAR_HEIGHT = 36;
-/** The smallest open drawer: the tab bar plus a few lanes. */
+/** The drawer's head, always shown: the transport bar and the tab bar. */
+export const DRAWER_HEAD_HEIGHT = TRANSPORT_BAR_HEIGHT + DRAWER_TAB_BAR_HEIGHT;
+/** The smallest open drawer: its head plus the top of the ruler. */
 export const DRAWER_MIN_HEIGHT = 120;
 /** "Capped at about 40% of the body." */
 export const DRAWER_CAP_RATIO = 0.4;
@@ -35,10 +40,10 @@ export const DEFAULT_DRAWER_PREFS: DrawerPrefs = { height: null, collapsed: fals
 /**
  * The largest drawer that still leaves the grid room for its smallest pads.
  * In a short centre column that is less than an open drawer's minimum, down
- * to the tab bar alone: the grid's minimum wins.
+ * to its head alone: the grid's minimum wins.
  */
 export function maxDrawerHeight(centerHeight: number, gridMin = GRID_REGION_MIN_HEIGHT): number {
-  return Math.max(DRAWER_TAB_BAR_HEIGHT, centerHeight - SPLITTER_HEIGHT - gridMin);
+  return Math.max(DRAWER_HEAD_HEIGHT, centerHeight - SPLITTER_HEIGHT - gridMin);
 }
 
 /** The smallest the viewer can drag the drawer to: its open minimum, or less when the grid needs the room. */
@@ -47,15 +52,15 @@ export function minDrawerHeight(centerHeight: number, gridMin = GRID_REGION_MIN_
 }
 
 /**
- * The drawer's height in px: the tab bar alone when collapsed; otherwise the
- * viewer's height, or the content's (at most 40% of the centre column), kept
- * between DRAWER_MIN_HEIGHT and what leaves the grid its minimum. When both
- * can't hold, the grid's minimum wins. Content with no natural height (the
- * Composer, POSITIVE_INFINITY) gets the 40%.
+ * The drawer's height in px: its head alone when collapsed; otherwise the
+ * viewer's height, or the head plus the content (at most 40% of the centre
+ * column), kept between DRAWER_MIN_HEIGHT and what leaves the grid its
+ * minimum. When both can't hold, the grid's minimum wins. Content with no
+ * natural height (the Composer, POSITIVE_INFINITY) gets the 40%.
  */
 export function drawerHeightFor(centerHeight: number, contentHeight: number, prefs: DrawerPrefs, gridMin = GRID_REGION_MIN_HEIGHT): number {
-  if (prefs.collapsed) return DRAWER_TAB_BAR_HEIGHT;
-  const fit = DRAWER_TAB_BAR_HEIGHT + contentHeight;
+  if (prefs.collapsed) return DRAWER_HEAD_HEIGHT;
+  const fit = DRAWER_HEAD_HEIGHT + contentHeight;
   const wanted = prefs.height ?? Math.min(fit, Math.round(centerHeight * DRAWER_CAP_RATIO));
   return Math.round(Math.min(maxDrawerHeight(centerHeight, gridMin), Math.max(DRAWER_MIN_HEIGHT, wanted)));
 }

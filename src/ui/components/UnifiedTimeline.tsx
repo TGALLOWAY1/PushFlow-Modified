@@ -3,15 +3,21 @@
  *
  * Single unified timeline combining lane editing + execution visualization.
  * Shows per-voice swim lanes with event blocks, finger assignment pills (when
- * analysis exists), beat grid, playhead, transport controls, and MIDI import.
- * The pills show the plan of the layout on screen (S3.2), named in the
+ * analysis exists), beat grid, the loop strip and the playhead, and MIDI
+ * import. The pills show the plan of the layout on screen (S3.2), named in the
  * header ("Timeline shows: Candidate B · …"), always as hand+finger ("L2").
+ *
+ * Playback is the workspace's transport (S4.3a, TransportProvider), not the
+ * timeline's: the timeline draws its playhead and loop and seeks through it,
+ * so switching the drawer to the Composer never touches playback. Its own
+ * controls (+ MIDI, Zoom, Fit) sit in the drawer's tab row while it is shown.
  *
  * Replaces the separate LaneToolbar + LaneSidebar + LaneTimeline + TimelinePanel
  * components with one cohesive view rendered in the bottom drawer.
  */
 
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback, useContext, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import chroma from 'chroma-js';
 import { useProject } from '../state/ProjectContext';
 import { getDisplayedExecutionPlan, getInspectedLayout, type SoundStream } from '../state/projectState';
@@ -20,9 +26,11 @@ import { SubjectChip } from './shared/SubjectChip';
 import { useLaneImport } from '../hooks/useLaneImport';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { eventAtTime, eventOfNote, getEventTimeline, resolveEventKey } from '../analysis/eventTimeline';
-import { RehearsalAudio, type RehearsalHit } from '../audio/rehearsalAudio';
-import { TimelineToolbar } from './TimelineToolbar';
-import { formatBarBeat, formatBarRange, formatSeconds } from '../../utils/musicalTime';
+import { useTransport, useTransportPosition } from '../audio/TransportProvider';
+import { loopRegionOf } from '../audio/transportMath';
+import { DrawerToolbarSlot, TimelineToolbar } from './TimelineToolbar';
+import { TimelineRuler } from './TimelineRuler';
+import { formatBarBeat, formatSeconds } from '../../utils/musicalTime';
 import { fingerLabel as fingerLabelOf, fingerName, handColor } from '../../utils/fingerNotation';
 import {
   BAR_HEADER_HEIGHT,
@@ -69,6 +77,7 @@ interface UnifiedTimelineProps {
 export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: UnifiedTimelineProps = {}) {
   const { state, dispatch } = useProject();
   const { importFiles } = useLaneImport();
+  const toolbarSlot = useContext(DrawerToolbarSlot);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // The scroll container is also kept as state, so the width observer attaches
   // whenever it mounts, including after the empty state gives way to the first
@@ -117,146 +126,13 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
   const beatDurationRaw = 60 / (state.tempo || 120);
   const barDuration = beatDurationRaw * 4; // 4 beats per bar
 
-  // Compute time range across all streams, snapped to bar boundaries for grid lines
-  // but using raw content extent for zoom calculation
-  const { minTime, maxTime, totalDuration } = useMemo(() => {
-    let min = Infinity;
-    let max = -Infinity;
-    for (const s of state.soundStreams) {
-      for (const e of s.events) {
-        if (e.startTime < min) min = e.startTime;
-        const end = e.startTime + e.duration;
-        if (end > max) max = end;
-      }
-    }
-    if (min === Infinity) { min = 0; max = barDuration * 4; }
-    // Snap min down and max up to bar boundaries (for grid lines)
-    min = Math.floor(min / barDuration) * barDuration;
-    max = Math.ceil(max / barDuration) * barDuration;
-    if (max <= min) max = min + barDuration;
-    return {
-      minTime: min,
-      maxTime: max,
-      totalDuration: max - min,
-    };
-  }, [state.soundStreams, barDuration]);
-
-  // ─── Rehearsal Audio ────────────────────────────────────────────────────
-
-  // One audio engine for the lifetime of the timeline. Created eagerly but only
-  // opens an AudioContext when the user actually presses play, since browsers
-  // require a gesture before audio may start.
-  const audioRef = useRef<RehearsalAudio | null>(null);
-  if (audioRef.current === null) audioRef.current = new RehearsalAudio();
-  useEffect(() => () => audioRef.current?.dispose(), []);
-
-  useEffect(() => {
-    audioRef.current?.setOptions(state.rehearsalAudio);
-  }, [state.rehearsalAudio]);
-
-  // Every hit in the performance, flattened for the audio scheduler. Muted
-  // streams are excluded so the mute buttons affect what you hear, not just
-  // what the solver sees.
-  const audibleHits = useMemo<RehearsalHit[]>(() => {
-    const hits: RehearsalHit[] = [];
-    for (const stream of state.soundStreams) {
-      if (stream.muted) continue;
-      for (const event of stream.events) {
-        hits.push({ soundId: stream.id, time: event.startTime, velocity: event.velocity });
-      }
-    }
-    return hits.sort((a, b) => a.time - b.time);
-  }, [state.soundStreams]);
-
-  // ─── Playback RAF Loop (with looping) ───────────────────────────────────
-
-  const maxTimeRef = useRef(maxTime);
-  const minTimeRef = useRef(minTime);
-  useEffect(() => { maxTimeRef.current = maxTime; minTimeRef.current = minTime; }, [maxTime, minTime]);
-
-  // The loop reads live state through refs so the effect can be created once per
-  // play/stop rather than torn down and rebuilt on every frame. Rebuilding it each
-  // frame (the previous behaviour, caused by depending on state.currentTime) reset
-  // the frame clock continuously and made the playhead drift against the audio.
-  const clockRef = useRef({
-    currentTime: state.currentTime,
-    rate: state.playbackRate,
-    loopEnabled: state.loopEnabled,
-    loopStart: state.loopStart,
-    loopEnd: state.loopEnd,
-    tempo: state.tempo,
-    hits: audibleHits,
-  });
-  clockRef.current = {
-    currentTime: state.currentTime,
-    rate: state.playbackRate,
-    loopEnabled: state.loopEnabled,
-    loopStart: state.loopStart,
-    loopEnd: state.loopEnd,
-    tempo: state.tempo,
-    hits: audibleHits,
-  };
-
-  useEffect(() => {
-    if (!state.isPlaying) return;
-
-    let handle = 0;
-    let lastFrame = performance.now();
-    let position = clockRef.current.currentTime;
-    const audio = audioRef.current;
-    audio?.reset();
-    void audio?.resume();
-
-    const loop = (frameTime: number) => {
-      const wallDelta = (frameTime - lastFrame) / 1000;
-      lastFrame = frameTime;
-
-      // Honour a seek requested while playing before advancing.
-      if (seekRef.current !== null) {
-        position = seekRef.current;
-        seekRef.current = null;
-        audio?.reset();
-      }
-
-      const {
-        rate, loopEnabled, loopStart, loopEnd, tempo, hits,
-      } = clockRef.current;
-
-      // Rehearsal speed scales transport time, not wall time.
-      const advance = wallDelta * rate;
-      const from = position;
-      const regionStart = loopEnabled && loopStart !== null ? loopStart : minTimeRef.current;
-      const regionEnd = loopEnabled && loopEnd !== null ? loopEnd : maxTimeRef.current;
-      let to = position + advance;
-
-      let wrapped = false;
-      if (to >= regionEnd) {
-        to = regionEnd;
-        wrapped = true;
-      }
-
-      // Sound the slice of time that just elapsed, so hits land when the playhead
-      // crosses them rather than whenever a re-render happens.
-      audio?.playMetronomeWindow(from, to, tempo);
-      audio?.playWindow(hits, from, to);
-
-      if (wrapped) {
-        position = regionStart;
-        audio?.reset();
-        dispatch({ type: 'SET_CURRENT_TIME', payload: regionStart });
-      } else {
-        position = to;
-        dispatch({ type: 'SET_CURRENT_TIME', payload: to });
-      }
-
-      handle = requestAnimationFrame(loop);
-    };
-
-    handle = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(handle);
-    // Intentionally excludes currentTime: the loop owns the playhead while running.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.isPlaying, dispatch]);
+  // The span the transport plays, from the bar line at or before the first
+  // note to the one at or after the last note's end (transportMath.songSpan):
+  // what the ruler draws is what Play, Return and Loop use.
+  const { song } = useTransport();
+  const minTime = song.start;
+  const maxTime = song.end;
+  const totalDuration = maxTime - minTime;
 
   // Auto-fit zoom: measure the scroll container and fill it with the clip. The
   // observer attaches when the container mounts (callback ref) and again when
@@ -286,87 +162,8 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
   const effectiveMinZoom = Math.max(MIN_ZOOM, autoFitZoom);
   const zoom = zoomOverride !== null ? Math.max(effectiveMinZoom, zoomOverride) : autoFitZoom;
 
-  // Follow the playhead while playing.
-  //
-  // Nothing scrolled the timeline during playback, so on a real take the cursor
-  // walked off the right edge after about twenty seconds and the view stayed
-  // frozen at bar 1 for the rest of the performance — the user pressed play and
-  // simply could not see what was being played. Scrolls only when the cursor
-  // approaches an edge, so the view does not jitter on every frame.
-  useEffect(() => {
-    if (!state.isPlaying) return;
-    const el = scrollContainerRef.current;
-    if (!el || zoom <= 0) return;
-
-    const x = (state.currentTime - minTime) * zoom;
-    const view = el.clientWidth;
-    const margin = view * 0.15;
-    if (x < el.scrollLeft + margin || x > el.scrollLeft + view - margin) {
-      el.scrollLeft = Math.max(0, x - view / 2);
-    }
-  }, [state.isPlaying, state.currentTime, zoom, minTime]);
-
-
-  // ─── Loop Region Selection ──────────────────────────────────────────────
-
-  // Dragging across the bar ruler marks the passage to rehearse. Click (no drag)
-  // just moves the playhead, which is what a ruler click normally means.
-  const [dragRegion, setDragRegion] = useState<{ from: number; to: number } | null>(null);
-  const rulerRef = useRef<HTMLDivElement | null>(null);
-
-  // Timeline x is measured from `minTime`, not from zero. Converting without it
-  // put ruler clicks whole bars earlier than the bar clicked, and shaded a loop
-  // region over a different passage than the transport actually looped.
-  const timeFromRulerEvent = useCallback((clientX: number): number | null => {
-    const el = rulerRef.current;
-    if (!el || zoom <= 0) return null;
-    const rect = el.getBoundingClientRect();
-    const t = minTime + (clientX - rect.left) / zoom;
-    return Math.min(maxTime, Math.max(minTime, t));
-  }, [zoom, minTime, maxTime]);
-
-  const handleRulerMouseDown = useCallback((e: React.MouseEvent) => {
-    const t = timeFromRulerEvent(e.clientX);
-    if (t === null) return;
-    setDragRegion({ from: t, to: t });
-  }, [timeFromRulerEvent]);
-
-  const handleRulerMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!dragRegion) return;
-    const t = timeFromRulerEvent(e.clientX);
-    if (t === null) return;
-    setDragRegion({ from: dragRegion.from, to: t });
-  }, [dragRegion, timeFromRulerEvent]);
-
-  // Pending seek, read by the playback loop at the top of its next frame. Without
-  // it the running loop owned the playhead outright and silently reverted every
-  // ruler click, so relocating during rehearsal meant stop, click, start again.
-  const seekRef = useRef<number | null>(null);
-  const seekTo = useCallback((t: number) => {
-    seekRef.current = t;
-    dispatch({ type: 'SET_CURRENT_TIME', payload: t });
-  }, [dispatch]);
-
-  // Return: the start, or the loop start while looping a region. Playback keeps
-  // its state, so Return while playing restarts the passage (T61's Return).
-  const handleReturn = useCallback(() => {
-    const start = state.loopEnabled && state.loopStart !== null ? state.loopStart : minTime;
-    seekTo(start);
-  }, [state.loopEnabled, state.loopStart, minTime, seekTo]);
-
-  const handleRulerMouseUp = useCallback(() => {
-    if (!dragRegion) return;
-    const { from, to } = dragRegion;
-    setDragRegion(null);
-    // A drag shorter than ~1px of travel is a click, not a region.
-    if (Math.abs(to - from) * zoom < 4) {
-      seekTo(from);
-      return;
-    }
-    dispatch({ type: 'SET_LOOP_REGION', payload: { start: from, end: to } });
-    dispatch({ type: 'SET_LOOP_ENABLED', payload: true });
-    seekTo(Math.min(from, to));
-  }, [dragRegion, zoom, dispatch, seekTo]);
+  // A loop being dragged out on the ruler, shaded over the lanes as it moves.
+  const [loopPreview, setLoopPreview] = useState<{ start: number; end: number } | null>(null);
 
 
   // Build per-stream finger assignments (or dummies pre-analysis),
@@ -597,27 +394,32 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
   // One staged empty state, at the grid (T44): the timeline only says what it will show.
   if (state.soundStreams.length === 0) {
     return (
-      <div data-testid="timeline-empty" className="px-6 py-12 text-center text-[var(--text-tertiary)] text-pf-sm">
+      <div data-testid="timeline-empty" className="px-6 py-10 text-center text-[var(--text-tertiary)] text-pf-sm">
         Your Sounds' notes appear here once you import MIDI or build a pattern in the Composer.
       </div>
     );
   }
 
+  // Its controls go in the drawer's tab row while it is shown (S4.3a), or
+  // above it where there is no drawer (a component on its own).
+  const toolbar = (
+    <TimelineToolbar
+      soundCount={visibleStreams.length}
+      onImportClick={handleImportClick}
+      zoom={zoom}
+      minZoom={effectiveMinZoom}
+      maxZoom={MAX_ZOOM}
+      isAutoFit={zoomOverride === null}
+      onZoom={z => setZoomOverride(z)}
+      onFit={() => setZoomOverride(null)}
+    />
+  );
+  // The lanes' loop shading: a loop being dragged, else the loop that plays.
+  const shading = loopPreview ?? (state.loopEnabled ? loopRegionOf({ start: state.loopStart, end: state.loopEnd }) : null);
+
   return (
     <div className="flex flex-col h-full">
-      {/* ─── Toolbar: transport cluster + secondary controls (T05) ──────────── */}
-      <TimelineToolbar
-        soundCount={visibleStreams.length}
-        onImportClick={handleImportClick}
-        zoom={zoom}
-        minZoom={effectiveMinZoom}
-        maxZoom={MAX_ZOOM}
-        isAutoFit={zoomOverride === null}
-        onZoom={z => setZoomOverride(z)}
-        onFit={() => setZoomOverride(null)}
-        onReturn={handleReturn}
-        regionStart={minTime}
-      />
+      {toolbarSlot ? (isVisible ? createPortal(toolbar, toolbarSlot) : null) : toolbar}
       <input
         ref={fileInputRef}
         type="file"
@@ -667,40 +469,16 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
         >
           <div className="relative" style={{ width: timelineWidth, minWidth: '100%', minHeight: totalHeight + TOTAL_HEADER_HEIGHT }}>
             {/* ─── Sticky Beat Header ──────────────────────────────── */}
-            {/* Row 1: Bar numbers */}
-            <div
-              ref={rulerRef}
-              data-testid="timeline-ruler"
-              className="sticky top-0 z-40 bg-[var(--bg-app)] border-b border-[var(--border-default)] cursor-text select-none"
-              style={{ height: BAR_HEADER_HEIGHT, width: timelineWidth }}
-              onMouseDown={handleRulerMouseDown}
-              onMouseMove={handleRulerMouseMove}
-              onMouseUp={handleRulerMouseUp}
-              onMouseLeave={handleRulerMouseUp}
-              title="Click to move the playhead, or drag to mark a passage to loop"
-            >
-              <div className="flex" style={{ height: BAR_HEADER_HEIGHT, width: timelineWidth }}>
-                {headerBars.map(bar => (
-                  <div
-                    key={`bar-${bar.barNum}`}
-                    className="text-center text-pf-sm font-medium text-[var(--text-secondary)] border-l border-[var(--border-default)] flex items-end justify-center pb-1"
-                    style={{ width: barWidth, minWidth: barWidth, flexShrink: 0 }}
-                  >
-                    {bar.barNum}
-                  </div>
-                ))}
-              </div>
-              {/* The loop region reads in bars ("Bars 3–4", T43). */}
-              {state.loopEnabled && state.loopStart !== null && state.loopEnd !== null && (
-                <span
-                  data-testid="timeline-loop-label"
-                  className="absolute top-1 px-1.5 rounded-pf-sm bg-sky-500/20 border border-sky-400/40 text-[11px] leading-4 text-sky-200 pointer-events-none whitespace-nowrap"
-                  style={{ left: Math.max(0, (Math.min(state.loopStart, state.loopEnd) - minTime) * zoom) + 2 }}
-                >
-                  {formatBarRange(state.loopStart, state.loopEnd, state.tempo)}
-                </span>
-              )}
-            </div>
+            {/* Row 1: the loop strip, the bar numbers and the playhead's handle (S4.3a) */}
+            <TimelineRuler
+              minTime={minTime}
+              maxTime={maxTime}
+              zoom={zoom}
+              width={timelineWidth}
+              bars={headerBars}
+              barWidth={barWidth}
+              onPreview={setLoopPreview}
+            />
             {/* Row 2: Beat subdivisions */}
             <div className="sticky z-40 bg-[var(--bg-panel)] border-b border-[var(--border-subtle)]" style={{ height: BEAT_HEADER_HEIGHT, top: BAR_HEADER_HEIGHT, width: timelineWidth }}>
               <div className="flex" style={{ height: BEAT_HEADER_HEIGHT, width: timelineWidth }}>
@@ -716,30 +494,22 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
               </div>
             </div>
 
-            {/* Loop / drag region shading — shows the passage being rehearsed */}
-            {(() => {
-              const start = dragRegion
-                ? Math.min(dragRegion.from, dragRegion.to)
-                : state.loopEnabled ? state.loopStart : null;
-              const end = dragRegion
-                ? Math.max(dragRegion.from, dragRegion.to)
-                : state.loopEnabled ? state.loopEnd : null;
-              if (start === null || end === null || end <= start) return null;
-              return (
-                <div
-                  className="absolute pointer-events-none"
-                  style={{
-                    left: (start - minTime) * zoom,
-                    width: (end - start) * zoom,
-                    top: TOTAL_HEADER_HEIGHT,
-                    height: totalHeight,
-                    backgroundColor: 'rgba(59, 130, 246, 0.10)',
-                    borderLeft: '1px solid rgba(59, 130, 246, 0.55)',
-                    borderRight: '1px solid rgba(59, 130, 246, 0.55)',
-                  }}
-                />
-              );
-            })()}
+            {/* Loop shading — the passage being rehearsed, or being dragged out */}
+            {shading && (
+              <div
+                data-testid="timeline-loop-shading"
+                className="absolute pointer-events-none"
+                style={{
+                  left: (shading.start - minTime) * zoom,
+                  width: (shading.end - shading.start) * zoom,
+                  top: TOTAL_HEADER_HEIGHT,
+                  height: totalHeight,
+                  backgroundColor: 'rgba(59, 130, 246, 0.10)',
+                  borderLeft: '1px solid rgba(59, 130, 246, 0.55)',
+                  borderRight: '1px solid rgba(59, 130, 246, 0.55)',
+                }}
+              />
+            )}
 
             {/* Beat grid lines (offset below header) */}
             {beatLines.map((line, i) => (
@@ -797,19 +567,13 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
             {/* Playhead. Rendered unconditionally: hiding it at position 0 meant
                 there was no cursor at the start of a take, or after RESET, so the
                 user could not see where playback would begin. */}
-            {(
-              <div
-                className="absolute z-30 pointer-events-none"
-                style={{
-                  left: Math.max(0, Math.min(totalDuration, state.currentTime - minTime)) * zoom,
-                  top: TOTAL_HEADER_HEIGHT,
-                  height: totalHeight,
-                  width: 2,
-                  backgroundColor: 'rgba(239, 68, 68, 0.8)',
-                  boxShadow: '0 0 8px rgba(239, 68, 68, 0.5)',
-                }}
-              />
-            )}
+            <PlayheadLine
+              minTime={minTime}
+              totalDuration={totalDuration}
+              zoom={zoom}
+              height={totalHeight}
+              scrollRef={scrollContainerRef}
+            />
 
             {/* Event pills per stream (single layer — no duplicate blocks) */}
             {visibleStreams.map((stream, trackIdx) => {
@@ -943,6 +707,51 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
+
+/**
+ * The playhead over the lanes, redrawn from the transport every frame while it
+ * plays (the rest of the timeline doesn't re-render). It also keeps itself in
+ * view: on a real take the cursor used to walk off the right edge after about
+ * twenty seconds, and the view stayed at bar 1 for the rest of it. It scrolls
+ * only when the cursor nears an edge, so the view doesn't jitter every frame.
+ */
+function PlayheadLine({ minTime, totalDuration, zoom, height, scrollRef }: {
+  minTime: number;
+  totalDuration: number;
+  zoom: number;
+  height: number;
+  scrollRef: RefObject<HTMLDivElement | null>;
+}) {
+  const { state } = useProject();
+  const position = useTransportPosition();
+  const x = Math.max(0, Math.min(totalDuration, position - minTime)) * zoom;
+
+  useEffect(() => {
+    if (!state.isPlaying) return;
+    const el = scrollRef.current;
+    if (!el || zoom <= 0) return;
+    const view = el.clientWidth;
+    const margin = view * 0.15;
+    if (x < el.scrollLeft + margin || x > el.scrollLeft + view - margin) {
+      el.scrollLeft = Math.max(0, x - view / 2);
+    }
+  }, [state.isPlaying, x, zoom, scrollRef]);
+
+  return (
+    <div
+      data-testid="timeline-playhead"
+      className="absolute z-30 pointer-events-none"
+      style={{
+        left: x,
+        top: TOTAL_HEADER_HEIGHT,
+        height,
+        width: 2,
+        backgroundColor: 'rgba(239, 68, 68, 0.8)',
+        boxShadow: '0 0 8px rgba(239, 68, 68, 0.5)',
+      }}
+    />
+  );
+}
 
 function VoiceRow({
   stream,

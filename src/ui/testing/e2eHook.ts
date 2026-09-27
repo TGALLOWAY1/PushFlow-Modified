@@ -21,6 +21,8 @@ import { scoringCounts, type ScoringCounts } from '../analysis/scoringClient';
 import { getEventTimeline, resolveEventKey } from '../analysis/eventTimeline';
 import { peekLayoutAnalysis } from '../analysis/layoutAnalysis';
 import { fingerLabel } from '../../utils/fingerNotation';
+import { liveTransport } from '../audio/liveTransport';
+import { type TransportDebug } from '../audio/transportEngine';
 import type { Layout } from '../../types/layout';
 import type { ExecutionPlanResult } from '../../types/executionPlan';
 import type { CandidateSolution } from '../../types/candidateSolution';
@@ -47,6 +49,7 @@ export interface PfStatus {
   soundCount: number;
   hasWorkingLayout: boolean;
   isPlaying: boolean;
+  /** The playhead: the transport's live position while it plays (S4.3a), else where it rests. */
   currentTime: number;
   /** The selected event's momentKey (S4.1), and the event it resolves to (0-based), null when none. */
   selectedMomentKey: string | null;
@@ -159,6 +162,8 @@ export interface PfTestHook {
   redo(): void;
   /** How many layouts were scored in the scoring worker and in-process so far (S3.1). */
   scoring(): ScoringCounts;
+  /** The workspace's transport (S4.3a): its clock, live position and region; null outside the editor. */
+  transport(): TransportDebug | null;
 }
 
 declare global {
@@ -240,7 +245,7 @@ export function installE2EHook(get: () => E2EHookSource): () => void {
         soundCount: s.soundStreams.length,
         hasWorkingLayout: s.workingLayout !== null,
         isPlaying: s.isPlaying,
-        currentTime: s.currentTime,
+        currentTime: liveTransport()?.isRunning() ? liveTransport()!.position() : s.currentTime,
         selectedMomentKey: s.selectedMomentKey,
         selectedEvent: resolveEventKey(getEventTimeline(s), s.selectedMomentKey)?.index ?? null,
         armedStreamId: s.armedStreamId,
@@ -278,6 +283,7 @@ export function installE2EHook(get: () => E2EHookSource): () => void {
     undo: () => get().undo(),
     redo: () => get().redo(),
     scoring: () => scoringCounts(),
+    transport: () => liveTransport()?.debug() ?? null,
   };
   window.__pf = hook;
   return () => {

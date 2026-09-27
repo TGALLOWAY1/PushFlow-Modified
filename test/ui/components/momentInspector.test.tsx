@@ -103,12 +103,12 @@ describe('the moment inspector (T27)', () => {
     });
   });
 
-  it('Play from here starts just before the event, and while playing says the grid follows the playhead', () => {
+  it('Play from here starts at the event itself (the transport plays its start, S4.3a), and while playing says the grid follows the playhead', () => {
     const event = getEventTimeline(suggested).events[6]!;
     mount(suggested, event);
     act(() => { fireEvent.click(screen.getByTestId('play-from-here')); });
     expect(api.state.isPlaying).toBe(true);
-    expect(api.state.currentTime).toBeCloseTo(event.startTime - 0.005, 6);
+    expect(api.state.currentTime).toBe(event.startTime);
     // The selection stays; the button gives way to the note.
     expect(api.state.selectedMomentKey).toBe(event.key);
     expect(screen.queryByTestId('play-from-here')).toBeNull();

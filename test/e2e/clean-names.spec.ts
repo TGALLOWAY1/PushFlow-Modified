@@ -6,7 +6,8 @@
  *   and the Active a Promote replaces is kept as "Default – 25 Sep 14:02".
  * - A project stored at schema 4 with "(draft) (draft)", "(suggested)" and
  *   "(replaced …)" names is backed up untouched, then stored with clean names
- *   (schema 5); opening it again migrates nothing.
+ *   (schema 5, or whatever the current schema is since); opening it again
+ *   migrates nothing.
  */
 
 import * as fs from 'fs';
@@ -14,6 +15,7 @@ import { fileURLToPath } from 'url';
 import type { Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { newProject, openTestMidi1, suggestStartingLayout, waitForSaved } from './project';
+import { PERSISTED_SCHEMA_VERSION } from '../../src/ui/persistence/persistedProject';
 
 const ROLE_FIXTURE = fileURLToPath(new URL('../fixtures/projects/role-suffixes.json', import.meta.url));
 const ROLE_WORD = /\((draft|suggested)\)|\(replaced/;
@@ -77,7 +79,7 @@ test.describe('S3.2 · clean names (T32)', () => {
     const id = projectIdOf(page);
     await expect.poll(async () => (await stored<StoredProject>(page, 'projects', id))?.savedVariants.length).toBe(1);
     const record = (await stored<StoredProject>(page, 'projects', id))!;
-    expect(record.schemaVersion).toBe(5);
+    expect(record.schemaVersion).toBe(PERSISTED_SCHEMA_VERSION);
     expect(namesOf(record).filter(n => ROLE_WORD.test(n))).toEqual([]);
     expect(namesOf(record)).toEqual(['Default', state.savedVariants[0]!.name]);
   });
@@ -103,8 +105,8 @@ test.describe('S3.2 · clean names (T32)', () => {
     await pf.ready();
     await expect(page.getByTestId('layout-summary-name')).toHaveText('Draft of Default');
 
-    // Backed up untouched, then written back at schema 5 with clean names.
-    await expect.poll(async () => (await stored<StoredProject>(page, 'projects', fixture.id))?.schemaVersion).toBe(5);
+    // Backed up untouched, then written back at the current schema (5 or later) with clean names.
+    await expect.poll(async () => (await stored<StoredProject>(page, 'projects', fixture.id))?.schemaVersion).toBe(PERSISTED_SCHEMA_VERSION);
     const backup = await stored<{ fromVersion: number; record: StoredProject }>(page, 'backups', `${fixture.id}@v4`);
     expect(backup?.fromVersion).toBe(4);
     expect(backup?.record).toEqual(fixture);
@@ -120,7 +122,7 @@ test.describe('S3.2 · clean names (T32)', () => {
     await pf.ready();
     await expect(page.getByTestId('layout-summary-name')).toHaveText('Draft of Default');
     const again = (await stored<StoredProject>(page, 'projects', fixture.id))!;
-    expect(again.schemaVersion).toBe(5);
+    expect(again.schemaVersion).toBe(PERSISTED_SCHEMA_VERSION);
     expect(namesOf(again)).toEqual(names);
     expect(await stored(page, 'backups', `${fixture.id}@v5`)).toBeNull();
   });

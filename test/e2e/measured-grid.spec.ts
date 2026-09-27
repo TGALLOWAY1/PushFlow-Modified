@@ -4,7 +4,8 @@
  * P2-1: at 1366x768 and 1600x1000 with default panels, all 64 pads, the
  * hand-zone labels and the state-bar slot are inside the viewport and not
  * clipped by any ancestor; pads are at least 32 px; every transport control
- * can be clicked.
+ * can be clicked. Since S4.3a the transport is a bar above the drawer's tabs,
+ * and the timeline's own controls sit in the tab row.
  * P2-2: after importing a 4-bar clip at 120 BPM, the ruler is exactly as wide
  * as its container (T50's regression: the width was never measured when the
  * import left the default 4-bar duration unchanged).
@@ -114,7 +115,7 @@ test.describe('S2.1 · measured grid (P2-1)', () => {
 });
 
 test.describe('S2.1 · transport reach (P2-1)', () => {
-  const TRANSPORT = ['transport-play', 'transport-return', 'transport-speed', 'transport-loop', 'transport-metronome', 'transport-hits'];
+  const TRANSPORT = ['transport-play', 'transport-return', 'transport-speed', 'transport-loop', 'transport-loop-menu', 'transport-metronome', 'transport-hits'];
 
   test('every transport control is inside the viewport and clickable', async ({ page, pf }) => {
     await openTestMidi1(page, pf);
@@ -151,18 +152,28 @@ test.describe('S2.1 · transport reach (P2-1)', () => {
     await expect.poll(async () => (await pf.call('status')).currentTime).toBe(0);
   });
 
-  test('controls that do not fit are in the "More" menu, and work from there', async ({ page, pf }) => {
+  test('the timeline\'s own controls sit in the drawer\'s tab row while it is shown, and work there (S4.3a)', async ({ page, pf }) => {
     await openTestMidi1(page, pf);
-    const width = page.viewportSize()!.width;
-    const inline = await page.getByTestId('timeline-import').count();
-    if (width <= 1366) expect(inline, 'at 1366 + MIDI is in the menu').toBe(0);
-    await expect(page.getByTestId('timeline-more')).toBeVisible();
-    await page.getByTestId('timeline-more').click();
-    const menu = page.getByTestId('timeline-more-menu');
-    await expect(menu).toBeVisible();
-    await expect(menu.getByRole('slider', { name: 'Timeline zoom' })).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(menu).toHaveCount(0);
+    const row = page.getByTestId('drawer-toolbar');
+    const zoom = row.getByRole('slider', { name: 'Timeline zoom' });
+    for (const id of ['timeline-import', 'timeline-sound-count', 'timeline-fit']) {
+      await expect(row.getByTestId(id), id).toBeVisible();
+    }
+    await expect(zoom).toBeVisible();
+    expect(await clippedOf(page, ['timeline-import', 'timeline-sound-count', 'timeline-fit'])).toEqual([]);
+    await expect(row.getByTestId('timeline-sound-count')).toHaveText('7 Sounds');
+    // Zooming in leaves Fit; Fit fills the width again.
+    const fit = row.getByTestId('timeline-fit');
+    await expect(fit).toHaveAttribute('aria-pressed', 'true');
+    await zoom.focus();
+    await page.keyboard.press('End');
+    await expect(fit).toHaveAttribute('aria-pressed', 'false');
+    await fit.click();
+    await expect(fit).toHaveAttribute('aria-pressed', 'true');
+    // With the Composer shown they go; the transport stays.
+    await page.getByTestId('drawer-tab-composer').click();
+    await expect(page.getByTestId('timeline-toolbar')).toHaveCount(0);
+    await expect(page.getByTestId('transport-play')).toBeVisible();
   });
 });
 
@@ -220,9 +231,10 @@ test.describe('S2.1 · the drawer splitter', () => {
 });
 
 test.describe('S2.1 · short windows, narrow windows and wide panels (review on #107)', () => {
-  const TRANSPORT_AND_MORE = [
+  const TRANSPORT_AND_TIMELINE = [
     'transport-play', 'transport-return', 'transport-position', 'transport-speed',
-    'transport-loop', 'transport-metronome', 'transport-hits', 'timeline-more',
+    'transport-loop', 'transport-loop-menu', 'transport-metronome', 'transport-hits',
+    'timeline-import', 'timeline-fit',
   ];
 
   async function dragBy(page: Page, testId: string, dx: number) {
@@ -243,20 +255,20 @@ test.describe('S2.1 · short windows, narrow windows and wide panels (review on 
     await expect(page.getByTestId('drawer-tab-composer')).toBeVisible();
   });
 
-  test('widening both side panels never clips the transport or its "⋯" button', async ({ page, pf }) => {
+  test('widening both side panels never clips the transport or the timeline\'s controls', async ({ page, pf }) => {
     await openTestMidi1(page, pf);
     await dragBy(page, 'left-panel-handle', 400);
     await dragBy(page, 'right-panel-handle', -400);
-    expect(await clippedOf(page, TRANSPORT_AND_MORE)).toEqual([]);
-    for (const id of TRANSPORT_AND_MORE) expect(await hitsItself(page, id), id).toBe(true);
-    await page.getByTestId('timeline-more').click();
-    await expect(page.getByTestId('timeline-more-menu')).toBeVisible();
+    expect(await clippedOf(page, TRANSPORT_AND_TIMELINE)).toEqual([]);
+    for (const id of TRANSPORT_AND_TIMELINE) expect(await hitsItself(page, id), id).toBe(true);
+    await page.getByTestId('transport-loop-menu').click();
+    await expect(page.getByTestId('transport-loop-presets')).toBeVisible();
   });
 
   test('in a narrow window the side panels give way to the transport', async ({ page, pf }) => {
     await page.setViewportSize({ width: 1200, height: 768 });
     await openTestMidi1(page, pf);
-    expect(await clippedOf(page, TRANSPORT_AND_MORE)).toEqual([]);
-    for (const id of TRANSPORT_AND_MORE) expect(await hitsItself(page, id), id).toBe(true);
+    expect(await clippedOf(page, TRANSPORT_AND_TIMELINE)).toEqual([]);
+    for (const id of TRANSPORT_AND_TIMELINE) expect(await hitsItself(page, id), id).toBe(true);
   });
 });

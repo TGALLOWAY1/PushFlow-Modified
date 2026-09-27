@@ -495,6 +495,58 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     expect(selectedTime()).toBe(t1);
   },
 
+  'loop-strip': async () => {
+    // S4.3a (T58): a drag on the ruler's loop strip sets a loop, snapped to
+    // bars; Shift snaps to beats, Alt not at all; the loop bar moves. Outside
+    // a workspace the timeline draws 30 px a second (happy-dom measures no
+    // width), so clientX / 30 is the time.
+    mount(await importTestMidi1(), <UnifiedTimeline />);
+    const strip = screen.getByTestId('loop-strip');
+    const loop = () => ({ enabled: api.state.loopEnabled, start: api.state.loopStart, end: api.state.loopEnd });
+    const dragStrip = (from: number, to: number, mods: { shiftKey?: boolean; altKey?: boolean } = {}, target: Element = strip) => {
+      fireEvent.pointerDown(target, { clientX: from * 30, button: 0, ...mods });
+      fireEvent.pointerMove(strip, { clientX: to * 30, ...mods });
+      fireEvent.pointerUp(strip, { clientX: to * 30, ...mods });
+    };
+    dragStrip(2.1, 5.9);
+    expect(loop()).toEqual({ enabled: true, start: 2, end: 6 });
+    // Stopped, the playhead goes to the new loop.
+    expect(api.state.currentTime).toBe(2);
+    expect(screen.getByTestId('loop-start-label').textContent).toBe('2.1.1');
+    dragStrip(2.1, 3.3, { shiftKey: true });
+    expect(loop()).toEqual({ enabled: true, start: 2, end: 3.5 });
+    dragStrip(2.1, 3.3, { altKey: true });
+    expect(loop().start).toBeCloseTo(2.1, 9);
+    expect(loop().end).toBeCloseTo(3.3, 9);
+    // Its bar moves it, snapped: a bar later.
+    dragStrip(4, 8);
+    dragStrip(5, 7.1, {}, screen.getByTestId('loop-bar'));
+    expect(loop()).toEqual({ enabled: true, start: 6, end: 10 });
+    // A press without a drag changes nothing.
+    dragStrip(1, 1);
+    expect(loop()).toEqual({ enabled: true, start: 6, end: 10 });
+  },
+
+  'ruler-seek': async () => {
+    // S4.3a (T58): a click on the bar numbers moves the playhead there, and a
+    // drag scrubs; the handle is grabbed where it is.
+    mount(await importTestMidi1(), <UnifiedTimeline />);
+    const numbers = screen.getByTestId('ruler-numbers');
+    fireEvent.pointerDown(numbers, { clientX: 4.5 * 30, button: 0 });
+    expect(api.state.currentTime).toBeCloseTo(4.5, 9);
+    fireEvent.pointerMove(numbers, { clientX: 3 * 30 });
+    expect(api.state.currentTime).toBeCloseTo(3, 9);
+    fireEvent.pointerUp(numbers, { clientX: 3 * 30 });
+    fireEvent.pointerMove(numbers, { clientX: 9 * 30 });
+    expect(api.state.currentTime).toBeCloseTo(3, 9);
+    // Grabbing the handle doesn't jump; moving it scrubs.
+    fireEvent.pointerDown(screen.getByTestId('playhead-handle'), { clientX: 1, button: 0 });
+    expect(api.state.currentTime).toBeCloseTo(3, 9);
+    fireEvent.pointerMove(numbers, { clientX: 7 * 30 });
+    fireEvent.pointerUp(numbers, { clientX: 7 * 30 });
+    expect(api.state.currentTime).toBeCloseTo(7, 9);
+  },
+
   'moment-view': async () => {
     // S4.2 (T09): O cycles the moment view, which the grid follows.
     const state = await analysedProject();

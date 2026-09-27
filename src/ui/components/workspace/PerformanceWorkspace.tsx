@@ -10,7 +10,11 @@
  * - Left: tabbed Sounds/Events panel
  * - Center: Grid + Timeline stacked
  * - Right: tabbed Costs/Layouts panel (mirrors left panel structure)
- * - Bottom drawer: Pattern Composer (collapsible)
+ * - Bottom drawer: the transport bar, then the Timeline | Composer tabs (collapsible)
+ *
+ * The transport is the workspace's (S4.3a, TransportProvider): it plays
+ * whichever drawer tab is shown, and its bar stays in view with the drawer
+ * collapsed.
  */
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useReducer, useMemo } from 'react';
@@ -29,6 +33,9 @@ import { liveCompareIds, canCompare } from '../../state/compareSet';
 import { resolvePresetDrop, soundForPresetLane, FOREIGN_PRESET_MESSAGE } from '../../state/presetDrop';
 
 import { WorkspaceToolbar } from './WorkspaceToolbar';
+import { TransportProvider } from '../../audio/TransportProvider';
+import { TransportBar } from './TransportBar';
+import { DrawerToolbarSlot } from '../TimelineToolbar';
 import { VoicePalette } from '../VoicePalette';
 import { EventsPanel } from '../EventsPanel';
 import { InteractiveGrid } from '../InteractiveGrid';
@@ -70,6 +77,7 @@ import { useReadOnlyHint } from '../../hooks/useReadOnlyHint';
 import { ShortcutSheet } from '../shared/ShortcutSheet';
 import { useLaneImport } from '../../hooks/useLaneImport';
 import {
+  DRAWER_HEAD_HEIGHT,
   DRAWER_TAB_BAR_HEIGHT,
   drawerHeightFor,
   loadDrawerPrefs,
@@ -126,7 +134,9 @@ function DrawerPanel({ tab, active, className = '', children }: {
 export function PerformanceWorkspace() {
   return (
     <ViewSettingsProvider>
-      <PerformanceWorkspaceInner />
+      <TransportProvider>
+        <PerformanceWorkspaceInner />
+      </TransportProvider>
     </ViewSettingsProvider>
   );
 }
@@ -409,6 +419,8 @@ function PerformanceWorkspaceInner() {
     setTimelineTab(tab);
     if (drawerPrefs.collapsed) commitDrawerPrefs({ ...drawerPrefs, collapsed: false });
   }, [drawerPrefs, commitDrawerPrefs]);
+  // Where the shown tab puts its own controls, in the tab row (the timeline's Zoom and + MIDI).
+  const [drawerToolbarSlot, setDrawerToolbarSlot] = useState<HTMLDivElement | null>(null);
 
   // Compare state
   const [selectedForCompare, setSelectedForCompare] = useState<Set<string>>(new Set());
@@ -852,7 +864,7 @@ function PerformanceWorkspaceInner() {
           </div>
 
           <DrawerSplitter
-            height={drawerHeight ?? DRAWER_TAB_BAR_HEIGHT}
+            height={drawerHeight ?? DRAWER_HEAD_HEIGHT}
             maxHeight={maxDrawerHeight(centerHeight, gridMin)}
             minHeight={minDrawerHeight(centerHeight, gridMin)}
             collapsed={drawerCollapsed}
@@ -865,14 +877,16 @@ function PerformanceWorkspaceInner() {
             onToggleCollapsed={() => setDrawerCollapsed(!drawerCollapsed)}
           />
 
-          {/* Timeline / Composer — tabbed view */}
+          {/* The transport, then Timeline / Composer — tabbed view */}
           <div
             data-testid="bottom-drawer"
             className="flex-shrink-0 glass-panel overflow-hidden flex flex-col"
-            style={{ height: drawerHeight, minHeight: DRAWER_TAB_BAR_HEIGHT }}
+            style={{ height: drawerHeight, minHeight: DRAWER_HEAD_HEIGHT }}
           >
+            {/* The workspace's transport, above the tabs (S4.3a): shown whichever tab is, and collapsed too. */}
+            <TransportBar />
             {/* Tab bar */}
-            <div className="flex items-center border-b border-[var(--border-subtle)] flex-shrink-0 px-1" style={{ height: DRAWER_TAB_BAR_HEIGHT }}>
+            <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] flex-shrink-0 px-1" style={{ height: DRAWER_TAB_BAR_HEIGHT }}>
               <button
                 data-testid="drawer-tab-timeline"
                 className={`pf-tab ${timelineTab === 'timeline' ? 'active' : ''}`}
@@ -887,7 +901,7 @@ function PerformanceWorkspaceInner() {
               >
                 Composer
               </button>
-              <span className="flex-1" />
+              <div ref={setDrawerToolbarSlot} data-testid="drawer-toolbar" className="flex-1 min-w-0 flex items-center justify-end overflow-x-auto overflow-y-hidden" />
               <button
                 data-testid="drawer-collapse"
                 className="w-7 h-7 flex items-center justify-center rounded-pf-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
@@ -905,10 +919,12 @@ function PerformanceWorkspaceInner() {
                 drawer is collapsed. */}
             <div className="flex-1 min-h-0 overflow-hidden">
               <DrawerPanel tab="timeline" active={timelineTab === 'timeline' && !drawerCollapsed}>
-                <UnifiedTimeline
-                  highlightedStreamIds={highlightedStreamIds}
-                  isVisible={timelineTab === 'timeline' && !drawerCollapsed}
-                />
+                <DrawerToolbarSlot.Provider value={drawerToolbarSlot}>
+                  <UnifiedTimeline
+                    highlightedStreamIds={highlightedStreamIds}
+                    isVisible={timelineTab === 'timeline' && !drawerCollapsed}
+                  />
+                </DrawerToolbarSlot.Provider>
               </DrawerPanel>
               <DrawerPanel tab="composer" active={timelineTab === 'composer' && !drawerCollapsed} className="overflow-auto">
                 <WorkspacePatternStudio isActive={timelineTab === 'composer' && !drawerCollapsed} />

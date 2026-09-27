@@ -114,7 +114,7 @@ describe('recovered-drafts-store (schema 1 → 2)', () => {
 
   it('a schema-1 project runs every later step too and lands on the current schema', () => {
     const { record, applied } = runMigrations(savedByMain());
-    expect(applied).toEqual(['recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names']);
+    expect(applied).toEqual(['recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names', 'rehearsal-preferences']);
     expect(record.schemaVersion).toBe(PERSISTED_SCHEMA_VERSION);
   });
 
@@ -227,8 +227,8 @@ describe('clean-layout-names (schema 4 → 5)', () => {
 
   it('P3-10a: afterwards no stored layout name contains "(draft)" or "(suggested)", and none is empty', () => {
     const { record, applied } = runMigrations(withRoleSuffixes());
-    expect(applied).toEqual(['clean-layout-names']);
-    expect(record.schemaVersion).toBe(5);
+    expect(applied).toEqual(['clean-layout-names', 'rehearsal-preferences']);
+    expect(record.schemaVersion).toBe(6);
     const names = allLayouts(record).map(l => l.name);
     expect(names).toHaveLength(9);
     expect(names.filter(n => ROLE_WORD.test(n) || !n.trim())).toEqual([]);
@@ -258,7 +258,7 @@ describe('clean-layout-names (schema 4 → 5)', () => {
 
   it('changes nothing but layout names and provenance', () => {
     const saved = withRoleSuffixes();
-    const { record } = runMigrations(saved);
+    const { record } = runMigrations(saved, onlyStep('clean-layout-names'));
     const layoutsWithout = (r: StoredRecord) =>
       allLayouts(r).map(({ name: _n, provenance: _p, ...rest }) => rest);
     expect(layoutsWithout(record)).toEqual(layoutsWithout(saved));
@@ -287,6 +287,46 @@ describe('clean-layout-names (schema 4 → 5)', () => {
   });
 });
 
+// S4.3a (T58): the loop and speed a project was last rehearsed with are saved with it.
+describe('rehearsal-preferences (schema 5 → 6)', () => {
+  const DEFAULTS = { loopEnabled: false, loopStart: null, loopEnd: null, playbackRate: 1 };
+  const at5 = () => runMigrations(savedByMain(), MIGRATIONS.filter(m => m.to <= 5)).record;
+
+  it('starts a project saved before it at Loop off, no region, 1x, and changes nothing else', () => {
+    const before = at5();
+    expect(before.schemaVersion).toBe(5);
+    expect('rehearsal' in before).toBe(false);
+    const { record, applied } = runMigrations(before, onlyStep('rehearsal-preferences'));
+    expect(applied).toEqual(['rehearsal-preferences']);
+    expect(record.schemaVersion).toBe(6);
+    expect(record.rehearsal).toEqual(DEFAULTS);
+    const { schemaVersion: _a, rehearsal: _b, ...rest } = record;
+    const { schemaVersion: _c, ...unchanged } = before;
+    expect(rest).toEqual(unchanged);
+  });
+
+  it('keeps stored preferences, and resets odd values to their defaults', () => {
+    const kept = { loopEnabled: true, loopStart: 2, loopEnd: 6, playbackRate: 0.75 };
+    expect(runMigrations({ id: 'p', schemaVersion: 5, rehearsal: kept }).record.rehearsal).toEqual(kept);
+    const odd = { loopEnabled: 'yes', loopStart: -1, loopEnd: 6, playbackRate: 9 };
+    expect(runMigrations({ id: 'p', schemaVersion: 5, rehearsal: odd }).record.rehearsal)
+      .toEqual({ loopEnabled: false, loopStart: null, loopEnd: null, playbackRate: 2 });
+  });
+
+  it('runs once after its backup, and running it again changes nothing', async () => {
+    const before = at5();
+    const log: string[] = [];
+    const once = await migrateWithBackup(
+      before,
+      async (_record, fromVersion) => { log.push(`backup v${fromVersion}`); },
+      record => runMigrations(record, MIGRATIONS.map(m => ({ ...m, up: (r: StoredRecord) => { log.push(m.name); return m.up(r); } }))).record,
+    );
+    expect(log).toEqual(['backup v5', 'rehearsal-preferences']);
+    expect(runMigrations(structuredClone(once)).applied).toEqual([]);
+    expect(onlyStep('rehearsal-preferences')[0].up(structuredClone(once))).toEqual(once);
+  });
+});
+
 describe('migrateWithBackup', () => {
   it('writes the backup, with the untouched record, before any migration step runs', async () => {
     const log: string[] = [];
@@ -302,7 +342,7 @@ describe('migrateWithBackup', () => {
       },
       record => runMigrations(record, [...MIGRATIONS.map(m => ({ ...m, up: (r: StoredRecord) => { log.push(m.name); return m.up(r); } }))]),
     );
-    expect(log).toEqual(['backup v1', 'recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names']);
+    expect(log).toEqual(['backup v1', 'recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names', 'rehearsal-preferences']);
     expect(backedUp).toEqual(untouched);
     expect(result.record.schemaVersion).toBe(PERSISTED_SCHEMA_VERSION);
   });

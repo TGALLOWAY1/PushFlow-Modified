@@ -28,6 +28,8 @@ export type InputRowId =
   | 'step-hard-events'
   | 'events-list-keys'
   | 'moment-view'
+  | 'loop-strip'
+  | 'ruler-seek'
   | 'exit-replay'
   | 'escape'
   | 'delete'
@@ -173,6 +175,16 @@ export const INPUT_TABLE: readonly InputRow[] = [
     input: ['O'], when: 'Outside text fields',
     does: 'Cycles the moment view on the grid: Now, Now + Next (the next event\'s strikes and the moves to them), Prev · Now · Next.',
     keys: e => plain(e) && letter(e, 'o'),
+  },
+  {
+    id: 'loop-strip', group: 'Playback and events',
+    input: ['Drag on the loop strip'], when: 'The top strip of the timeline ruler',
+    does: 'Sets a loop and turns Loop on. Its edges snap to bars; hold Shift for beats, Alt for no snapping. Drag the loop bar to move it, or an end to resize it.',
+  },
+  {
+    id: 'ruler-seek', group: 'Playback and events',
+    input: ['Click the bar numbers', 'Drag the playhead handle'], when: 'The timeline ruler',
+    does: 'Moves the playhead there; dragging scrubs. While playing, playback carries on from there.',
   },
   // Before 'escape': while a step is replayed, Esc leaves the replay first.
   {
