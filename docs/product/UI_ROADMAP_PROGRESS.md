@@ -642,7 +642,7 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
 
 #### S4.3a — A DAW-grade transport ∥ S4.2
 
-- **Status:** Not started
+- **Status:** In progress (branch `claude/pushflow-ui-roadmap-5bj3zd`)
 - **Prerequisites:** S4.1, S2.1, S2.4.
 - **Mode:** solo, so the old audio path stays selectable through a dev-only localStorage switch; record a follow-up to delete it.
 
