@@ -677,7 +677,7 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
 
 #### S4.3b — Current moment, Rehearse and count-in
 
-- **Status:** Not started
+- **Status:** In progress (`claude/pushflow-ui-roadmap-jajuya`)
 - **Prerequisites:** S4.3a, S4.2.
 - **Decisions:** Q7 (Rehearse and current-event labels say "Event").
 
