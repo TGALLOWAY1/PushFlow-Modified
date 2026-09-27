@@ -379,6 +379,39 @@ describe('the count-in (S4.3b, T59)', () => {
     expect(audio.hits.some(h => h.id === 'a' && Math.abs(h.when - (seekAt + START_LEAD)) < 1e-9)).toBe(true);
   });
 
+  it('a seek while audio is starting ends the count-in too: the target plays at once when audio comes', async () => {
+    audio.readiness = 'pending';
+    audio.resumeResolves = false;
+    const e = engine();
+    e.play(0, { countInBars: 1 });
+    expect(e.countIn).toEqual({ beat: -1, beats: 4 });
+    e.seek(2);
+    expect(e.countIn).toBeNull();
+    expect(e.position()).toBe(2);
+    audio.finishResume();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(e.debug().clock).toBe('audio');
+    const startedAt = audio.time;
+    advance(0.5);
+    expect(e.countIn).toBeNull();
+    expect(audio.clicks).toEqual([]);
+    expect(e.position()).toBeCloseTo(2 + 0.5 - START_LEAD, 6);
+    expect(audio.hits.some(h => h.id === 'a' && Math.abs(h.when - (startedAt + START_LEAD)) < 1e-9)).toBe(true);
+  });
+
+  it('a seek while audio is starting ends the count-in on the wall clock as well', () => {
+    audio.readiness = 'pending';
+    audio.resumeResolves = false;
+    const e = engine();
+    e.play(0, { countInBars: 2 });
+    e.seek(2);
+    timers.fire(); // no audio yet: the wall clock starts, silently
+    advance(0.3);
+    expect(e.countIn).toBeNull();
+    expect(e.position()).toBeCloseTo(2.3, 6);
+  });
+
   it('a speed change during the count-in keeps its clicks and where it ends', () => {
     const e = engine();
     const t0 = audio.time;

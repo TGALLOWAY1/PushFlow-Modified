@@ -3,7 +3,8 @@
  * row and under the chart for its selected bar, and a split button in the
  * docked inspector whose menu rehearses at a chosen speed (as written, 75% or
  * 50%) and remembers it for the session. What it does is useRehearse's; its
- * tooltip says so.
+ * tooltip says so. `onRehearse` runs after it starts (the enlarged chart
+ * closes, so the grid shows the count-in).
  */
 
 import { useRef, useState } from 'react';
@@ -15,13 +16,19 @@ import { Popover } from './Overlay';
 
 const SPLIT_HALF = 'focus-ring inline-flex items-center h-6 border border-[var(--border-default)] bg-[var(--bg-card)] text-pf-micro font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]';
 
-export function RehearseButton({ event, variant = 'button', testId = 'rehearse' }: {
+export function RehearseButton({ event, variant = 'button', testId = 'rehearse', onRehearse }: {
   event: TimelineEvent;
   /** 'button' on the selected Events row and under the chart; 'split' (with the speed menu) in the inspector. */
   variant?: 'button' | 'split';
   testId?: string;
+  /** Called once Rehearse has started. */
+  onRehearse?: () => void;
 }) {
-  const { rehearse, planFor, rate, playing } = useRehearse();
+  const { rehearse: start, planFor, rate, playing } = useRehearse();
+  const rehearse = (e: TimelineEvent, speed?: number) => {
+    start(e, speed);
+    onRehearse?.();
+  };
   const plan = planFor(event);
   const title = rehearseTitle(plan, playing);
   const menuButton = useRef<HTMLButtonElement>(null);

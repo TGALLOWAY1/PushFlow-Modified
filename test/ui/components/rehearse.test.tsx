@@ -3,7 +3,8 @@
  * S4.3b · Rehearse (T10) and the count-in (T59), through the real components.
  *
  * Rehearse on the selected Events row, in the docked inspector (with its speed
- * menu) and under the chart: it selects the event, loops its bar and the next
+ * menu) and under the chart (and in its enlarged view, which then closes so the
+ * grid shows the count-in): it selects the event, loops its bar and the next
  * on bar lines at the rehearse speed, and plays from the loop's start; while
  * playing it moves into the loop without restarting. Through the workspace's
  * TransportProvider, a Rehearse from stopped reaches the engine with a count-in
@@ -50,6 +51,21 @@ beforeAll(async () => {
 
 const loop = () => ({ enabled: api.state.loopEnabled, start: api.state.loopStart, end: api.state.loopEnd, rate: api.state.playbackRate });
 const event = (i: number): TimelineEvent => getEventTimeline(spread).events[i]!;
+
+/** The chart as the Costs panel shows it: bar clicks select, Rehearse offered. */
+function Chart() {
+  const { state, dispatch } = useProject();
+  return (
+    <EventCostChart
+      fingerAssignments={state.analysisResult!.executionPlan.fingerAssignments}
+      timeline={getEventTimeline(state)}
+      tempo={state.tempo}
+      selectedMomentKey={state.selectedMomentKey}
+      onSelectEvent={selection => dispatch({ type: 'SELECT_EVENT', payload: selection })}
+      showRehearse
+    />
+  );
+}
 
 describe('Rehearse (S4.3b, T10)', () => {
   it('is on the selected Events row only; it loops the event\'s bar and the next at 75% and plays from the loop\'s start', () => {
@@ -119,19 +135,6 @@ describe('Rehearse (S4.3b, T10)', () => {
   });
 
   it('under the chart, for the selected bar', () => {
-    function Chart() {
-      const { state, dispatch } = useProject();
-      return (
-        <EventCostChart
-          fingerAssignments={state.analysisResult!.executionPlan.fingerAssignments}
-          timeline={getEventTimeline(state)}
-          tempo={state.tempo}
-          selectedMomentKey={state.selectedMomentKey}
-          onSelectEvent={selection => dispatch({ type: 'SELECT_EVENT', payload: selection })}
-          showRehearse
-        />
-      );
-    }
     render(<ProjectProvider initialState={spread}><Grab /><Chart /></ProjectProvider>);
     expect(screen.queryByTestId('chart-rehearse')).toBeNull();
     fireEvent.click(document.querySelector('[data-testid="event-bar"][data-event-index="5"]')!);
@@ -139,6 +142,23 @@ describe('Rehearse (S4.3b, T10)', () => {
     act(() => { fireEvent.click(screen.getByTestId('chart-rehearse')); });
     expect(loop()).toEqual({ enabled: true, start: 2, end: 6, rate: 0.75 });
     expect(api.state.currentTime).toBe(2);
+  });
+
+  it('in the enlarged chart too: a bar picked there offers Rehearse, which rehearses it and closes the dialog', () => {
+    render(<ProjectProvider initialState={spread}><Grab /><Chart /></ProjectProvider>);
+    fireEvent.click(screen.getByText('Enlarge'));
+    const dialog = screen.getByTestId('chart-dialog');
+    expect(within(dialog).queryByTestId('chart-dialog-rehearse')).toBeNull();
+    // Event 18 is at 8.5 s, in bar 5: bars 5 and 6.
+    fireEvent.click(dialog.querySelector('[data-testid="event-bar"][data-event-index="17"]')!);
+    expect(within(dialog).getByTestId('chart-dialog-selected-event').textContent).toMatch(/^Event 18 · 5\.2\.1/);
+    const rehearse = within(dialog).getByTestId('chart-dialog-rehearse');
+    expect(rehearse.textContent).toBe('Rehearse bars 5–6 · 75%');
+    act(() => { fireEvent.click(rehearse); });
+    expect(loop()).toEqual({ enabled: true, start: 8, end: 12, rate: 0.75 });
+    expect(api.state.isPlaying).toBe(true);
+    expect(api.state.selectedMomentKey).toBe(event(17).key);
+    expect(screen.queryByTestId('chart-dialog')).toBeNull();
   });
 
   it('through the workspace\'s transport, Rehearse counts in at least a bar while plain Play counts in only as set', () => {

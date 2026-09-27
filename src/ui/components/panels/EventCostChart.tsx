@@ -9,7 +9,8 @@
  * - Filtering cost categories on/off
  * - Hover inspection per event
  * - Enlarge to modal view
- * - Rehearse the selected bar's event (S4.3b, T10), when the panel asks
+ * - Rehearse the selected bar's event (S4.3b, T10), when the panel asks, under
+ *   the chart and in the enlarged view (which closes, so the grid shows it)
  */
 
 import { useState, useMemo, useCallback } from 'react';
@@ -104,6 +105,14 @@ export function EventCostChart({ fingerAssignments, timeline, subject, selectedM
   const selectedBar = selectedIndex === null ? null : eventBars.find(b => b.event.index === selectedIndex) ?? null;
 
   const maxTotal = useMemo(() => Math.max(...eventBars.map(b => b.total), 0.1), [eventBars]);
+
+  // The selected bar's event and its Rehearse (S4.3b, T10).
+  const selectedEventRow = (testId: string, rehearseTestId: string, className = '', onRehearse?: () => void) => showRehearse && selectedBar && (
+    <div data-testid={testId} className={`flex items-center justify-between gap-2 min-w-0 ${className}`}>
+      <span className="text-pf-xs font-mono text-[var(--text-secondary)] truncate">{formatEventLabel(selectedBar.event, tempo)}</span>
+      <RehearseButton event={selectedBar.event} variant="button" testId={rehearseTestId} onRehearse={onRehearse} />
+    </div>
+  );
 
   const chartContent = (height: number) => {
     if (eventBars.length === 0) {
@@ -257,12 +266,7 @@ export function EventCostChart({ fingerAssignments, timeline, subject, selectedM
         )}
 
         {/* The selected bar: rehearse its event (S4.3b, T10). */}
-        {showRehearse && selectedBar && (
-          <div data-testid="chart-selected-event" className="flex items-center justify-between gap-2 min-w-0">
-            <span className="text-pf-xs font-mono text-[var(--text-secondary)] truncate">{formatEventLabel(selectedBar.event, tempo)}</span>
-            <RehearseButton event={selectedBar.event} variant="button" testId="chart-rehearse" />
-          </div>
-        )}
+        {selectedEventRow('chart-selected-event', 'chart-rehearse')}
       </div>
 
       {/* Enlarged modal */}
@@ -321,6 +325,8 @@ export function EventCostChart({ fingerAssignments, timeline, subject, selectedM
                   <span>{formatEventLabel(eventBars[eventBars.length - 1]!.event, tempo)}</span>
                 </div>
               )}
+              {/* A bar picked here can be rehearsed from here; the dialog closes so the grid shows it. */}
+              {selectedEventRow('chart-dialog-selected-event', 'chart-dialog-rehearse', 'mt-3', closeEnlarged)}
             </div>
         </Dialog>
       )}

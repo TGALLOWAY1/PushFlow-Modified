@@ -347,8 +347,11 @@ export class TransportEngine {
     }
     const start = startPosition(target, this.region(), this.material.song);
     if (!this.run || !this.clock) {
+      // Waiting for the clock: the start moves, and a seek ends the count-in here too.
       this.pendingStart = start;
+      this.pendingCountIn = undefined;
       this.publish(start);
+      this.publishCountIn(this.countInNow());
       return;
     }
     this.restart(start, START_LEAD);
