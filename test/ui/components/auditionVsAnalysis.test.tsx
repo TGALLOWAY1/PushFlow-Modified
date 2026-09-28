@@ -11,7 +11,8 @@
  */
 
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
+import { render, renderHook, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { ToastProvider } from '../../../src/ui/components/shared/Toast';
 import { ProjectProvider, useProject } from '../../../src/ui/state/ProjectContext';
 import {
@@ -26,6 +27,7 @@ import { UnifiedTimeline } from '../../../src/ui/components/UnifiedTimeline';
 import { VoicePalette } from '../../../src/ui/components/VoicePalette';
 import { analyzeLayout } from '../../../src/ui/analysis/analyzeLayout';
 import { analysisScopeLine } from '../../../src/ui/analysis/analysisScope';
+import { useAutoAnalysis } from '../../../src/ui/hooks/useAutoAnalysis';
 import { PAD_DRAG_TYPE } from '../../../src/ui/components/dragTypes';
 import { suggestedTestMidi1 } from '../../helpers/testMidi1';
 
@@ -236,5 +238,27 @@ describe('Exclude from analysis (P4-7c, P4-7d)', () => {
     expect(pills(snare!).every(p => p.getAttribute('data-excluded') === 'true' && p.title.includes('not analysed'))).toBe(true);
     // The muted Sound keeps its analysed pills (hand and finger).
     expect(pills(kick!).every(p => /^[LR][1-5]$/.test(p.getAttribute('data-finger') ?? ''))).toBe(true);
+  });
+});
+
+describe('every Sound excluded from analysis', () => {
+  it('clears the analysis, leaves every Sound on its pad, and Generate says why it is off', () => {
+    const wrapper = ({ children }: { children: ReactNode }) => <ProjectProvider initialState={analysed}>{children}</ProjectProvider>;
+    const { result } = renderHook(() => ({ project: useProject(), analysis: useAutoAnalysis() }), { wrapper });
+    expect(result.current.project.state.analysisResult).not.toBeNull();
+    const pads = getDisplayedLayout(analysed)!.padToVoice;
+
+    act(() => {
+      for (const s of analysed.soundStreams) {
+        result.current.project.dispatch({ type: 'SET_SOUND_EXCLUDED', payload: { soundId: s.id, excluded: true } });
+      }
+    });
+    const state = result.current.project.state;
+    // No plan of Sounds that are no longer analysed is left on screen, and it settles.
+    expect({ result: state.analysisResult, stale: state.analysisStale, processing: state.isProcessing })
+      .toEqual({ result: null, stale: false, processing: false });
+    expect(getDisplayedLayout(state)!.padToVoice).toEqual(pads);
+    expect(result.current.analysis.canGenerate).toBe(false);
+    expect(result.current.analysis.generateDisabledReason).toBe('Every Sound is excluded from analysis');
   });
 });
