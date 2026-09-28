@@ -298,6 +298,9 @@ function OverviewInfographic() {
               <p className="text-[8px] text-gray-700" data-testid="learn-more-practice-aids">
                 Hits&apos; menu in the transport sets the click&apos;s and the hits&apos; levels, and which hand you practise ({HANDS_FILTERS.map(f => f.label).join(', ')}): with one hand chosen, the other hand&apos;s strikes are silent and its pads and notes dimmed, going by the plan&apos;s hand for each note. Alt-click a pad, or the play button in its inspector, to hear its Sound. None of these changes a verdict or a score, and they reset when the project is closed.
               </p>
+              <p className="text-[8px] text-gray-700" data-testid="learn-more-rehearse-view">
+                Rehearse view (beside the timeline drawer&apos;s collapse button) collapses both side panels, so the grid, the panel beside it and the timeline get the room; turning it off, or opening a panel, brings them back as they were. It is remembered on this device and changes nothing else.
+              </p>
             </div>
           </div>
         </InfoCard>

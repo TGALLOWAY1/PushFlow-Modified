@@ -124,6 +124,14 @@ describe('view settings are remembered per viewer (T39)', () => {
     expect(loadViewSettings()).toEqual(DEFAULT_VIEW_SETTINGS);
   });
 
+  it('remembers the Rehearse view (S4.4, F7-03): off by default, and only true turns it on', () => {
+    expect(DEFAULT_VIEW_SETTINGS.rehearseView).toBe(false);
+    saveViewSettings({ ...DEFAULT_VIEW_SETTINGS, rehearseView: true });
+    expect(loadViewSettings().rehearseView).toBe(true);
+    localStorage.setItem('pushflow:view-settings', '{"rehearseView":"yes"}');
+    expect(loadViewSettings().rehearseView).toBe(false);
+  });
+
   it('"Show Finger Assignment" is on by default, so solver fingering shows', () => {
     expect(DEFAULT_VIEW_SETTINGS.gridLabels.showFingerAssignment).toBe(true);
   });

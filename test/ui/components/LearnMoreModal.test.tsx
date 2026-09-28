@@ -368,6 +368,14 @@ describe('audition vs analysis and the practice aids (S4.4, invariant 2)', () =>
     expect(text).toMatch(/None of these changes a verdict or a score/);
   });
 
+  it('explains the Rehearse view: both side panels collapsed, remembered on this device, nothing else changed', () => {
+    openTab('Overview');
+    const text = screen.getByTestId('learn-more-rehearse-view').textContent!;
+    expect(text).toMatch(/collapses both side panels/);
+    expect(text).toMatch(/brings them back as they were/);
+    expect(text).toMatch(/remembered on this device and changes nothing else/);
+  });
+
   it('shows the scope line with excluded Sounds in the Verdicts section', () => {
     openTab('Cost Factors');
     expect(document.body.textContent).toContain('Analysing 4 of 7 Sounds · 2 excluded · 1 not placed yet');

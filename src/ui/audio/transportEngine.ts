@@ -143,6 +143,11 @@ export interface TransportDebug {
   skipped: number;
   /** The count-in now, from Play until the music starts; null otherwise. */
   countIn: CountInBeat | null;
+  /** The hits it plays, and the Sounds they are of (S4.4: what Mute, Solo and Hands leave). */
+  hitCount: number;
+  hitSoundIds: string[];
+  /** Auditions asked for since it was made (S4.4: Alt-click a pad, the pad inspector). */
+  auditions: number;
 }
 
 const WALL_CLOCK: AudioClock = {
@@ -186,6 +191,7 @@ export class TransportEngine {
   private lastFrame: RunPosition = { position: 0, ended: false, pass: 0 };
 
   private published = 0;
+  private auditionCount = 0;
   /** The count-in's beat as last published; a new object only when it changes. */
   private publishedCountIn: CountInBeat | null = null;
   private readonly listeners = new Set<() => void>();
@@ -249,6 +255,9 @@ export class TransportEngine {
       region: this.region(),
       skipped: this.scheduler.skipped,
       countIn: this.countInNow(),
+      hitCount: this.material.hits.length,
+      hitSoundIds: [...new Set(this.material.hits.map(h => h.soundId))].sort(),
+      auditions: this.auditionCount,
     };
   }
 
@@ -286,6 +295,7 @@ export class TransportEngine {
 
   /** Plays one Sound now, over whatever is playing (S4.4: Alt-click, the pad inspector). */
   audition(soundId: string): void {
+    this.auditionCount++;
     this.audio.audition(soundId);
   }
 
