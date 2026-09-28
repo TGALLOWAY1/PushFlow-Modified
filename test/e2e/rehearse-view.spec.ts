@@ -103,4 +103,23 @@ test.describe('S4.4 · the Rehearse view (P4-10)', () => {
     // The Composer tab, and every transport control, stay reachable meanwhile (invariant 3).
     await expect(page.getByTestId('drawer-tab-composer')).toBeVisible();
   });
+
+  test('a hidden panel has no resize handle, so a drag there can\'t change the width it comes back at (P4 audit)', async ({ page, pf }) => {
+    await openTestMidi1(page, pf);
+    const right = await width(page, 'right-panel');
+    await page.getByTestId('rehearse-view').click();
+    await expect.poll(() => width(page, 'right-panel')).toBe(36);
+    // On dc344ac the handle stayed, and a drag on it started from width 0, so the
+    // panel came back at its 280 px minimum instead of its width.
+    await expect(page.getByTestId('right-panel-handle')).toHaveCount(0);
+    await expect(page.getByTestId('left-panel-handle')).toHaveCount(0);
+    const strip = (await page.getByTestId('right-panel').boundingBox())!;
+    await page.mouse.move(strip.x - 4, strip.y + 300);
+    await page.mouse.down();
+    await page.mouse.move(strip.x - 54, strip.y + 300, { steps: 5 });
+    await page.mouse.up();
+    await page.getByTestId('rehearse-view').click();
+    await expect.poll(() => width(page, 'right-panel')).toBe(right);
+    await expect(page.getByTestId('right-panel-handle')).toHaveCount(1);
+  });
 });

@@ -29,8 +29,9 @@ test.describe('S3.3 · freshness (P3-5)', () => {
     const suggested = await pf.call('layoutHash', 'shown');
     expect((await pf.call('status')).planLayoutHash).toBe(suggested);
 
-    // A rename: nothing the analysis reads changed.
-    await page.getByTestId('sound-name').first().dblclick();
+    // A rename: nothing the analysis reads changed. (Near the name's left edge, which
+    // stays put while the hover and the arming click take width from its right end.)
+    await page.getByTestId('sound-name').first().dblclick({ position: { x: 4, y: 9 } });
     const field = page.getByTestId('sound-rename-input');
     await field.fill('Kick drum');
     await field.press('Enter');

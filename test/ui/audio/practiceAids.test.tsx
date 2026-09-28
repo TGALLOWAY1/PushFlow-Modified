@@ -231,6 +231,31 @@ describe('Hits\' menu in the transport', () => {
     act(() => api.dispatch({ type: 'SET_HANDS_FILTER', payload: 'both' }));
     expect(document.querySelectorAll('[data-hand-filtered="true"]')).toHaveLength(0);
   });
+
+  it('an excluded Sound\'s notes are never dimmed by its finger preference: the plan gives them no hand, so the transport plays them (P4 audit)', async () => {
+    const g = analysed.soundStreams[analysed.soundStreams.length - 1]!;
+    let state = projectReducer(analysed, { type: 'SET_VOICE_CONSTRAINT', payload: { streamId: g.id, hand: 'right', finger: 'index' } });
+    state = projectReducer(state, { type: 'SET_SOUND_EXCLUDED', payload: { soundId: g.id, excluded: true } });
+    const analysis = await analyzeLayout({
+      performance: getActivePerformance(state), layout: getDisplayedLayout(state)!,
+      instrumentConfig: state.instrumentConfig, engineConfig: state.engineConfig, sections: state.sections,
+    });
+    mount({ ...state, analysisResult: analysis, analysisStale: false });
+    act(() => api.dispatch({ type: 'SET_HANDS_FILTER', payload: 'left' }));
+
+    // Its placeholder pills show the preference ("R2"), but stay undimmed, like its pad.
+    const pills = [...document.querySelectorAll(`[data-testid="timeline-pill"][data-sound-id="${g.id}"]`)];
+    expect(pills).toHaveLength(g.events.length);
+    expect(pills.every(p => p.getAttribute('data-excluded') === 'true')).toBe(true);
+    expect(pills.filter(p => p.getAttribute('data-hand-filtered') === 'true')).toHaveLength(0);
+    // The plan's own right-hand notes dim, and only they.
+    const plan = getDisplayedExecutionPlan(api.state)!;
+    expect(document.querySelectorAll('[data-testid="timeline-pill"][data-hand-filtered="true"]'))
+      .toHaveLength(plan.fingerAssignments.filter(a => a.assignedHand === 'right').length);
+    // The transport keeps every one of its hits.
+    const left = audibleHits(api.state.soundStreams, { mutedSoundIds: [], soloedSoundIds: [] }, { filter: 'left', byNote: handsByNote(plan.fingerAssignments) });
+    expect(left.filter(h => h.soundId === g.id)).toHaveLength(g.events.length);
+  }, 30_000);
 });
 
 describe('auditions', () => {
