@@ -13,7 +13,6 @@ import { type SoundStream } from '../../state/projectState';
 import { SHORT_LABEL_MAX } from '../../../types/performanceLane';
 import { gmDrumName, gmDrumRenames } from '../../../utils/gmDrumMap';
 import { useRemovePadWithUndo } from '../../hooks/useRemovePadWithUndo';
-import { useUndoToast } from '../../hooks/useUndoToast';
 import { COMPOSER_SOURCE_ID } from '../../state/composerSource';
 import { Popover } from '../shared/Overlay';
 import { ColorSwatches } from './ColorSwatches';
@@ -34,10 +33,9 @@ export function SoundRowMenu({ sound, padKeys, locked, groupId, x, y, anchor, on
   onClose: () => void;
   onRename: () => void;
 }) {
-  const { state, dispatch } = useProject();
+  const { state, dispatch, undoable } = useProject();
   const grouping = useSoundGrouping();
   const removePad = useRemovePadWithUndo();
-  const undoToast = useUndoToast();
   const titleId = useId();
   const [label, setLabel] = useState(sound.shortLabel ?? '');
 
@@ -147,8 +145,7 @@ export function SoundRowMenu({ sound, padKeys, locked, groupId, x, y, anchor, on
         danger
         title="Delete the Sound, its notes and its placements (with Undo)"
         onClick={() => {
-          dispatch({ type: 'DELETE_LANE', payload: sound.id });
-          undoToast(`Deleted ${sound.name}`, 'Delete Sound');
+          undoable(`Deleted ${sound.name}`, () => dispatch({ type: 'DELETE_LANE', payload: sound.id }));
           onClose();
         }}
       >

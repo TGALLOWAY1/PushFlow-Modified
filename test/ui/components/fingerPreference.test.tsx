@@ -109,6 +109,21 @@ describe('the control', () => {
     expect(onChange).toHaveBeenCalledTimes(2);
   });
 
+  it('the typed field follows a change made with the buttons, so editing it never brings the old hand back', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<FingerAssignmentInput value={{ hand: 'left', finger: 'index' }} onChange={onChange} />);
+    fireEvent.click(chip());
+    const field = () => screen.getByTestId('finger-input') as HTMLInputElement;
+    expect(field().value).toBe('L2');
+    fireEvent.click(screen.getByTestId('finger-hand-right'));
+    rerender(<FingerAssignmentInput value={{ hand: 'right', finger: 'index' }} onChange={onChange} />);
+    expect(field().value).toBe('R2');
+    // Enter without typing leaves R2 as it is.
+    fireEvent.keyDown(field(), { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith({ hand: 'right', finger: 'index' });
+  });
+
   it('Accept makes the plan\'s most-used finger the preference; Auto (solver) clears one', () => {
     const onChange = vi.fn();
     const { rerender } = render(<FingerAssignmentInput value={null} plan={plan('R3', 'R2')} onChange={onChange} />);

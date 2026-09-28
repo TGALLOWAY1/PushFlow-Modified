@@ -27,7 +27,6 @@ import { type Layout } from '../../types/layout';
 import { LOCKED_SOUND_DRAG_TYPE, PAD_DRAG_TYPE, SOUND_DRAG_TYPE } from './dragTypes';
 import { endDrag, startDrag, useDragSession } from './dragSession';
 import { dropHint } from '../analysis/dropHint';
-import { useUndoToast } from '../hooks/useUndoToast';
 import { PadContextMenu } from './PadContextMenu';
 import { useRemovePadWithUndo } from '../hooks/useRemovePadWithUndo';
 import { useReadOnlyHint } from '../hooks/useReadOnlyHint';
@@ -138,7 +137,7 @@ function safeColorAlpha(color: string | null | undefined, alpha: number, fallbac
 const IMPOSSIBLE_REACH_THRESHOLD = 5;
 
 export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now-next', voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave, debuggerIteration, padSize = 56, stateBar, dock, dockPlacement = 'side' }: InteractiveGridProps) {
-  const { state, dispatch } = useProject();
+  const { state, dispatch, undoable } = useProject();
   const toast = useToast();
   // Looking never writes (S3.2): `refuse()` says how to edit and blocks the gesture.
   const { hint: readOnlyHint, refuse: refuseEdit } = useReadOnlyHint();
@@ -163,7 +162,6 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
   const dragSession = useDragSession();
   // The pad under a drag: its hint shows even when the drop would be refused.
   const [hintPad, setHintPad] = useState<string | null>(null);
-  const undoToast = useUndoToast();
   const [contextMenu, setContextMenu] = useState<{ padKey: string; x: number; y: number; pad: HTMLElement } | null>(null);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
@@ -542,8 +540,9 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
           const evicts = occupant && occupant.id !== stream.id && !placementBlockedByLock(editable, stream.id, padKey)
             ? state.soundStreams.find(s => s.id === occupant.id)?.name ?? occupant.name
             : null;
-          dispatch({ type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey, stream } });
-          if (evicts) undoToast(`Placed ${stream.name} on ${formatPadPosition(padKey)}: ${evicts} went back to To place`, 'Place Sound');
+          const place = () => dispatch({ type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey, stream } });
+          if (evicts) undoable(`Placed ${stream.name} on ${formatPadPosition(padKey)}: ${evicts} went back to To place`, place);
+          else place();
         } else {
           dispatch({ type: 'SET_ERROR', payload: 'Could not assign sound — it no longer exists in this project.' });
         }
@@ -555,7 +554,7 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
     }
 
     setDragSourcePad(null);
-  }, [state.soundStreams, state.workingLayout, state.activeLayout, dispatch, layout, refuseEdit, undoToast]);
+  }, [state.soundStreams, state.workingLayout, state.activeLayout, dispatch, layout, refuseEdit, undoable]);
 
   const handleDragOver = useCallback((e: React.DragEvent, padKey: string) => {
     // What a drop here would do (T46), refused or not: the hint beside the pad.
