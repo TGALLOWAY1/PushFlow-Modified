@@ -345,6 +345,17 @@ function applyPersistedDefaults(p: Partial<PersistedProject> & { id: string }): 
 }
 
 /**
+ * Lanes for a legacy record that has none, made from its Sounds as they were
+ * then: a muted Sound's lane is muted too (`isMuted`), so the mute-as-exclusion
+ * migration (S4.4) excludes both. With only the Sound excluded, the next lane
+ * edit would rebuild the Sound from its lane and take the exclusion back.
+ */
+function legacyLanesFromStreams(soundStreams: PersistedProject['soundStreams']): PersistedProject['performanceLanes'] {
+  return buildPerformanceLanesFromStreams(soundStreams).map((lane, i) =>
+    (soundStreams[i] as { muted?: unknown }).muted === true ? { ...lane, isMuted: true } : lane);
+}
+
+/**
  * Migrate a legacy localStorage ProjectState to PersistedProject shape.
  * Handles both V1 (layouts[] + activeLayoutId) and V2 (activeLayout + savedVariants).
  */
@@ -402,7 +413,7 @@ function migrateLegacyToPersistedProject(p: Record<string, unknown>): PersistedP
       : {},
     performanceLanes: Array.isArray(p.performanceLanes)
       ? p.performanceLanes as PersistedProject['performanceLanes']
-      : buildPerformanceLanesFromStreams(soundStreams),
+      : legacyLanesFromStreams(soundStreams),
     laneGroups: Array.isArray(p.laneGroups) ? p.laneGroups as PersistedProject['laneGroups'] : [],
     sourceFiles: Array.isArray(p.sourceFiles) ? p.sourceFiles as PersistedProject['sourceFiles'] : [],
     engineConfig: (p.engineConfig && typeof p.engineConfig === 'object')

@@ -425,6 +425,25 @@ describe('mute-as-exclusion (schema 7 → 8)', () => {
     expect('notices' in record).toBe(false);
   });
 
+  // From review: a legacy record with no lanes gets them from its Sounds
+  // before the runner runs, so the lanes must carry the mute too, or only the
+  // Sound would be excluded and the next lane edit would take that back.
+  it('a legacy record with no lanes: a muted Sound and the lane made for it are both excluded, and stay so after a lane edit', () => {
+    const stream = (id: string, muted: boolean) => ({
+      id, name: id, color: '#888888', originalMidiNote: 36, muted,
+      events: [{ startTime: 0, duration: 0.1, velocity: 100, eventKey: `${id}-0` }],
+    });
+    const persisted = validateAndMigrateRaw({ id: 'legacy', name: 'Old', soundStreams: [stream('kick', true), stream('snare', false)] });
+    expect(ids(persisted.performanceLanes)).toEqual([['kick', true], ['snare', false]]);
+    expect(ids(persisted.soundStreams)).toEqual([['kick', true], ['snare', false]]);
+    expect([...flags(persisted.performanceLanes), ...flags(persisted.soundStreams)]).toEqual([]);
+    expect(persisted.notices).toEqual([{ id: 'mute-as-exclusion', soundIds: ['kick'] }]);
+    // A lane edit rebuilds the Sounds from the lanes: Kick stays out of the analysis.
+    const renamed = projectReducer(deserializeProject(persisted), { type: 'RENAME_LANE', payload: { laneId: 'kick', name: 'Kick' } });
+    expect(renamed.soundStreams.find(s => s.id === 'kick')!.excluded).toBe(true);
+    expect(getActivePerformance(renamed).events.map(e => e.voiceId)).toEqual(['snare']);
+  });
+
   it('P4-12: runs once after its backup, and running it again changes nothing', async () => {
     const before = {
       ...at7(),
