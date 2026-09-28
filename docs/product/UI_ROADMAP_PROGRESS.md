@@ -718,7 +718,7 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
 
 #### S4.4 — Mute is audio-only; practice aids; Rehearse view
 
-- **Status:** Not started
+- **Status:** In progress (`claude/pushflow-ui-roadmap-qgnejl`)
 - **Prerequisites:** S4.3b.
 - **Cuts:** the volume popover, audition and the hands filter are kept.
 
