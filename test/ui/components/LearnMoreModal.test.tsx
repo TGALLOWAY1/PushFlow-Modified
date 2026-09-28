@@ -354,7 +354,7 @@ describe('audition vs analysis and the practice aids (S4.4, invariant 2)', () =>
     expect(text).toMatch(/Mute and Solo .* only change what you hear in rehearsal/);
     expect(text).toMatch(/while any Sound is soloed only soloed Sounds sound, otherwise every Sound but the muted ones/);
     expect(text).toMatch(/never change a verdict, a score, a fingering or the layout, a muted pad stays editable/);
-    expect(text).toMatch(/Exclude from analysis .* saved with the project, can be undone, is badged Excluded, and the scope line counts it/);
+    expect(text).toMatch(/Exclude from analysis .* saved with the project, can be undone, is marked with a crossed circle on its row, its pads and its lane, and the scope line counts it/);
     expect(text).toMatch(/Generate keeps its pad/);
   });
 

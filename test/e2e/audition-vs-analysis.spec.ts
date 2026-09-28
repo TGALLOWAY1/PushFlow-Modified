@@ -130,6 +130,15 @@ test.describe('S4.4 · Exclude from analysis', () => {
     await row(page, snare.id).getByTestId('sound-menu-button').click();
     await page.getByTestId('sound-menu-exclude').click();
     await expect(row(page, snare.id).getByTestId('sound-excluded')).toHaveText('Excluded');
+    // The badge leaves the name the end that tells it apart, and the row fits the 320 px panel.
+    expect(await row(page, snare.id).evaluate(el => {
+      const end = el.querySelector('[data-testid="sound-name"]')!.lastElementChild as HTMLElement;
+      const width = end.getBoundingClientRect().width;
+      return {
+        nameEnd: width > 0 && end.scrollWidth <= Math.ceil(width),
+        menuInside: el.querySelector('[data-testid="sound-menu-button"]')!.getBoundingClientRect().right <= el.getBoundingClientRect().right,
+      };
+    })).toEqual({ nameEnd: true, menuInside: true });
     await waitForAnalysis(pf);
     await expect(page.getByTestId('verdict-scope').first()).toHaveText('Analysing 6 of 7 Sounds · 1 excluded');
 

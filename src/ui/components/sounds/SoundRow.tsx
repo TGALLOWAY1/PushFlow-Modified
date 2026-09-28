@@ -2,18 +2,19 @@
  * One Sound in the Sounds panel (S5.1, T45).
  *
  * Its colour and name (double-click, F2, Enter or the pencil renames it), an
- * "Excluded" badge while it is excluded from analysis (S4.4), where it is
- * ("To place", or its pad "R4 C4" with a lock toggle), how many hits it has,
- * its "Hand & finger preference (soft)", Solo and Mute, and a "⋯" menu. Solo
- * and Mute are rehearsal-only (S4.4, T16): lit yellow and red while on, with a
- * speaker-off glyph while it is silent, and Alt-click on S solos it alone.
+ * Excluded badge (a crossed circle) while it is excluded from analysis
+ * (S4.4), where it is ("To place", or its pad "R4 C4" with a lock toggle), how
+ * many hits it has, its "Hand & finger preference (soft)", Solo and Mute, and
+ * a "⋯" menu. Solo and Mute are rehearsal-only (S4.4, T16): lit yellow and red
+ * while on, with a speaker-off glyph while it is silent, and Alt-click on S
+ * solos it alone.
  * A plain click arms it for click-to-place (T62); a Mod- or Shift-click selects
  * it with others. Drag the row onto a pad to place it; drag its handle to
  * reorder it or move it into a group (S5.1, T46).
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Crosshair, GripVertical, Lock, MoreHorizontal, Pencil, Unlock, VolumeX } from 'lucide-react';
+import { Ban, Crosshair, GripVertical, Lock, MoreHorizontal, Pencil, Unlock, VolumeX } from 'lucide-react';
 import { type SoundStream } from '../../state/projectState';
 import { silentLabel, type SilentReason } from '../../audio/audibility';
 import { type SoundPlacement } from '../../analysis/soundPlacement';
@@ -236,14 +237,17 @@ export function SoundRow({
         </>
       )}
 
-      {/* Excluded from analysis (S4.4, T15): a badge for as long as it is */}
+      {/* Excluded from analysis (S4.4, T15): a badge for as long as it is, the
+          crossed circle its pads and lane carry too. A word would leave the
+          name no room in the 320 px panel. */}
       {sound.excluded && (
         <span
           data-testid="sound-excluded"
-          className="flex-shrink-0 px-1.5 h-[18px] inline-flex items-center rounded-full border border-[var(--border-strong)] bg-[var(--bg-card)] text-pf-micro text-[var(--text-secondary)] whitespace-nowrap"
+          className="flex-shrink-0 w-[22px] h-[18px] inline-flex items-center justify-center rounded-full border border-[var(--border-strong)] bg-[var(--bg-card)] text-[var(--text-secondary)]"
           title="Excluded from analysis: its notes aren't scored and Generate keeps its pad. Include it again from ⋯"
         >
-          Excluded
+          <Ban size={11} aria-hidden="true" />
+          <span className="sr-only">Excluded</span>
         </span>
       )}
 
