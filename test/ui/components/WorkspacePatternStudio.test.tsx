@@ -152,6 +152,27 @@ describe('P1a-12a · Composer sync writes notes only', () => {
     expect(project().canUndo).toBe(undoable);
   });
 
+  // From review: a lane muted or soloed before its first note has no Sound
+  // yet, so its M and S are its own; they must carry over to the Sound.
+  it('M and S set before the lane has a Sound carry over to its Sound when its first note syncs', async () => {
+    const { project } = setup();
+    fireEvent.click(screen.getByTitle('Add lane'));
+    fireEvent.click(screen.getByTitle('Mute'));
+    fireEvent.click(screen.getByTitle('Solo'));
+    expect(screen.getByTitle('Mute').getAttribute('aria-pressed')).toBe('true');
+    expect(project().state.mutedSoundIds).toEqual([]);
+
+    fireEvent.click(cell(0, 0));
+    await waitFor(() => expect(composerSounds(project().state)).toHaveLength(1));
+    const id = composerSounds(project().state)[0]!.id;
+    await waitFor(() => expect({ muted: project().state.mutedSoundIds, soloed: project().state.soloedSoundIds })
+      .toEqual({ muted: [id], soloed: [id] }));
+    expect(screen.getByTitle('Mute').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByTitle('Solo').getAttribute('aria-pressed')).toBe('true');
+    // Still rehearsal-only: the new Sound is analysed.
+    expect(project().state.soundStreams.find(s => s.id === id)!.excluded).toBeUndefined();
+  });
+
   it('a Composer edit that changes no notes records no undo step', async () => {
     const { project } = setup();
     await addLaneWithNote(project, 0, 0);
