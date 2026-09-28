@@ -19,6 +19,9 @@ import {
   getActivePerformance,
   getDisplayedExecutionPlan,
   getDisplayedLayout,
+  projectReducer,
+  resolveInspectedLayout,
+  type ProjectAction,
   type ProjectState,
 } from '../../../src/ui/state/projectState';
 import { pickDocument } from '../../../src/ui/state/projectDocument';
@@ -28,6 +31,9 @@ import { VoicePalette } from '../../../src/ui/components/VoicePalette';
 import { analyzeLayout } from '../../../src/ui/analysis/analyzeLayout';
 import { analysisScopeLine } from '../../../src/ui/analysis/analysisScope';
 import { useAutoAnalysis } from '../../../src/ui/hooks/useAutoAnalysis';
+import { hashLayout } from '../../../src/engine/mapping/mappingResolver';
+import type { CandidateSolution } from '../../../src/types/candidateSolution';
+import type { Layout } from '../../../src/types/layout';
 import { PAD_DRAG_TYPE } from '../../../src/ui/components/dragTypes';
 import { suggestedTestMidi1 } from '../../helpers/testMidi1';
 
@@ -260,5 +266,47 @@ describe('every Sound excluded from analysis', () => {
     expect(getDisplayedLayout(state)!.padToVoice).toEqual(pads);
     expect(result.current.analysis.canGenerate).toBe(false);
     expect(result.current.analysis.generateDisabledReason).toBe('Every Sound is excluded from analysis');
+  });
+});
+
+describe('a previewed candidate', () => {
+  it('marks the pad Generate kept for an excluded Sound, as the draft does', () => {
+    const [kick, snare] = analysed.soundStreams.map(s => s.id);
+    const excluded = projectReducer(analysed, { type: 'SET_SOUND_EXCLUDED', payload: { soundId: kick!, excluded: true } });
+    const draft = getDisplayedLayout(excluded)!;
+    // The candidate keeps Kick where it is (pinned) and moves Snare to an empty pad.
+    const snarePad = Object.entries(draft.padToVoice).find(([, v]) => v.id === snare)![0];
+    let empty = '';
+    for (let row = 7; row >= 0 && !empty; row--) for (let col = 0; col < 8; col++) if (!draft.padToVoice[`${row},${col}`]) { empty = `${row},${col}`; break; }
+    const padToVoice = { ...draft.padToVoice, [empty]: draft.padToVoice[snarePad]! };
+    delete padToVoice[snarePad];
+    const layout: Layout = { ...draft, id: 'cand-a-layout', padToVoice, placementLocks: {}, role: 'working' };
+    const candidate = {
+      id: 'cand-a',
+      layout,
+      executionPlan: { layoutBinding: { layoutId: layout.id, layoutHash: hashLayout(layout), layoutRole: 'working' }, fingerAssignments: [] },
+      metadata: { strategy: 'natural-pose', seed: 0 },
+      iterationTrace: [],
+    } as unknown as CandidateSolution;
+    const state = ([
+      { type: 'SET_CANDIDATES', payload: [candidate] },
+      { type: 'INSPECT_LAYOUT', payload: { kind: 'candidate', id: 'cand-a' } },
+    ] as ProjectAction[]).reduce(projectReducer, excluded);
+
+    function Preview() {
+      api = useProject();
+      const shown = resolveInspectedLayout(api.state);
+      return <InteractiveGrid padSize={48} layoutOverride={shown.readOnly ? shown.layout : undefined} />;
+    }
+    render(<ToastProvider><ProjectProvider initialState={state}><Preview /></ProjectProvider></ToastProvider>);
+    expect(resolveInspectedLayout(api.state)).toMatchObject({ role: 'candidate', readOnly: true });
+    // The grid shows the candidate: Snare on its new pad.
+    const pad = (key: string) => screen.getByTestId(`pad-${key.replace(',', '-')}`);
+    expect(pad(empty).getAttribute('data-excluded')).toBeNull();
+    expect(pad(empty).title).toContain(analysed.soundStreams[1]!.name);
+    const kickPad = Object.entries(layout.padToVoice).find(([, v]) => v.id === kick)![0];
+    expect(pad(kickPad).getAttribute('data-excluded')).toBe('true');
+    expect(within(pad(kickPad)).getByTestId('pad-excluded')).toBeTruthy();
+    expect(pad(kickPad).title).toContain('Excluded from analysis: Generate keeps it here');
   });
 });
