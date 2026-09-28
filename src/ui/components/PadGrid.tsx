@@ -4,7 +4,7 @@
  * Visualizes the 8x8 Push 3 grid showing:
  * - Which sounds/voices are assigned to each pad: the layout's pads first,
  *   then the plan's assignments over them (S3.3, T08), so a placed Sound the
- *   plan doesn't play (muted, or no notes) still shows on its pad
+ *   plan doesn't play (excluded from analysis, or no notes) still shows on its pad
  * - Which fingers play each pad
  * - Hand zones, in the --hand-left and --hand-right colours (S4.2, T42)
  * - Hit counts and selection state
@@ -152,7 +152,7 @@ export function PadGrid({ layout, voices, assignments, onPadClick, compact, diff
           textColor = HAND_COLORS.mixed.text;
         }
       } else if (summary) {
-        // Placed, but the plan plays no note on it (a muted Sound, say).
+        // Placed, but the plan plays no note on it (a Sound excluded from analysis, say).
         bgColor = summary.voiceColor ? `${summary.voiceColor}26` : '#1e293b';
         borderColor = '#334155';
         textColor = '#94a3b8';

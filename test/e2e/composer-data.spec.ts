@@ -101,7 +101,8 @@ test.describe('S1a.5 · Composer and Timeline tabs', () => {
     for (const key of ['m', 'M', 'Enter', ' ']) await page.keyboard.press(key);
 
     const after = await pf.call('state');
-    expect(after.soundStreams.find(s => s.id === id)?.muted).toBe(false);
+    // Nothing muted it (Mute is rehearsal-only session state since S4.4).
+    expect(after.mutedSoundIds).not.toContain(id);
     expect(after.performanceLanes).toEqual(before.performanceLanes);
     expect(await pf.call('history')).toEqual(history);
   });

@@ -1,10 +1,11 @@
 /**
  * A Sound's "⋯" menu in the Sounds panel (S5.1, T45): Rename, Colour, Group,
- * Short label, Name from GM drum map, Unplace and Delete (with Undo). An
- * action that can't be taken now says why beside it (T31). "Exclude from
- * analysis" arrives with S4.4, which makes mute audio-only.
+ * Short label, Name from GM drum map, Exclude from (or Include in) analysis
+ * (S4.4), Unplace and Delete (with Undo). An action that can't be taken now
+ * says why beside it (T31).
  *
- * Every change is one undo step, named after it.
+ * Every change is one undo step, named after it. Excluding is the analysis's
+ * own switch: Mute and Solo, on the row, only change what you hear (S4.4).
  */
 
 import { useId, useState } from 'react';
@@ -130,6 +131,23 @@ export function SoundRowMenu({ sound, padKeys, locked, groupId, x, y, anchor, on
         onClick={() => { if (gmName) dispatch({ type: 'RENAME_SOUND', payload: { streamId: sound.id, name: gmName } }); onClose(); }}
       >
         Name from GM drum map{gmName ? ` · ${gmName}` : ''}
+      </MenuAction>
+      <MenuAction
+        testId="sound-menu-exclude"
+        reason={null}
+        title={sound.excluded
+          ? 'Analyse its notes again: they count in every verdict and score, and Generate may move it (with Undo)'
+          : 'Leave its notes out of every verdict and score; it stays on its pad and Generate keeps it there. Mute only silences it (with Undo)'}
+        onClick={() => {
+          const excluded = !sound.excluded;
+          undoable(excluded ? `Excluded ${sound.name} from analysis` : `${sound.name} is analysed again`, () => dispatch({
+            type: 'SET_SOUND_EXCLUDED',
+            payload: { soundId: sound.id, excluded },
+          }));
+          onClose();
+        }}
+      >
+        {sound.excluded ? 'Include in analysis' : 'Exclude from analysis'}
       </MenuAction>
       <MenuAction
         testId="sound-menu-unplace"

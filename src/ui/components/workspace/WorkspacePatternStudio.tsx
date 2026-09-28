@@ -236,17 +236,20 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
     return (laneId: string) => byId.get(projectSoundIdForLane(laneId));
   }, [projectState.performanceLanes]);
 
-  // The project owns a Sound's name, colour, mute and solo; the Composer shows
-  // them. A lane with no Sound yet (no notes synced) shows its own.
+  // The project owns a Sound's name, colour, mute and solo (rehearsal-only
+  // since S4.4); the Composer shows them. A lane with no Sound yet (no notes
+  // synced) shows its own.
+  const { mutedSoundIds, soloedSoundIds } = projectState;
   const displayLanes = useMemo(() => loopState.lanes.map(lane => {
     const sound = projectLaneFor(lane.id);
     return sound
-      ? { ...lane, name: sound.name, color: sound.color, isMuted: sound.isMuted, isSolo: sound.isSolo }
+      ? { ...lane, name: sound.name, color: sound.color, isMuted: mutedSoundIds.includes(sound.id), isSolo: soloedSoundIds.includes(sound.id) }
       : lane;
-  }), [loopState.lanes, projectLaneFor]);
+  }), [loopState.lanes, projectLaneFor, mutedSoundIds, soloedSoundIds]);
 
   // Renaming, muting or soloing a lane that is already a project Sound changes
-  // the Sound (one project undo step), as the Sounds panel would.
+  // the Sound, as the Sounds panel would: a rename is one project undo step;
+  // Mute and Solo are rehearsal-only session state (S4.4), never a step.
   const laneDispatch = useCallback((action: LoopEditorAction) => {
     const soundAction = action as SoundLaneAction;
     const laneId = soundAction.type === 'RENAME_LANE' ? soundAction.payload.laneId
@@ -263,7 +266,7 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
     } else if (soundAction.type === 'TOGGLE_LANE_MUTE') {
       projectDispatch({ type: 'TOGGLE_MUTE', payload: sound.id });
     } else {
-      projectDispatch({ type: 'SOLO_STREAM', payload: sound.id });
+      projectDispatch({ type: 'TOGGLE_SOLO', payload: { soundId: sound.id } });
     }
   }, [dispatchComposer, projectDispatch, projectLaneFor]);
 

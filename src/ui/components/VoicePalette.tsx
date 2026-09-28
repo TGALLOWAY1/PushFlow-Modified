@@ -8,7 +8,8 @@
  *   groups, a section per group and "Ungrouped" for the rest; with none, a
  *   flat list. Placement is each row's pill or locator, never a section.
  * - Each row (SoundRow): its pad and lock, hit count, finger preference, Solo,
- *   Mute and a "⋯" menu (SoundRowMenu). A plain click arms it for
+ *   Mute (rehearsal only, S4.4) and a "⋯" menu (SoundRowMenu), with an
+ *   "Excluded" badge while it is excluded from analysis. A plain click arms it for
  *   click-to-place; Mod- or Shift-click selects several, for Mod+G and the
  *   selection bar (SoundsSelectionBar).
  * - Reordering only by a row's handle, which can also drop a Sound into a
@@ -29,6 +30,7 @@ import { useReadOnlyHint } from '../hooks/useReadOnlyHint';
 import { PAD_DRAG_TYPE, setSoundDragData } from './dragTypes';
 import { endDrag, useDragSession } from './dragSession';
 import { useRemovePadWithUndo } from '../hooks/useRemovePadWithUndo';
+import { silentReason } from '../audio/audibility';
 import { SoundsHeader } from './sounds/SoundsHeader';
 import { SoundRow, type DropSide } from './sounds/SoundRow';
 import { SoundGroupHeader } from './sounds/SoundGroupHeader';
@@ -73,6 +75,9 @@ export function VoicePalette() {
   const groups = useMemo(() => sortedGroups(state.laneGroups), [state.laneGroups]);
   const placements = useMemo(() => soundPlacements(state.soundStreams, layout), [state.soundStreams, layout]);
   const namePrefix = useMemo(() => sharedNamePrefix(state.soundStreams.map(s => s.name)), [state.soundStreams]);
+  // What each Sound sounds like in rehearsal (S4.4): Mute and Solo only.
+  const soundIds = useMemo(() => state.soundStreams.map(s => s.id), [state.soundStreams]);
+  const audition = { mutedSoundIds: state.mutedSoundIds, soloedSoundIds: state.soloedSoundIds };
   const counts = useMemo(() => filterCounts(placements), [placements]);
   const narrowed = filter !== 'all' || query.trim() !== '';
   const visible = useMemo(
@@ -197,8 +202,11 @@ export function VoicePalette() {
           if (refuse() || placement.padKeys.length === 0) return;
           dispatch({ type: 'TOGGLE_PLACEMENT_LOCK', payload: { voiceId: sound.id, padKey: placement.padKeys[0]! } });
         }}
+        muted={state.mutedSoundIds.includes(sound.id)}
+        soloed={state.soloedSoundIds.includes(sound.id)}
+        silent={silentReason(sound.id, audition, soundIds)}
         onToggleMute={() => dispatch({ type: 'TOGGLE_MUTE', payload: sound.id })}
-        onSolo={() => dispatch({ type: 'SOLO_STREAM', payload: sound.id })}
+        onSolo={exclusive => dispatch({ type: 'TOGGLE_SOLO', payload: { soundId: sound.id, exclusive } })}
         onOpenMenu={anchor => {
           const r = anchor.getBoundingClientRect();
           setMenu(current => (current?.id === sound.id ? null : { id: sound.id, x: r.right - 236, y: r.bottom + 4, anchor }));

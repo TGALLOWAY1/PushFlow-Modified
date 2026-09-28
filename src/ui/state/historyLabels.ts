@@ -13,8 +13,7 @@ const ACTION_LABELS: Partial<Record<ProjectAction['type'], string>> = {
   SET_TEMPO: 'Tempo change',
   RENAME_SOUND: 'Rename Sound',
   APPLY_GM_DRUM_NAMES: 'Name from GM drum map',
-  TOGGLE_MUTE: 'Mute',
-  SOLO_STREAM: 'Solo',
+  SET_SOUND_EXCLUDED: 'Exclude from analysis',
   SET_SOUND_COLOR: 'Sound color',
   SET_SOUND_SHORT_LABEL: 'Short label',
   SET_VOICE_CONSTRAINT: 'Finger preference',
@@ -47,8 +46,6 @@ const ACTION_LABELS: Partial<Record<ProjectAction['type'], string>> = {
   SET_LANE_COLOR: 'Sound color',
   REORDER_LANES: 'Reorder Sounds',
   SET_LANE_GROUP: 'Group',
-  TOGGLE_LANE_MUTE: 'Mute',
-  TOGGLE_LANE_SOLO: 'Solo',
   TOGGLE_LANE_HIDDEN: 'Hide Sound',
   DELETE_LANE: 'Delete Sound',
   CREATE_LANE_GROUP: 'New group',
@@ -61,5 +58,6 @@ const ACTION_LABELS: Partial<Record<ProjectAction['type'], string>> = {
 /** The undo step name for a single recorded dispatch. */
 export function historyLabelFor(action: ProjectAction): string {
   if (action.type === 'UPSERT_LANE_SOURCE' && action.payload.notesOnly) return 'Composer edit';
+  if (action.type === 'SET_SOUND_EXCLUDED' && !action.payload.excluded) return 'Include in analysis';
   return ACTION_LABELS[action.type] ?? 'Edit';
 }

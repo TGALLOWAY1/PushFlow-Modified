@@ -38,6 +38,7 @@ import { getEventTimeline, type EventTimeline } from '../analysis/eventTimeline'
 import { playheadEventIndex } from '../analysis/selectionModel';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { RehearsalAudio, type RehearsalHit } from './rehearsalAudio';
+import { audibleSoundIds, type Audition } from './audibility';
 import { TransportEngine, transportModeFromStorage, type CountInBeat } from './transportEngine';
 import { loopRegionOf, songSpan, type SongSpan } from './transportMath';
 import { setLiveTransport } from './liveTransport';
@@ -70,11 +71,15 @@ export interface TransportApi {
 
 const TransportContext = createContext<TransportApi | null>(null);
 
-/** Every hit in the performance, in time order. Muted Sounds are silent. */
-export function audibleHits(streams: readonly SoundStream[]): RehearsalHit[] {
+/**
+ * Every hit the transport plays, in time order: every Sound's notes, excluded
+ * from analysis or not, but those Mute and Solo silence (S4.4, audibility.ts).
+ */
+export function audibleHits(streams: readonly SoundStream[], audition: Audition): RehearsalHit[] {
+  const audible = audibleSoundIds(streams.map(s => s.id), audition);
   const hits: RehearsalHit[] = [];
   for (const stream of streams) {
-    if (stream.muted) continue;
+    if (!audible.has(stream.id)) continue;
     for (const event of stream.events) {
       hits.push({ soundId: stream.id, time: event.startTime, velocity: event.velocity });
     }
@@ -120,7 +125,10 @@ export function TransportProvider({ children }: { children: ReactNode }) {
 
   // What there is to play, and how: before Play below, so a first Play has them.
   const song = useMemo(() => songSpan(state.soundStreams, state.tempo), [state.soundStreams, state.tempo]);
-  const hits = useMemo(() => audibleHits(state.soundStreams), [state.soundStreams]);
+  const hits = useMemo(
+    () => audibleHits(state.soundStreams, { mutedSoundIds: state.mutedSoundIds, soloedSoundIds: state.soloedSoundIds }),
+    [state.soundStreams, state.mutedSoundIds, state.soloedSoundIds],
+  );
   useEffect(() => {
     engine.setMaterial({ hits, tempo: state.tempo, song });
   }, [engine, hits, state.tempo, song]);

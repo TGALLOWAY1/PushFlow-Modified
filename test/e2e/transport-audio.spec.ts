@@ -43,7 +43,7 @@ window.__pfRenderLoop = async (bytes, { loopStart, loopEnd, passes, rate }) => {
   const { lanes, sourceFile } = buildLanesFromMidiProject(data, name, { currentMaxOrder: -1, existingNames: [], existingColors: [] });
   let state = projectReducer(createEmptyProjectState(), { type: 'IMPORT_LANES', payload: { lanes, sourceFile } });
   if (data.performance.tempo) state = projectReducer(state, { type: 'SET_TEMPO', payload: data.performance.tempo });
-  const hits = audibleHits(state.soundStreams);
+  const hits = audibleHits(state.soundStreams, { mutedSoundIds: state.mutedSoundIds, soloedSoundIds: state.soloedSoundIds });
   const region = playRegion(songSpan(state.soundStreams, state.tempo), { enabled: true, start: loopStart, end: loopEnd });
 
   const lead = 0.04;

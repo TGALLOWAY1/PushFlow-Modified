@@ -74,8 +74,6 @@ export function buildLanesFromMidiProject(
       colorMode: 'overridden' as const,
       events,
       isHidden: false,
-      isMuted: false,
-      isSolo: false,
     };
   });
 

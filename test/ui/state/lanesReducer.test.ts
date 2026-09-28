@@ -28,8 +28,6 @@ function makeLane(overrides: Partial<PerformanceLane> = {}): PerformanceLane {
       { eventId: 'e2', laneId: 'lane-1', startTime: 0.5, duration: 0.1, velocity: 80, rawPitch: 36 },
     ],
     isHidden: false,
-    isMuted: false,
-    isSolo: false,
     ...overrides,
   };
 }
@@ -148,26 +146,7 @@ describe('lanesReducer', () => {
     });
   });
 
-  // ---- TOGGLE_LANE_MUTE / SOLO / HIDDEN ----
-
-  describe('TOGGLE_LANE_MUTE', () => {
-    it('toggles muted state', () => {
-      const state = makeState({ performanceLanes: [makeLane()] });
-      const result = lanesReducer(state, { type: 'TOGGLE_LANE_MUTE', payload: 'lane-1' });
-      expect(result.performanceLanes[0].isMuted).toBe(true);
-
-      const result2 = lanesReducer(result, { type: 'TOGGLE_LANE_MUTE', payload: 'lane-1' });
-      expect(result2.performanceLanes[0].isMuted).toBe(false);
-    });
-  });
-
-  describe('TOGGLE_LANE_SOLO', () => {
-    it('toggles solo state', () => {
-      const state = makeState({ performanceLanes: [makeLane()] });
-      const result = lanesReducer(state, { type: 'TOGGLE_LANE_SOLO', payload: 'lane-1' });
-      expect(result.performanceLanes[0].isSolo).toBe(true);
-    });
-  });
+  // ---- TOGGLE_LANE_HIDDEN (Mute and Solo are rehearsal-only session state since S4.4) ----
 
   describe('TOGGLE_LANE_HIDDEN', () => {
     it('toggles hidden state', () => {
@@ -365,7 +344,7 @@ describe('lanesReducer', () => {
 
   describe('SYNC_STREAMS_FROM_LANES', () => {
     it('is a no-op when no lanes exist', () => {
-      const state = makeState({ soundStreams: [{ id: 'existing', name: 'X', color: '#fff', originalMidiNote: 36, events: [], muted: false }] });
+      const state = makeState({ soundStreams: [{ id: 'existing', name: 'X', color: '#fff', originalMidiNote: 36, events: [] }] });
       const result = lanesReducer(state, { type: 'SYNC_STREAMS_FROM_LANES' });
       expect(result.soundStreams).toEqual(state.soundStreams); // unchanged
     });
@@ -374,37 +353,32 @@ describe('lanesReducer', () => {
       const state = makeState({
         performanceLanes: [
           makeLane({ id: 'lane-1', name: 'Kick', color: '#ef4444' }),
-          makeLane({ id: 'lane-2', name: 'Snare', color: '#3b82f6', isMuted: true }),
+          makeLane({ id: 'lane-2', name: 'Snare', color: '#3b82f6', excluded: true }),
         ],
       });
 
       const result = lanesReducer(state, { type: 'SYNC_STREAMS_FROM_LANES' });
 
-      // A muted lane keeps its stream, flagged muted. Dropping it removed the
-      // sound from the Sounds panel and the timeline, so there was no row left
-      // to un-mute from.
+      // An excluded lane keeps its stream, flagged excluded (S4.4). Dropping it
+      // removed the sound from the Sounds panel and the timeline, so there was
+      // no row left to bring it back from.
       expect(result.soundStreams).toHaveLength(2);
-      expect(result.soundStreams.map(s => [s.id, s.muted]))
+      expect(result.soundStreams.map(s => [s.id, !!s.excluded]))
         .toEqual([['lane-1', false], ['lane-2', true]]);
       expect(result.soundStreams[0].name).toBe('Kick');
       expect(result.soundStreams[0].events).toHaveLength(2);
       expect(result.analysisStale).toBe(true);
     });
 
-    it('respects solo mode', () => {
+    it('a deleted Sound is neither muted nor soloed any more (S4.4)', () => {
       const state = makeState({
-        performanceLanes: [
-          makeLane({ id: 'lane-1', name: 'Kick', isSolo: true }),
-          makeLane({ id: 'lane-2', name: 'Snare', isSolo: false }),
-          makeLane({ id: 'lane-3', name: 'Hat', isSolo: true }),
-        ],
+        performanceLanes: [makeLane({ id: 'lane-1', name: 'Kick' }), makeLane({ id: 'lane-2', name: 'Snare' })],
+        mutedSoundIds: ['lane-1'],
+        soloedSoundIds: ['lane-2'],
       });
-
-      const result = lanesReducer(state, { type: 'SYNC_STREAMS_FROM_LANES' });
-
-      expect(result.soundStreams).toHaveLength(3);
-      expect(result.soundStreams.filter(s => !s.muted).map(s => s.id))
-        .toEqual(['lane-1', 'lane-3']);
+      const result = lanesReducer(state, { type: 'DELETE_LANE', payload: 'lane-2' });
+      expect(result.soloedSoundIds).toEqual([]);
+      expect(result.mutedSoundIds).toBe(state.mutedSoundIds);
     });
   });
 

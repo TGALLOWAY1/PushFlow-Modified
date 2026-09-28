@@ -17,7 +17,8 @@ import {
   type StoredRecord,
 } from '../../../src/ui/persistence/migrations';
 import { PERSISTED_SCHEMA_VERSION } from '../../../src/ui/persistence/persistedProject';
-import { validateAndMigrateRaw } from '../../../src/ui/persistence/projectSerializer';
+import { deserializeProject, serializeProject, validateAndMigrateRaw } from '../../../src/ui/persistence/projectSerializer';
+import { getActivePerformance, projectReducer } from '../../../src/ui/state/projectState';
 import { variantStamp } from '../../../src/ui/state/variantNames';
 
 const FIXTURE = path.resolve(__dirname, '../../fixtures/projects/saved-by-main.json');
@@ -114,7 +115,7 @@ describe('recovered-drafts-store (schema 1 → 2)', () => {
 
   it('a schema-1 project runs every later step too and lands on the current schema', () => {
     const { record, applied } = runMigrations(savedByMain());
-    expect(applied).toEqual(['recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names', 'rehearsal-preferences', 'sound-short-labels']);
+    expect(applied).toEqual(['recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names', 'rehearsal-preferences', 'sound-short-labels', 'mute-as-exclusion']);
     expect(record.schemaVersion).toBe(PERSISTED_SCHEMA_VERSION);
   });
 
@@ -227,8 +228,8 @@ describe('clean-layout-names (schema 4 → 5)', () => {
 
   it('P3-10a: afterwards no stored layout name contains "(draft)" or "(suggested)", and none is empty', () => {
     const { record, applied } = runMigrations(withRoleSuffixes());
-    expect(applied).toEqual(['clean-layout-names', 'rehearsal-preferences', 'sound-short-labels']);
-    expect(record.schemaVersion).toBe(7);
+    expect(applied).toEqual(['clean-layout-names', 'rehearsal-preferences', 'sound-short-labels', 'mute-as-exclusion']);
+    expect(record.schemaVersion).toBe(8);
     const names = allLayouts(record).map(l => l.name);
     expect(names).toHaveLength(9);
     expect(names.filter(n => ROLE_WORD.test(n) || !n.trim())).toEqual([]);
@@ -321,7 +322,7 @@ describe('rehearsal-preferences (schema 5 → 6)', () => {
       async (_record, fromVersion) => { log.push(`backup v${fromVersion}`); },
       record => runMigrations(record, MIGRATIONS.map(m => ({ ...m, up: (r: StoredRecord) => { log.push(m.name); return m.up(r); } }))).record,
     );
-    expect(log).toEqual(['backup v5', 'rehearsal-preferences', 'sound-short-labels']);
+    expect(log).toEqual(['backup v5', 'rehearsal-preferences', 'sound-short-labels', 'mute-as-exclusion']);
     expect(runMigrations(structuredClone(once)).applied).toEqual([]);
     expect(onlyStep('rehearsal-preferences')[0].up(structuredClone(once))).toEqual(once);
   });
@@ -364,10 +365,109 @@ describe('sound-short-labels (schema 6 → 7)', () => {
       async (_record, fromVersion) => { log.push(`backup v${fromVersion}`); },
       record => runMigrations(record, MIGRATIONS.map(m => ({ ...m, up: (r: StoredRecord) => { log.push(m.name); return m.up(r); } }))).record,
     );
-    expect(log).toEqual(['backup v6', 'sound-short-labels']);
+    expect(log).toEqual(['backup v6', 'sound-short-labels', 'mute-as-exclusion']);
     expect(once.performanceLanes).toEqual([lane({ shortLabel: 'Snare' })]);
     expect(runMigrations(structuredClone(once)).applied).toEqual([]);
     expect(onlyStep('sound-short-labels')[0].up(structuredClone(once))).toEqual(once);
+  });
+});
+
+// S4.4 (T15, T16; P4-12): Mute and Solo leave the stored project; what was muted is excluded instead.
+describe('mute-as-exclusion (schema 7 → 8)', () => {
+  const at7 = () => runMigrations(savedByMain(), MIGRATIONS.filter(m => m.to <= 7)).record;
+  type Item = Record<string, unknown>;
+  const laneOf = (id: string, extra: Item = {}) => ({ id, name: id, isHidden: false, isMuted: false, isSolo: false, ...extra });
+  const streamOf = (id: string, extra: Item = {}) => ({ id, name: id, events: [], muted: false, ...extra });
+  const ids = (items: unknown) => (items as Item[]).map(i => [i.id, i.excluded === true]);
+  const flags = (items: unknown) => (items as Item[]).filter(i => 'muted' in i || 'isMuted' in i || 'isSolo' in i);
+
+  it('turns every muted Sound into an excluded one, drops the mute and solo flags, and leaves a notice naming them', () => {
+    const { record, applied } = runMigrations({
+      id: 'p',
+      schemaVersion: 7,
+      performanceLanes: [laneOf('kick'), laneOf('snare', { isMuted: true }), laneOf('hat')],
+      soundStreams: [streamOf('kick'), streamOf('snare', { muted: true }), streamOf('hat')],
+    });
+    expect(applied).toEqual(['mute-as-exclusion']);
+    expect(record.schemaVersion).toBe(8);
+    expect(ids(record.performanceLanes)).toEqual([['kick', false], ['snare', true], ['hat', false]]);
+    expect(ids(record.soundStreams)).toEqual([['kick', false], ['snare', true], ['hat', false]]);
+    expect([...flags(record.performanceLanes), ...flags(record.soundStreams)]).toEqual([]);
+    // Included Sounds carry no key at all, as the lanes-to-Sounds rebuild writes them.
+    expect('excluded' in (record.soundStreams as Item[])[0]!).toBe(false);
+    expect(record.notices).toEqual([{ id: 'mute-as-exclusion', soundIds: ['snare'] }]);
+  });
+
+  it('a solo muted every other Sound: those are the ones excluded, and the soloed one stays in even when hidden', () => {
+    const { record } = runMigrations({
+      id: 'p',
+      schemaVersion: 7,
+      performanceLanes: [
+        laneOf('kick', { isSolo: true, isHidden: true }),
+        laneOf('snare', { isMuted: true }),
+        laneOf('hat'),
+        laneOf('tom', { isSolo: true, isMuted: true }),
+      ],
+      soundStreams: [streamOf('kick'), streamOf('snare', { muted: true }), streamOf('hat', { muted: true }), streamOf('tom', { muted: true })],
+    });
+    expect(ids(record.performanceLanes)).toEqual([['kick', false], ['snare', true], ['hat', true], ['tom', true]]);
+    expect((record.performanceLanes as Item[])[0]!.isHidden).toBe(false);
+    expect(ids(record.soundStreams)).toEqual([['kick', false], ['snare', true], ['hat', true], ['tom', true]]);
+    expect(record.notices).toEqual([{ id: 'mute-as-exclusion', soundIds: ['snare', 'hat', 'tom'] }]);
+  });
+
+  it('a project with nothing muted keeps every Sound in the analysis and gets no notice', () => {
+    const before = at7();
+    expect(before.schemaVersion).toBe(7);
+    const { record } = runMigrations(before, onlyStep('mute-as-exclusion'));
+    expect(ids(record.soundStreams).every(([, excluded]) => !excluded)).toBe(true);
+    expect([...flags(record.performanceLanes), ...flags(record.soundStreams)]).toEqual([]);
+    expect('notices' in record).toBe(false);
+  });
+
+  it('P4-12: runs once after its backup, and running it again changes nothing', async () => {
+    const before = {
+      ...at7(),
+      performanceLanes: [laneOf('kick', { isMuted: true }), laneOf('snare')],
+      soundStreams: [streamOf('kick', { muted: true }), streamOf('snare')],
+    };
+    const untouched = structuredClone(before);
+    const log: string[] = [];
+    let backedUp: StoredRecord | null = null;
+    const once = await migrateWithBackup(
+      before,
+      async (record, fromVersion) => { log.push(`backup v${fromVersion}`); backedUp = record; },
+      record => runMigrations(record, MIGRATIONS.map(m => ({ ...m, up: (r: StoredRecord) => { log.push(m.name); return m.up(r); } }))).record,
+    );
+    expect(log).toEqual(['backup v7', 'mute-as-exclusion']);
+    // The backup is the record as it was, mute flags and all.
+    expect(backedUp).toEqual(untouched);
+    expect(once.notices).toEqual([{ id: 'mute-as-exclusion', soundIds: ['kick'] }]);
+    // A second load migrates nothing, and the step itself is idempotent: no second notice.
+    expect(needsMigration(once)).toBe(false);
+    expect(runMigrations(structuredClone(once)).applied).toEqual([]);
+    expect(onlyStep('mute-as-exclusion')[0].up(structuredClone(once))).toEqual(once);
+  });
+
+  it('the loaded project analyses exactly what it did before, and carries the notice until it is shown', () => {
+    const before = {
+      ...at7(),
+      performanceLanes: (at7().performanceLanes as Item[]).map((l, i) => (i === 0 ? { ...l, isMuted: true } : l)),
+      soundStreams: (at7().soundStreams as Item[]).map((st, i) => (i === 0 ? { ...st, muted: true } : st)),
+    };
+    const mutedId = (before.soundStreams as Item[])[0]!.id as string;
+    const loaded = deserializeProject(validateAndMigrateRaw(before));
+    expect(loaded.soundStreams.find(st => st.id === mutedId)!.excluded).toBe(true);
+    expect(getActivePerformance(loaded).events.some(e => e.voiceId === mutedId)).toBe(false);
+    // Mute and Solo start clear: they are rehearsal-only session state.
+    expect({ muted: loaded.mutedSoundIds, soloed: loaded.soloedSoundIds }).toEqual({ muted: [], soloed: [] });
+    expect(loaded.pendingNotices).toEqual([{ id: 'mute-as-exclusion', soundIds: [mutedId] }]);
+    // Saved until shown; once dismissed it is saved without it.
+    expect(serializeProject(loaded).notices).toEqual(loaded.pendingNotices);
+    const shown = projectReducer(loaded, { type: 'DISMISS_NOTICE', payload: 'mute-as-exclusion' });
+    expect(shown.pendingNotices).toEqual([]);
+    expect(shown.updatedAt).not.toBe(loaded.updatedAt);
+    expect('notices' in serializeProject(shown)).toBe(false);
   });
 });
 
@@ -386,7 +486,7 @@ describe('migrateWithBackup', () => {
       },
       record => runMigrations(record, [...MIGRATIONS.map(m => ({ ...m, up: (r: StoredRecord) => { log.push(m.name); return m.up(r); } }))]),
     );
-    expect(log).toEqual(['backup v1', 'recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names', 'rehearsal-preferences', 'sound-short-labels']);
+    expect(log).toEqual(['backup v1', 'recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names', 'rehearsal-preferences', 'sound-short-labels', 'mute-as-exclusion']);
     expect(backedUp).toEqual(untouched);
     expect(result.record.schemaVersion).toBe(PERSISTED_SCHEMA_VERSION);
   });

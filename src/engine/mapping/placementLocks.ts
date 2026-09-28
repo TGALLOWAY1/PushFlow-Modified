@@ -72,7 +72,8 @@ export function describeDroppedForLocks(count: number): string {
 /**
  * Placements every candidate must keep although the user set no lock on them
  * (T15, invariant 7): Sounds already on the grid whose events are not in the
- * performance being optimized, which in the app means the muted Sounds.
+ * performance being optimized, which in the app means the Sounds excluded
+ * from analysis (S4.4; Mute and Solo are rehearsal-only and never reach it).
  * Generate never removes a placed Sound, so these ride through seeding,
  * compaction, mutation and hill-climbing exactly like locks (`fixedPlacements`)
  * and are taken back out of the candidate's locks by `withoutPins`.
@@ -157,6 +158,6 @@ export function withoutPins<P extends Pick<ExecutionPlanResult, 'layoutBinding' 
 export function describePinnedPlacements(count: number): string {
   if (count <= 0) return '';
   return count === 1
-    ? '1 muted Sound kept its pad in every candidate.'
-    : `${count} muted Sounds kept their pads in every candidate.`;
+    ? '1 Sound excluded from analysis kept its pad in every candidate.'
+    : `${count} Sounds excluded from analysis kept their pads in every candidate.`;
 }

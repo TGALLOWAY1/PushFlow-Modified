@@ -17,7 +17,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import chroma from 'chroma-js';
-import { Lock } from 'lucide-react';
+import { Ban, Lock, VolumeX } from 'lucide-react';
 import { useProject } from '../state/ProjectContext';
 import { getDisplayedLayout, isPadLocked, placementBlockedByLock, type SoundStream } from '../state/projectState';
 import { orderSounds } from '../state/soundOrder';
@@ -39,6 +39,7 @@ import { CountInOverlay } from './CountInOverlay';
 import { playbackOverlayAt, selectionOverlay, type PadStrike } from '../analysis/momentOverlay';
 import { getEventTimeline } from '../analysis/eventTimeline';
 import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
+import { silentLabel, silentReason } from '../audio/audibility';
 import { padLabel, padLabelLines, sharedNamePrefix } from '../analysis/padLabels';
 import { midiNoteToName } from '../../utils/midiNotes';
 import { formatPadPosition, spokenPadPosition } from '../../utils/padPosition';
@@ -169,6 +170,9 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
     () => buildSoundStreamLookup(state.soundStreams),
     [state.soundStreams],
   );
+  // Rehearsal-only Mute and Solo (S4.4): a silent Sound's pad shows it and stays editable.
+  const soundIds = useMemo(() => state.soundStreams.map(s => s.id), [state.soundStreams]);
+  const audition = { mutedSoundIds: state.mutedSoundIds, soloedSoundIds: state.soloedSoundIds };
   // Pads drop the words every Sound's name starts with (T17).
   const namePrefix = useMemo(
     () => sharedNamePrefix(state.soundStreams.map(s => s.name)),
@@ -398,7 +402,6 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
     // Map event keys to durations
     const durationMap = new Map<string, number>();
     for (const stream of state.soundStreams) {
-      if (stream.muted) continue;
       for (const ev of stream.events) {
         durationMap.set(ev.eventKey, ev.duration);
       }
@@ -818,9 +821,11 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
       // Finger display
       const fingerList = summary ? [...summary.fingers].slice(0, 2) : [];
 
-      // Check if stream is muted
+      // Silent in rehearsal (S4.4): a glyph and less colour, never less editable.
       const streamForVoice = soundStreamLookup.forVoice(voice);
-      const isMuted = streamForVoice?.muted ?? false;
+      const silent = streamForVoice ? silentReason(streamForVoice.id, audition, soundIds) : null;
+      // Excluded from analysis (S4.4): the plan plays no note on it, and Generate keeps it here.
+      const isExcluded = streamForVoice?.excluded ?? false;
 
       // Active/selected states override glow level, but keep the color if we have one
       const displayGlowColor = glowColor ?? borderColor;
@@ -852,11 +857,11 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
             ${isActivePlaying && !isBlinking ? 'z-10 scale-105 brightness-150 bg-[var(--bg-card)]' : ''}
             ${isDragOver ? 'scale-105 bg-[var(--bg-card)]' : ''}
             ${isDragSource ? 'opacity-30' : ''}
-            ${isMuted ? 'opacity-30 pointer-events-none' : ''}
+            ${silent ? 'saturate-50' : ''}
             ${isGreyedOut ? 'opacity-[0.45]' : ''}
             ${isDragSource ? 'opacity-40' : ''}
             ${!voice ? 'hover:brightness-110' : 'hover:scale-[1.02]'}
-            ${isMuted ? 'cursor-default' : voice && !readOnly ? 'cursor-grab active:cursor-grabbing' : previewsArmed ? 'cursor-copy' : 'cursor-pointer'}
+            ${voice && !readOnly ? 'cursor-grab active:cursor-grabbing' : previewsArmed ? 'cursor-copy' : 'cursor-pointer'}
           `}
           style={{
             width: padSize,
@@ -878,7 +883,7 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
               boxGlow,
             ].filter(v => v && v !== 'none').join(', ') || 'none',
           }}
-          onClick={e => !isMuted && handlePadClick(row, col, e)}
+          onClick={e => handlePadClick(row, col, e)}
           data-selected={isPadSelected ? 'true' : undefined}
           data-sound-selected={isSoundSelected ? 'true' : undefined}
           data-struck={isNow ? 'true' : undefined}
@@ -887,23 +892,25 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
           onContextMenu={e => {
             e.preventDefault();
             // The pad menu edits (lock, finger, remove): not on a read-only layout (S3.2).
-            if (isMuted || refuseEdit()) return;
+            if (refuseEdit()) return;
             setContextMenu({ padKey, x: e.clientX, y: e.clientY, pad: e.currentTarget });
           }}
-          onDragOver={e => !isMuted && handleDragOver(e, padKey)}
+          onDragOver={e => handleDragOver(e, padKey)}
           // Entering a pad shows its hint at once; dragover keeps it (and says whether it drops).
-          onDragEnter={() => { if (!isMuted) setHintPad(padKey); }}
+          onDragEnter={() => setHintPad(padKey)}
           onDragLeave={e => {
             // Moving onto the pad's own label is no leaving: the hint stays (T46).
             if (e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return;
             handleDragLeave(padKey);
           }}
-          onDrop={e => !isMuted && handleDrop(e, padKey)}
-          draggable={!!voice && !isMuted && !isLocked}
-          onDragStart={e => voice && !isMuted && !isLocked && handlePadDragStart(e, padKey, voice)}
+          onDrop={e => handleDrop(e, padKey)}
+          draggable={!!voice && !isLocked}
+          onDragStart={e => voice && !isLocked && handlePadDragStart(e, padKey, voice)}
           onDragEnd={() => { setDragSourcePad(null); setDragOverPad(null); setHintPad(null); }}
+          data-silent={silent ?? undefined}
+          data-excluded={isExcluded ? 'true' : undefined}
           title={voice
-            ? `${formatPadPosition(padKey)} · ${voice.name}${summary ? ` · ${summary.hitCount} hits` : ''}${constraint ? ` · Finger preference ${constraint}` : ''}${isLocked ? ' · Locked · Unlock to move' : ''}${readOnly ? ` · ${readOnlyHint}` : ''}`
+            ? `${formatPadPosition(padKey)} · ${voice.name}${summary ? ` · ${summary.hitCount} hits` : ''}${constraint ? ` · Finger preference ${constraint}` : ''}${isLocked ? ' · Locked · Unlock to move' : ''}${isExcluded ? ' · Excluded from analysis: Generate keeps it here' : ''}${silent ? ` · ${silentLabel(silent)}` : ''}${readOnly ? ` · ${readOnlyHint}` : ''}`
             : readOnly
               ? `${formatPadPosition(padKey)} · empty · ${readOnlyHint}`
               : armedStream
@@ -1038,6 +1045,22 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
                     data-testid="pad-lock"
                   >
                     <Lock size={9} strokeWidth={2.5} aria-hidden="true" />
+                  </span>
+                )}
+
+                {/* Excluded from analysis, and silent in rehearsal (S4.4): glyphs in the free corner */}
+                {(isExcluded || silent) && (
+                  <span className="absolute bottom-0.5 right-0.5 flex items-center gap-px pointer-events-none">
+                    {isExcluded && (
+                      <span data-testid="pad-excluded" className="w-3 h-3 flex items-center justify-center text-[var(--text-secondary)]" aria-label="Excluded from analysis">
+                        <Ban size={9} strokeWidth={2.5} aria-hidden="true" />
+                      </span>
+                    )}
+                    {silent && (
+                      <span data-testid="pad-silent" className="w-3 h-3 flex items-center justify-center text-[var(--text-secondary)]" aria-label={silentLabel(silent)}>
+                        <VolumeX size={9} strokeWidth={2.5} aria-hidden="true" />
+                      </span>
+                    )}
                   </span>
                 )}
 

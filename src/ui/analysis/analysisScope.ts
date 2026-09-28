@@ -1,15 +1,16 @@
 /**
  * The scope line every verdict carries (roadmap P1b, T15 scope line): which
- * Sounds the analysis covers. Muted Sounds are left out of the analysed
- * performance, and since S3.3 only placed Sounds' notes are scored (T25), so
- * a verdict says both instead of silently judging a narrower song:
- * "Analysing 5 of 7 Sounds · 1 muted · 1 not placed yet".
+ * Sounds the analysis covers. Sounds excluded from analysis (S4.4) are left
+ * out of the analysed performance, and since S3.3 only placed Sounds' notes
+ * are scored (T25), so a verdict says both instead of silently judging a
+ * narrower song: "Analysing 5 of 7 Sounds · 1 excluded · 1 not placed yet".
+ * Mute and Solo are rehearsal-only and never narrow it.
  *
- * A verdict's scope is the scope of the analysis that produced it. A mute or
- * unmute marks the analysis stale but leaves the old plan on screen until the
- * re-analysis lands, so the Sounds a plan scored are read from the plan
- * (planSoundIds), not from the live mute state. An unplaced Sound adds nothing
- * to any plan's numbers, so whether it is in scope is read live.
+ * A verdict's scope is the scope of the analysis that produced it. Excluding
+ * or including a Sound marks the analysis stale but leaves the old plan on
+ * screen until the re-analysis lands, so the Sounds a plan scored are read
+ * from the plan (planSoundIds), not from the live flags. An unplaced Sound
+ * adds nothing to any plan's numbers, so whether it is in scope is read live.
  */
 
 import { type Layout } from '../../types/layout';
@@ -18,7 +19,8 @@ import { type PlacementProgress } from './verdictTiers';
 
 export interface ScopeStream {
   id: string;
-  muted: boolean;
+  /** Excluded from analysis (S4.4). */
+  excluded?: boolean;
   /** A Sound with no notes has nothing to place; without the list it counts as having notes. */
   events?: readonly unknown[];
 }
@@ -35,8 +37,9 @@ export interface AnalysisScope {
   total: number;
   /** Sounds whose notes the analysis scores. */
   analysed: number;
-  muted: number;
-  /** Sounds on the grid that this plan left out although they aren't muted (unmuted since it ran). */
+  /** Sounds excluded from analysis (S4.4). */
+  excluded: number;
+  /** Sounds on the grid that this plan left out although they aren't excluded (included since it ran). */
   notInAnalysis: number;
   /** Sounds in scope with no pad yet: their notes aren't scored until they are placed. */
   unplaced: number;
@@ -46,7 +49,7 @@ export interface AnalysisScope {
 
 /**
  * @param analysedIds The Sounds the analysis covered (planSoundIds). Without it,
- *   the scope is the live one: every placed Sound that isn't muted.
+ *   the scope is the live one: every placed Sound that isn't excluded.
  */
 export function analysisScope(
   streams: readonly ScopeStream[],
@@ -56,19 +59,19 @@ export function analysisScope(
   const placedIds = new Set(Object.values(layout?.padToVoice ?? {}).map(v => v.id));
   let analysed = 0;
   let analysedPlaced = 0;
-  let muted = 0;
+  let excluded = 0;
   let notInAnalysis = 0;
   let unplaced = 0;
   for (const s of streams) {
     const placed = placedIds.has(s.id);
     const hasNotes = !s.events || s.events.length > 0;
-    if (analysedIds ? analysedIds.has(s.id) : !s.muted && placed) {
+    if (analysedIds ? analysedIds.has(s.id) : !s.excluded && placed) {
       analysed++;
       // A plan made before S3.3 scored unplaced Sounds too (as unplayable).
       if (placed) analysedPlaced++;
       else unplaced++;
-    } else if (s.muted) {
-      muted++;
+    } else if (s.excluded) {
+      excluded++;
     } else if (!placed && hasNotes) {
       unplaced++;
     } else {
@@ -78,7 +81,7 @@ export function analysisScope(
   return {
     total: streams.length,
     analysed,
-    muted,
+    excluded,
     notInAnalysis,
     unplaced,
     placement: { placed: analysedPlaced, total: analysedPlaced + unplaced },
@@ -95,7 +98,7 @@ export function analysisScopeLine(
 
 export function scopeLineOf(scope: AnalysisScope): string {
   const parts = [`Analysing ${scope.analysed} of ${scope.total} Sound${scope.total === 1 ? '' : 's'}`];
-  if (scope.muted > 0) parts.push(`${scope.muted} muted`);
+  if (scope.excluded > 0) parts.push(`${scope.excluded} excluded`);
   if (scope.notInAnalysis > 0) parts.push(`${scope.notInAnalysis} not in this analysis`);
   if (scope.unplaced > 0) parts.push(`${scope.unplaced} not placed yet`);
   return parts.join(' · ');

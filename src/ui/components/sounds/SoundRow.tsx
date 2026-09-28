@@ -1,17 +1,21 @@
 /**
  * One Sound in the Sounds panel (S5.1, T45).
  *
- * Its colour and name (double-click, F2, Enter or the pencil renames it), where
- * it is ("To place", or its pad "R4 C4" with a lock toggle), how many hits it
- * has, its "Hand & finger preference (soft)", Solo and Mute, and a "⋯" menu.
+ * Its colour and name (double-click, F2, Enter or the pencil renames it), an
+ * "Excluded" badge while it is excluded from analysis (S4.4), where it is
+ * ("To place", or its pad "R4 C4" with a lock toggle), how many hits it has,
+ * its "Hand & finger preference (soft)", Solo and Mute, and a "⋯" menu. Solo
+ * and Mute are rehearsal-only (S4.4, T16): lit yellow and red while on, with a
+ * speaker-off glyph while it is silent, and Alt-click on S solos it alone.
  * A plain click arms it for click-to-place (T62); a Mod- or Shift-click selects
  * it with others. Drag the row onto a pad to place it; drag its handle to
  * reorder it or move it into a group (S5.1, T46).
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Crosshair, GripVertical, Lock, MoreHorizontal, Pencil, Unlock } from 'lucide-react';
+import { Crosshair, GripVertical, Lock, MoreHorizontal, Pencil, Unlock, VolumeX } from 'lucide-react';
 import { type SoundStream } from '../../state/projectState';
+import { silentLabel, type SilentReason } from '../../audio/audibility';
 import { type SoundPlacement } from '../../analysis/soundPlacement';
 import { type PlanFingers } from '../../analysis/planFingers';
 import { formatPadLocator, formatPadPosition } from '../../../utils/padPosition';
@@ -43,8 +47,15 @@ export interface SoundRowProps {
   /** The rename ended: `name` to apply (null for none), and whether to move on to the next or previous Sound. */
   onRenameDone: (name: string | null, move: 'next' | 'prev' | null) => void;
   onToggleLock: () => void;
+  /** Muted in rehearsal (S4.4). */
+  muted: boolean;
+  /** Soloed in rehearsal (S4.4). */
+  soloed: boolean;
+  /** Why it is silent in rehearsal, or null while it sounds. */
+  silent: SilentReason | null;
   onToggleMute: () => void;
-  onSolo: () => void;
+  /** `exclusive`: Alt-click, solo only this one. */
+  onSolo: (exclusive: boolean) => void;
   onOpenMenu: (anchor: HTMLElement) => void;
   /** Starts dragging it onto the grid. */
   onDragStart: (e: React.DragEvent) => void;
@@ -65,7 +76,7 @@ export function SoundRow({
   sound, namePrefix, placement, isGrouped, preference, fingerPlan, onSetPreference,
   isSelected, isGlobalSelected, isArmed, onSelect,
   isRenaming, onStartRename, onRenameDone,
-  onToggleLock, onToggleMute, onSolo, onOpenMenu,
+  onToggleLock, muted, soloed, silent, onToggleMute, onSolo, onOpenMenu,
   onDragStart, onReorderStart, onReorderEnd, dropSide, onReorderOver, onReorderDrop,
 }: SoundRowProps) {
   const [nameDraft, setNameDraft] = useState(sound.name);
@@ -110,7 +121,6 @@ export function SoundRow({
         border transition-colors duration-fast
         cursor-grab active:cursor-grabbing
         ${isGrouped ? 'pl-6' : 'pl-3.5'}
-        ${sound.muted ? 'opacity-35' : ''}
         ${isArmed
           ? 'border-accent-primary bg-[var(--accent-muted)] ring-1 ring-accent-primary/60'
           : isGlobalSelected
@@ -226,6 +236,17 @@ export function SoundRow({
         </>
       )}
 
+      {/* Excluded from analysis (S4.4, T15): a badge for as long as it is */}
+      {sound.excluded && (
+        <span
+          data-testid="sound-excluded"
+          className="flex-shrink-0 px-1.5 h-[18px] inline-flex items-center rounded-full border border-[var(--border-strong)] bg-[var(--bg-card)] text-pf-micro text-[var(--text-secondary)] whitespace-nowrap"
+          title="Excluded from analysis: its notes aren't scored and Generate keeps its pad. Include it again from ⋯"
+        >
+          Excluded
+        </span>
+      )}
+
       {/* Armed for click-to-place (T62) */}
       {isArmed && (
         <span
@@ -295,28 +316,44 @@ export function SoundRow({
         />
       </span>
 
+      {/* Silent in rehearsal: its Mute, or another Sound's Solo (S4.4) */}
+      {silent && (
+        <span data-testid="sound-silent" data-reason={silent} className="flex-shrink-0 flex items-center text-[var(--text-tertiary)]" title={silentLabel(silent)}>
+          <VolumeX size={11} aria-hidden="true" />
+          <span className="sr-only">{silentLabel(silent)}</span>
+        </span>
+      )}
+
+      {/* Solo and Mute: rehearsal only, the analysis never changes (S4.4, T16) */}
       <button
         type="button"
         data-testid="sound-solo"
-        className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-pf-sm text-pf-xs transition-colors bg-[var(--bg-card)] text-[var(--text-tertiary)] hover:bg-amber-500/15 hover:text-amber-400 border border-transparent hover:border-amber-500/20"
-        onClick={e => { e.stopPropagation(); onSolo(); }}
+        aria-pressed={soloed}
+        className={`flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-pf-sm text-pf-xs font-semibold transition-colors border ${soloed
+          ? 'bg-yellow-400 text-yellow-950 border-yellow-300 hover:bg-yellow-300'
+          : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border-transparent hover:bg-yellow-400/15 hover:text-yellow-300 hover:border-yellow-400/25'}`}
+        onClick={e => { e.stopPropagation(); onSolo(e.altKey); }}
         onMouseDown={stop}
         aria-label={`Solo ${sound.name}`}
-        title="Solo"
+        title={soloed
+          ? 'Soloed: only soloed Sounds sound in rehearsal · click to un-solo'
+          : 'Solo: only soloed Sounds sound in rehearsal · Alt-click to solo only this one · the analysis doesn’t change'}
       >
         S
       </button>
       <button
         type="button"
         data-testid="sound-mute"
-        aria-pressed={sound.muted}
-        className={`flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-pf-sm text-pf-xs transition-colors ${sound.muted
-          ? 'bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25'
-          : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border border-transparent hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]'}`}
+        aria-pressed={muted}
+        className={`flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-pf-sm text-pf-xs font-semibold transition-colors border ${muted
+          ? 'bg-red-600 text-white border-red-500 hover:bg-red-700'
+          : 'bg-[var(--bg-card)] text-[var(--text-tertiary)] border-transparent hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]'}`}
         onClick={e => { e.stopPropagation(); onToggleMute(); }}
         onMouseDown={stop}
         aria-label={`Mute ${sound.name}`}
-        title={sound.muted ? 'Unmute' : 'Mute'}
+        title={muted
+          ? 'Muted: silent in rehearsal · click to unmute'
+          : 'Mute: silent in rehearsal · the analysis doesn’t change (⋯ has Exclude from analysis)'}
       >
         M
       </button>
@@ -327,7 +364,7 @@ export function SoundRow({
         data-testid="sound-menu-button"
         aria-haspopup="dialog"
         aria-label={`More for ${sound.name}`}
-        title="Rename, colour, group, short label, unplace, delete"
+        title="Rename, colour, group, short label, exclude from analysis, unplace, delete"
         className="focus-ring flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-pf-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
         onClick={e => { e.stopPropagation(); if (menuRef.current) onOpenMenu(menuRef.current); }}
         onMouseDown={stop}

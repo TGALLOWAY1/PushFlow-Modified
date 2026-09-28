@@ -137,13 +137,26 @@ describe('verdict with an event selected', () => {
     expect(screen.getAllByTestId('verdict-badge').map(b => b.getAttribute('data-level'))).toEqual(['infeasible', 'infeasible']);
   });
 
-  // Codex review on PR #104: a mute marks the analysis stale but the old plan
-  // stays on screen until re-analysis; its verdict keeps the plan's scope.
-  it('keeps the verdict’s scope tied to the displayed plan after a mute', () => {
+  // Codex review on PR #104: excluding a Sound (a mute, before S4.4) marks the
+  // analysis stale but the old plan stays on screen until re-analysis; its
+  // verdict keeps the plan's scope.
+  it('keeps the verdict’s scope tied to the displayed plan after an exclusion', () => {
     renderPanels();
-    act(() => dispatch({ type: 'TOGGLE_MUTE', payload: analysed.soundStreams[0].id }));
+    act(() => dispatch({ type: 'SET_SOUND_EXCLUDED', payload: { soundId: analysed.soundStreams[0].id, excluded: true } }));
     for (const badge of screen.getAllByTestId('verdict-badge')) {
       expect(badge.getAttribute('data-level')).toBe('infeasible');
+      expect(within(badge).getByTestId('verdict-scope').textContent).toBe('Analysing 7 of 7 Sounds · 3 not placed yet');
+    }
+  });
+
+  // S4.4 (P4-7c): a mute or a solo is rehearsal-only, so neither the verdict nor its scope moves.
+  it('a mute and a solo change neither the verdict nor its scope', () => {
+    renderPanels();
+    const before = screen.getAllByTestId('verdict-badge').map(b => b.textContent);
+    act(() => dispatch({ type: 'TOGGLE_MUTE', payload: analysed.soundStreams[0].id }));
+    act(() => dispatch({ type: 'TOGGLE_SOLO', payload: { soundId: analysed.soundStreams[1].id } }));
+    expect(screen.getAllByTestId('verdict-badge').map(b => b.textContent)).toEqual(before);
+    for (const badge of screen.getAllByTestId('verdict-badge')) {
       expect(within(badge).getByTestId('verdict-scope').textContent).toBe('Analysing 7 of 7 Sounds · 3 not placed yet');
     }
   });

@@ -122,6 +122,7 @@ export function LoopLaneRow({ lane, dispatch, fingerAssignment, fingerPlan, onFi
             : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
         }`}
         onClick={() => dispatch({ type: 'TOGGLE_LANE_MUTE', payload: lane.id })}
+        aria-pressed={lane.isMuted}
         title="Mute"
       >
         M
@@ -133,6 +134,7 @@ export function LoopLaneRow({ lane, dispatch, fingerAssignment, fingerPlan, onFi
             : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
         }`}
         onClick={() => dispatch({ type: 'TOGGLE_LANE_SOLO', payload: lane.id })}
+        aria-pressed={lane.isSolo}
         title="Solo"
       >
         S

@@ -84,13 +84,14 @@ describe('Learn More · Constraints', () => {
     expect(text).toContain('A Sound with no pad is unmapped even when another Sound shares its pitch');
   });
 
-  // S1a.4 (T15 slice): Generate never removes a placed Sound; muted Sounds stay pinned.
-  it('states that a placed Sound with no events (muted) keeps its pad in every candidate, without a lock', () => {
+  // S1a.4 (T15 slice), S4.4: Generate never removes a placed Sound; excluded Sounds stay pinned.
+  it('states that a placed Sound with no events (excluded) keeps its pad in every candidate, without a lock', () => {
     const text = openConstraints();
     expect(text).toContain('Placed Sounds Stay Placed');
     expect(text).toContain('Generate never removes a Sound that is already on the grid');
-    expect(text).toContain('(a muted Sound) keeps its pad in every candidate from Greedy, Beam and Annealing');
+    expect(text).toContain('(a Sound excluded from analysis) keeps its pad in every candidate from Greedy, Beam and Annealing');
     expect(text).toContain('pinned for that run, not locked');
+    expect(text).toContain('A muted Sound is analysed and optimized like any other');
   });
 
   it('keeps the placement rules in the constraint list the section renders from', () => {

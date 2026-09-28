@@ -26,6 +26,7 @@ import { PERSISTED_SCHEMA_VERSION, rehearsalPreferencesOf } from './persistedPro
 import { cleanShortLabel } from '../../types/performanceLane';
 import { FALLBACK_LAYOUT_NAME, legacyRoleWords, withoutLegacyRoleWords } from '../state/layoutLabels';
 import { variantStamp } from '../state/variantNames';
+import { projectNoticesOf } from '../state/projectNotices';
 import { uniqueName } from '../../utils/uniqueName';
 
 /** A stored project record, as parsed JSON. */
@@ -141,7 +142,68 @@ export const MIGRATIONS: readonly Migration[] = [
       return next;
     },
   },
+  {
+    // S4.4 (T15, T16): Mute and Solo are rehearsal-only session state, and
+    // "Exclude from analysis" is a Sound's own saved flag. Mute used to leave
+    // a Sound out of the analysis, so every Sound that was muted (by its M,
+    // or by another Sound's Solo) becomes excluded: a project keeps the
+    // analysis it had. The stored mute and solo flags go, and when any Sound
+    // was excluded a notice naming them is left for the editor to show once.
+    from: 7,
+    to: 8,
+    name: 'mute-as-exclusion',
+    up: muteAsExclusion,
+  },
 ];
+
+type StoredItem = Record<string, unknown>;
+const isItem = (value: unknown): value is StoredItem => !!value && typeof value === 'object' && !Array.isArray(value);
+
+/** `item` without `keys`, excluded when `excluded`; the same object when there was nothing to do. */
+function convertedItem(item: StoredItem, keys: readonly string[], excluded: boolean): StoredItem {
+  if (!excluded && !keys.some(k => k in item)) return item;
+  const rest: StoredItem = {};
+  for (const [k, v] of Object.entries(item)) if (!keys.includes(k)) rest[k] = v;
+  return excluded ? { ...rest, excluded: true } : rest;
+}
+
+/**
+ * The mute-as-exclusion step. Idempotent: its output has no mute or solo
+ * flags left, so a second run converts nothing, adds no notice and returns
+ * an equal record.
+ */
+function muteAsExclusion(record: StoredRecord): StoredRecord {
+  const next: StoredRecord = { ...record };
+  const excluded = new Set<string>();
+  const note = (item: StoredItem) => { if (typeof item.id === 'string') excluded.add(item.id); };
+
+  if (Array.isArray(record.performanceLanes)) {
+    const lanes = record.performanceLanes as unknown[];
+    const soloActive = lanes.some(l => isItem(l) && l.isSolo === true);
+    next.performanceLanes = lanes.map(lane => {
+      if (!isItem(lane) || !('isMuted' in lane || 'isSolo' in lane)) return lane;
+      // As lanesToStreams read them before S4.4 (a hidden lane stays excluded by its own flag).
+      const soloed = lane.isSolo === true && lane.isMuted !== true;
+      const wasMuted = soloActive ? !soloed : lane.isMuted === true;
+      if (wasMuted) note(lane);
+      const converted = convertedItem(lane, ['isMuted', 'isSolo'], wasMuted);
+      // A soloed lane played even when hidden; it stays in the analysis.
+      return soloActive && soloed && converted.isHidden === true ? { ...converted, isHidden: false } : converted;
+    });
+  }
+  if (Array.isArray(record.soundStreams)) {
+    next.soundStreams = (record.soundStreams as unknown[]).map(stream => {
+      if (!isItem(stream) || !('muted' in stream)) return stream;
+      const wasMuted = stream.muted === true;
+      if (wasMuted) note(stream);
+      return convertedItem(stream, ['muted'], wasMuted);
+    });
+  }
+  if (excluded.size > 0) {
+    next.notices = [...projectNoticesOf(record.notices), { id: 'mute-as-exclusion', soundIds: [...excluded] }];
+  }
+  return next;
+}
 
 /** A stored lane or stream with its short label cleaned (cleanShortLabel), or as it was. */
 function withCleanShortLabel(item: unknown): unknown {

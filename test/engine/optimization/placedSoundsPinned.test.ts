@@ -1,6 +1,6 @@
 /**
  * Generate never removes an already-placed Sound (S1a.4, T15 slice; roadmap
- * P1a-9). A placed Sound with no events in the performance (a muted Sound) is
+ * P1a-9). A placed Sound with no events in the performance (one excluded from analysis, S4.4) is
  * pinned: every method keeps it on its pad in every candidate, and no lock is
  * added for it. Pins ride through seeding, compaction, mutation and
  * hill-climbing as locks, then leave the candidate's placementLocks again.
@@ -118,8 +118,8 @@ describe('pinnedPlacements', () => {
 
   it('describes the kept Sounds for the candidate list', () => {
     expect(describePinnedPlacements(0)).toBe('');
-    expect(describePinnedPlacements(1)).toBe('1 muted Sound kept its pad in every candidate.');
-    expect(describePinnedPlacements(2)).toBe('2 muted Sounds kept their pads in every candidate.');
+    expect(describePinnedPlacements(1)).toBe('1 Sound excluded from analysis kept its pad in every candidate.');
+    expect(describePinnedPlacements(2)).toBe('2 Sounds excluded from analysis kept their pads in every candidate.');
   });
 });
 

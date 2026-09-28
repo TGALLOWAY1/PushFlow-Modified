@@ -167,7 +167,7 @@ export interface CandidateGenerationConfig {
   /**
    * Placed Sounds every candidate must keep on their pads without a lock
    * (T15): those with no events in the performance, which in the app are the
-   * muted Sounds (see pinnedPlacements). Honoured like locks while optimizing,
+   * Sounds excluded from analysis (see pinnedPlacements). Honoured like locks while optimizing,
    * then removed from each candidate's placementLocks again.
    */
   pinnedPlacements?: Record<string, string>;
@@ -401,7 +401,7 @@ export async function generateCandidates(
       activeLayout: config.activeLayout,
       sections: config.sections,
       count: config.count ?? 4,
-      // Pins (muted placed Sounds) must reach greedy through this entry too.
+      // Pins (placed Sounds excluded from analysis) must reach greedy through this entry too.
       pinnedPlacements: config.pinnedPlacements,
       runControl: config.runControl,
     });
@@ -451,7 +451,7 @@ export async function generateCandidates(
   const knownVoiceIds = new Set<string>(voices.keys());
   for (const voice of Object.values(config.baseLayout?.padToVoice ?? {})) knownVoiceIds.add(voice.id);
   const locks = applicableLocks(config.baseLayout?.placementLocks, knownVoiceIds);
-  // Placed Sounds with no events (muted) stay where they are: they ride along
+  // Placed Sounds with no events (excluded) stay where they are: they ride along
   // as locks while optimizing and leave each candidate's locks again below.
   const pins = pinsToHonour(config.pinnedPlacements, locks, knownVoiceIds);
   const fixed = fixedPlacements(locks, pins);

@@ -23,6 +23,7 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useProject } from '../../state/ProjectContext';
 import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
 import { useIdentityMatchingNotice } from '../../hooks/useIdentityMatchingNotice';
+import { useProjectNotices } from '../../hooks/useProjectNotices';
 import { useAutoSave } from '../../hooks/useAutoSave';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { exportProjectToFile } from '../../persistence/projectStorage';
@@ -148,6 +149,8 @@ function PerformanceWorkspaceInner() {
     generateFull, cancelGeneration, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason,
   } = useAutoAnalysis();
   useIdentityMatchingNotice(state);
+  // The notices a migration left in the project, once (S4.4: mute became rehearsal-only).
+  useProjectNotices();
   const { saveStatus, saveNow } = useAutoSave(state);
   // The '?' sheet, generated from the input table (T61).
   const [shortcutsOpen, setShortcutsOpen] = useState(false);

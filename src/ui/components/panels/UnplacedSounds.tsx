@@ -18,7 +18,7 @@ export function UnplacedSounds() {
   const { count, busy, placeRemaining } = usePlaceRemaining();
   if (shown.readOnly) return null;
   const placedIds = new Set(Object.values(shown.layout.padToVoice).map(v => v.id));
-  const sounds = state.soundStreams.filter(s => !s.muted && s.events.length > 0 && !placedIds.has(s.id));
+  const sounds = state.soundStreams.filter(s => !s.excluded && s.events.length > 0 && !placedIds.has(s.id));
   // Nothing placed at all is the empty grid's own state (Suggest a starting layout).
   if (sounds.length === 0 || placedIds.size === 0) return null;
 

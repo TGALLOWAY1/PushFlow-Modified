@@ -29,6 +29,7 @@ import { type CostToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
 import { type OptimizerMethodKey } from '../../engine/optimization/optimizerInterface';
 import { type GreedyLayoutStrategy } from '../../engine/optimization/greedyCandidatePipeline';
 import { buildLegacySourceFile, buildPerformanceLanesFromStreams } from '../state/streamsToLanes';
+import { projectNoticesOf } from '../state/projectNotices';
 import { runMigrations, type StoredRecord } from './migrations';
 
 // ============================================================================
@@ -88,6 +89,8 @@ export function serializeProject(state: ProjectState): PersistedProject {
     createdAt: state.createdAt,
     updatedAt: new Date().toISOString(),
     lastOpenedAt: state.lastOpenedAt,
+    // Notices not shown yet (S4.4); written only while there are any.
+    ...(state.pendingNotices.length > 0 ? { notices: state.pendingNotices } : {}),
     schemaVersion: PERSISTED_SCHEMA_VERSION,
 
     // Analysis results and candidates are analysis-only state, not project truth.
@@ -186,6 +189,10 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
 
     // Rehearsal preferences: the loop and speed come back with the project.
     ...rehearsalPreferencesOf(persisted.rehearsal),
+    // Mute and Solo are rehearsal-only and start clear (S4.4); notices wait to be shown.
+    mutedSoundIds: [],
+    soloedSoundIds: [],
+    pendingNotices: projectNoticesOf(persisted.notices),
 
     // Analysis — analysis-only state is not project truth; always reset on load
     // and mark stale so it is recomputed against the restored layout.
@@ -331,6 +338,7 @@ function applyPersistedDefaults(p: Partial<PersistedProject> & { id: string }): 
     updatedAt: p.updatedAt || new Date().toISOString(),
     lastOpenedAt: typeof p.lastOpenedAt === 'string' ? p.lastOpenedAt : p.updatedAt || new Date().toISOString(),
     rehearsal: rehearsalPreferencesOf(p.rehearsal),
+    ...(projectNoticesOf(p.notices).length > 0 ? { notices: projectNoticesOf(p.notices) } : {}),
     schemaVersion: PERSISTED_SCHEMA_VERSION,
   };
 }
