@@ -50,6 +50,8 @@ import { hashLayout } from '../../../src/engine/mapping/mappingResolver';
 import { type Layout } from '../../../src/types/layout';
 import { type CandidateSolution } from '../../../src/types/candidateSolution';
 import { importTestMidi1, suggestedTestMidi1 } from '../../helpers/testMidi1';
+import { TransportProvider } from '../../../src/ui/audio/TransportProvider';
+import { TransportEngine } from '../../../src/ui/audio/transportEngine';
 
 afterEach(cleanup);
 
@@ -288,13 +290,49 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
   },
 
   'pad-alt-click': async () => {
-    // Reserved for audition (P4): nothing happens yet, armed or not.
-    mount(await importTestMidi1());
-    fireEvent.click(soundRow(0));
-    fireEvent.click(pad('0,0'), { altKey: true });
-    expect(shownPads()['0,0']).toBeUndefined();
-    expect(api.state.armedStreamId).toBe(api.state.soundStreams[0]!.id);
-    expect(boundRows().map(r => r.id)).not.toContain('pad-alt-click');
+    // S4.4 (T59; P4-11b): Alt-click auditions the pad's Sound through the
+    // workspace's transport, and changes and selects nothing.
+    const audition = vi.spyOn(TransportEngine.prototype, 'audition').mockImplementation(() => {});
+    try {
+      render(
+        <ToastProvider>
+          <ViewSettingsProvider>
+            <ProjectProvider initialState={await suggestedTestMidi1()}>
+              <TransportProvider><Editor /></TransportProvider>
+            </ProjectProvider>
+          </ViewSettingsProvider>
+        </ToastProvider>,
+      );
+      const key = occupiedPad();
+      const soundId = shownPads()[key]!.id;
+      const before = api.state;
+      fireEvent.click(pad(key), { altKey: true });
+      expect(audition.mock.calls).toEqual([[soundId]]);
+      expect(api.state.selectedPadKey).toBeNull();
+      expect(api.state).toBe(before);
+
+      // A muted Sound plays too: an audition is asked for.
+      act(() => api.dispatch({ type: 'TOGGLE_MUTE', payload: soundId }));
+      fireEvent.click(pad(key), { altKey: true });
+      expect(audition).toHaveBeenCalledTimes(2);
+
+      // Armed, it still only plays: nothing is placed, and the Sound stays armed.
+      fireEvent.click(soundRow(1));
+      const armed = api.state.armedStreamId;
+      const pads = shownPads();
+      fireEvent.click(pad(emptyPad()), { altKey: true });
+      fireEvent.click(pad(key), { altKey: true });
+      expect(audition).toHaveBeenCalledTimes(3);
+      expect(shownPads()).toEqual(pads);
+      expect(api.state.armedStreamId).toBe(armed);
+
+      // A plain click never plays.
+      fireEvent.click(pad(key));
+      expect(audition).toHaveBeenCalledTimes(3);
+      expect(boundRows().map(r => r.id)).toContain('pad-alt-click');
+    } finally {
+      audition.mockRestore();
+    }
   },
 
   'drag-pad': async () => {
@@ -1025,6 +1063,8 @@ describe('what a pad click means', () => {
     expect(padClickMeaning({ ...ctx, armed: true, occupied: true })).toEqual({ row: 'pad-click-armed', action: 'taken' });
     expect(padClickMeaning({ ...ctx, armed: true, occupied: true, holdsArmed: true })).toEqual({ row: 'pad-click-armed', action: 'disarm' });
     expect(padClickMeaning({ ...ctx, armed: true, altKey: true })).toEqual({ row: 'pad-alt-click', action: 'none' });
+    expect(padClickMeaning({ ...ctx, armed: true, occupied: true, altKey: true })).toEqual({ row: 'pad-alt-click', action: 'audition' });
+    expect(padClickMeaning({ ...ctx, occupied: true, altKey: true })).toEqual({ row: 'pad-alt-click', action: 'audition' });
     expect(padClickMeaning({ ...ctx, eventSelected: true, occupied: true })).toEqual({ row: 'pad-click-moment', action: 'select-pad' });
     expect(padClickMeaning({ ...ctx, occupied: true })).toEqual({ row: 'pad-click-idle', action: 'select-pad' });
     expect(padClickMeaning({ ...ctx })).toEqual({ row: 'pad-click-idle', action: 'clear-pad' });

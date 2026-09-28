@@ -47,6 +47,7 @@ import { uniqueName } from '../../utils/uniqueName';
 import { suggestVariantName } from './variantNames';
 import { EMPTY_CANDIDATE_RUNS, candidateLetterFor, olderRuns, withRun, type CandidateRunsState } from './candidateRuns';
 import { type ProjectNotice } from './projectNotices';
+import { type HandsFilter, isHandsFilter } from '../audio/handsFilter';
 
 // ============================================================================
 // Sound Stream Model
@@ -303,6 +304,12 @@ export interface ProjectSession {
   mutedSoundIds: string[];
   /** Soloed Sounds, by id (S4.4): while any is soloed only they sound. Session only, like mutedSoundIds. */
   soloedSoundIds: string[];
+  /**
+   * Hands-separate practice (S4.4, T59): with one hand chosen, the other
+   * hand's strikes are silent and its pads dimmed (handsFilter.ts). Session
+   * only, never an analysis input.
+   */
+  handsFilter: HandsFilter;
   /**
    * One-time notices to show when the project opens (S4.4: the
    * mute-as-exclusion migration's). Saved until shown, like lastOpenedAt:
@@ -801,6 +808,8 @@ export type ProjectAction =
   | { type: 'SET_LOOP_REGION'; payload: { start: number | null; end: number | null } }
   | { type: 'SET_COUNT_IN_BARS'; payload: number }
   | { type: 'SET_REHEARSAL_AUDIO'; payload: Partial<RehearsalAudioOptions> }
+  /** "Hands: Both / L / R" (S4.4): rehearsal only, like Mute and Solo. */
+  | { type: 'SET_HANDS_FILTER'; payload: HandsFilter }
 
   // Performance Lanes (delegated to lanesReducer)
   | LaneAction;
@@ -1319,6 +1328,7 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
         rehearsalAudio: { ...DEFAULT_REHEARSAL_AUDIO },
         mutedSoundIds: [],
         soloedSoundIds: [],
+        handsFilter: 'both',
         pendingNotices: action.payload.pendingNotices ?? [],
       };
 
@@ -2235,6 +2245,10 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
     case 'SET_REHEARSAL_AUDIO':
       return { ...state, rehearsalAudio: { ...state.rehearsalAudio, ...action.payload } };
 
+    case 'SET_HANDS_FILTER':
+      if (!isHandsFilter(action.payload) || action.payload === state.handsFilter) return state;
+      return { ...state, handsFilter: action.payload };
+
     // Optimizer configuration — persisted user preferences, so bump updatedAt
     // to schedule an autosave (otherwise the choice silently reverts on reload).
     case 'SET_OPTIMIZER_METHOD':
@@ -2356,6 +2370,7 @@ export function createEmptyProjectState(): ProjectState {
     rehearsalAudio: { ...DEFAULT_REHEARSAL_AUDIO },
     mutedSoundIds: [],
     soloedSoundIds: [],
+    handsFilter: 'both',
     pendingNotices: [],
   };
 }

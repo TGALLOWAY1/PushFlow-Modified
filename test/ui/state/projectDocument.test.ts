@@ -41,7 +41,7 @@ const SESSION_FIELDS = [
   'currentTime', 'isPlaying', 'playbackRate', 'loopEnabled', 'loopStart', 'loopEnd',
   'countInBars', 'rehearseRate', 'rehearsalAudio',
   // S4.4: rehearsal-only Mute and Solo, and the notices a migration left.
-  'mutedSoundIds', 'soloedSoundIds', 'pendingNotices',
+  'mutedSoundIds', 'soloedSoundIds', 'handsFilter', 'pendingNotices',
 ];
 
 const FIXTURE = path.resolve(__dirname, '../../fixtures/projects/saved-by-main.json');

@@ -118,7 +118,7 @@ export const INPUT_TABLE: readonly InputRow[] = [
   {
     id: 'pad-alt-click', group: 'Pads',
     input: ['Alt-click a pad'], when: 'Any time',
-    does: 'Plays the pad\'s Sound. A plain click never does.', from: 'P4',
+    does: 'Plays the pad\'s Sound (an audition), even when it is muted or Hits is off, and selects nothing. A plain click never plays one.',
   },
   {
     id: 'drag-pad', group: 'Pads',
@@ -343,15 +343,14 @@ export interface PadClickContext {
 }
 
 export type PadClickMeaning =
-  | { row: 'pad-alt-click'; action: 'none' }
+  | { row: 'pad-alt-click'; action: 'audition' | 'none' }
   | { row: 'pad-click-armed'; action: 'place' | 'taken' | 'disarm' }
   | { row: 'pad-click-moment' | 'pad-click-idle'; action: 'select-pad' | 'clear-pad' };
 
 /** What a click on a pad means, by mode (the table's pad-click rows, in order). */
 export function padClickMeaning(ctx: PadClickContext): PadClickMeaning {
-  // Reserved for audition (P4): until then an Alt-click does nothing, so no
-  // habit forms around it.
-  if (ctx.altKey) return { row: 'pad-alt-click', action: 'none' };
+  // Audition (S4.4, T59): plays the pad's Sound; on an empty pad, nothing.
+  if (ctx.altKey) return { row: 'pad-alt-click', action: ctx.occupied ? 'audition' : 'none' };
   if (ctx.armed) {
     // Its own pad: nothing to place, so placing ends.
     if (ctx.holdsArmed) return { row: 'pad-click-armed', action: 'disarm' };

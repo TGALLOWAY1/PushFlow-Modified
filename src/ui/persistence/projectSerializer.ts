@@ -192,6 +192,7 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
     // Mute and Solo are rehearsal-only and start clear (S4.4); notices wait to be shown.
     mutedSoundIds: [],
     soloedSoundIds: [],
+    handsFilter: 'both',
     pendingNotices: projectNoticesOf(persisted.notices),
 
     // Analysis — analysis-only state is not project truth; always reset on load

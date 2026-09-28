@@ -68,6 +68,8 @@ export interface TransportAudio {
   clock(): AudioClock | null;
   scheduleHit(soundId: string, when: number, velocity: number): void;
   scheduleClick(when: number, downbeat: boolean): void;
+  /** Plays one Sound now (S4.4: an audition), starting audio if needed. */
+  audition(soundId: string): void;
   cancelFrom(when: number): void;
   setOptions(options: RehearsalAudioOptions): void;
   reset(): void;
@@ -280,6 +282,11 @@ export class TransportEngine {
     if (!audible) return;
     this.scheduler.setMaterial(this.schedulerMaterial());
     this.continueRun();
+  }
+
+  /** Plays one Sound now, over whatever is playing (S4.4: Alt-click, the pad inspector). */
+  audition(soundId: string): void {
+    this.audio.audition(soundId);
   }
 
   // ─── Transport ─────────────────────────────────────────────────────────────

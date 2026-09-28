@@ -52,6 +52,8 @@ class FakeAudio implements TransportAudio {
   }
   scheduleHit(id: string, when: number) { this.hits.push({ id, when }); }
   scheduleClick(when: number, downbeat: boolean) { this.clicks.push(when); this.clickLog.push({ when, downbeat }); }
+  auditions: string[] = [];
+  audition(id: string) { this.auditions.push(id); }
   cancelFrom(when: number) {
     this.cancels.push(when);
     this.hits = this.hits.filter(h => h.when < when);
@@ -134,6 +136,18 @@ beforeEach(() => {
 });
 
 describe('the transport engine', () => {
+  // S4.4 (T59): an audition plays one Sound now, whether the transport runs or not.
+  it('passes an audition straight to the audio, stopped or playing, without moving the playhead', () => {
+    const e = engine();
+    e.audition('a');
+    e.play(2);
+    const at = e.position();
+    e.audition('b');
+    expect(audio.auditions).toEqual(['a', 'b']);
+    expect(e.position()).toBe(at);
+    expect(e.isRunning()).toBe(true);
+  });
+
   it('P4-5a: loop off plays once and stops at the end; Play from there starts over', () => {
     const e = engine();
     e.play(14);

@@ -25,6 +25,7 @@ import { LIFECYCLE_ACTIONS } from '../../state/lifecycleActions';
 import { MOMENT_VIEWS } from '../../state/viewSettings';
 import { COUNT_IN_CHOICES, REHEARSE_SPEEDS } from '../../audio/transportMath';
 import { rehearseSpeedWords } from '../../hooks/useRehearse';
+import { HANDS_FILTERS } from '../../audio/handsFilter';
 import { layoutLabel } from '../../state/layoutLabels';
 import { suggestVariantName } from '../../state/variantNames';
 import { strategyLabel } from '../../analysis/strategyLabels';
@@ -293,6 +294,9 @@ function OverviewInfographic() {
               </p>
               <p className="text-[8px] text-gray-700" data-testid="learn-more-mute-vs-exclude">
                 Mute and Solo (S and M on a Sound&apos;s row) only change what you hear in rehearsal: while any Sound is soloed only soloed Sounds sound, otherwise every Sound but the muted ones (Alt-click on S solos just that one). They never change a verdict, a score, a fingering or the layout, a muted pad stays editable, and they reset when the project is closed. To leave a Sound out of the analysis, use Exclude from analysis in its &#8943; menu: it is saved with the project, can be undone, is badged Excluded, and the scope line counts it; its notes stay in the timeline, marked not analysed, and Generate keeps its pad.
+              </p>
+              <p className="text-[8px] text-gray-700" data-testid="learn-more-practice-aids">
+                Hits&apos; menu in the transport sets the click&apos;s and the hits&apos; levels, and which hand you practise ({HANDS_FILTERS.map(f => f.label).join(', ')}): with one hand chosen, the other hand&apos;s strikes are silent and its pads and notes dimmed, going by the plan&apos;s hand for each note. Alt-click a pad, or the play button in its inspector, to hear its Sound. None of these changes a verdict or a score, and they reset when the project is closed.
               </p>
             </div>
           </div>

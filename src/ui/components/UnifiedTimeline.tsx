@@ -30,6 +30,7 @@ import { eventAtTime, eventOfNote, getEventTimeline, resolveEventKey } from '../
 import { useTransport, useTransportPosition } from '../audio/TransportProvider';
 import { orderSounds } from '../state/soundOrder';
 import { silentLabel, silentReason, type SilentReason } from '../audio/audibility';
+import { inHandsFilter } from '../audio/handsFilter';
 import { loopRegionOf } from '../audio/transportMath';
 import { DrawerToolbarSlot, TimelineToolbar } from './TimelineToolbar';
 import { TimelineRuler } from './TimelineRuler';
@@ -619,9 +620,11 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                     const handEdge = unplaced || isRaw ? null : handColor(a.assignedHand);
 
                     const isUnplayable = hand === 'Unplayable' && !unplaced;
+                    // Hands-separate practice (S4.4): the other hand's notes are dimmed, as on the grid.
+                    const handFiltered = !isRaw && !unplaced && !inHandsFilter(hand, state.handsFilter);
                     // Always use sound color for pill background; only override for unplayable
                     const pillBg = isUnplayable ? '#ef4444' : stream.color;
-                    const pillOpacity = isSelected ? 1 : unplaced ? 0.9 : isRaw ? 0.5 : isUnplayable ? 0.6 : 0.85;
+                    const pillOpacity = isSelected ? 1 : handFiltered ? 0.25 : unplaced ? 0.9 : isRaw ? 0.5 : isUnplayable ? 0.6 : 0.85;
                     // Readable on any Sound colour; the L/R letter carries the hand.
                     // An outlined pill's text sits on the timeline itself.
                     const pillText = unplaced ? 'var(--text-primary)' : pillTextColor(pillBg, pillOpacity);
@@ -664,6 +667,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                         data-finger={fingerLabel}
                         data-placement={unplaced ? 'unplaced' : undefined}
                         data-excluded={stream.excluded ? 'true' : undefined}
+                        data-hand-filtered={handFiltered ? 'true' : undefined}
                         data-selected={isSelected ? 'true' : undefined}
                         data-sound-selected={soundSelected ? 'true' : undefined}
                         className={`absolute flex items-center justify-center rounded-sm transition-all cursor-pointer
