@@ -51,6 +51,7 @@ import { LIFECYCLE_ACTIONS } from '../../../src/ui/state/lifecycleActions';
 import { MOMENT_VIEWS } from '../../../src/ui/state/viewSettings';
 import { COUNT_IN_CHOICES, REHEARSE_SPEEDS } from '../../../src/ui/audio/transportMath';
 import { rehearseSpeedWords } from '../../../src/ui/hooks/useRehearse';
+import { HANDS_FILTERS } from '../../../src/ui/audio/handsFilter';
 
 afterEach(cleanup);
 
@@ -84,13 +85,14 @@ describe('Learn More · Constraints', () => {
     expect(text).toContain('A Sound with no pad is unmapped even when another Sound shares its pitch');
   });
 
-  // S1a.4 (T15 slice): Generate never removes a placed Sound; muted Sounds stay pinned.
-  it('states that a placed Sound with no events (muted) keeps its pad in every candidate, without a lock', () => {
+  // S1a.4 (T15 slice), S4.4: Generate never removes a placed Sound; excluded Sounds stay pinned.
+  it('states that a placed Sound with no events (excluded) keeps its pad in every candidate, without a lock', () => {
     const text = openConstraints();
     expect(text).toContain('Placed Sounds Stay Placed');
     expect(text).toContain('Generate never removes a Sound that is already on the grid');
-    expect(text).toContain('(a muted Sound) keeps its pad in every candidate from Greedy, Beam and Annealing');
+    expect(text).toContain('(a Sound excluded from analysis) keeps its pad in every candidate from Greedy, Beam and Annealing');
     expect(text).toContain('pinned for that run, not locked');
+    expect(text).toContain('A muted Sound is analysed and optimized like any other');
   });
 
   it('keeps the placement rules in the constraint list the section renders from', () => {
@@ -342,5 +344,41 @@ describe('the moment view (S4.2, invariant 2)', () => {
     expect(rehearse).toContain(`(${COUNT_IN_CHOICES.map(c => c.label).join(', ')})`);
     expect(rehearse).toMatch(/bar and the next/);
     expect(rehearse).toMatch(/at least a bar/);
+  });
+});
+
+describe('audition vs analysis and the practice aids (S4.4, invariant 2)', () => {
+  it('says Mute and Solo only change what you hear, and Exclude from analysis is the analysis\'s switch', () => {
+    openTab('Overview');
+    const text = screen.getByTestId('learn-more-mute-vs-exclude').textContent!;
+    expect(text).toMatch(/Mute and Solo .* only change what you hear in rehearsal/);
+    expect(text).toMatch(/while any Sound is soloed only soloed Sounds sound, otherwise every Sound but the muted ones/);
+    expect(text).toMatch(/never change a verdict, a score, a fingering or the layout, a muted pad stays editable/);
+    expect(text).toMatch(/Exclude from analysis .* saved with the project, can be undone, is marked with a crossed circle on its row, its pads and its lane, and the scope line counts it/);
+    expect(text).toMatch(/Generate keeps its pad/);
+  });
+
+  it('lists the levels, the Hands filter from the list the transport uses, and auditions', () => {
+    openTab('Overview');
+    const text = screen.getByTestId('learn-more-practice-aids').textContent!;
+    expect(text).toContain(`(${HANDS_FILTERS.map(f => f.label).join(', ')})`);
+    expect(text).toMatch(/levels/);
+    expect(text).toMatch(/other hand.s strikes are silent and its pads and notes dimmed/);
+    expect(text).toMatch(/Alt-click a pad, or the play button in its inspector/);
+    expect(text).toMatch(/None of these changes a verdict or a score/);
+  });
+
+  it('explains the Rehearse view: both side panels collapsed, remembered on this device, nothing else changed', () => {
+    openTab('Overview');
+    const text = screen.getByTestId('learn-more-rehearse-view').textContent!;
+    expect(text).toMatch(/collapses both side panels/);
+    expect(text).toMatch(/brings them back as they were/);
+    expect(text).toMatch(/remembered on this device and changes nothing else/);
+  });
+
+  it('shows the scope line with excluded Sounds in the Verdicts section', () => {
+    openTab('Cost Factors');
+    expect(document.body.textContent).toContain('Analysing 4 of 7 Sounds · 2 excluded · 1 not placed yet');
+    expect(document.body.textContent).toContain('Mute and Solo never change it');
   });
 });

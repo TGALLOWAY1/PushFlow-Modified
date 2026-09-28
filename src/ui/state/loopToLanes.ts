@@ -40,15 +40,10 @@ export function convertLoopToPerformanceLanes(
   const stepDur = stepDuration(loopState.config);
   const steps = totalSteps(loopState.config);
 
-  // Convert ALL lanes but mark muted/non-soloed ones as muted.
-  // Per product invariant: timeline MUST show ALL sound streams, even inactive ones.
-  const soloActive = loopState.lanes.some(l => l.isSolo);
-
+  // Every lane becomes a Sound (the timeline shows all of them, invariant 4).
+  // The Composer's own Mute and Solo are rehearsal-only, like the Sounds
+  // panel's (S4.4): they never exclude a Sound from the analysis.
   const lanes: PerformanceLane[] = loopState.lanes.map((loopLane, i) => {
-    const isActive = soloActive
-      ? (loopLane.isSolo && !loopLane.isMuted)
-      : !loopLane.isMuted;
-
     const laneId = options.preserveLaneIds
       ? `${options.laneIdPrefix ?? ''}${loopLane.id}`
       : generateId('lane');
@@ -80,8 +75,6 @@ export function convertLoopToPerformanceLanes(
       colorMode: 'inherited' as const,
       events,
       isHidden: false,
-      isMuted: !isActive,
-      isSolo: false,
     };
   });
 

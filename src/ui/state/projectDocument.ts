@@ -13,7 +13,7 @@ import { type CandidateSolution } from '../../types/candidateSolution';
 import { reconcileLayoutVoices } from '../../types/layout';
 import { deepEqual } from '../../utils/deepEqual';
 import { analysisInputsChanged } from './analysisInputs';
-import { withoutStaleCandidates } from './lanesReducer';
+import { withLiveAudition, withoutStaleCandidates } from './lanesReducer';
 
 /**
  * Every document field. A Record over keyof ProjectDocument, so adding a field to
@@ -132,6 +132,8 @@ export function restoreDocument(
     ...(soundsChanged ? { selectedMomentKey: null, selectedNoteKey: null } : {}),
     ...(soundsChanged && !live.has(state.armedStreamId ?? '') ? { armedStreamId: null } : {}),
     ...(soundsChanged && !live.has(state.selectedStreamId ?? '') ? { selectedStreamId: null } : {}),
+    // A Sound the step took away is neither muted nor soloed any more (S4.4).
+    ...(soundsChanged ? withLiveAudition(state, live) : {}),
   }, live));
 }
 

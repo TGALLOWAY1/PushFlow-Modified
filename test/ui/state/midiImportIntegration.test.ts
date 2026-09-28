@@ -35,8 +35,6 @@ function makeLowNoteLanes(): { lanes: PerformanceLane[]; sourceFile: SourceFile;
       { eventId: `e-${i}-1`, laneId: `lane-${i}`, startTime: 2 + i * 0.5, duration: 0.1, velocity: 80, rawPitch: note },
     ],
     isHidden: false,
-    isMuted: false,
-    isSolo: false,
   }));
 
   const sourceFile: SourceFile = {

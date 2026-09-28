@@ -11,10 +11,11 @@
  * - Its hits: "Show its hits" selects the first; with an event selected,
  *   Prev hit and Next hit step through them. The timeline outlines all of them
  *   (the selected Sound's notes), and a pad click never moves the event.
+ * - Play: hear the Sound (S4.4, T59: an audition, as Alt-click on the pad).
  */
 
 import { useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Lock, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Lock, Volume2, X } from 'lucide-react';
 import { useProject } from '../../state/ProjectContext';
 import { getInspectedLayout, isPadLocked } from '../../state/projectState';
 import { getEventTimeline, resolveEventKey, type TimelineEvent } from '../../analysis/eventTimeline';
@@ -23,6 +24,7 @@ import { formatPadPosition } from '../../../utils/padPosition';
 import { useReadOnlyHint } from '../../hooks/useReadOnlyHint';
 import { useRemovePadWithUndo } from '../../hooks/useRemovePadWithUndo';
 import { useFingerPreference } from '../../hooks/useFingerPreference';
+import { useTransport } from '../../audio/TransportProvider';
 import { FingerAssignmentInput } from '../shared/FingerAssignmentInput';
 import { IconButton } from '../shared/IconButton';
 import { ToggleButton } from '../shared/ToggleButton';
@@ -48,6 +50,7 @@ export function PadInspector() {
   const locked = !!padKey && isPadLocked(layout, padKey);
   const removeReason = useDisabledReason(locked ? 'Locked · Unlock to remove' : null);
   const finger = useFingerPreference(sound?.id);
+  const transport = useTransport();
   if (!padKey || !voice || !sound) return null;
 
   const selectedIndex = resolveEventKey(timeline, state.selectedMomentKey)?.index ?? null;
@@ -76,8 +79,18 @@ export function PadInspector() {
           <span aria-hidden="true" className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: sound.color }} />
           <span data-testid="pad-inspector-sound" className="text-pf-sm font-medium text-[var(--text-primary)] truncate">{sound.name}</span>
         </span>
-        <span data-testid="pad-inspector-hits" className="text-pf-micro text-[var(--text-tertiary)] whitespace-nowrap">
-          {hitAt >= 0 ? `hit ${hitAt + 1} of ${hits.length}` : `${hits.length} ${hits.length === 1 ? 'hit' : 'hits'}`}
+        <span className="flex items-center gap-1 flex-shrink-0">
+          <span data-testid="pad-inspector-hits" className="text-pf-micro text-[var(--text-tertiary)] whitespace-nowrap">
+            {hitAt >= 0 ? `hit ${hitAt + 1} of ${hits.length}` : `${hits.length} ${hits.length === 1 ? 'hit' : 'hits'}`}
+          </span>
+          <IconButton
+            label={`Play ${sound.name}`}
+            title={`Hear ${sound.name} (Alt-click its pad does the same), even when it is muted`}
+            testId="pad-inspector-audition"
+            onClick={() => transport.audition(sound.id)}
+          >
+            <Volume2 size={12} />
+          </IconButton>
         </span>
       </div>
 

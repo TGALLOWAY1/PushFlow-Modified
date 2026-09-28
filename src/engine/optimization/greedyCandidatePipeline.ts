@@ -101,7 +101,7 @@ export interface GreedyCandidateInput {
   /**
    * Placed Sounds every candidate must keep on their pads without a lock
    * (T15): those with no events in the performance, which in the app are the
-   * muted Sounds (see pinnedPlacements). Honoured like locks while seeding and
+   * Sounds excluded from analysis (see pinnedPlacements). Honoured like locks while seeding and
    * hill-climbing, then removed from each candidate's placementLocks again.
    */
   pinnedPlacements?: Record<string, string>;
@@ -208,7 +208,7 @@ export async function generateGreedyCandidates(
   const knownVoiceIds = new Set<string>(voices.keys());
   for (const voice of Object.values(input.baseLayout?.padToVoice ?? {})) knownVoiceIds.add(voice.id);
   const locks = applicableLocks(input.baseLayout?.placementLocks, knownVoiceIds);
-  // Placed Sounds with no events (muted) stay where they are: the base layout
+  // Placed Sounds with no events (excluded) stay where they are: the base layout
   // the seeds and the optimizer see carries them as locks, and they leave each
   // candidate's locks again below.
   const pins = pinsToHonour(input.pinnedPlacements, locks, knownVoiceIds);

@@ -32,7 +32,7 @@ export interface RehearsalHit {
   velocity?: number;
 }
 
-/** Which sounds are audible during rehearsal. */
+/** Which sounds are audible during rehearsal, and how loud. */
 export interface RehearsalAudioOptions {
   /** Play a click on each beat. */
   metronome: boolean;
@@ -40,13 +40,24 @@ export interface RehearsalAudioOptions {
   hits: boolean;
   /** 0..1 output level. */
   volume: number;
+  /** 0..1: the click's level, count-in included (S4.4, T59: the volume popover). */
+  clickLevel: number;
+  /** 0..1: the hits' level, auditions included (S4.4). */
+  hitsLevel: number;
 }
 
 export const DEFAULT_REHEARSAL_AUDIO: RehearsalAudioOptions = {
   metronome: true,
   hits: true,
   volume: 0.6,
+  clickLevel: 1,
+  hitsLevel: 1,
 };
+
+/** A level as the options keep it: 0..1, and 1 for anything that isn't a number. */
+export function clampLevel(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1;
+}
 
 /** Whether audio can play right now, may soon (a context waiting to resume), or can't at all. */
 export type AudioReadiness = 'running' | 'pending' | 'unavailable';
@@ -102,6 +113,9 @@ interface Voice {
 export class RehearsalAudio {
   private ctx: BaseAudioContext | null = null;
   private master: GainNode | null = null;
+  /** The click's and the hits' own levels, before the master (S4.4). */
+  private clickBus: GainNode | null = null;
+  private hitsBus: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private options: RehearsalAudioOptions = { ...DEFAULT_REHEARSAL_AUDIO };
   /** Hits already played, keyed so a hit is never triggered twice (the frame-driven path). */
@@ -120,7 +134,10 @@ export class RehearsalAudio {
   setOptions(options: RehearsalAudioOptions): void {
     this.options = options;
     if (this.master && this.ctx) {
-      this.master.gain.setTargetAtTime(options.volume, this.ctx.currentTime, 0.01);
+      const now = this.ctx.currentTime;
+      this.master.gain.setTargetAtTime(options.volume, now, 0.01);
+      this.clickBus?.gain.setTargetAtTime(clampLevel(options.clickLevel), now, 0.01);
+      this.hitsBus?.gain.setTargetAtTime(clampLevel(options.hitsLevel), now, 0.01);
     }
   }
 
@@ -259,10 +276,22 @@ export class RehearsalAudio {
     }
   }
 
-  /** Plays one sound immediately — used when a pad is clicked. */
+  /** Plays one sound immediately, when audio is running. */
   preview(soundId: string): void {
     if (!this.isActive) return;
     this.strike(soundId, 0.85);
+  }
+
+  /**
+   * An audition (S4.4, T59): plays one Sound now, at the hits' level, whether
+   * or not Hits, Mute or Solo would silence it in playback, since asking to
+   * hear it is the point. Call it from a gesture: it starts audio if needed and
+   * plays once audio runs.
+   */
+  audition(soundId: string): void {
+    if (this.ensure() === 'unavailable') return;
+    if (this.isActive) this.preview(soundId);
+    else void this.resume().then(() => this.preview(soundId));
   }
 
   /** Releases audio resources. */
@@ -272,6 +301,8 @@ export class RehearsalAudio {
     }
     this.ctx = null;
     this.master = null;
+    this.clickBus = null;
+    this.hitsBus = null;
     this.voices = [];
     this.fired.clear();
   }
@@ -283,6 +314,12 @@ export class RehearsalAudio {
     this.master = ctx.createGain();
     this.master.gain.value = this.options.volume;
     this.master.connect(ctx.destination);
+    this.clickBus = ctx.createGain();
+    this.clickBus.gain.value = clampLevel(this.options.clickLevel);
+    this.clickBus.connect(this.master);
+    this.hitsBus = ctx.createGain();
+    this.hitsBus.gain.value = clampLevel(this.options.hitsLevel);
+    this.hitsBus.connect(this.master);
     this.noiseBuffer = this.createNoiseBuffer(ctx);
   }
 
@@ -309,7 +346,7 @@ export class RehearsalAudio {
 
   private strike(soundId: string, gain: number, at?: number): void {
     const ctx = this.ctx;
-    const master = this.master;
+    const master = this.hitsBus;
     if (!ctx || !master) return;
 
     const { frequency, decay, noiseAmount, type } = voiceForSound(soundId);
@@ -354,7 +391,7 @@ export class RehearsalAudio {
 
   private click(isDownbeat: boolean, at?: number): void {
     const ctx = this.ctx;
-    const master = this.master;
+    const master = this.clickBus;
     if (!ctx || !master) return;
     const now = at ?? ctx.currentTime;
 

@@ -42,6 +42,7 @@ vi.mock('../../../src/ui/persistence/indexedDbStore', () => ({
 }));
 
 import { loadProjectAsync, listBackedUpProjectIds, getLatestBackup, deleteProjectAsync } from '../../../src/ui/persistence/projectStorage';
+import { MIGRATIONS, runMigrations } from '../../../src/ui/persistence/migrations';
 
 beforeEach(() => {
   log.length = 0;
@@ -58,7 +59,7 @@ describe('loadProjectAsync migrates behind a backup', () => {
 
     const state = await loadProjectAsync(saved.id);
     expect(state?.recoveredDrafts).toEqual([]);
-    expect(log).toEqual(['putBackup v1', 'putProject v7']);
+    expect(log).toEqual(['putBackup v1', 'putProject v8']);
 
     const backup = await getLatestBackup(saved.id);
     expect(backup?.key).toBe(`${saved.id}@v1`);
@@ -79,7 +80,7 @@ describe('loadProjectAsync migrates behind a backup', () => {
     projects.set(saved.id, saved);
 
     const state = await loadProjectAsync(saved.id);
-    expect(log).toEqual(['putBackup v2', 'putProject v7']);
+    expect(log).toEqual(['putBackup v2', 'putProject v8']);
     const backup = await getLatestBackup(saved.id);
     expect(backup?.key).toBe(`${saved.id}@v2`);
     // The backup is the untouched record, ghost locks and all.
@@ -95,7 +96,7 @@ describe('loadProjectAsync migrates behind a backup', () => {
       }
     }
     expect(state!.activeLayout.placementLocks).toEqual({ 'lane_1790212333742_q33d4p': '3,3' });
-    expect((projects.get(saved.id) as { schemaVersion: number }).schemaVersion).toBe(7);
+    expect((projects.get(saved.id) as { schemaVersion: number }).schemaVersion).toBe(8);
 
     log.length = 0;
     const again = await loadProjectAsync(saved.id);
@@ -115,13 +116,47 @@ describe('loadProjectAsync migrates behind a backup', () => {
     expect(storedNames().filter(n => /\((draft|suggested)\)/.test(n))).toHaveLength(6);
 
     const state = await loadProjectAsync(saved.id);
-    expect(log).toEqual(['putBackup v4', 'putProject v7']);
+    expect(log).toEqual(['putBackup v4', 'putProject v8']);
     // The backup is the untouched record, role words and all.
     expect((await getLatestBackup(saved.id))?.record).toEqual(saved);
     // Stored and loaded names are clean.
     expect(storedNames().filter(n => /\((draft|suggested)\)|\(replaced/.test(n))).toEqual([]);
     expect(state!.activeLayout).toMatchObject({ name: 'Default', provenance: 'suggested' });
     expect(state!.workingLayout!.name).toBe('Default');
+
+    log.length = 0;
+    const before = structuredClone(projects.get(saved.id));
+    await loadProjectAsync(saved.id);
+    expect(log).toEqual([]);
+    expect(projects.get(saved.id)).toEqual(before);
+  });
+
+  // S4.4 (T15; roadmap P4-12): what a project had muted is excluded from
+  // analysis instead, once, after a backup, with a notice saved until shown.
+  it('P4-12: backs up a project with muted Sounds, stores them excluded with a notice, then never again', async () => {
+    const at7 = runMigrations(JSON.parse(fs.readFileSync(FIXTURE, 'utf8')), MIGRATIONS.filter(m => m.to <= 7)).record as {
+      id: string; schemaVersion: number;
+      performanceLanes: Record<string, unknown>[];
+      soundStreams: Record<string, unknown>[];
+    };
+    const mutedId = at7.soundStreams[1]!.id as string;
+    const saved = {
+      ...at7,
+      performanceLanes: at7.performanceLanes.map(l => (l.id === mutedId ? { ...l, isMuted: true } : l)),
+      soundStreams: at7.soundStreams.map(st => (st.id === mutedId ? { ...st, muted: true } : st)),
+    };
+    expect(saved.schemaVersion).toBe(7);
+    projects.set(saved.id, saved);
+
+    const state = await loadProjectAsync(saved.id);
+    expect(log).toEqual(['putBackup v7', 'putProject v8']);
+    expect((await getLatestBackup(saved.id))?.record).toEqual(saved);
+    const stored = projects.get(saved.id) as typeof saved & { notices?: unknown };
+    expect(stored.notices).toEqual([{ id: 'mute-as-exclusion', soundIds: [mutedId] }]);
+    expect(stored.soundStreams.filter(st => 'muted' in st)).toEqual([]);
+    expect(stored.performanceLanes.filter(l => 'isMuted' in l || 'isSolo' in l)).toEqual([]);
+    expect(state!.soundStreams.filter(st => st.excluded).map(st => st.id)).toEqual([mutedId]);
+    expect(state!.pendingNotices).toEqual([{ id: 'mute-as-exclusion', soundIds: [mutedId] }]);
 
     log.length = 0;
     const before = structuredClone(projects.get(saved.id));

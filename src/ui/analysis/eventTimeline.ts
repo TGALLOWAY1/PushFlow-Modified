@@ -4,14 +4,14 @@
  * An event is everything struck at one instant: the notes within
  * MOMENT_EPSILON of the first (the shared groupIntoMoments). Events are
  * numbered and keyed over the performance the project analyses, meaning every
- * note of an unmuted Sound, placed or not. So "Event 12" and its momentKey name
+ * note of a Sound not excluded from analysis (S4.4), placed or not. So "Event 12" and its momentKey name
  * the same instant on the grid, the Events list, the timeline and the chart,
  * under any solver's plan, whatever is placed, and across re-analysis. The
  * selection is stored as that key (state.selectedMomentKey) and resolved here.
  *
  * A plan's notes join their event by eventKey, which every solver copies from
  * the performance. A note the plan doesn't cover joins by time: a placeholder
- * pill for a muted (excluded) Sound, or a note with no eventKey.
+ * pill for an excluded Sound, or a note with no eventKey.
  */
 
 import { groupIntoMoments, summarizeMomentCost, type MomentCost } from '@/engine';
@@ -72,7 +72,7 @@ export function buildEventTimeline(notes: readonly TimelineNote[]): EventTimelin
 
 const timelines = new WeakMap<ProjectState['soundStreams'], EventTimeline>();
 
-/** The project's events: the analysed performance (unmuted Sounds), grouped once per Sounds change. */
+/** The project's events: the analysed performance (Sounds not excluded), grouped once per Sounds change. */
 export function getEventTimeline(state: ProjectState): EventTimeline {
   let timeline = timelines.get(state.soundStreams);
   if (!timeline) {

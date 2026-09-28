@@ -88,7 +88,7 @@ export type Freshness = 'up-to-date' | 'updating' | null;
  * layout, so a quick re-analysis after an edit never flickers.
  */
 function useFreshness(state: ProjectState, shown: ResolvedInspection, scoring: LayoutAnalysisState): Freshness {
-  const placed = Object.keys(shown.layout.padToVoice).length > 0 && state.soundStreams.some(s => !s.muted && s.events.length > 0);
+  const placed = Object.keys(shown.layout.padToVoice).length > 0 && state.soundStreams.some(s => !s.excluded && s.events.length > 0);
   let pending = false;
   let hasPlan = false;
   if (shown.readOnly) {

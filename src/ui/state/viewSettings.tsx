@@ -56,6 +56,12 @@ export function nextMomentView(view: MomentView): MomentView {
 export interface ViewSettings {
   gridLabels: GridLabelSettings;
   momentView: MomentView;
+  /**
+   * The Rehearse view (S4.4, F7-03): both side panels collapsed, so the grid,
+   * the inspector beside it and the timeline get the room. View state only:
+   * remembered per viewer, never in the project, never an analysis input.
+   */
+  rehearseView: boolean;
 }
 
 export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
@@ -67,6 +73,7 @@ export const DEFAULT_VIEW_SETTINGS: ViewSettings = {
     showHandColors: false,
   },
   momentView: 'now-next',
+  rehearseView: false,
 };
 
 const STORAGE_KEY = 'pushflow:view-settings';
@@ -80,14 +87,15 @@ export function loadViewSettings(): ViewSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_VIEW_SETTINGS;
-    const parsed = JSON.parse(raw) as { gridLabels?: Record<string, unknown>; momentView?: unknown };
+    const parsed = JSON.parse(raw) as { gridLabels?: Record<string, unknown>; momentView?: unknown; rehearseView?: unknown };
     const gridLabels = { ...DEFAULT_VIEW_SETTINGS.gridLabels };
     for (const key of Object.keys(gridLabels) as Array<keyof GridLabelSettings>) {
       const value = parsed?.gridLabels?.[key];
       if (typeof value === 'boolean') gridLabels[key] = value;
     }
     const momentView = MOMENT_VIEWS.find(v => v.id === parsed?.momentView)?.id ?? DEFAULT_VIEW_SETTINGS.momentView;
-    return { gridLabels, momentView };
+    const rehearseView = parsed?.rehearseView === true;
+    return { gridLabels, momentView, rehearseView };
   } catch {
     return DEFAULT_VIEW_SETTINGS;
   }
@@ -126,6 +134,7 @@ interface ViewSettingsContextValue {
   updateGridLabels: (updates: Partial<GridLabelSettings>) => void;
   toggleGridLabel: (key: keyof GridLabelSettings) => void;
   setMomentView: (view: MomentView) => void;
+  setRehearseView: (on: boolean) => void;
 }
 
 const ViewSettingsContext = createContext<ViewSettingsContextValue | null>(null);
@@ -155,8 +164,12 @@ export function ViewSettingsProvider({ children }: { children: ReactNode }) {
     setSettings(prev => (prev.momentView === momentView ? prev : { ...prev, momentView }));
   }, []);
 
+  const setRehearseView = useCallback((rehearseView: boolean) => {
+    setSettings(prev => (prev.rehearseView === rehearseView ? prev : { ...prev, rehearseView }));
+  }, []);
+
   return (
-    <ViewSettingsContext.Provider value={{ settings, setSettings, updateGridLabels, toggleGridLabel, setMomentView }}>
+    <ViewSettingsContext.Provider value={{ settings, setSettings, updateGridLabels, toggleGridLabel, setMomentView, setRehearseView }}>
       {children}
     </ViewSettingsContext.Provider>
   );

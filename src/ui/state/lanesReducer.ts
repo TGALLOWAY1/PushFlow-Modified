@@ -28,7 +28,7 @@ export type LaneAction =
         group?: LaneGroup | null;
         /**
          * Composer sync (T66, F9-03): lanes already in the project keep their
-         * name, colour, mute, solo, group and order, and only their notes are
+         * name, colour, exclusion, group and order, and only their notes are
          * replaced. New lanes are added as given; lanes of this source that the
          * payload no longer has are removed.
          */
@@ -40,8 +40,6 @@ export type LaneAction =
   | { type: 'SET_LANE_COLOR'; payload: { laneId: string; color: string; colorMode: LaneColorMode } }
   | { type: 'REORDER_LANES'; payload: { orderedIds: string[] } }
   | { type: 'SET_LANE_GROUP'; payload: { laneId: string; groupId: string | null } }
-  | { type: 'TOGGLE_LANE_MUTE'; payload: string }
-  | { type: 'TOGGLE_LANE_SOLO'; payload: string }
   | { type: 'TOGGLE_LANE_HIDDEN'; payload: string }
   | { type: 'DELETE_LANE'; payload: string }
   // Group operations
@@ -68,8 +66,6 @@ const LANE_ACTION_TYPES = new Set<string>([
   'SET_LANE_COLOR',
   'REORDER_LANES',
   'SET_LANE_GROUP',
-  'TOGGLE_LANE_MUTE',
-  'TOGGLE_LANE_SOLO',
   'TOGGLE_LANE_HIDDEN',
   'DELETE_LANE',
   'CREATE_LANE_GROUP',
@@ -92,7 +88,7 @@ const LANE_ACTION_TYPES = new Set<string>([
  * UI components are mounted.
  *
  * The analysis goes stale only when something it reads changed (T14): notes,
- * mute and solo, or a placement taken off the grid with its Sound. Renaming,
+ * exclusion, or a placement taken off the grid with its Sound. Renaming,
  * recolouring or regrouping a Sound leaves it as it was.
  */
 function withSyncedStreams(prev: ProjectState, next: ProjectState): ProjectState {
@@ -153,10 +149,24 @@ function withoutOrphanedVoices(next: ProjectState): ProjectState {
     savedVariants: next.savedVariants.map(prune),
     recoveredDrafts: (next.recoveredDrafts ?? []).map(prune),
     voiceConstraints: constraintsChanged ? voiceConstraints : next.voiceConstraints,
-    // Nothing stays armed or selected that is gone (S5.1).
+    // Nothing stays armed or selected that is gone (S5.1), nor muted or
+    // soloed (S4.4): a solo left on a deleted Sound would silence the rest.
     armedStreamId: gone(next.armedStreamId) ? null : next.armedStreamId,
     selectedStreamId: gone(next.selectedStreamId) ? null : next.selectedStreamId,
+    ...withLiveAudition(next, liveIds),
   }, liveIds);
+}
+
+/**
+ * The Sounds' Mute and Solo (S4.4, session only) without Sounds that are gone.
+ * The same arrays when nothing went, so a reducer result stays equal.
+ */
+export function withLiveAudition(
+  state: Pick<ProjectState, 'mutedSoundIds' | 'soloedSoundIds'>,
+  liveIds: ReadonlySet<string>,
+): Pick<ProjectState, 'mutedSoundIds' | 'soloedSoundIds'> {
+  const keep = (ids: string[]) => (ids.every(id => liveIds.has(id)) ? ids : ids.filter(id => liveIds.has(id)));
+  return { mutedSoundIds: keep(state.mutedSoundIds), soloedSoundIds: keep(state.soloedSoundIds) };
 }
 
 /**
@@ -191,7 +201,7 @@ function sameNotes(a: PerformanceLane['events'], b: PerformanceLane['events']): 
 /**
  * UPSERT_LANE_SOURCE with notesOnly, for a source already in the project. The
  * project's lanes are the record for everything but the notes, so a Sound
- * renamed, recoloured or muted elsewhere stays that way. When no notes change
+ * renamed, recoloured or excluded elsewhere stays that way. When no notes change
  * and no lane is added or removed, the state is returned as is: no stale
  * analysis, no unsaved change, no undo step.
  */
@@ -354,24 +364,6 @@ export function lanesReducer(state: ProjectState, action: LaneAction): ProjectSt
         }),
       };
     }
-
-    case 'TOGGLE_LANE_MUTE':
-      return withSyncedStreams(state, {
-        ...state,
-        updatedAt: now,
-        performanceLanes: state.performanceLanes.map(l =>
-          l.id === action.payload ? { ...l, isMuted: !l.isMuted } : l
-        ),
-      });
-
-    case 'TOGGLE_LANE_SOLO':
-      return withSyncedStreams(state, {
-        ...state,
-        updatedAt: now,
-        performanceLanes: state.performanceLanes.map(l =>
-          l.id === action.payload ? { ...l, isSolo: !l.isSolo } : l
-        ),
-      });
 
     case 'TOGGLE_LANE_HIDDEN':
       return withSyncedStreams(state, {

@@ -25,6 +25,7 @@ import { LIFECYCLE_ACTIONS } from '../../state/lifecycleActions';
 import { MOMENT_VIEWS } from '../../state/viewSettings';
 import { COUNT_IN_CHOICES, REHEARSE_SPEEDS } from '../../audio/transportMath';
 import { rehearseSpeedWords } from '../../hooks/useRehearse';
+import { HANDS_FILTERS } from '../../audio/handsFilter';
 import { layoutLabel } from '../../state/layoutLabels';
 import { suggestVariantName } from '../../state/variantNames';
 import { strategyLabel } from '../../analysis/strategyLabels';
@@ -290,6 +291,15 @@ function OverviewInfographic() {
               </p>
               <p className="text-[8px] text-gray-700" data-testid="learn-more-rehearse">
                 Rehearse (on the selected Events row, the panel beside the grid and the chart) loops the event&apos;s bar and the next, at {REHEARSE_SPEEDS.map(rehearseSpeedWords).join(', ')}, and plays after a count-in. The Metronome&apos;s menu sets the count-in for every Play ({COUNT_IN_CHOICES.map(c => c.label).join(', ')}), counted over the grid; Rehearse always counts in at least a bar.
+              </p>
+              <p className="text-[8px] text-gray-700" data-testid="learn-more-mute-vs-exclude">
+                Mute and Solo (S and M on a Sound&apos;s row) only change what you hear in rehearsal: while any Sound is soloed only soloed Sounds sound, otherwise every Sound but the muted ones (Alt-click on S solos just that one). They never change a verdict, a score, a fingering or the layout, a muted pad stays editable, and they reset when the project is closed. To leave a Sound out of the analysis, use Exclude from analysis in its &#8943; menu: it is saved with the project, can be undone, is marked with a crossed circle on its row, its pads and its lane, and the scope line counts it; its notes stay in the timeline, marked not analysed, and Generate keeps its pad.
+              </p>
+              <p className="text-[8px] text-gray-700" data-testid="learn-more-practice-aids">
+                Hits&apos; menu in the transport sets the click&apos;s and the hits&apos; levels, and which hand you practise ({HANDS_FILTERS.map(f => f.label).join(', ')}): with one hand chosen, the other hand&apos;s strikes are silent and its pads and notes dimmed, going by the plan&apos;s hand for each note. Alt-click a pad, or the play button in its inspector, to hear its Sound. None of these changes a verdict or a score, and they reset when the project is closed.
+              </p>
+              <p className="text-[8px] text-gray-700" data-testid="learn-more-rehearse-view">
+                Rehearse view (beside the timeline drawer&apos;s collapse button) collapses both side panels, so the grid, the panel beside it and the timeline get the room; turning it off, or opening a panel, brings them back as they were. It is remembered on this device and changes nothing else.
               </p>
             </div>
           </div>
@@ -649,9 +659,9 @@ function VerdictsSection() {
       <h4 className="text-pf-base font-medium text-[var(--text-primary)]">Verdicts</h4>
       <p className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
         The layout verdict always describes the whole layout, whichever event you select. Under it, a scope line
-        says what was analysed, for example &ldquo;Analysing 4 of 7 Sounds &middot; 2 muted &middot; 1 not placed
-        yet&rdquo;: muted Sounds are left out of the analysis, and so are the notes of a Sound that isn&rsquo;t on the
-        grid yet.
+        says what was analysed, for example &ldquo;Analysing 4 of 7 Sounds &middot; 2 excluded &middot; 1 not placed
+        yet&rdquo;: Sounds excluded from analysis are left out of it, and so are the notes of a Sound that isn&rsquo;t on
+        the grid yet. Mute and Solo never change it: they only change what you hear.
       </p>
       <div className="space-y-1.5">
         {VERDICT_TIERS.map(tier => (
@@ -801,7 +811,7 @@ export const HARD_CONSTRAINTS = [
         // Generate proposes; it never takes a placed Sound off the grid (T15).
         name: 'Placed Sounds Stay Placed',
         key: 'pinned',
-        description: `Generate never removes a Sound that is already on the grid. A placed Sound whose events are not in the performance being optimized (a muted Sound) keeps its pad in every candidate from ${listNames(LOCK_ENFORCING_METHODS)}: it is pinned for that run, not locked, so no lock is added and you can still move it by hand. The candidate list says how many muted Sounds kept their pads.`,
+        description: `Generate never removes a Sound that is already on the grid. A placed Sound whose events are not in the performance being optimized (a Sound excluded from analysis) keeps its pad in every candidate from ${listNames(LOCK_ENFORCING_METHODS)}: it is pinned for that run, not locked, so no lock is added and you can still move it by hand. The candidate list says how many excluded Sounds kept their pads. A muted Sound is analysed and optimized like any other.`,
       },
     ],
   },

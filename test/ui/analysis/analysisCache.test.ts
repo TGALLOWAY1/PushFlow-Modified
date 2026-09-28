@@ -122,11 +122,16 @@ describe('analyseLayoutCached on TEST MIDI 1', () => {
     expect(analysisKeyFor(state, getDisplayedLayout(state)!).evaluatorId).toBe('canonical-v1');
   });
 
-  it('a change to the performance is a new key', async () => {
+  it('a change to the performance is a new key; Mute and Solo are not one (S4.4)', async () => {
     const state = await suggestedTestMidi1();
     const layout = getDisplayedLayout(state)!;
-    const muted = projectReducer(state, { type: 'TOGGLE_MUTE', payload: state.soundStreams[0]!.id });
-    expect(analysisCacheKey(analysisKeyFor(state, layout))).not.toBe(analysisCacheKey(analysisKeyFor(muted, layout)));
+    const soundId = state.soundStreams[0]!.id;
+    const excluded = projectReducer(state, { type: 'SET_SOUND_EXCLUDED', payload: { soundId, excluded: true } });
+    expect(analysisCacheKey(analysisKeyFor(state, layout))).not.toBe(analysisCacheKey(analysisKeyFor(excluded, layout)));
+    const muted = projectReducer(state, { type: 'TOGGLE_MUTE', payload: soundId });
+    const soloed = projectReducer(state, { type: 'TOGGLE_SOLO', payload: { soundId } });
+    expect(analysisCacheKey(analysisKeyFor(muted, layout))).toBe(analysisCacheKey(analysisKeyFor(state, layout)));
+    expect(analysisCacheKey(analysisKeyFor(soloed, layout))).toBe(analysisCacheKey(analysisKeyFor(state, layout)));
   });
 
   it('cost toggles are part of the key and change the score, not the plan', async () => {

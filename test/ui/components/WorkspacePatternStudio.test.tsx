@@ -4,8 +4,9 @@
  *
  * - A pending Composer save and sync are written when the tab is switched away
  *   and when the Composer unmounts, never dropped.
- * - Composer sync writes notes only: a Sound renamed, recoloured or muted in
- *   the project keeps that after a Composer edit.
+ * - Composer sync writes notes only: a Sound renamed, recoloured or excluded
+ *   in the project keeps that after a Composer edit.
+ * - Its M and S are the project Sound's rehearsal Mute and Solo (S4.4).
  * - Composer finger edits go through voiceConstraints under the lane's project
  *   Sound id (what the Sounds panel reads) and can be cleared.
  * - Clear shows a toast whose Undo restores the notes, the Sounds and their pads.
@@ -113,22 +114,63 @@ describe('P1a-11a · a pending Composer edit is written, never dropped', () => {
 });
 
 describe('P1a-12a · Composer sync writes notes only', () => {
-  it('a Sound renamed, recoloured and muted in the project keeps all three after a Composer edit', async () => {
+  it('a Sound renamed, recoloured and excluded in the project keeps all three after a Composer edit', async () => {
     const { project } = setup();
     const id = await addLaneWithNote(project, 0, 0);
     act(() => {
       project().dispatch({ type: 'RENAME_SOUND', payload: { streamId: id, name: 'Kick' } });
       project().dispatch({ type: 'SET_SOUND_COLOR', payload: { streamId: id, color: '#123456' } });
-      project().dispatch({ type: 'TOGGLE_MUTE', payload: id });
+      project().dispatch({ type: 'SET_SOUND_EXCLUDED', payload: { soundId: id, excluded: true } });
     });
 
     fireEvent.click(cell(0, 4));
     await waitFor(() => expect(eventCount(project().state)).toBe(2));
 
     const sound = project().state.soundStreams.find(s => s.id === id)!;
-    expect({ name: sound.name, color: sound.color, muted: sound.muted }).toEqual({ name: 'Kick', color: '#123456', muted: true });
+    expect({ name: sound.name, color: sound.color, excluded: sound.excluded }).toEqual({ name: 'Kick', color: '#123456', excluded: true });
     // The Composer shows the project's name.
     expect(screen.getByTitle('Kick')).toBeTruthy();
+  });
+
+  it('its M and S are the Sound\'s rehearsal Mute and Solo: session only, no undo step, no analysis change (S4.4)', async () => {
+    const { project } = setup();
+    const id = await addLaneWithNote(project, 0, 0);
+    const before = project().state;
+    const undoable = project().canUndo;
+
+    fireEvent.click(screen.getByTitle('Mute'));
+    await waitFor(() => expect(project().state.mutedSoundIds).toEqual([id]));
+    expect(screen.getByTitle('Mute').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByTitle('Solo'));
+    await waitFor(() => expect(project().state.soloedSoundIds).toEqual([id]));
+    expect(screen.getByTitle('Solo').getAttribute('aria-pressed')).toBe('true');
+
+    const after = project().state;
+    expect(after.soundStreams).toBe(before.soundStreams);
+    expect(after.performanceLanes).toBe(before.performanceLanes);
+    expect(after.updatedAt).toBe(before.updatedAt);
+    expect(project().canUndo).toBe(undoable);
+  });
+
+  // From review: a lane muted or soloed before its first note has no Sound
+  // yet, so its M and S are its own; they must carry over to the Sound.
+  it('M and S set before the lane has a Sound carry over to its Sound when its first note syncs', async () => {
+    const { project } = setup();
+    fireEvent.click(screen.getByTitle('Add lane'));
+    fireEvent.click(screen.getByTitle('Mute'));
+    fireEvent.click(screen.getByTitle('Solo'));
+    expect(screen.getByTitle('Mute').getAttribute('aria-pressed')).toBe('true');
+    expect(project().state.mutedSoundIds).toEqual([]);
+
+    fireEvent.click(cell(0, 0));
+    await waitFor(() => expect(composerSounds(project().state)).toHaveLength(1));
+    const id = composerSounds(project().state)[0]!.id;
+    await waitFor(() => expect({ muted: project().state.mutedSoundIds, soloed: project().state.soloedSoundIds })
+      .toEqual({ muted: [id], soloed: [id] }));
+    expect(screen.getByTitle('Mute').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByTitle('Solo').getAttribute('aria-pressed')).toBe('true');
+    // Still rehearsal-only: the new Sound is analysed.
+    expect(project().state.soundStreams.find(s => s.id === id)!.excluded).toBeUndefined();
   });
 
   it('a Composer edit that changes no notes records no undo step', async () => {

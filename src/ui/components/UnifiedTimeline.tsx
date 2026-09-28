@@ -19,6 +19,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback, useContext, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import chroma from 'chroma-js';
+import { Ban, VolumeX } from 'lucide-react';
 import { useProject } from '../state/ProjectContext';
 import { getDisplayedExecutionPlan, getInspectedLayout, type SoundStream } from '../state/projectState';
 import { inspectedSubject } from '../state/layoutSubject';
@@ -28,6 +29,8 @@ import { type FingerAssignment } from '../../types/executionPlan';
 import { eventAtTime, eventOfNote, getEventTimeline, resolveEventKey } from '../analysis/eventTimeline';
 import { useTransport, useTransportPosition } from '../audio/TransportProvider';
 import { orderSounds } from '../state/soundOrder';
+import { silentLabel, silentReason, type SilentReason } from '../audio/audibility';
+import { inHandsFilter } from '../audio/handsFilter';
 import { loopRegionOf } from '../audio/transportMath';
 import { DrawerToolbarSlot, TimelineToolbar } from './TimelineToolbar';
 import { TimelineRuler } from './TimelineRuler';
@@ -118,14 +121,17 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
     [shownLayout],
   );
 
-  // Timeline shows ALL sound streams, including muted ones (Product Invariant #4:
-  // the timeline must never hide a stream). Muted streams are rendered distinctly
-  // (dimmed) and are unmuted from their Sounds row. The lanes follow the Sounds
-  // panel's one order: its groups, then Ungrouped (S5.1, T45).
+  // Timeline shows ALL sound streams, muted and excluded ones too (Product
+  // Invariant #4: the timeline must never hide a stream). A muted Sound keeps
+  // its analysed pills, with a speaker-off glyph on its lane; an excluded one
+  // gets "not analysed" placeholder pills and a glyph (S4.4). The lanes follow
+  // the Sounds panel's one order: its groups, then Ungrouped (S5.1, T45).
   const visibleStreams = useMemo(
     () => orderSounds(state.soundStreams, state.performanceLanes, state.laneGroups),
     [state.soundStreams, state.performanceLanes, state.laneGroups],
   );
+  const soundIds = useMemo(() => state.soundStreams.map(s => s.id), [state.soundStreams]);
+  const audition = { mutedSoundIds: state.mutedSoundIds, soloedSoundIds: state.soloedSoundIds };
 
   // Beat duration (used for bar-quantization and grid lines)
   const beatDurationRaw = 60 / (state.tempo || 120);
@@ -206,8 +212,8 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
       }
 
       // Render unassigned streams: streams with events but no solver assignments
-      // (muted streams, and since S3.3 unplaced ones, which the analysis never
-      // scores) get "unassigned" pills so they remain visible in the timeline.
+      // (Sounds excluded from analysis, and since S3.3 unplaced ones, which the
+      // analysis never scores) get "unassigned" pills so they remain visible.
       // Their index is negative: they are no note of the plan. A click still
       // selects the whole event they belong to (S4.1).
       for (const s of visibleStreams) {
@@ -316,11 +322,11 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
   const totalHeight = visibleStreams.length * TRACK_HEIGHT;
 
   // ─── The selected event (S4.1) ─────────────────────────────────────────
-  // Its notes light up by eventKey; a muted Sound's notes, which belong to no
-  // event, light up with the event struck at their time.
+  // Its notes light up by eventKey; an excluded Sound's notes, which belong to
+  // no event, light up with the event struck at their time.
   const timeline = getEventTimeline(state);
   const selectedEvent = resolveEventKey(timeline, state.selectedMomentKey);
-  const mutedNotesAtSelection = useMemo(() => {
+  const excludedNotesAtSelection = useMemo(() => {
     const keys = new Set<string>();
     if (!selectedEvent) return keys;
     for (const list of streamAssignments.values()) {
@@ -332,7 +338,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
     return keys;
   }, [timeline, selectedEvent, streamAssignments]);
   const inSelectedEvent = (a: FingerAssignment) => !!selectedEvent && (a.eventKey !== undefined
-    ? selectedEvent.noteKeys.has(a.eventKey) || mutedNotesAtSelection.has(a.eventKey)
+    ? selectedEvent.noteKeys.has(a.eventKey) || excludedNotesAtSelection.has(a.eventKey)
     : eventAtTime(timeline, a.startTime) === selectedEvent);
 
   // ─── Auto-scroll to selected event ────────────────────────────────────
@@ -382,7 +388,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
   }, []);
 
   // A click on any note selects its whole event (S4.1): by the note's eventKey,
-  // whether or not the plan covers it (an unplaced Sound's note); a muted
+  // whether or not the plan covers it (an unplaced Sound's note); an excluded
   // Sound's note, which belongs to no event, selects the event at its time.
   // With no event there, there is nothing to select.
   const handleNoteClick = useCallback((note: FingerAssignment) => {
@@ -457,6 +463,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
               stream={stream}
               isEven={i % 2 === 0}
               isGlobalSelected={state.selectedStreamId === stream.id}
+              silent={silentReason(stream.id, audition, soundIds)}
               isInstanceHighlighted={highlightedStreamIds?.has(stream.id) ?? false}
               onSelect={() => dispatch({ type: 'SELECT_STREAM', payload: stream.id })}
               onRename={(name) => dispatch({ type: 'RENAME_SOUND', payload: { streamId: stream.id, name } })}
@@ -613,9 +620,11 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                     const handEdge = unplaced || isRaw ? null : handColor(a.assignedHand);
 
                     const isUnplayable = hand === 'Unplayable' && !unplaced;
+                    // Hands-separate practice (S4.4): the other hand's notes are dimmed, as on the grid.
+                    const handFiltered = !isRaw && !unplaced && !inHandsFilter(hand, state.handsFilter);
                     // Always use sound color for pill background; only override for unplayable
                     const pillBg = isUnplayable ? '#ef4444' : stream.color;
-                    const pillOpacity = isSelected ? 1 : unplaced ? 0.9 : isRaw ? 0.5 : isUnplayable ? 0.6 : 0.85;
+                    const pillOpacity = isSelected ? 1 : handFiltered ? 0.25 : unplaced ? 0.9 : isRaw ? 0.5 : isUnplayable ? 0.6 : 0.85;
                     // Readable on any Sound colour; the L/R letter carries the hand.
                     // An outlined pill's text sits on the timeline itself.
                     const pillText = unplaced ? 'var(--text-primary)' : pillTextColor(pillBg, pillOpacity);
@@ -657,6 +666,8 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                         data-start={a.startTime}
                         data-finger={fingerLabel}
                         data-placement={unplaced ? 'unplaced' : undefined}
+                        data-excluded={stream.excluded ? 'true' : undefined}
+                        data-hand-filtered={handFiltered ? 'true' : undefined}
                         data-selected={isSelected ? 'true' : undefined}
                         data-sound-selected={soundSelected ? 'true' : undefined}
                         className={`absolute flex items-center justify-center rounded-sm transition-all cursor-pointer
@@ -680,7 +691,7 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
                           outlineOffset: relaxed.length > 0 ? 1 : undefined,
                         }}
                         onClick={() => handleNoteClick(a)}
-                        title={`${formatBarBeat(a.startTime, state.tempo)} (${formatSeconds(a.startTime)})${unplaced ? ' · not placed yet' : ''}${fingerLabel ? ` · ${fingerLabel} (${fingerName(a.assignedHand, a.finger)})` : ''}${a.cost ? ` · ${a.difficulty}` : ''}${a.constraintDiverges ? ' · differs from your finger preference' : ''}${relaxedNote.replace(' | ', ' · ')}`}
+                        title={`${formatBarBeat(a.startTime, state.tempo)} (${formatSeconds(a.startTime)})${stream.excluded ? ' · not analysed: excluded from analysis' : unplaced ? ' · not placed yet' : ''}${fingerLabel ? ` · ${fingerLabel} (${fingerName(a.assignedHand, a.finger)})` : ''}${a.cost ? ` · ${a.difficulty}` : ''}${a.constraintDiverges ? ' · differs from your finger preference' : ''}${relaxedNote.replace(' | ', ' · ')}`}
                       >
                         {/* The selected Sound's notes (S4.2, T28): a neutral outline, kept apart from the event's ring. */}
                         {soundSelected && (
@@ -760,12 +771,15 @@ function PlayheadLine({ minTime, totalDuration, zoom, height, scrollRef }: {
 /**
  * A lane's header (S5.1, T45): a click selects its Sound in every panel (its
  * Sounds row, its pad, its notes); a double-click renames it. Solo and Mute
- * live in the Sounds row only, one glance away.
+ * live in the Sounds row only, one glance away; the lane shows a speaker-off
+ * glyph while its Sound is silent in rehearsal, and a slashed circle while it
+ * is excluded from analysis (S4.4).
  */
 function VoiceRow({
   stream,
   isEven,
   isGlobalSelected,
+  silent,
   isInstanceHighlighted = false,
   onSelect,
   onRename,
@@ -773,6 +787,7 @@ function VoiceRow({
   stream: SoundStream;
   isEven: boolean;
   isGlobalSelected: boolean;
+  silent: SilentReason | null;
   isInstanceHighlighted?: boolean;
   onSelect: () => void;
   onRename: (name: string) => void;
@@ -799,8 +814,7 @@ function VoiceRow({
   return (
     <div
       className={`flex items-center gap-1.5 px-2 text-pf-sm border-b border-border-subtle/30 transition-colors
-        ${isGlobalSelected ? 'bg-white/[0.07] border-l-2 border-l-slate-200/70' : isInstanceHighlighted ? 'bg-violet-500/10 border-l-2 border-l-violet-400' : isEven ? '' : 'bg-white/[0.015]'}
-        ${stream.muted ? 'opacity-40' : ''}`}
+        ${isGlobalSelected ? 'bg-white/[0.07] border-l-2 border-l-slate-200/70' : isInstanceHighlighted ? 'bg-violet-500/10 border-l-2 border-l-violet-400' : isEven ? '' : 'bg-white/[0.015]'}`}
       style={{ height: TRACK_HEIGHT }}
     >
       {editing ? (
@@ -826,13 +840,17 @@ function VoiceRow({
           data-sound-id={stream.id}
           aria-pressed={isGlobalSelected}
           className="focus-ring flex-1 min-w-0 flex items-center gap-1.5 h-full text-left rounded-pf-sm"
-          title={`${stream.name}${stream.muted ? ' · muted' : ''} · click to select it, double-click to rename`}
+          data-excluded={stream.excluded ? 'true' : undefined}
+          data-silent={silent ?? undefined}
+          title={`${stream.name}${stream.excluded ? ' · excluded from analysis' : ''}${silent ? ` · ${silentLabel(silent)}` : ''} · click to select it, double-click to rename`}
           onClick={onSelect}
           onDoubleClick={() => setEditing(true)}
           onKeyDown={e => { if (e.key === 'F2') { e.preventDefault(); setEditing(true); } }}
         >
           <span aria-hidden="true" className="w-2 h-2 rounded-pf-sm flex-shrink-0" style={{ backgroundColor: stream.color }} />
-          <span className="flex-1 truncate text-[var(--text-secondary)] text-pf-sm">{stream.name}</span>
+          <span className={`flex-1 truncate text-pf-sm ${stream.excluded ? 'text-[var(--text-tertiary)]' : 'text-[var(--text-secondary)]'}`}>{stream.name}</span>
+          {stream.excluded && <Ban data-testid="lane-excluded" size={11} aria-hidden="true" className="flex-shrink-0 text-[var(--text-tertiary)]" />}
+          {silent && <VolumeX data-testid="lane-silent" size={11} aria-hidden="true" className="flex-shrink-0 text-[var(--text-tertiary)]" />}
         </button>
       )}
     </div>

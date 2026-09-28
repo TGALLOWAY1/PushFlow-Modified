@@ -16,10 +16,15 @@
  * The count-in (S4.3b, T59) sits in the Metronome's menu, as in a DAW: Off, 1
  * bar or 2 bars of clicks before playback starts from stopped, while the grid
  * counts 1-2-3-4. Its menu half shows the bars while it is on.
+ *
+ * Hits' menu (S4.4, T59) holds the practice mix: the click's and the hits'
+ * levels, and "Hands: Both / L / R", which silences and dims the other hand.
+ * Its half shows the hand while one is chosen. None of it is saved or ever
+ * changes the analysis.
  */
 
 import { useRef, useState } from 'react';
-import { ChevronDown, Play, Repeat, SkipBack, Square, Timer, Volume2 } from 'lucide-react';
+import { ChevronDown, Gauge, Play, Repeat, SkipBack, Square, Timer, Volume2 } from 'lucide-react';
 import { useProject } from '../../state/ProjectContext';
 import { useTransport, useTransportPosition } from '../../audio/TransportProvider';
 import { COUNT_IN_CHOICES, REHEARSAL_SPEEDS, barsAt, loopRegionOf } from '../../audio/transportMath';
@@ -27,7 +32,9 @@ import { Popover } from '../shared/Overlay';
 import { IconButton } from '../shared/IconButton';
 import { ToggleButton } from '../shared/ToggleButton';
 import { formatBarBeat, formatBarRange, formatRate, formatSeconds } from '../../../utils/musicalTime';
+import { HANDS_FILTERS } from '../../audio/handsFilter';
 import {
+  HITS_MENU_WIDTH,
   LOOP_MENU_WIDTH,
   METRONOME_MENU_WIDTH,
   TRANSPORT_BAR_HEIGHT,
@@ -80,6 +87,12 @@ export function TransportBar() {
   const [clickMenuAt, setClickMenuAt] = useState<{ x: number; y: number } | null>(null);
   const countIn = COUNT_IN_CHOICES.find(c => c.bars === state.countInBars) ?? COUNT_IN_CHOICES[0]!;
   const countInWords = countInPhrase(state.countInBars);
+
+  // Hits' menu: the levels and the Hands filter (S4.4).
+  const mixMenuButton = useRef<HTMLButtonElement>(null);
+  const [mixMenuAt, setMixMenuAt] = useState<{ x: number; y: number } | null>(null);
+  const hands = HANDS_FILTERS.find(f => f.id === state.handsFilter) ?? HANDS_FILTERS[0]!;
+  const handsOn = state.handsFilter !== 'both';
 
   // Presets take the bar the playhead is in. The engine is read here, when
   // the menu opens, rather than subscribed to: the bar doesn't redraw per frame.
@@ -145,9 +158,10 @@ export function TransportBar() {
           className="flex-shrink-0 flex items-center gap-1 text-pf-xs text-[var(--text-tertiary)] whitespace-nowrap"
           style={{ width: TRANSPORT_WIDTHS.speed }}
         >
-          Speed
+          <Gauge size={12} aria-hidden="true" className="flex-shrink-0" />
           <select
             data-testid="transport-speed"
+            aria-label="Speed"
             className="min-w-0 flex-1 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-pf-sm px-1 py-0.5 text-pf-xs text-[var(--text-primary)]"
             value={state.playbackRate}
             onChange={(e) => dispatch({ type: 'SET_PLAYBACK_RATE', payload: Number(e.target.value) })}
@@ -224,16 +238,41 @@ export function TransportBar() {
             <ChevronDown size={state.countInBars > 0 ? 10 : 12} aria-hidden="true" />
           </button>
         </div>
-        <ToggleButton
-          testId="transport-hits"
-          pressed={state.rehearsalAudio.hits}
-          onPressedChange={pressed => dispatch({ type: 'SET_REHEARSAL_AUDIO', payload: { hits: pressed } })}
-          icon={<Volume2 size={12} />}
-          label="Hits"
-          title="Hear each Sound as the playhead reaches it"
-          className="h-7 flex-shrink-0"
-          style={{ width: TRANSPORT_WIDTHS.hits }}
-        />
+        {/* Hits: the toggle and, joined to it, the levels and the Hands filter (S4.4). */}
+        <div className="flex items-center flex-shrink-0" style={{ width: TRANSPORT_WIDTHS.hits }}>
+          <ToggleButton
+            testId="transport-hits"
+            pressed={state.rehearsalAudio.hits}
+            onPressedChange={pressed => dispatch({ type: 'SET_REHEARSAL_AUDIO', payload: { hits: pressed } })}
+            icon={<Volume2 size={12} />}
+            label="Hits"
+            title="Hear each Sound as the playhead reaches it"
+            className="h-7 rounded-r-none"
+            style={{ width: TRANSPORT_WIDTHS.hits - HITS_MENU_WIDTH }}
+          />
+          <button
+            ref={mixMenuButton}
+            type="button"
+            data-testid="transport-mix"
+            data-hands={state.handsFilter}
+            aria-label={`Levels and hands: ${hands.label}`}
+            aria-haspopup="dialog"
+            aria-expanded={mixMenuAt !== null}
+            title={`Click and hits levels, and which hand you hear: ${hands.label}`}
+            className={`${MENU_BUTTON} gap-px ${handsOn ? 'text-[var(--text-primary)] bg-[var(--bg-hover)]' : ''}`}
+            style={{ width: HITS_MENU_WIDTH }}
+            onClick={() => {
+              if (mixMenuAt) { setMixMenuAt(null); return; }
+              const r = mixMenuButton.current?.getBoundingClientRect();
+              if (r) setMixMenuAt({ x: r.left, y: r.bottom + 4 });
+            }}
+          >
+            {handsOn && (
+              <span aria-hidden="true" className="text-pf-xs font-semibold leading-none">{hands.short}</span>
+            )}
+            <ChevronDown size={handsOn ? 10 : 12} aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       {menuAt && (
@@ -274,6 +313,77 @@ export function TransportBar() {
           <p className="px-3 pt-1.5 pb-1 mt-1 border-t border-[var(--border-subtle)] text-pf-micro text-[var(--text-tertiary)]">
             Or drag on the ruler&rsquo;s loop strip: it snaps to bars; hold Shift for beats, Alt for no snapping.
           </p>
+        </Popover>
+      )}
+
+      {mixMenuAt && (
+        <Popover
+          x={mixMenuAt.x}
+          y={mixMenuAt.y}
+          role="dialog"
+          ariaLabel="Levels and hands"
+          onClose={() => setMixMenuAt(null)}
+          returnFocusTo={mixMenuButton.current}
+          testId="transport-mix-menu"
+          className="w-[264px] py-2 px-3 rounded-pf-md border border-[var(--border-default)] bg-[var(--bg-card)] shadow-[var(--shadow-lg)] flex flex-col gap-2.5"
+        >
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="text-pf-sm font-semibold text-[var(--text-primary)] mb-1">Levels</legend>
+            {([
+              ['clickLevel', 'Click', 'The metronome and the count-in'],
+              ['hitsLevel', 'Hits', 'The Sounds, and pads you play to hear them'],
+            ] as const).map(([key, label, hint]) => {
+              const percent = Math.round(state.rehearsalAudio[key] * 100);
+              return (
+                <label key={key} className="flex items-center gap-2 text-pf-xs text-[var(--text-secondary)]" title={hint}>
+                  <span className="w-9 flex-shrink-0">{label}</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={percent}
+                    data-testid={`level-${key === 'clickLevel' ? 'click' : 'hits'}`}
+                    aria-label={`${label} level`}
+                    aria-valuetext={`${percent}%`}
+                    className="flex-1 min-w-0 accent-[var(--accent-primary)]"
+                    onChange={e => dispatch({ type: 'SET_REHEARSAL_AUDIO', payload: { [key]: Number(e.target.value) / 100 } })}
+                  />
+                  <span className="w-9 flex-shrink-0 text-right tabular-nums">{percent}%</span>
+                </label>
+              );
+            })}
+          </fieldset>
+          <fieldset>
+            <legend className="text-pf-sm font-semibold text-[var(--text-primary)]">Hands</legend>
+            <div className="mt-1.5 flex gap-1.5">
+              {HANDS_FILTERS.map(choice => (
+                <label
+                  key={choice.id}
+                  title={choice.label}
+                  className={`flex-1 flex items-center justify-center h-7 rounded-pf-sm border text-pf-xs cursor-pointer transition-colors focus-within:outline focus-within:outline-2 focus-within:outline-[var(--border-focus)] ${
+                    choice.id === state.handsFilter
+                      ? 'border-[var(--accent-primary)] bg-[var(--accent-muted)] text-[var(--text-primary)]'
+                      : 'border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="hands-filter"
+                    className="sr-only"
+                    data-testid={`hands-${choice.id}`}
+                    aria-label={choice.label}
+                    checked={choice.id === state.handsFilter}
+                    onChange={() => dispatch({ type: 'SET_HANDS_FILTER', payload: choice.id })}
+                  />
+                  {choice.id === 'both' ? 'Both' : choice.id === 'left' ? 'Left' : 'Right'}
+                </label>
+              ))}
+            </div>
+            <p className="mt-2 text-pf-micro leading-snug text-[var(--text-tertiary)]">
+              Practise one hand: the other hand&rsquo;s strikes are silent and its pads dimmed. Which hand plays each note is the plan&rsquo;s. The analysis doesn&rsquo;t change.
+            </p>
+          </fieldset>
         </Popover>
       )}
 

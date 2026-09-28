@@ -24,8 +24,7 @@ export function buildPerformanceLanesFromStreams(soundStreams: SoundStream[]): P
       rawPitch: stream.originalMidiNote,
     })),
     isHidden: false,
-    isMuted: stream.muted,
-    isSolo: false,
+    ...(stream.excluded ? { excluded: true } : {}),
   }));
 }
 

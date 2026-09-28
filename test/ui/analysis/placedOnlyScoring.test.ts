@@ -72,7 +72,10 @@ describe('placed-only scoring', () => {
   it('with no placed note in scope there is nothing to analyse', () => {
     const layout = getDisplayedLayout(partial)!;
     expect(hasPlacedNotes(partial, layout)).toBe(true);
+    const allExcluded = reduce(partial, ...[...placedIds].map((id): ProjectAction => ({ type: 'SET_SOUND_EXCLUDED', payload: { soundId: id, excluded: true } })));
+    expect(hasPlacedNotes(allExcluded, getDisplayedLayout(allExcluded)!)).toBe(false);
+    // Muting them (rehearsal only, S4.4) leaves their notes in scope.
     const allMuted = reduce(partial, ...[...placedIds].map((id): ProjectAction => ({ type: 'TOGGLE_MUTE', payload: id })));
-    expect(hasPlacedNotes(allMuted, getDisplayedLayout(allMuted)!)).toBe(false);
+    expect(hasPlacedNotes(allMuted, getDisplayedLayout(allMuted)!)).toBe(true);
   });
 });

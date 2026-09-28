@@ -46,6 +46,12 @@ describe('what marks the analysis stale (T14)', () => {
     ]],
     ['reordering Sounds', s => [{ type: 'REORDER_STREAMS', payload: { streamId: sound(0).id, newIndex: 3 } }, { type: 'REORDER_LANES', payload: { orderedIds: [...s.performanceLanes].reverse().map(l => l.id) } }]],
     ['renaming the project or the layout', () => [{ type: 'RENAME_PROJECT', payload: 'Groove' }, { type: 'RENAME_LAYOUT', payload: { target: 'active', name: 'Main' } }]],
+    // Rehearsal-only (S4.4, P4-7c): they change what you hear, never the analysis.
+    ['a mute', () => [{ type: 'TOGGLE_MUTE', payload: sound(0).id }]],
+    ['a solo, and an exclusive solo', () => [
+      { type: 'TOGGLE_SOLO', payload: { soundId: sound(0).id } },
+      { type: 'TOGGLE_SOLO', payload: { soundId: sound(1).id, exclusive: true } },
+    ]],
   ])('%s leaves it fresh', (_name, actions) => {
     const next = reduce(fresh, ...actions(fresh));
     expect(next).not.toBe(fresh);
@@ -53,9 +59,7 @@ describe('what marks the analysis stale (T14)', () => {
   });
 
   it.each<[string, (s: ProjectState) => ProjectAction[]]>([
-    ['a mute', () => [{ type: 'TOGGLE_MUTE', payload: sound(0).id }]],
-    ['a lane mute', () => [{ type: 'TOGGLE_LANE_MUTE', payload: sound(0).id }]],
-    ['a solo', () => [{ type: 'SOLO_STREAM', payload: sound(0).id }]],
+    ['excluding a Sound from analysis', () => [{ type: 'SET_SOUND_EXCLUDED', payload: { soundId: sound(0).id, excluded: true } }]],
     ['a tempo change', s => [{ type: 'SET_TEMPO', payload: s.tempo + 5 }]],
     ['a placement', () => [{ type: 'ASSIGN_VOICE_TO_PAD', payload: { padKey: '0,0', stream: sound(0) } }]],
     ['a lock', s => {

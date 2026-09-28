@@ -120,7 +120,7 @@ export function SoundsHeader({ counts, filter, onFilter, query, onQuery }: {
             className="pf-btn pf-btn-subtle text-pf-xs px-2 py-1"
             disabled={placeRemaining.busy}
             onClick={() => void placeRemaining.placeRemaining()}
-            title="Propose a candidate that places them, shown read-only: your placed Sounds stay where they are, and nothing changes until you use it. Muted Sounds are left out."
+            title="Propose a candidate that places them, shown read-only: your placed Sounds stay where they are, and nothing changes until you use it. Sounds excluded from analysis are left out."
           >
             {placeRemaining.busy ? 'Placing…' : placeRemainingLabel(placeRemaining.count)}
           </button>

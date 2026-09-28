@@ -68,8 +68,14 @@ export interface PerformanceLane {
   shortLabel?: string;
   events: LaneEvent[];
   isHidden: boolean;
-  isMuted: boolean;
-  isSolo: boolean;
+  /**
+   * Excluded from analysis (S4.4, T15): its notes are left out of the
+   * performance every layout is analysed and generated for, and Generate
+   * keeps its pad. Saved with the project, and one undo step to change;
+   * absent means included. Mute and Solo are not lane state: they are
+   * rehearsal-only (ProjectSession.mutedSoundIds and soloedSoundIds).
+   */
+  excluded?: boolean;
 }
 
 // ============================================================================

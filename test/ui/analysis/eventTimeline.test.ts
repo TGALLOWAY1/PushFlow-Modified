@@ -134,17 +134,20 @@ describe('formatEventLabel', () => {
 });
 
 describe('getEventTimeline', () => {
-  it('numbers every unmuted Sound\'s notes, placed or not, and is built once per Sounds change', async () => {
+  it('numbers every analysed Sound\'s notes, placed or not, and is built once per Sounds change', async () => {
     const state = await importTestMidi1();
     const timeline = getEventTimeline(state);
     expect(timeline.events).toHaveLength(32);
     expect(timeline.events.reduce((n, e) => n + e.noteCount, 0)).toBe(state.soundStreams.reduce((n, s) => n + s.events.length, 0));
     expect(getEventTimeline({ ...state })).toBe(timeline);
-    // A mute changes the Sounds, so the timeline is rebuilt without that Sound.
-    const muted = projectReducer(state, { type: 'TOGGLE_MUTE', payload: state.soundStreams[0]!.id });
-    const without = getEventTimeline(muted);
+    // Excluding a Sound changes the Sounds, so the timeline is rebuilt without it (S4.4).
+    const excluded = projectReducer(state, { type: 'SET_SOUND_EXCLUDED', payload: { soundId: state.soundStreams[0]!.id, excluded: true } });
+    const without = getEventTimeline(excluded);
     expect(without).not.toBe(timeline);
     expect(without.events.reduce((n, e) => n + e.noteCount, 0))
       .toBe(state.soundStreams.slice(1).reduce((n, s) => n + s.events.length, 0));
+    // A mute is rehearsal-only: the Sounds, and so the events, are the same.
+    const muted = projectReducer(state, { type: 'TOGGLE_MUTE', payload: state.soundStreams[0]!.id });
+    expect(getEventTimeline(muted)).toBe(timeline);
   });
 });

@@ -2,7 +2,8 @@
  * What an analysis reads (S3.3, T14 freshness rules).
  *
  * Analysis goes stale only when one of its inputs changes: the notes each
- * Sound plays, which Sounds are in scope (mute and solo), the tempo, a
+ * Sound plays, which Sounds are in scope (excluded or not, S4.4; Mute and
+ * Solo are rehearsal-only and never an input), the tempo, a
  * layout's placements, locks and finger constraints, the Sounds' finger
  * preferences, and the settings that shape a plan. Renaming, recolouring,
  * grouping or reordering Sounds changes none of them, so none of those marks
@@ -20,7 +21,8 @@ const soundSignatures = new WeakMap<readonly SoundStream[], string>();
 
 /**
  * The part of the Sounds an analysis reads: each Sound's notes and whether it
- * is muted, by Sound id. Names, colours, groups and order are left out.
+ * is excluded from analysis, by Sound id. Names, colours, groups and order are
+ * left out.
  * Memoised per Sounds array, so a render can call it freely.
  */
 export function soundsSignature(streams: readonly SoundStream[]): string {
@@ -29,7 +31,7 @@ export function soundsSignature(streams: readonly SoundStream[]): string {
     const byId = [...streams].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     signature = hashString(JSON.stringify(byId.map(s => [
       s.id,
-      s.muted,
+      s.excluded === true,
       s.originalMidiNote,
       s.events.map(e => [e.eventKey, e.voiceId ?? null, e.startTime, e.duration, e.velocity]),
     ])));

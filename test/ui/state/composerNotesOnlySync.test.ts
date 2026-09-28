@@ -29,8 +29,6 @@ function lane(id: string, name: string, times: number[], overrides: Partial<Perf
     // Fresh event ids every time, as the Composer's conversion makes them.
     events: times.map(t => ({ eventId: `evt-${Math.random()}`, laneId: id, startTime: t, duration: 0.125, velocity: 100, rawPitch: 36 })),
     isHidden: false,
-    isMuted: false,
-    isSolo: false,
     ...overrides,
   };
 }
@@ -55,11 +53,11 @@ describe('UPSERT_LANE_SOURCE notesOnly', () => {
     expect(s.sourceFiles.map(f => f.id)).toEqual([SOURCE.id]);
   });
 
-  it('keeps a Sound\'s name, colour, mute and solo and replaces only its notes', () => {
+  it('keeps a Sound\'s name, colour and exclusion from analysis and replaces only its notes', () => {
     let s = synced();
     s = projectReducer(s, { type: 'RENAME_SOUND', payload: { streamId: 'workspace_pattern_a', name: 'Kick' } });
     s = projectReducer(s, { type: 'SET_SOUND_COLOR', payload: { streamId: 'workspace_pattern_a', color: '#123456' } });
-    s = projectReducer(s, { type: 'TOGGLE_MUTE', payload: 'workspace_pattern_b' });
+    s = projectReducer(s, { type: 'SET_SOUND_EXCLUDED', payload: { soundId: 'workspace_pattern_b', excluded: true } });
 
     s = projectReducer(s, sync([
       lane('workspace_pattern_a', 'Lane 1', [0, 0.5, 0.75], { color: '#ef4444' }),
@@ -70,13 +68,13 @@ describe('UPSERT_LANE_SOURCE notesOnly', () => {
     const b = s.soundStreams.find(x => x.id === 'workspace_pattern_b')!;
     expect({ name: a.name, color: a.color, events: a.events.map(e => e.startTime) })
       .toEqual({ name: 'Kick', color: '#123456', events: [0, 0.5, 0.75] });
-    expect({ name: b.name, muted: b.muted }).toEqual({ name: 'Lane 2', muted: true });
+    expect({ name: b.name, excluded: b.excluded }).toEqual({ name: 'Lane 2', excluded: true });
   });
 
   it('returns the same state when no note changed, however the event ids differ', () => {
     const s = synced();
     const next = projectReducer(s, sync([
-      lane('workspace_pattern_a', 'Renamed in the Composer', [0, 0.5], { isMuted: true }),
+      lane('workspace_pattern_a', 'Renamed in the Composer', [0, 0.5], { excluded: true }),
       lane('workspace_pattern_b', 'Lane 2', [0.25]),
     ]));
     expect(next).toBe(s);

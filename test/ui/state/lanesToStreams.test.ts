@@ -21,8 +21,6 @@ function makeLane(overrides: Partial<PerformanceLane> = {}): PerformanceLane {
       { eventId: 'e2', laneId: 'lane-1', startTime: 0.5, duration: 0.1, velocity: 80, rawPitch: 36 },
     ],
     isHidden: false,
-    isMuted: false,
-    isSolo: false,
     ...overrides,
   };
 }
@@ -40,52 +38,32 @@ describe('buildSoundStreamsFromLanes', () => {
     expect(streams[0].originalMidiNote).toBe(36);
     expect(streams[0].events).toHaveLength(2);
     expect(streams[0].events[0].eventKey).toBe('e1');
-    expect(streams[0].muted).toBe(false);
+    // Included in the analysis: the key is absent, as a stored Sound has it.
+    expect('excluded' in streams[0]).toBe(false);
   });
 
-  // A muted or hidden lane must still produce a stream. Dropping it deleted the
-  // sound from the Sounds panel and the timeline, leaving no row to un-mute from,
-  // and CLAUDE.md requires the timeline show all sound streams.
+  // An excluded or hidden lane must still produce a stream. Dropping it deleted
+  // the sound from the Sounds panel and the timeline, leaving no row to bring it
+  // back from, and CLAUDE.md requires the timeline show all sound streams.
 
-  it('keeps muted lanes as streams, flagged muted', () => {
+  it('keeps excluded lanes as streams, flagged excluded (S4.4)', () => {
     const lanes = [
-      makeLane({ id: 'a', isMuted: false }),
-      makeLane({ id: 'b', isMuted: true }),
+      makeLane({ id: 'a' }),
+      makeLane({ id: 'b', excluded: true }),
     ];
     const streams = buildSoundStreamsFromLanes(lanes);
     expect(streams).toHaveLength(2);
-    expect(streams.map(s => [s.id, s.muted])).toEqual([['a', false], ['b', true]]);
+    expect(streams.map(s => [s.id, !!s.excluded])).toEqual([['a', false], ['b', true]]);
   });
 
-  it('keeps hidden lanes as streams, flagged muted', () => {
+  it('keeps hidden lanes as streams, flagged excluded', () => {
     const lanes = [
       makeLane({ id: 'a', isHidden: false }),
       makeLane({ id: 'b', isHidden: true }),
     ];
     const streams = buildSoundStreamsFromLanes(lanes);
     expect(streams).toHaveLength(2);
-    expect(streams.map(s => [s.id, s.muted])).toEqual([['a', false], ['b', true]]);
-  });
-
-  it('respects solo mode - only solo lanes are unmuted when any is solo', () => {
-    const lanes = [
-      makeLane({ id: 'a', isSolo: true }),
-      makeLane({ id: 'b', isSolo: false }),
-      makeLane({ id: 'c', isSolo: true }),
-    ];
-    const streams = buildSoundStreamsFromLanes(lanes);
-    expect(streams).toHaveLength(3);
-    expect(streams.filter(s => !s.muted).map(s => s.id)).toEqual(['a', 'c']);
-  });
-
-  it('solo + muted = still muted', () => {
-    const lanes = [
-      makeLane({ id: 'a', isSolo: true, isMuted: true }),
-      makeLane({ id: 'b', isSolo: true, isMuted: false }),
-    ];
-    const streams = buildSoundStreamsFromLanes(lanes);
-    expect(streams).toHaveLength(2);
-    expect(streams.filter(s => !s.muted).map(s => s.id)).toEqual(['b']);
+    expect(streams.map(s => [s.id, !!s.excluded])).toEqual([['a', false], ['b', true]]);
   });
 
   it('handles empty lanes', () => {

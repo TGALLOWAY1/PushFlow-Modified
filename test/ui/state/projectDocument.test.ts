@@ -40,6 +40,8 @@ const SESSION_FIELDS = [
   'lastGenerationRun',
   'currentTime', 'isPlaying', 'playbackRate', 'loopEnabled', 'loopStart', 'loopEnd',
   'countInBars', 'rehearseRate', 'rehearsalAudio',
+  // S4.4: rehearsal-only Mute and Solo, and the notices a migration left.
+  'mutedSoundIds', 'soloedSoundIds', 'handsFilter', 'pendingNotices',
 ];
 
 const FIXTURE = path.resolve(__dirname, '../../fixtures/projects/saved-by-main.json');
@@ -150,17 +152,22 @@ describe('persistence round trip', () => {
     // the role words out of the layout names: "Default (suggested)" is a
     // suggestion called Default, and "Default (suggested) (draft)" a draft of it.
     // S4.3a's starts the rehearsal preferences at Loop off, no region, 1x.
-    // S5.1's (short labels) finds none to clean.
+    // S5.1's (short labels) finds none to clean. S4.4's takes the mute and
+    // solo flags out of the Sounds and lanes (nothing was muted, so nothing is
+    // excluded and there is no notice).
     expect(saved.activeLayout.name).toBe('Default (suggested)');
     expect(saved.workingLayout.name).toBe('Default (suggested) (draft)');
+    const withoutFlags = (items: Record<string, unknown>[]) => items.map(({ muted: _m, isMuted: _i, isSolo: _s, ...rest }) => rest);
     expect(resavedFields).toEqual({
       ...savedFields,
-      schemaVersion: 7,
+      schemaVersion: 8,
       recoveredDrafts: [],
       lastOpenedAt: saved.updatedAt,
       activeLayout: { ...saved.activeLayout, name: 'Default', provenance: 'suggested' },
       workingLayout: { ...saved.workingLayout, name: 'Default' },
       rehearsal: { loopEnabled: false, loopStart: null, loopEnd: null, playbackRate: 1 },
+      soundStreams: withoutFlags(saved.soundStreams),
+      performanceLanes: withoutFlags(saved.performanceLanes),
     });
 
     // And the document slice survives a second load unchanged.

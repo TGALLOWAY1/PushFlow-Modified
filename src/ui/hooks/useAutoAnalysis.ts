@@ -89,7 +89,12 @@ export function useAutoAnalysis(options: AutoAnalysisOptions = {}) {
 
     const activeStreams = getActiveStreams(state);
     const layout = getDisplayedLayout(state);
-    if (activeStreams.length === 0 || !layout) {
+    if (!layout) return;
+    if (activeStreams.length === 0) {
+      // Every Sound excluded from analysis (S4.4): nothing to analyse, as on
+      // an empty grid below, so no plan of the Sounds that were is left on
+      // screen. With no Sounds at all there is nothing to clear.
+      if (state.soundStreams.length > 0) dispatch({ type: 'SET_ANALYSIS_RESULT', payload: null });
       return;
     }
 
@@ -99,7 +104,8 @@ export function useAutoAnalysis(options: AutoAnalysisOptions = {}) {
     // judgement on their layout when the truth is simply that no sounds have been
     // placed yet, and the product forbids placing them automatically. Clear the
     // analysis instead and let the UI ask for placements. Only placed Sounds'
-    // notes are analysed (S3.3), so a grid whose Sounds are all muted is empty too.
+    // notes are analysed (S3.3), so a grid whose placed Sounds are all excluded
+    // from analysis is empty too.
     if (!hasPlacedNotes(state, layout)) {
       // SET_ANALYSIS_RESULT also clears analysisStale, so this settles rather than
       // re-triggering on every render.
@@ -189,8 +195,9 @@ export function useAutoAnalysis(options: AutoAnalysisOptions = {}) {
       const effectiveLayout = layout;
 
       // Generate never removes a placed Sound (invariant 7, T15): a placed Sound
-      // whose events are not in this performance (a muted Sound) keeps its pad
-      // in every candidate, pinned for the run rather than locked.
+      // whose events are not in this performance (one excluded from analysis,
+      // S4.4) keeps its pad in every candidate, pinned for the run rather than
+      // locked. Mute and Solo change nothing here: they are rehearsal-only.
       const pinned = pinnedPlacements(effectiveLayout, performance);
 
       let generationResult: CandidateGenerationResult;
@@ -354,7 +361,7 @@ export function useAutoAnalysis(options: AutoAnalysisOptions = {}) {
   const generateDisabledReason = !currentLayout
     ? 'No layout yet'
     : activeStreams.length === 0
-      ? 'Import MIDI or build a pattern first'
+      ? (state.soundStreams.length > 0 ? 'Every Sound is excluded from analysis' : 'Import MIDI or build a pattern first')
       : null;
 
   return {

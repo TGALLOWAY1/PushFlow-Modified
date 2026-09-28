@@ -110,17 +110,21 @@ describe('stable letters (T08)', () => {
 });
 
 describe('stale candidates (T14)', () => {
-  it('are stale once the notes, the mute state or the tempo change, not after a rename, and fresh again when undone', () => {
+  it('are stale once the notes, the Sounds excluded from analysis or the tempo change, not after a rename or a mute, and fresh again when undone', () => {
     const generated = reduce(start, run(start, 'r1-'));
     expect(isCandidateStale(generated, 'r1-0')).toBe(false);
     const renamed = reduce(generated, { type: 'RENAME_SOUND', payload: { streamId: start.soundStreams[0]!.id, name: 'Kick' } });
     expect(isCandidateStale(renamed, 'r1-0')).toBe(false);
     const tempo = reduce(generated, { type: 'SET_TEMPO', payload: generated.tempo + 10 });
     expect(isCandidateStale(tempo, 'r1-0')).toBe(true);
-    const muted = reduce(generated, { type: 'TOGGLE_MUTE', payload: start.soundStreams[1]!.id });
-    expect(isCandidateStale(muted, 'r1-1')).toBe(true);
+    const excluded = reduce(generated, { type: 'SET_SOUND_EXCLUDED', payload: { soundId: start.soundStreams[1]!.id, excluded: true } });
+    expect(isCandidateStale(excluded, 'r1-1')).toBe(true);
     // Undo puts the document back: its candidates are fresh again.
-    expect(isCandidateStale(restoreDocument(muted, pickDocument(generated)), 'r1-1')).toBe(false);
+    expect(isCandidateStale(restoreDocument(excluded, pickDocument(generated)), 'r1-1')).toBe(false);
+    // Mute and Solo are rehearsal-only (S4.4): the candidates stay fresh.
+    const muted = reduce(generated, { type: 'TOGGLE_MUTE', payload: start.soundStreams[1]!.id });
+    const soloed = reduce(muted, { type: 'TOGGLE_SOLO', payload: { soundId: start.soundStreams[0]!.id } });
+    expect(isCandidateStale(soloed, 'r1-1')).toBe(false);
     // A newer run made for the new performance is fresh.
     const rerun = reduce(tempo, run(tempo, 'r2-'));
     expect([isCandidateStale(rerun, 'r2-0'), isCandidateStale(rerun, 'r1-0')]).toEqual([false, true]);

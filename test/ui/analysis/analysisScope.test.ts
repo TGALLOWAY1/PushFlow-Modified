@@ -15,14 +15,14 @@ function layoutWith(ids: string[]): Layout {
   return { padToVoice } as Layout;
 }
 
-const streams = (muted: boolean[]) => muted.map((m, i) => ({ id: `s${i}`, muted: m }));
+const streams = (excluded: boolean[]) => excluded.map((x, i) => ({ id: `s${i}`, excluded: x }));
 
 describe('analysisScopeLine', () => {
   // S3.3 (T25): only placed Sounds' notes are scored, so an unplaced Sound is
-  // left out of the analysis ("not placed yet"), like a muted one.
-  it('names analysed, muted and unplaced Sounds', () => {
+  // left out of the analysis ("not placed yet"), like an excluded one (S4.4).
+  it('names analysed, excluded and unplaced Sounds', () => {
     const line = analysisScopeLine(streams([false, false, false, false, false, true, true]), layoutWith(['s0', 's1', 's2', 's5']));
-    expect(line).toBe('Analysing 3 of 7 Sounds · 2 muted · 2 not placed yet');
+    expect(line).toBe('Analysing 3 of 7 Sounds · 2 excluded · 2 not placed yet');
   });
 
   it('is just the count when everything is analysed and placed', () => {
@@ -33,11 +33,11 @@ describe('analysisScopeLine', () => {
     expect(analysisScopeLine(streams([false]), null)).toBe('Analysing 0 of 1 Sound · 1 not placed yet');
   });
 
-  it('counts the placed Sounds in scope for "Unfinished · 3 of 5 Sounds placed"; muted Sounds are out of scope', () => {
+  it('counts the placed Sounds in scope for "Unfinished · 3 of 5 Sounds placed"; excluded Sounds are out of scope', () => {
     const scope = analysisScope(streams([false, false, false, false, false, true, true]), layoutWith(['s0', 's1', 's2', 's5']));
-    expect(scope).toMatchObject({ total: 7, analysed: 3, muted: 2, unplaced: 2, placement: { placed: 3, total: 5 } });
+    expect(scope).toMatchObject({ total: 7, analysed: 3, excluded: 2, unplaced: 2, placement: { placed: 3, total: 5 } });
     // A Sound with no notes has nothing to place.
-    const empty = analysisScope([{ id: 's0', muted: false, events: [1] }, { id: 's1', muted: false, events: [] }], layoutWith(['s0']));
+    const empty = analysisScope([{ id: 's0', events: [1] }, { id: 's1', events: [] }], layoutWith(['s0']));
     expect(empty).toMatchObject({ unplaced: 0, placement: { placed: 1, total: 1 } });
   });
 
@@ -49,15 +49,15 @@ describe('analysisScopeLine', () => {
   });
 
   // Codex review on PR #104: a verdict's scope is the scope of the plan behind it.
-  it('with the plan’s Sounds, ignores mutes made since the plan was computed', () => {
+  it('with the plan’s Sounds, ignores exclusions made since the plan was computed', () => {
     const plan = [{ voiceId: 's0' }, { voiceId: 's1' }, { voiceId: 's1' }] as FingerAssignment[];
     const ids = planSoundIds(plan);
     expect([...ids].sort()).toEqual(['s0', 's1']);
-    // s1 muted after the analysis; s2 unmuted after it (it was left out).
-    const now = [{ id: 's0', muted: false }, { id: 's1', muted: true }, { id: 's2', muted: false }];
+    // s1 excluded after the analysis; s2 included after it (it was left out).
+    const now = [{ id: 's0' }, { id: 's1', excluded: true }, { id: 's2' }];
     expect(analysisScopeLine(now, layoutWith(['s0', 's1', 's2']), ids))
       .toBe('Analysing 2 of 3 Sounds · 1 not in this analysis');
     expect(analysisScopeLine(now, layoutWith(['s0', 's1', 's2'])))
-      .toBe('Analysing 2 of 3 Sounds · 1 muted');
+      .toBe('Analysing 2 of 3 Sounds · 1 excluded');
   });
 });

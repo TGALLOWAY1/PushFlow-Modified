@@ -46,6 +46,8 @@ import { gmDrumRenames } from '../../utils/gmDrumMap';
 import { uniqueName } from '../../utils/uniqueName';
 import { suggestVariantName } from './variantNames';
 import { EMPTY_CANDIDATE_RUNS, candidateLetterFor, olderRuns, withRun, type CandidateRunsState } from './candidateRuns';
+import { type ProjectNotice } from './projectNotices';
+import { type HandsFilter, isHandsFilter } from '../audio/handsFilter';
 
 // ============================================================================
 // Sound Stream Model
@@ -70,7 +72,9 @@ export interface SoundEvent {
  *
  * After MIDI import, each unique pitch becomes a SoundStream.
  * The timing data is preserved independently of the original MIDI pitch.
- * Muting a stream excludes it from grid, timeline, and analysis.
+ * An excluded stream (S4.4) is left out of the analysis and stays on the grid
+ * and in the timeline. Mute and Solo are rehearsal-only, never stream state
+ * (ProjectSession.mutedSoundIds, soloedSoundIds).
  */
 export interface SoundStream {
   id: string;
@@ -80,7 +84,12 @@ export interface SoundStream {
   shortLabel?: string;
   originalMidiNote: number;
   events: SoundEvent[];
-  muted: boolean;
+  /**
+   * Excluded from analysis (S4.4, T15): its notes are in no analysed or
+   * generated performance, and Generate keeps its pad. From its lane; absent
+   * means included.
+   */
+  excluded?: boolean;
 }
 
 // ============================================================================
@@ -286,6 +295,27 @@ export interface ProjectSession {
   rehearseRate: number;
   /** Rehearsal audio settings (click track and audible hits). */
   rehearsalAudio: RehearsalAudioOptions;
+  /**
+   * Muted Sounds, by id (S4.4, T15/T16): silent in rehearsal, and nothing
+   * else. Session only: never saved, never in undo history and never an
+   * analysis input, so muting changes no verdict, score, fingering or layout,
+   * and a muted pad stays editable. What sounds is audibility.ts's rule.
+   */
+  mutedSoundIds: string[];
+  /** Soloed Sounds, by id (S4.4): while any is soloed only they sound. Session only, like mutedSoundIds. */
+  soloedSoundIds: string[];
+  /**
+   * Hands-separate practice (S4.4, T59): with one hand chosen, the other
+   * hand's strikes are silent and its pads dimmed (handsFilter.ts). Session
+   * only, never an analysis input.
+   */
+  handsFilter: HandsFilter;
+  /**
+   * One-time notices to show when the project opens (S4.4: the
+   * mute-as-exclusion migration's). Saved until shown, like lastOpenedAt:
+   * dismissing one is no undo step.
+   */
+  pendingNotices: ProjectNotice[];
 }
 
 /** How a Generate run ended (session only; see ProjectSession.lastGenerationRun). */
@@ -360,10 +390,11 @@ export interface SelectEventPayload {
 // ============================================================================
 
 /**
- * Build a Performance object from unmuted SoundStreams for solver consumption.
+ * Build a Performance object for solver consumption: every Sound's notes but
+ * those excluded from analysis (S4.4). Mute and Solo never narrow it.
  */
 export function getActivePerformance(state: ProjectState): Performance {
-  const activeStreams = state.soundStreams.filter(s => !s.muted);
+  const activeStreams = getActiveStreams(state);
   const events = activeStreams.flatMap(stream =>
     stream.events.map(e => ({
       noteNumber: stream.originalMidiNote,
@@ -404,9 +435,9 @@ export function hasWorkingChanges(state: ProjectState): boolean {
   return state.workingLayout !== null && hashLayout(state.workingLayout) !== hashLayout(state.activeLayout);
 }
 
-/** Get only unmuted sound streams. */
+/** The Sounds in the analysis: all of them but those excluded from it (S4.4). */
 export function getActiveStreams(state: ProjectState): SoundStream[] {
-  return state.soundStreams.filter(s => !s.muted);
+  return state.soundStreams.filter(s => !s.excluded);
 }
 
 export function getCandidateById(
@@ -671,8 +702,18 @@ export type ProjectAction =
   | { type: 'RENAME_SOUND'; payload: { streamId: string; name: string } }
   /** "Name from GM drum map" (T17): every Sound with a GM drum pitch takes its drum's name, as one step. */
   | { type: 'APPLY_GM_DRUM_NAMES' }
+  /** Mutes or unmutes a Sound in rehearsal (S4.4): session only, no undo step. */
   | { type: 'TOGGLE_MUTE'; payload: string }
-  | { type: 'SOLO_STREAM'; payload: string }
+  /**
+   * Solos or un-solos a Sound in rehearsal (S4.4): session only. Solos add up;
+   * `exclusive` (Alt-click on S) makes it the only one, or clears the solo
+   * when it already was.
+   */
+  | { type: 'TOGGLE_SOLO'; payload: { soundId: string; exclusive?: boolean } }
+  /** "Exclude from analysis" and back (S4.4, T15): a saved Sound flag, one undo step. */
+  | { type: 'SET_SOUND_EXCLUDED'; payload: { soundId: string; excluded: boolean } }
+  /** A pending notice was shown: the project is saved without it (S4.4). */
+  | { type: 'DISMISS_NOTICE'; payload: ProjectNotice['id'] }
   | { type: 'SET_SOUND_COLOR'; payload: { streamId: string; color: string } }
   | { type: 'SET_SOUND_SHORT_LABEL'; payload: { streamId: string; shortLabel: string | null } }
   | { type: 'SET_VOICE_CONSTRAINT'; payload: { streamId: string; hand?: 'left' | 'right' | null; finger?: string | null } }
@@ -767,6 +808,8 @@ export type ProjectAction =
   | { type: 'SET_LOOP_REGION'; payload: { start: number | null; end: number | null } }
   | { type: 'SET_COUNT_IN_BARS'; payload: number }
   | { type: 'SET_REHEARSAL_AUDIO'; payload: Partial<RehearsalAudioOptions> }
+  /** "Hands: Both / L / R" (S4.4): rehearsal only, like Mute and Solo. */
+  | { type: 'SET_HANDS_FILTER'; payload: HandsFilter }
 
   // Performance Lanes (delegated to lanesReducer)
   | LaneAction;
@@ -1226,6 +1269,19 @@ export function withRemainingPlaced(state: ProjectState, base: Layout): Layout {
   return { ...base, padToVoice, fingerConstraints: buildLayoutFingerConstraints(padToVoice, state.voiceConstraints) };
 }
 
+/**
+ * A Sound or lane excluded from analysis, or not (S4.4). The key is kept only
+ * while it is set, as the lanes-to-Sounds rebuild writes it, so an unchanged
+ * rebuild equals the Sounds already there.
+ */
+function withExcluded<T extends { excluded?: boolean }>(item: T, excluded: boolean): T {
+  if (excluded) return { ...item, excluded: true };
+  if (!('excluded' in item)) return item;
+  const copy = { ...item };
+  delete copy.excluded;
+  return copy;
+}
+
 // ============================================================================
 // Reducer
 // ============================================================================
@@ -1270,6 +1326,10 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
         countInBars: 0,
         rehearseRate: DEFAULT_REHEARSE_SPEED,
         rehearsalAudio: { ...DEFAULT_REHEARSAL_AUDIO },
+        mutedSoundIds: [],
+        soloedSoundIds: [],
+        handsFilter: 'both',
+        pendingNotices: action.payload.pendingNotices ?? [],
       };
 
     case 'RESET':
@@ -1357,43 +1417,64 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
       );
     }
 
+    // Mute and Solo are rehearsal-only (S4.4, T15/T16): they change the
+    // session's lists and nothing else, so no analysis input, layout or saved
+    // field moves (no re-analysis, no autosave) and no undo step is recorded.
+    // They are independent: a solo never touches the mutes, so un-soloing
+    // leaves every earlier mute as it was.
     case 'TOGGLE_MUTE': {
-      const stream = state.soundStreams.find(s => s.id === action.payload);
-      const newMuted = stream ? !stream.muted : true;
+      const id = action.payload;
+      if (!state.soundStreams.some(s => s.id === id)) return state;
       return {
         ...state,
-        updatedAt: new Date().toISOString(),
-        analysisStale: true,
-        soundStreams: state.soundStreams.map(s =>
-          s.id === action.payload ? { ...s, muted: newMuted } : s
-        ),
-        // Keep lane mute in sync
-        performanceLanes: state.performanceLanes.map(l =>
-          l.id === action.payload ? { ...l, isMuted: newMuted } : l
-        ),
+        mutedSoundIds: state.mutedSoundIds.includes(id)
+          ? state.mutedSoundIds.filter(m => m !== id)
+          : [...state.mutedSoundIds, id],
       };
     }
 
-    case 'SOLO_STREAM': {
-      const targetId = action.payload;
-      const unmutedStreams = state.soundStreams.filter(s => !s.muted);
-      const isAlreadySoloed = unmutedStreams.length === 1 && unmutedStreams[0].id === targetId;
+    case 'TOGGLE_SOLO': {
+      const { soundId, exclusive = false } = action.payload;
+      if (!state.soundStreams.some(s => s.id === soundId)) return state;
+      const soloed = state.soloedSoundIds;
+      const on = soloed.includes(soundId);
+      return {
+        ...state,
+        soloedSoundIds: exclusive
+          ? (on && soloed.length === 1 ? [] : [soundId])
+          : on ? soloed.filter(id => id !== soundId) : [...soloed, soundId],
+      };
+    }
+
+    case 'SET_SOUND_EXCLUDED': {
+      // An analysis input (S4.4, T15): the performance every layout is
+      // analysed and generated for leaves the Sound out, or takes it back.
+      // The lane is the record the Sounds are rebuilt from; including also
+      // clears the older hidden flag, which excluded a Sound the same way.
+      const { soundId, excluded } = action.payload;
+      const stream = state.soundStreams.find(s => s.id === soundId);
+      if (!stream || !!stream.excluded === excluded) return state;
       return {
         ...state,
         updatedAt: new Date().toISOString(),
         analysisStale: true,
-        soundStreams: state.soundStreams.map(s =>
-          isAlreadySoloed
-            ? { ...s, muted: false }
-            : { ...s, muted: s.id !== targetId }
-        ),
-        performanceLanes: state.performanceLanes.map(l =>
-          isAlreadySoloed
-            ? { ...l, isMuted: false, isSolo: false }
-            : { ...l, isMuted: l.id !== targetId, isSolo: l.id === targetId }
-        ),
+        soundStreams: state.soundStreams.map(s => (s.id === soundId ? withExcluded(s, excluded) : s)),
+        performanceLanes: state.performanceLanes.map(l => {
+          if (l.id !== soundId) return l;
+          const lane = withExcluded(l, excluded);
+          return !excluded && lane.isHidden ? { ...lane, isHidden: false } : lane;
+        }),
       };
     }
+
+    case 'DISMISS_NOTICE':
+      if (!state.pendingNotices.some(n => n.id === action.payload)) return state;
+      // Saved without it (autosave follows updatedAt), so it shows once.
+      return {
+        ...state,
+        updatedAt: new Date().toISOString(),
+        pendingNotices: state.pendingNotices.filter(n => n.id !== action.payload),
+      };
 
     case 'SET_SOUND_COLOR': {
       const { streamId: colorStreamId, color } = action.payload;
@@ -2164,6 +2245,10 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
     case 'SET_REHEARSAL_AUDIO':
       return { ...state, rehearsalAudio: { ...state.rehearsalAudio, ...action.payload } };
 
+    case 'SET_HANDS_FILTER':
+      if (!isHandsFilter(action.payload) || action.payload === state.handsFilter) return state;
+      return { ...state, handsFilter: action.payload };
+
     // Optimizer configuration — persisted user preferences, so bump updatedAt
     // to schedule an autosave (otherwise the choice silently reverts on reload).
     case 'SET_OPTIMIZER_METHOD':
@@ -2283,5 +2368,9 @@ export function createEmptyProjectState(): ProjectState {
     countInBars: 0,
     rehearseRate: DEFAULT_REHEARSE_SPEED,
     rehearsalAudio: { ...DEFAULT_REHEARSAL_AUDIO },
+    mutedSoundIds: [],
+    soloedSoundIds: [],
+    handsFilter: 'both',
+    pendingNotices: [],
   };
 }

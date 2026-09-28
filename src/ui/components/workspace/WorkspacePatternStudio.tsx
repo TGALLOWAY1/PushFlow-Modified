@@ -236,17 +236,37 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
     return (laneId: string) => byId.get(projectSoundIdForLane(laneId));
   }, [projectState.performanceLanes]);
 
-  // The project owns a Sound's name, colour, mute and solo; the Composer shows
-  // them. A lane with no Sound yet (no notes synced) shows its own.
+  // The project owns a Sound's name, colour, mute and solo (rehearsal-only
+  // since S4.4); the Composer shows them. A lane with no Sound yet (no notes
+  // synced) shows its own.
+  const { mutedSoundIds, soloedSoundIds } = projectState;
   const displayLanes = useMemo(() => loopState.lanes.map(lane => {
     const sound = projectLaneFor(lane.id);
     return sound
-      ? { ...lane, name: sound.name, color: sound.color, isMuted: sound.isMuted, isSolo: sound.isSolo }
+      ? { ...lane, name: sound.name, color: sound.color, isMuted: mutedSoundIds.includes(sound.id), isSolo: soloedSoundIds.includes(sound.id) }
       : lane;
-  }), [loopState.lanes, projectLaneFor]);
+  }), [loopState.lanes, projectLaneFor, mutedSoundIds, soloedSoundIds]);
+
+  // A lane muted or soloed before its first note synced has no Sound yet, so
+  // those were its own; when its Sound appears they carry over to the Sound's
+  // Mute and Solo, rather than switching themselves off.
+  const lanesWithSound = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const withSound = new Set(loopState.lanes.filter(lane => projectLaneFor(lane.id)).map(lane => lane.id));
+    const before = lanesWithSound.current;
+    lanesWithSound.current = withSound;
+    if (!before) return;
+    for (const lane of loopState.lanes) {
+      if (!withSound.has(lane.id) || before.has(lane.id)) continue;
+      const soundId = projectLaneFor(lane.id)!.id;
+      if (lane.isMuted && !mutedSoundIds.includes(soundId)) projectDispatch({ type: 'TOGGLE_MUTE', payload: soundId });
+      if (lane.isSolo && !soloedSoundIds.includes(soundId)) projectDispatch({ type: 'TOGGLE_SOLO', payload: { soundId } });
+    }
+  }, [loopState.lanes, projectLaneFor, mutedSoundIds, soloedSoundIds, projectDispatch]);
 
   // Renaming, muting or soloing a lane that is already a project Sound changes
-  // the Sound (one project undo step), as the Sounds panel would.
+  // the Sound, as the Sounds panel would: a rename is one project undo step;
+  // Mute and Solo are rehearsal-only session state (S4.4), never a step.
   const laneDispatch = useCallback((action: LoopEditorAction) => {
     const soundAction = action as SoundLaneAction;
     const laneId = soundAction.type === 'RENAME_LANE' ? soundAction.payload.laneId
@@ -263,7 +283,7 @@ export function WorkspacePatternStudio({ isActive = true }: WorkspacePatternStud
     } else if (soundAction.type === 'TOGGLE_LANE_MUTE') {
       projectDispatch({ type: 'TOGGLE_MUTE', payload: sound.id });
     } else {
-      projectDispatch({ type: 'SOLO_STREAM', payload: sound.id });
+      projectDispatch({ type: 'TOGGLE_SOLO', payload: { soundId: sound.id } });
     }
   }, [dispatchComposer, projectDispatch, projectLaneFor]);
 

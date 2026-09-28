@@ -127,17 +127,17 @@ describe('finger preferences pin the assignment', () => {
   });
 });
 
-describe('muting a sound does not delete it', () => {
+describe('excluding a sound does not delete it', () => {
   it('keeps every lane as a stream', () => {
     const lane = (id: string, over: Partial<PerformanceLane> = {}): PerformanceLane => ({
       id, name: id, sourceFileId: 's', sourceFileName: 'f.mid', groupId: null,
       orderIndex: 0, color: '#f00', colorMode: 'inherited',
       events: [{ eventId: `${id}-1`, laneId: id, startTime: 0, duration: 0.1, velocity: 100, rawPitch: 36 }],
-      isHidden: false, isMuted: false, isSolo: false, ...over,
+      isHidden: false, ...over,
     });
-    const streams = buildSoundStreamsFromLanes([lane('a'), lane('b', { isMuted: true })]);
-    // Filtering muted lanes out removed the row you would un-mute from.
-    expect(streams.map(s => [s.id, s.muted])).toEqual([['a', false], ['b', true]]);
+    const streams = buildSoundStreamsFromLanes([lane('a'), lane('b', { excluded: true })]);
+    // Filtering excluded (once: muted) lanes out removed the row you would bring them back from.
+    expect(streams.map(s => [s.id, !!s.excluded])).toEqual([['a', false], ['b', true]]);
   });
 });
 

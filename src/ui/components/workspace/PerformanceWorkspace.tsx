@@ -19,10 +19,11 @@
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useReducer, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Maximize2 } from 'lucide-react';
 import { useProject } from '../../state/ProjectContext';
 import { useAutoAnalysis } from '../../hooks/useAutoAnalysis';
 import { useIdentityMatchingNotice } from '../../hooks/useIdentityMatchingNotice';
+import { useProjectNotices } from '../../hooks/useProjectNotices';
 import { useAutoSave } from '../../hooks/useAutoSave';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { exportProjectToFile } from '../../persistence/projectStorage';
@@ -88,6 +89,7 @@ import {
 } from './drawerSizing';
 import { timelineContentHeight } from '../timelineLayout';
 import { EventsNavigationProvider, type EventsNavigation } from './eventsNavigation';
+import { ToggleButton } from '../shared/ToggleButton';
 import { type EventsFilter } from '../../analysis/eventDifficulty';
 
 type LeftPanelTab = 'sounds' | 'events' | 'presets';
@@ -148,6 +150,8 @@ function PerformanceWorkspaceInner() {
     generateFull, cancelGeneration, calculateCost, generationProgress, analysisPhase, canGenerate, generateDisabledReason,
   } = useAutoAnalysis();
   useIdentityMatchingNotice(state);
+  // The notices a migration left in the project, once (S4.4: mute became rehearsal-only).
+  useProjectNotices();
   const { saveStatus, saveNow } = useAutoSave(state);
   // The '?' sheet, generated from the input table (T61).
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -165,7 +169,11 @@ function PerformanceWorkspaceInner() {
     const { composerPatternIncluded } = exportProjectToFile(state);
     toast.show({ message: composerPatternIncluded ? 'Exported \u00b7 Composer pattern included' : 'Exported' });
   }, [state, toast]);
-  const { settings: viewSettings } = useViewSettings();
+  const { settings: viewSettings, setRehearseView } = useViewSettings();
+  // The Rehearse view (S4.4, F7-03): both side panels collapsed, as a view
+  // setting remembered per viewer. It overrides each panel's own collapse, so
+  // turning it off brings them back as they were.
+  const rehearseView = viewSettings.rehearseView;
 
   // Handle ?view=presets query param
   const [searchParams] = useSearchParams();
@@ -179,6 +187,15 @@ function PerformanceWorkspaceInner() {
   const [rightTab, setRightTab] = useState<RightPanelTab>(initialView === 'presets' ? 'costs' : 'layouts');
   const [rightCollapsed, setRightCollapsed] = useState(initialView === 'presets');
   const [timelineTab, setTimelineTab] = useState<TimelineTab>(initialView === 'presets' ? 'composer' : 'timeline');
+  // What is on screen: a panel is hidden when collapsed, or in the Rehearse view.
+  const leftHidden = leftCollapsed || rehearseView;
+  const rightHidden = rightCollapsed || rehearseView;
+  // Anything that asks for a panel (its strip, Show events, a saved variant) leaves the Rehearse view.
+  const openPanel = useCallback((side: 'left' | 'right') => {
+    setRehearseView(false);
+    if (side === 'left') setLeftCollapsed(false);
+    else setRightCollapsed(false);
+  }, [setRehearseView]);
 
   // The Events list's filter (T27): the Analysis panel's "N need attention"
   // applies one and brings the Events tab up.
@@ -186,8 +203,8 @@ function PerformanceWorkspaceInner() {
   const showEvents = useCallback((filter: EventsFilter) => {
     setEventsFilter(filter);
     setLeftTab('events');
-    setLeftCollapsed(false);
-  }, []);
+    openPanel('left');
+  }, [openPanel]);
   const eventsNavigation = useMemo<EventsNavigation>(
     () => ({ filter: eventsFilter, setFilter: setEventsFilter, showEvents }),
     [eventsFilter, showEvents],
@@ -359,17 +376,17 @@ function PerformanceWorkspaceInner() {
     observer.observe(bodyEl);
     return () => observer.disconnect();
   }, [bodyEl]);
-  const fixedWidth = (leftCollapsed ? COLLAPSED_PANEL_WIDTH : RESIZE_HANDLE_WIDTH)
-    + (rightCollapsed ? COLLAPSED_PANEL_WIDTH : 0) + RESIZE_HANDLE_WIDTH;
+  const fixedWidth = (leftHidden ? COLLAPSED_PANEL_WIDTH : RESIZE_HANDLE_WIDTH)
+    + (rightHidden ? COLLAPSED_PANEL_WIDTH : 0) + RESIZE_HANDLE_WIDTH;
   // What the open panels may take together; unknown until the body is measured.
   const panelRoom = bodyWidth > 0 ? bodyWidth - fixedWidth - CENTER_MIN_WIDTH : Infinity;
   const shownPanels = fitSidePanels(
     panelRoom,
-    { left: leftCollapsed ? 0 : leftWidth, right: rightCollapsed ? 0 : rightWidth },
-    { left: leftCollapsed ? 0 : LEFT_MIN, right: rightCollapsed ? 0 : RIGHT_MIN },
+    { left: leftHidden ? 0 : leftWidth, right: rightHidden ? 0 : rightWidth },
+    { left: leftHidden ? 0 : LEFT_MIN, right: rightHidden ? 0 : RIGHT_MIN },
   );
-  const shownLeftWidth = leftCollapsed ? COLLAPSED_PANEL_WIDTH : shownPanels.left;
-  const shownRightWidth = rightCollapsed ? COLLAPSED_PANEL_WIDTH : shownPanels.right;
+  const shownLeftWidth = leftHidden ? COLLAPSED_PANEL_WIDTH : shownPanels.left;
+  const shownRightWidth = rightHidden ? COLLAPSED_PANEL_WIDTH : shownPanels.right;
   // Read by the drag handlers, which are bound once.
   const panelLayout = useRef({ room: panelRoom, left: shownPanels.left, right: shownPanels.right });
   panelLayout.current = { room: panelRoom, left: shownPanels.left, right: shownPanels.right };
@@ -679,10 +696,10 @@ function PerformanceWorkspaceInner() {
   // its card scrolls into view once it has rendered.
   const [revealVariantId, setRevealVariantId] = useState<string | null>(null);
   const handleVariantSaved = useCallback((variantId: string) => {
-    setRightCollapsed(false);
+    openPanel('right');
     setRightTab('layouts');
     setRevealVariantId(variantId);
-  }, []);
+  }, [openPanel]);
   useEffect(() => {
     if (!revealVariantId) return;
     const card = document.querySelector(`[data-variant-id="${revealVariantId}"]`);
@@ -731,11 +748,12 @@ function PerformanceWorkspaceInner() {
       <div ref={setBodyEl} className="flex-1 flex overflow-hidden p-2.5 gap-0 min-h-0">
         {/* Left Column: Tabbed Sounds / Events */}
         <div data-testid="left-panel" className="flex-shrink-0 flex flex-col transition-all" style={{ width: shownLeftWidth }}>
-          {leftCollapsed ? (
+          {leftHidden ? (
             <button
+              data-testid="left-panel-expand"
               className="flex flex-col items-center gap-3 py-4 w-full cursor-pointer hover:bg-[var(--bg-hover)] rounded-pf-lg transition-colors h-full"
-              onClick={() => setLeftCollapsed(false)}
-              title="Expand sidebar"
+              onClick={() => openPanel('left')}
+              title={rehearseView ? 'Expand sidebar (leaves the Rehearse view)' : 'Expand sidebar'}
             >
               <span className="text-pf-xs text-[var(--text-tertiary)]" style={{ writingMode: 'vertical-lr' }}>
                 {leftTab === 'sounds' ? 'Sounds' : leftTab === 'events' ? 'Events' : 'Presets'}
@@ -804,7 +822,7 @@ function PerformanceWorkspaceInner() {
         </div>
 
         {/* Left resize handle */}
-        {!leftCollapsed && (
+        {!leftHidden && (
           <div
             data-testid="left-panel-handle"
             className="flex-shrink-0 cursor-col-resize group flex items-center justify-center hover:bg-[var(--accent-muted)] transition-colors rounded-sm"
@@ -902,6 +920,18 @@ function PerformanceWorkspaceInner() {
                 Composer
               </button>
               <div ref={setDrawerToolbarSlot} data-testid="drawer-toolbar" className="flex-1 min-w-0 flex items-center justify-end overflow-x-auto overflow-y-hidden" />
+              {/* The Rehearse view (S4.4, F7-03), beside the drawer's own collapse: both give the grid room. */}
+              <ToggleButton
+                testId="rehearse-view"
+                pressed={rehearseView}
+                onPressedChange={setRehearseView}
+                icon={<Maximize2 size={12} />}
+                label="Rehearse view"
+                title={rehearseView
+                  ? 'Rehearse view: the side panels are collapsed · click to bring them back'
+                  : 'Rehearse view: collapse both side panels, so the grid, the inspector and the timeline get the room. Nothing else changes'}
+                className="h-7 flex-shrink-0"
+              />
               <button
                 data-testid="drawer-collapse"
                 className="w-7 h-7 flex items-center justify-center rounded-pf-sm text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
@@ -945,11 +975,12 @@ function PerformanceWorkspaceInner() {
 
         {/* Right Column: Tabbed Costs / Layouts */}
         <div data-testid="right-panel" className="flex-shrink-0 flex flex-col min-h-0 transition-all" style={{ width: shownRightWidth }}>
-          {rightCollapsed ? (
+          {rightHidden ? (
             <button
+              data-testid="right-panel-expand"
               className="flex flex-col items-center gap-3 py-4 w-full cursor-pointer hover:bg-[var(--bg-hover)] rounded-pf-lg transition-colors h-full"
-              onClick={() => setRightCollapsed(false)}
-              title="Expand sidebar"
+              onClick={() => openPanel('right')}
+              title={rehearseView ? 'Expand sidebar (leaves the Rehearse view)' : 'Expand sidebar'}
             >
               <span className="text-pf-xs text-[var(--text-tertiary)]" style={{ writingMode: 'vertical-lr' }}>
                 {rightTab === 'costs' ? 'Costs' : 'Layouts'}

@@ -17,7 +17,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import chroma from 'chroma-js';
-import { Lock } from 'lucide-react';
+import { Ban, Lock, VolumeX } from 'lucide-react';
 import { useProject } from '../state/ProjectContext';
 import { getDisplayedLayout, isPadLocked, placementBlockedByLock, type SoundStream } from '../state/projectState';
 import { orderSounds } from '../state/soundOrder';
@@ -34,11 +34,13 @@ import { type Voice } from '../../types/voice';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { type GridLabelSettings, type MomentView } from '../state/viewSettings';
 import { playheadEventIndex } from '../analysis/selectionModel';
-import { useCountIn, useTransportPosition, useTransportRunning } from '../audio/TransportProvider';
+import { useCountIn, useTransport, useTransportPosition, useTransportRunning } from '../audio/TransportProvider';
+import { inHandsFilter } from '../audio/handsFilter';
 import { CountInOverlay } from './CountInOverlay';
 import { playbackOverlayAt, selectionOverlay, type PadStrike } from '../analysis/momentOverlay';
 import { getEventTimeline } from '../analysis/eventTimeline';
 import { buildSoundStreamLookup } from '../analysis/soundStreamLookup';
+import { silentLabel, silentReason } from '../audio/audibility';
 import { padLabel, padLabelLines, sharedNamePrefix } from '../analysis/padLabels';
 import { midiNoteToName } from '../../utils/midiNotes';
 import { formatPadPosition, spokenPadPosition } from '../../utils/padPosition';
@@ -120,6 +122,8 @@ interface PadSummary {
   voiceColor: string | null;
   noteNumber: number | null;
   hands: Set<string>;
+  /** The hands the plan strikes it with (no preference applied): the Hands filter reads them (S4.4). */
+  planHands: Set<string>;
   fingers: Set<string>;
   hitCount: number;
 }
@@ -138,6 +142,8 @@ const IMPOSSIBLE_REACH_THRESHOLD = 5;
 
 export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now-next', voiceConstraints = {}, gridLabels, highlightedInstancePads, onPresetDrop, dragPreview, onGridDragOver, onGridDragLeave, debuggerIteration, padSize = 56, stateBar, dock, dockPlacement = 'side' }: InteractiveGridProps) {
   const { state, dispatch, undoable } = useProject();
+  // Alt-click plays a pad's Sound (S4.4, the input table's pad-alt-click row).
+  const transport = useTransport();
   const toast = useToast();
   // Looking never writes (S3.2): `refuse()` says how to edit and blocks the gesture.
   const { hint: readOnlyHint, refuse: refuseEdit } = useReadOnlyHint();
@@ -169,6 +175,9 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
     () => buildSoundStreamLookup(state.soundStreams),
     [state.soundStreams],
   );
+  // Rehearsal-only Mute and Solo (S4.4): a silent Sound's pad shows it and stays editable.
+  const soundIds = useMemo(() => state.soundStreams.map(s => s.id), [state.soundStreams]);
+  const audition = { mutedSoundIds: state.mutedSoundIds, soloedSoundIds: state.soloedSoundIds };
   // Pads drop the words every Sound's name starts with (T17).
   const namePrefix = useMemo(
     () => sharedNamePrefix(state.soundStreams.map(s => s.name)),
@@ -221,6 +230,7 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
           voiceColor: voice?.color ?? null,
           noteNumber: a.noteNumber,
           hands: new Set(),
+          planHands: new Set(),
           fingers: new Set(),
           hitCount: 0,
         };
@@ -232,6 +242,7 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
       const constraint = voice ? voiceConstraints[voice.id] : undefined;
       const effectiveHand = constraint?.hand ?? a.assignedHand;
       summary.hands.add(effectiveHand);
+      summary.planHands.add(a.assignedHand);
       // Add finger label: user constraint takes priority, then solver assignment
       const preferred = constraint?.hand && constraint?.finger ? fingerLabel(constraint.hand, constraint.finger) : '';
       const planned = showFingerLabels ? fingerLabel(a.assignedHand, a.finger) : '';
@@ -398,13 +409,14 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
     // Map event keys to durations
     const durationMap = new Map<string, number>();
     for (const stream of state.soundStreams) {
-      if (stream.muted) continue;
       for (const ev of stream.events) {
         durationMap.set(ev.eventKey, ev.duration);
       }
     }
 
     for (const a of assignments) {
+      // Under a Hands filter the other hand's strikes are silent: they don't flash (S4.4).
+      if (!inHandsFilter(a.assignedHand, state.handsFilter)) continue;
       // A pad is lit for the STRIKE, not for the note's length. Driving this from
       // MIDI duration left one to three pads permanently lit — on the reference
       // file the grid is lit 98% of the time — so it conveyed no rhythm at all,
@@ -418,7 +430,7 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
       }
     }
     return keys;
-  }, [assignments, playhead, state.isPlaying, state.soundStreams, silent]);
+  }, [assignments, playhead, state.isPlaying, state.soundStreams, state.handsFilter, silent]);
 
   // Detect new note-on events: pads that just became active (weren't active last frame)
   useEffect(() => {
@@ -643,6 +655,10 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
     switch (meaning.action) {
       case 'none':
         return;
+      case 'audition':
+        // Plays what the pad holds; changes nothing and selects nothing (S4.4).
+        if (occupantId) transport.audition(occupantId);
+        return;
       case 'disarm':
         dispatch({ type: 'ARM_SOUND', payload: null });
         return;
@@ -674,7 +690,7 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
         dispatch({ type: 'SELECT_PAD', payload: { padKey: null, streamId: null } });
         return;
     }
-  }, [livePadToVoice, state.workingLayout, state.activeLayout, state.soundStreams, state.performanceLanes, state.laneGroups, soundStreamLookup, armedStream, state.selectedMomentKey, dispatch, toast, refuseEdit, readOnly]);
+  }, [livePadToVoice, state.workingLayout, state.activeLayout, state.soundStreams, state.performanceLanes, state.laneGroups, soundStreamLookup, armedStream, state.selectedMomentKey, dispatch, toast, refuseEdit, readOnly, transport]);
 
   // The pad's ×: removes with an Undo toast (T28).
   const handleRemovePad = useRemovePadWithUndo();
@@ -743,7 +759,10 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
       // Uninvolved pads dim to about 45% without desaturating (T09), while an
       // event is inspected; never during playback, so flashes stay at full
       // intensity (T10).
-      const isGreyedOut = !!overlay?.dimOthers && !isNow && !isNext && !isPrev && !isPadSelected;
+      // Hands-separate practice (S4.4): a pad only the other hand strikes is dimmed.
+      const handFiltered = state.handsFilter !== 'both' && !!summary
+        && [...summary.planHands].every(hand => !inHandsFilter(hand, state.handsFilter));
+      const isGreyedOut = !handFiltered && !!overlay?.dimOthers && !isNow && !isNext && !isPrev && !isPadSelected;
       const nowColor = isNow ? handColor(nowStrike?.hand) ?? HAND_COLORS.Unplayable : null;
       const nextColor = isNext ? handColor(nextStrike?.hand) ?? HAND_COLORS.Unplayable : null;
       const prevColor = isPrev ? handColor(prevStrike?.hand) ?? HAND_COLORS.Unplayable : null;
@@ -818,9 +837,11 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
       // Finger display
       const fingerList = summary ? [...summary.fingers].slice(0, 2) : [];
 
-      // Check if stream is muted
+      // Silent in rehearsal (S4.4): a glyph and less colour, never less editable.
       const streamForVoice = soundStreamLookup.forVoice(voice);
-      const isMuted = streamForVoice?.muted ?? false;
+      const soundSilent = streamForVoice ? silentReason(streamForVoice.id, audition, soundIds) : null;
+      // Excluded from analysis (S4.4): the plan plays no note on it, and Generate keeps it here.
+      const isExcluded = streamForVoice?.excluded ?? false;
 
       // Active/selected states override glow level, but keep the color if we have one
       const displayGlowColor = glowColor ?? borderColor;
@@ -852,11 +873,12 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
             ${isActivePlaying && !isBlinking ? 'z-10 scale-105 brightness-150 bg-[var(--bg-card)]' : ''}
             ${isDragOver ? 'scale-105 bg-[var(--bg-card)]' : ''}
             ${isDragSource ? 'opacity-30' : ''}
-            ${isMuted ? 'opacity-30 pointer-events-none' : ''}
+            ${soundSilent ? 'saturate-50' : ''}
+            ${handFiltered ? 'opacity-[0.3]' : ''}
             ${isGreyedOut ? 'opacity-[0.45]' : ''}
             ${isDragSource ? 'opacity-40' : ''}
             ${!voice ? 'hover:brightness-110' : 'hover:scale-[1.02]'}
-            ${isMuted ? 'cursor-default' : voice && !readOnly ? 'cursor-grab active:cursor-grabbing' : previewsArmed ? 'cursor-copy' : 'cursor-pointer'}
+            ${voice && !readOnly ? 'cursor-grab active:cursor-grabbing' : previewsArmed ? 'cursor-copy' : 'cursor-pointer'}
           `}
           style={{
             width: padSize,
@@ -878,7 +900,7 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
               boxGlow,
             ].filter(v => v && v !== 'none').join(', ') || 'none',
           }}
-          onClick={e => !isMuted && handlePadClick(row, col, e)}
+          onClick={e => handlePadClick(row, col, e)}
           data-selected={isPadSelected ? 'true' : undefined}
           data-sound-selected={isSoundSelected ? 'true' : undefined}
           data-struck={isNow ? 'true' : undefined}
@@ -887,23 +909,26 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
           onContextMenu={e => {
             e.preventDefault();
             // The pad menu edits (lock, finger, remove): not on a read-only layout (S3.2).
-            if (isMuted || refuseEdit()) return;
+            if (refuseEdit()) return;
             setContextMenu({ padKey, x: e.clientX, y: e.clientY, pad: e.currentTarget });
           }}
-          onDragOver={e => !isMuted && handleDragOver(e, padKey)}
+          onDragOver={e => handleDragOver(e, padKey)}
           // Entering a pad shows its hint at once; dragover keeps it (and says whether it drops).
-          onDragEnter={() => { if (!isMuted) setHintPad(padKey); }}
+          onDragEnter={() => setHintPad(padKey)}
           onDragLeave={e => {
             // Moving onto the pad's own label is no leaving: the hint stays (T46).
             if (e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return;
             handleDragLeave(padKey);
           }}
-          onDrop={e => !isMuted && handleDrop(e, padKey)}
-          draggable={!!voice && !isMuted && !isLocked}
-          onDragStart={e => voice && !isMuted && !isLocked && handlePadDragStart(e, padKey, voice)}
+          onDrop={e => handleDrop(e, padKey)}
+          draggable={!!voice && !isLocked}
+          onDragStart={e => voice && !isLocked && handlePadDragStart(e, padKey, voice)}
           onDragEnd={() => { setDragSourcePad(null); setDragOverPad(null); setHintPad(null); }}
+          data-silent={soundSilent ?? undefined}
+          data-hand-filtered={handFiltered ? 'true' : undefined}
+          data-excluded={isExcluded ? 'true' : undefined}
           title={voice
-            ? `${formatPadPosition(padKey)} · ${voice.name}${summary ? ` · ${summary.hitCount} hits` : ''}${constraint ? ` · Finger preference ${constraint}` : ''}${isLocked ? ' · Locked · Unlock to move' : ''}${readOnly ? ` · ${readOnlyHint}` : ''}`
+            ? `${formatPadPosition(padKey)} · ${voice.name}${summary ? ` · ${summary.hitCount} hits` : ''}${constraint ? ` · Finger preference ${constraint}` : ''}${isLocked ? ' · Locked · Unlock to move' : ''}${isExcluded ? ' · Excluded from analysis: Generate keeps it here' : ''}${soundSilent ? ` · ${silentLabel(soundSilent)}` : ''}${handFiltered ? ' · The other hand’s: silent and dimmed (Hands filter)' : ''}${readOnly ? ` · ${readOnlyHint}` : ''} · Alt-click to hear it`
             : readOnly
               ? `${formatPadPosition(padKey)} · empty · ${readOnlyHint}`
               : armedStream
@@ -1038,6 +1063,22 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
                     data-testid="pad-lock"
                   >
                     <Lock size={9} strokeWidth={2.5} aria-hidden="true" />
+                  </span>
+                )}
+
+                {/* Excluded from analysis, and silent in rehearsal (S4.4): glyphs in the free corner */}
+                {(isExcluded || soundSilent) && (
+                  <span className="absolute bottom-0.5 right-0.5 flex items-center gap-px pointer-events-none">
+                    {isExcluded && (
+                      <span data-testid="pad-excluded" className="w-3 h-3 flex items-center justify-center text-[var(--text-secondary)]" aria-label="Excluded from analysis">
+                        <Ban size={9} strokeWidth={2.5} aria-hidden="true" />
+                      </span>
+                    )}
+                    {soundSilent && (
+                      <span data-testid="pad-silent" className="w-3 h-3 flex items-center justify-center text-[var(--text-secondary)]" aria-label={silentLabel(soundSilent)}>
+                        <VolumeX size={9} strokeWidth={2.5} aria-hidden="true" />
+                      </span>
+                    )}
                   </span>
                 )}
 

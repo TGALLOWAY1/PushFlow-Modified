@@ -16,6 +16,7 @@ import { type CostToggles } from '../../types/costToggles';
 import { type OptimizerMethodKey } from '../../engine/optimization/optimizerInterface';
 import { type GreedyLayoutStrategy } from '../../engine/optimization/greedyCandidatePipeline';
 import { type SoundStream } from '../state/projectState';
+import { type ProjectNotice } from '../state/projectNotices';
 import { type CandidateSolution } from '../../types/candidateSolution';
 
 // ============================================================================
@@ -34,8 +35,10 @@ import { type CandidateSolution } from '../../types/candidateSolution';
  * 5: layout names without role words; provenance instead (S3.2, T32).
  * 6: rehearsal preferences, the loop and speed (S4.3a, T58).
  * 7: a Sound's optional short label, on its lane and its stream (S5.1, T17).
+ * 8: Mute and Solo leave the stored project (rehearsal-only); a Sound that was
+ *    muted is excluded from analysis instead, with a one-time notice (S4.4, T15).
  */
-export const PERSISTED_SCHEMA_VERSION = 7;
+export const PERSISTED_SCHEMA_VERSION = 8;
 
 // ============================================================================
 // Rehearsal preferences
@@ -156,6 +159,11 @@ export interface PersistedProject {
    * migration starts it at Loop off, no region, 1x.
    */
   rehearsal?: RehearsalPreferences;
+  /**
+   * One-time notices to show when the project next opens (S4.4: the
+   * mute-as-exclusion migration's); absent when there are none.
+   */
+  notices?: ProjectNotice[];
   schemaVersion: number;
 }
 

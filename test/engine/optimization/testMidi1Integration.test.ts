@@ -255,40 +255,47 @@ describe('TEST MIDI 1.mid end-to-end', () => {
     });
   });
 
-  // S1a.4 (T15 slice, P1a-9): Generate never removes a placed Sound. A muted
-  // Sound has no events in the performance the optimizers see, so every
-  // method pins it to its pad for the run, without adding a lock.
-  describe('a muted, placed Sound', () => {
-    let muted: ProjectState;
-    let mutedId: string;
-    let mutedPad: string;
+  // S1a.4 (T15 slice, P1a-9), S4.4: Generate never removes a placed Sound. A
+  // Sound excluded from analysis has no events in the performance the
+  // optimizers see, so every method pins it to its pad for the run, without
+  // adding a lock. (Mute is rehearsal-only since S4.4 and narrows nothing.)
+  describe('an excluded, placed Sound', () => {
+    let excluded: ProjectState;
+    let excludedId: string;
+    let excludedPad: string;
 
     beforeAll(() => {
       const quietest = [...suggested.soundStreams].sort((a, b) => a.events.length - b.events.length)[0];
-      mutedId = quietest.id;
-      mutedPad = Object.entries(getDisplayedLayout(suggested)!.padToVoice).find(([, v]) => v.id === mutedId)![0];
-      muted = projectReducer(suggested, { type: 'TOGGLE_MUTE', payload: mutedId });
+      excludedId = quietest.id;
+      excludedPad = Object.entries(getDisplayedLayout(suggested)!.padToVoice).find(([, v]) => v.id === excludedId)![0];
+      excluded = projectReducer(suggested, { type: 'SET_SOUND_EXCLUDED', payload: { soundId: excludedId, excluded: true } });
     });
 
-    it('is muted through the reducer: still on its pad, its events out of the performance', () => {
-      expect(getActivePerformance(muted).events.some(e => e.voiceId === mutedId)).toBe(false);
-      expect(getActivePerformance(muted).events.length).toBeLessThan(getActivePerformance(suggested).events.length);
-      expect(getDisplayedLayout(muted)!.padToVoice[mutedPad]?.id).toBe(mutedId);
+    it('is excluded through the reducer: still on its pad, its events out of the performance', () => {
+      expect(getActivePerformance(excluded).events.some(e => e.voiceId === excludedId)).toBe(false);
+      expect(getActivePerformance(excluded).events.length).toBeLessThan(getActivePerformance(suggested).events.length);
+      expect(getDisplayedLayout(excluded)!.padToVoice[excludedPad]?.id).toBe(excludedId);
+    });
+
+    it('a muted Sound, by contrast, stays in the performance (S4.4: Mute is rehearsal-only)', () => {
+      const muted = projectReducer(suggested, { type: 'TOGGLE_MUTE', payload: excludedId });
+      expect(muted.mutedSoundIds).toEqual([excludedId]);
+      expect(getActivePerformance(muted)).toEqual(getActivePerformance(suggested));
     });
 
     describe.each<Method>(['greedy', 'beam', 'annealing-quick'])('%s', method => {
       let candidates: CandidateSolution[];
 
       beforeAll(async () => {
-        candidates = await generate(method, muted);
+        candidates = await generate(method, excluded);
       }, SLOW);
 
-      it('keeps the muted Sound on its pad in every candidate, without a lock', () => {
+      it('keeps the excluded Sound on its pad in every candidate, without a lock', () => {
         expect(candidates.length).toBeGreaterThan(0);
         for (const candidate of candidates) {
-          expect({ strategy: candidate.metadata.strategy, soundOnPad: candidate.layout.padToVoice[mutedPad]?.id })
-            .toEqual({ strategy: candidate.metadata.strategy, soundOnPad: mutedId });
-          expect(Object.values(candidate.layout.padToVoice).filter(v => v.id === mutedId)).toHaveLength(1);
+          expect({ strategy: candidate.metadata.strategy, soundOnPad: candidate.layout.padToVoice[excludedPad]?.id })
+            .toEqual({ strategy: candidate.metadata.strategy, soundOnPad: excludedId });
+          expect(Object.values(candidate.layout.padToVoice).filter(v => v.id === excludedId)).toHaveLength(1);
           expect(candidate.layout.placementLocks).toEqual({});
         }
       });

@@ -229,7 +229,7 @@ export interface CandidateGenerationSummary {
    */
   droppedForLockViolations?: number;
   /**
-   * Placed Sounds with no events in the performance (muted Sounds) that every
+   * Placed Sounds with no events in the performance (Sounds excluded from analysis) that every
    * candidate kept on their pads: pinned for the run, not locked (T15).
    */
   pinnedPlacements?: number;

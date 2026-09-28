@@ -38,6 +38,8 @@ import { getEventTimeline, type EventTimeline } from '../analysis/eventTimeline'
 import { playheadEventIndex } from '../analysis/selectionModel';
 import { type FingerAssignment } from '../../types/executionPlan';
 import { RehearsalAudio, type RehearsalHit } from './rehearsalAudio';
+import { audibleSoundIds, type Audition } from './audibility';
+import { handsByNote, inHandsFilter, type HandsFilter } from './handsFilter';
 import { TransportEngine, transportModeFromStorage, type CountInBeat } from './transportEngine';
 import { loopRegionOf, songSpan, type SongSpan } from './transportMath';
 import { setLiveTransport } from './liveTransport';
@@ -62,6 +64,8 @@ export interface TransportApi {
    * start when the playhead is outside it.
    */
   rehearse(region: { start: number; end: number }, rate: number, countInBars: number): void;
+  /** Plays one Sound now (S4.4: Alt-click a pad, the pad inspector's play button). */
+  audition(soundId: string): void;
   /** The span the timeline draws and the transport plays. */
   song: SongSpan;
   /** The engine; null outside a workspace (component tests). */
@@ -70,12 +74,27 @@ export interface TransportApi {
 
 const TransportContext = createContext<TransportApi | null>(null);
 
-/** Every hit in the performance, in time order. Muted Sounds are silent. */
-export function audibleHits(streams: readonly SoundStream[]): RehearsalHit[] {
+/** Which hand plays each note, and which hand is heard ("Hands: L"). */
+export interface HandsHeard {
+  filter: HandsFilter;
+  /** Each planned note's hand, by eventKey (handsByNote). */
+  byNote: ReadonlyMap<string, string>;
+}
+
+const BOTH_HANDS: HandsHeard = { filter: 'both', byNote: new Map() };
+
+/**
+ * Every hit the transport plays, in time order: every Sound's notes, excluded
+ * from analysis or not, but those Mute and Solo silence (S4.4, audibility.ts)
+ * and, under a Hands filter, the other hand's (a note with no hand is heard).
+ */
+export function audibleHits(streams: readonly SoundStream[], audition: Audition, hands: HandsHeard = BOTH_HANDS): RehearsalHit[] {
+  const audible = audibleSoundIds(streams.map(s => s.id), audition);
   const hits: RehearsalHit[] = [];
   for (const stream of streams) {
-    if (stream.muted) continue;
+    if (!audible.has(stream.id)) continue;
     for (const event of stream.events) {
+      if (hands.filter !== 'both' && !inHandsFilter(hands.byNote.get(event.eventKey), hands.filter)) continue;
       hits.push({ soundId: stream.id, time: event.startTime, velocity: event.velocity });
     }
   }
@@ -120,7 +139,17 @@ export function TransportProvider({ children }: { children: ReactNode }) {
 
   // What there is to play, and how: before Play below, so a first Play has them.
   const song = useMemo(() => songSpan(state.soundStreams, state.tempo), [state.soundStreams, state.tempo]);
-  const hits = useMemo(() => audibleHits(state.soundStreams), [state.soundStreams]);
+  // Under a Hands filter, which hand plays each note is the plan's: the
+  // layout on screen's, as the grid shows it.
+  const assignments = getDisplayedExecutionPlan(state)?.fingerAssignments;
+  const handsHeard = useMemo<HandsHeard>(
+    () => (state.handsFilter === 'both' ? BOTH_HANDS : { filter: state.handsFilter, byNote: handsByNote(assignments) }),
+    [state.handsFilter, assignments],
+  );
+  const hits = useMemo(
+    () => audibleHits(state.soundStreams, { mutedSoundIds: state.mutedSoundIds, soloedSoundIds: state.soloedSoundIds }, handsHeard),
+    [state.soundStreams, state.mutedSoundIds, state.soloedSoundIds, handsHeard],
+  );
   useEffect(() => {
     engine.setMaterial({ hits, tempo: state.tempo, song });
   }, [engine, hits, state.tempo, song]);
@@ -214,9 +243,11 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     if (at < region.start || at >= region.end) seek(region.start);
   }, [engine, dispatch, play, seek]);
 
+  const audition = useCallback((soundId: string) => engine.audition(soundId), [engine]);
+
   const api = useMemo<TransportApi>(
-    () => ({ seek, returnToStart, play, rehearse, song, engine }),
-    [seek, returnToStart, play, rehearse, song, engine],
+    () => ({ seek, returnToStart, play, rehearse, audition, song, engine }),
+    [seek, returnToStart, play, rehearse, audition, song, engine],
   );
   return <TransportContext.Provider value={api}>{children}</TransportContext.Provider>;
 }
@@ -246,6 +277,7 @@ export function useTransport(): TransportApi {
       }
       if (!state.isPlaying) dispatch({ type: 'SET_IS_PLAYING', payload: true });
     },
+    audition: () => {},
     song,
     engine: null,
   };
