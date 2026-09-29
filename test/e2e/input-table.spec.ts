@@ -35,7 +35,9 @@ test.describe('S2.4 · keys (P2-10)', () => {
 
   test('Space in a text field types a space and doesn\'t play', async ({ page, pf }) => {
     await openTestMidi1(page, pf);
-    await page.getByTestId('sound-name').first().dblclick();
+    // Near the name's left edge: a hover shows the pencil and the first click arms the Sound,
+    // and both take width from the name's right end (P4 audit: the Firefox nightly).
+    await page.getByTestId('sound-name').first().dblclick({ position: { x: 4, y: 9 } });
     const field = page.getByTestId('sound-rename-input');
     await field.fill('My');
     await field.press('Space');

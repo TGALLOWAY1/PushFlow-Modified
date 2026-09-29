@@ -47,9 +47,10 @@ async function playUntil(page: Page, pf: PfHandle, time: number) {
   await expect.poll(async () => (await pf.call('status')).currentTime, { timeout: 15_000 }).toBeGreaterThan(time);
 }
 
+/** Stops, and waits until the stop has settled: the stored playhead is where the engine rests (P4 audit: CI 36357496247). */
 async function stop(page: Page, pf: PfHandle) {
   await page.getByTestId('transport-play').click();
-  await expect.poll(async () => (await pf.call('status')).isPlaying).toBe(false);
+  await expect.poll(async () => { const s = await pf.call('status'), t = (await pf.call('transport'))!; return !s.isPlaying && !t.running && s.currentTime === t.position; }).toBe(true);
 }
 
 test.describe('S4.3b · one current moment (T10)', () => {

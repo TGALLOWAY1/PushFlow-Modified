@@ -963,15 +963,18 @@ function PerformanceWorkspaceInner() {
           </div>
         </div>
 
-        {/* Right resize handle */}
-        <div
-          data-testid="right-panel-handle"
-          className="flex-shrink-0 cursor-col-resize group flex items-center justify-center hover:bg-[var(--accent-muted)] transition-colors rounded-sm"
-          style={{ width: RESIZE_HANDLE_WIDTH }}
-          onMouseDown={e => handleResizeStart('right', e)}
-        >
-          <div className="w-px h-8 bg-[var(--border-subtle)] group-hover:bg-[var(--accent-primary)] transition-colors rounded-full" />
-        </div>
+        {/* Right resize handle: like the left one, not while the panel is hidden, or a drag
+            on it would start from width 0 and bring the panel back at its minimum (P4 audit). */}
+        {!rightHidden && (
+          <div
+            data-testid="right-panel-handle"
+            className="flex-shrink-0 cursor-col-resize group flex items-center justify-center hover:bg-[var(--accent-muted)] transition-colors rounded-sm"
+            style={{ width: RESIZE_HANDLE_WIDTH }}
+            onMouseDown={e => handleResizeStart('right', e)}
+          >
+            <div className="w-px h-8 bg-[var(--border-subtle)] group-hover:bg-[var(--accent-primary)] transition-colors rounded-full" />
+          </div>
+        )}
 
         {/* Right Column: Tabbed Costs / Layouts */}
         <div data-testid="right-panel" className="flex-shrink-0 flex flex-col min-h-0 transition-all" style={{ width: shownRightWidth }}>

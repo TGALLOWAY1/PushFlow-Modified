@@ -735,9 +735,10 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
       const prevStrike: PadStrike = overlay?.prev.get(padKey) ?? null;
       // The selected event's strikes, while stopped: lifted out of the grid.
       const isInspected = isNow && !playing;
-      // Struck at the playhead. Selecting an event moves the playhead to it, so
-      // while stopped its pads are struck there too: the inspected look wins.
-      const isActivePlaying = activePadKeys.has(padKey) && !isInspected;
+      // Struck at the playhead. While stopped with an event shown, only its look
+      // counts: the playhead can rest elsewhere (a Stop that keeps a pick, a loop
+      // seek, Return), and pads struck there must not light beside it (P4 audit).
+      const isActivePlaying = activePadKeys.has(padKey) && !isInspected && (playing || !overlay);
       const isBlinking = blinkingPads.has(padKey);
       const isImpossible = impossibleMoveTargets.has(padKey);
       const isDragOver = padKey === dragOverPad;

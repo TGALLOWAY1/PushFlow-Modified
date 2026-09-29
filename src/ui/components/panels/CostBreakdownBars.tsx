@@ -236,7 +236,7 @@ function DifficultySummary({ hardCount, unplayableCount, mediumCount, unplayable
         medium > 0 ? (
           <div className="text-pf-xs text-[var(--text-secondary)]">
             Nothing hard or unplayable, but{' '}
-            {showing('medium-up', `${medium} event${medium !== 1 ? 's' : ''} need attention`, 'text-[var(--text-primary)]')}
+            {showing('medium-up', `${medium} event${medium !== 1 ? 's need' : ' needs'} attention`, 'text-[var(--text-primary)]')}
           </div>
         ) : (
           <div className="text-pf-xs text-green-400">Comfortable throughout</div>

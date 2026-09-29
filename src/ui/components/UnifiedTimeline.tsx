@@ -621,7 +621,9 @@ export function UnifiedTimeline({ highlightedStreamIds, isVisible = true }: Unif
 
                     const isUnplayable = hand === 'Unplayable' && !unplaced;
                     // Hands-separate practice (S4.4): the other hand's notes are dimmed, as on the grid.
-                    const handFiltered = !isRaw && !unplaced && !inHandsFilter(hand, state.handsFilter);
+                    // Only the plan's notes (index ≥ 0): a placeholder pill's hand is a preference,
+                    // and the transport plays a note the plan gives no hand (P4 audit).
+                    const handFiltered = !isRaw && !unplaced && (a.eventIndex ?? 0) >= 0 && !inHandsFilter(hand, state.handsFilter);
                     // Always use sound color for pill background; only override for unplayable
                     const pillBg = isUnplayable ? '#ef4444' : stream.color;
                     const pillOpacity = isSelected ? 1 : handFiltered ? 0.25 : unplaced ? 0.9 : isRaw ? 0.5 : isUnplayable ? 0.6 : 0.85;

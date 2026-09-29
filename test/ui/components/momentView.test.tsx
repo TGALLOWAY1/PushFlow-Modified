@@ -178,6 +178,23 @@ describe('the moment view (T09)', () => {
     expect(within(pad).queryByTestId('moment-prev-outline')).toBeNull();
   });
 
+  it('stopped with an event picked, a playhead resting on another event’s strike lights no pad (P4 audit)', () => {
+    // A Stop that keeps a pick, a loop seek or Return leaves the playhead off the
+    // picked event; the pads struck there used to light in card grey beside it.
+    const timeline = getEventTimeline(analysed);
+    const selected = timeline.events[EVENT]!;
+    mount('prev-now-next', { ...analysed, selectedMomentKey: selected.key });
+    act(() => api.dispatch({ type: 'SET_CURRENT_TIME', payload: timeline.events[EVENT + 1]!.startTime + 0.01 }));
+    expect(api.state.isPlaying).toBe(false);
+    const all = [...document.querySelectorAll<HTMLElement>('[data-testid^="pad-"]')];
+    expect(all.filter(el => /(^|\s)brightness-150(\s|$)/.test(el.className))).toEqual([]);
+    expect(pads('next').length).toBeGreaterThan(0);
+    for (const pad of [...pads('next'), ...pads('prev')]) {
+      expect(pad.style.backgroundColor).not.toBe('var(--bg-card)');
+      expectKeepsItsSound(pad);
+    }
+  });
+
   it('while playing, the playhead drives it: 16 px fingers now and next, and nothing dims (P4-3a)', () => {
     const timeline = getEventTimeline(analysed);
     const selected = timeline.events[EVENT]!;
