@@ -161,7 +161,7 @@ What exists today (file references are current at HEAD 7e57162):
 | Follow / auto-advance | Timeline auto-scrolls near the edge; `useCurrentMoment()` follows the playhead | Reuse the hook; add zoom-level follow |
 | Position readout | `formatBarBeat` ("3.2.1"), `PositionReadout` in `TransportBar.tsx:54` | Reuse |
 | Execution Plan per press, finger, hand, pad, unplayable | `FingerAssignment` (`src/types/executionPlan.ts:158`): `assignedHand 'left'|'right'|'Unplayable'`, `finger`, `row/col`, `eventKey`; `momentOverlay.ts` gives now/next per pad | Reuse |
-| Plan staleness | `checkPlanFreshness` by layout hash; `analysisStale`; `getDisplayedExecutionPlan` | Reuse for 09b |
+| Plan staleness | `checkPlanFreshness` by layout hash; per-layout cache via `useLayoutAnalysis(layout)`; `getDisplayedExecutionPlan` follows the draft or inspected layout; `analysisStale` is global | Reuse `checkPlanFreshness` and `useLayoutAnalysis` against `state.activeLayout` for 09b; not the displayed plan or the global flag |
 | Read-only grid with overlays | `InteractiveGrid` is edit-coupled (1344 lines); `PadGrid` is read-only but has no per-moment overlay props | Extend `PadGrid` or extract pad cells |
 | Keyboard | Table-driven `INPUT_TABLE` + `useInputHandler`; rows exist for Space, Esc, L, `[` `]`, `?`; none for `=` `−` | Add rows |
 | Shortcut sheet, Learn More keyboard tab | Generated from the table | Free |
@@ -175,8 +175,10 @@ What exists today (file references are current at HEAD 7e57162):
 | E2E | `window.__pf` installs under `ProjectProvider`; `status()` has transport fields | Extend `status()` with route level |
 
 Related open work in the tracker: S5.3 will move note times to beats and convert the saved loop
-bounds (follow-ups L1796, L1818). S8.2 puts the Composer on the shared transport. Neither blocks
-P9 if the route stores its positions in bars (see §4.1).
+bounds (follow-ups L1796, L1818). Until then `SET_TEMPO` keeps notes at their seconds and so
+re-bars the material (`projectState.ts:1353-1361`, `songSpan()` in `transportMath.ts:41-56`);
+a bar-based route needs the tempo rule in §4.1, so **S5.3 is the recommended prerequisite of
+S9.1**. S8.2 puts the Composer on the shared transport and does not block P9.
 
 ---
 
@@ -189,9 +191,20 @@ be closed in the canon before code, because the four canon files are the only pl
 ### 4.1 New terms and truths (canon amendment, phase S9.0)
 - **Performance Route**: the project's authored plan of what the performer does over the song.
   One per project, bound to the one canonical timeline, independent of which layout is active.
-- **Section**: a named bar range `[start, end)` with "what you do" text. Sections tile the song
-  without gaps or overlap. Positions are **bars** (0-based, fractional for sub-bar spans) so a
-  tempo change moves nothing and S5.3's beats migration leaves the route untouched.
+- **Section**: a named bar range `[start, end)` with "what you do" text. Sections tile the
+  **song span** without gaps or overlap. Positions are **bars**, counted the way the position
+  readout counts them: bar 0 is time 0, so the readout's "3.1.1" is route bar 2. The song span
+  is the transport's `songSpan()`: from the bar holding the first note to the bar after the
+  last, so leading rest bars are outside the route, exactly as they are outside playback. A
+  route whose span no longer matches the material (notes added before its first bar or after
+  its last) is re-tiled by `normalizeRoute`: the first and last sections stretch to the new
+  edges.
+- **Tempo rule: the route follows the material.** Until S5.3 lands, notes are stored in
+  seconds and `SET_TEMPO` re-bars them, so `SET_TEMPO` must rescale every route bound by
+  `oldTempo / newTempo` and re-tile, keeping each boundary on the note it was on. After S5.3,
+  notes are in beats, a tempo change moves nothing, and that rescale is deleted. The plan
+  therefore makes **S5.3 a prerequisite of S9.1**; if P9 must start first, S9.1 ships the
+  interim rescale and S5.3 removes it (one line each, both covered by P9-1d).
 - **Push mode** and **Mode span**: the Push 3 mode the performer is in over a bar range:
   Session View, Instrument, Drum Rack, FX / Device, Control. Spans tile the song; "unset" is
   allowed and renders as NO MODE SET.
@@ -199,10 +212,15 @@ be closed in the canon before code, because the four canon files are the only pl
   ungrouped Sound. A lane has a kind (`midi` now; `audio` reserved for a later import).
 - **Clip**: a contiguous region where a lane has material. Derived in v1 (see §5.2); authored
   when `.als` import exists.
-- **Performed span**: a (lane, bar range) the performer plays by hand, as opposed to playing
-  from a clip. Default rule (design D5): lanes whose Sounds are on the Layout are performed
-  wherever they have notes **inside a Drum Rack span**. Other modes have no performed lanes
-  until the user marks them in edit mode.
+- **Performed lane** and **Performed span**: a lane the performer plays by hand, and the
+  (lane, bar range) where they do, as opposed to playing from a clip. The seed is the Active
+  Layout, not a lane's name: **a lane is a performed lane when any of its Sounds is placed on
+  the Active Layout** (the Layout is what gives a lane the Drum Rack role; `LaneGroup` has only
+  a name, colour and order). The un-authored default (design D5) is then non-circular:
+  1. default **mode spans** = Drum Rack over every bar where a performed lane has notes
+     (merged, bar-snapped), unset elsewhere;
+  2. default **performed spans** = each performed lane's activity inside those spans.
+  Other modes have no performed lanes until the user marks them in edit mode.
 - **Phrase** and **Action**: sub-divisions of a section used for zoom. **Derived in v1**
   (phrase = 4 bars or the engine's detected phrase length; action = one bar, split at mode
   boundaries). Authored titles ("Capture drums, switch to bass") are a later phase.
@@ -214,10 +232,16 @@ be closed in the canon before code, because the four canon files are the only pl
   into persistent truth**: the route stores only what the user authored or the default rule
   derives from authored data. Phrases, actions, clips, cues and the "done" state are derived at
   render time and never saved.
-- **Execution Plan is derived from a specific layout state**: the pad level reads
-  `getDisplayedExecutionPlan` for the Active Layout only, and shows the 09b neutral state
-  whenever `checkPlanFreshness` fails or `analysisStale` is set. The Route never shows the
-  Working/Test Layout (it is a rehearsal surface for the committed baseline; CANON §3).
+- **Execution Plan is derived from a specific layout state**: the pad level shows the
+  **Active Layout's own plan**, obtained through the per-layout cache with
+  `useLayoutAnalysis(state.activeLayout)` (`src/ui/analysis/layoutAnalysis.ts`, the hook
+  `useInspectedAnalysis` already uses for read-only layouts), and judges freshness with
+  `checkPlanFreshness(plan, state.activeLayout)`. It must **not** read
+  `getDisplayedExecutionPlan`, which follows the draft or an inspected layout
+  (`projectState.ts:679-687`), nor the global `analysisStale` flag, which a draft edit sets
+  while Active is unchanged. The 09b neutral state appears while Active's plan is missing or
+  stale for Active. The Route never shows the Working/Test Layout (it is a rehearsal surface
+  for the committed baseline; CANON §3).
 - **Invariant 4, timeline completeness**: route lanes draw every Sound stream, including
   unplayable strikes (red outline) and excluded Sounds (clip only, no performed overlay).
 - **Invariant 7, no automatic grid layout**: nothing here places or fingers anything.
@@ -249,8 +273,8 @@ be closed in the canon before code, because the four canon files are the only pl
 
 ### 5.1 Reuse as-is
 `TransportProvider` and `useTransportPosition`, `useCurrentMoment`, `momentOverlay.ts`
-(now/next per pad), `getEventTimeline` / `TimelineEvent`, `getDisplayedExecutionPlan` and
-`checkPlanFreshness`, `formatBarBeat` / `formatBarRange` / `barSeconds` / `snapTime`,
+(now/next per pad), `getEventTimeline` / `TimelineEvent`, `useLayoutAnalysis` and
+`checkPlanFreshness`, `songSpan`, `formatBarBeat` / `formatBarRange` / `barSeconds` / `snapTime`,
 `detectSections`, the input registry and `ShortcutSheet`, `Dialog` / `Popover` / `Toast`,
 `FingerChip`, `RoleChip`, `orderSounds`, the migration runner, `useUndoRedo` and `transact`,
 `useAutoSave`, `useAutoAnalysis`, the e2e hook.
@@ -309,14 +333,16 @@ the user from S9.2 onwards.
 - [ ] P9-0b `ModeGlyph` renders five distinct shapes at 9, 10 and 28 px in a happy-dom test.
 
 ### S9.1 · Route truth model and persistence (M, 1–2 PRs)
+**Prerequisite:** S5.3 (notes in beats), or the interim `SET_TEMPO` rescale from §4.1.
 **Goal.** Store the route as a document field with undo, autosave and migration.
 **Deliverables**
 - `src/types/performanceRoute.ts`: `PerformanceRoute { version: 1; sections: RouteSection[];
   modeSpans: ModeSpan[]; performedSpans: PerformedSpan[]; lanes: RouteLaneMeta[] }`;
   `RouteSection { id, name, text, startBar, endBar }`; `ModeSpan { startBar, endBar, mode }`;
   `PerformedSpan { laneId, startBar, endBar }`; `RouteLaneMeta { laneId, kind: 'midi'|'audio',
-  hidden? }`. Invariants: sections and mode spans tile `[0, songBars)`, sorted, no overlap;
-  validated by a pure `normalizeRoute()`.
+  hidden? }`. Invariants: sections and mode spans tile the song span `[firstBar, endBar)` from
+  `songSpan()` in absolute bars, sorted, no overlap; validated and re-tiled by a pure
+  `normalizeRoute(route, songBarRange)`.
 - `ProjectDocument.performanceRoute: PerformanceRoute | null` (`null` = never authored, so the
   empty state derives everything). Entry in `DOCUMENT_FIELD_SET`, `createEmptyProjectState`,
   serializer, `applyPersistedDefaults`, migration 8 → 9 `'performance-route'` (adds `null`),
@@ -326,10 +352,14 @@ the user from S9.2 onwards.
   `ROUTE_SET_PERFORMED`, `ROUTE_ADOPT_DETECTED` (materialises the detected default when the user
   first edits), `ROUTE_CLEAR`. Each bumps `updatedAt`, none touches `analysisStale`. Labels in
   `historyLabels.ts`.
-- `src/ui/route/derive.ts` (pure): `detectedRoute(state)` (silence-split via `detectSections`,
-  bar-snapped, min 4 bars, D5 default mode spans and performed spans), `routeLanes(state)`
-  (groups → lanes), `clipsFor(lane)`, `phrasesFor(section)`, `actionsFor(phrase)`,
-  `modeAt(bar)`, `songBars(state)`.
+- `src/ui/route/derive.ts` (pure): `routeLanes(state)` (groups → lanes, each flagged
+  `performed` when one of its Sounds is placed on `state.activeLayout`), `detectedRoute(state)`
+  (silence-split via `detectSections`, bar-snapped, min 4 bars; default mode spans = Drum Rack
+  where a performed lane has notes; default performed spans = that activity; nothing read from
+  names), `clipsFor(lane)`, `phrasesFor(section)`, `actionsFor(phrase)`, `modeAt(bar)`,
+  `songBarRange(state)` (from `songSpan()`).
+- `SET_TEMPO` (interim, until S5.3): rescale route bounds by `oldTempo / newTempo` and
+  re-tile.
 - `LaneGroup` and Sound deletion keep the route valid (`normalizeRoute` drops orphan
   `performedSpans`); the lane reducer's `withSyncedStreams` calls it.
 **Exit criteria**
@@ -339,7 +369,15 @@ the user from S9.2 onwards.
   `normalizeRoute` rejects overlap, gaps and reversed bounds (unit tests).
 - [ ] P9-1c Every route action is one undo step with a readable label, and none marks the
   analysis stale (`analysisInputsChanged` test).
-- [ ] P9-1d `SET_TEMPO` leaves every route bar position unchanged.
+- [ ] P9-1d A tempo change keeps every section boundary on the note it was on: on a seconds
+  store (before S5.3) 120 → 60 BPM halves the bar numbers and the route still tiles the new
+  song span; on a beats store (after S5.3) the bar numbers are unchanged.
+- [ ] P9-1e On a MIDI file whose first note starts in bar 3, the detected route starts at bar 2
+  (0-based), matching `songSpan().start`, and the position readout and the route agree on
+  every bar number.
+- [ ] P9-1f With TEST MIDI 1 placed, every lane is a performed lane and the default strip is
+  Drum Rack over the bars with notes; with no Sound placed, no lane is performed, the strip is
+  unset everywhere and the cards still show the detected sections.
 
 ### S9.2 · Route page, Song level, read-only (L, 2 PRs)
 **Goal.** The user opens the Route, sees the whole song, plays it and follows the mode badge.
@@ -427,15 +465,20 @@ the user from S9.2 onwards.
   ("Kick L2 · Clap R3 · Hat R2"), NEXT; action strip with progress.
 - D6 fallback: in a non-Drum-Rack span the grid dims and the card explains; the cue lane still
   lists the strikes for Sounds on the Layout.
-- 09b: when `checkPlanFreshness` fails or `analysisStale`, rings and chips go neutral with "–",
-  the staleness chip with "Re-run analysis" appears in the header.
+- `useActiveLayoutAnalysis()`: `useLayoutAnalysis(state.activeLayout)` plus
+  `checkPlanFreshness` against `state.activeLayout`; the only plan source on this page.
+- 09b: while Active's plan is missing or stale for Active, rings and chips go neutral with
+  "–" and the staleness chip with "Re-run analysis" appears in the header. A draft edit in the
+  editor changes nothing here.
 - Entry crossfade 320 ms, Esc 240 ms; `Enter` on an action card with no pad-level plan is
   disabled with a tooltip.
 **Exit criteria**
 - [ ] P9-5a With TEST MIDI 1 placed and analysed, entering the pad level during playback marks
   the next strike's pad with the finger the plan assigns (`__pf.fingering('active')` agrees).
-- [ ] P9-5b After moving a Sound in the editor without re-analysing, the pad level shows "–"
-  chips and the staleness chip; after analysis, fingers return.
+- [ ] P9-5b With a Working/Test Layout that differs from Active, the pad level shows
+  Active's fingering (`__pf.fingering('active')`), never the draft's, and shows no staleness
+  chip although `analysisStale` is true. Opening a project whose cache holds no plan for
+  Active shows "–" chips and the staleness chip until Active's plan is ready.
 - [ ] P9-5c An unplayable strike is a red-outlined chip and never a hand colour.
 - [ ] P9-5d The grid redraws only on cue or strike changes, not every frame
   (follow-up L1798 must not get worse: measure with the React profiler in the PR).
@@ -469,7 +512,8 @@ Per session above. Cross-cutting:
   (detected sections, clips, phrases, actions, `modeAt`), bar↔second conversion, and the
   migration (idempotent, backup written).
 - Persistence: save by `main`, open on the branch, edit, reload.
-- Freshness: route edits never flip `analysisStale`; layout edits do flip the pad level to 09b.
+- Freshness: route edits never flip `analysisStale`; only a change to the Active Layout (or a
+  missing cache entry for it) flips the pad level to 09b; draft edits do not.
 - Playwright specs `route-song`, `route-zoom`, `route-edit`, `route-pad` at both viewports, using
   TEST MIDI 1 through `openTestMidi1` and authoring sections through `__pf.dispatch`.
 - Screenshot baselines generated in CI only (never locally).
@@ -480,9 +524,11 @@ Per session above. Cross-cutting:
 
 ## 8. Risks
 
-- **Second truth about the timeline.** Sections in bars and notes in seconds can disagree after
-  S5.3 or a tempo edit. Mitigation: bars are the route's unit by canon; the only conversion is
-  at render and loop time via `barSeconds(tempo)`.
+- **Second truth about the timeline.** Sections in bars and notes in seconds disagree after a
+  tempo edit until S5.3. Mitigation: S5.3 first, or the interim `SET_TEMPO` rescale (§4.1);
+  after that the only conversion is at render and loop time via `barSeconds(tempo)`.
+- **Leading rest bars.** The route tiles the transport's song span, not from time 0, so a
+  file whose first note is in bar 3 gets a route that starts at bar 3 too. Mitigation: P9-1e.
 - **The dead `sections` field.** Two fields named "section" will confuse agents. Mitigation:
   a follow-up to retire `ProjectState.sections` from the document, the analysis inputs and the
   cache key in its own PR (it is always empty, so behaviour is unchanged).
