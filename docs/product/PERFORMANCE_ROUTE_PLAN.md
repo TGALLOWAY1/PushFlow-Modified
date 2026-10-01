@@ -1,6 +1,7 @@
 # Performance Route · design assessment and implementation plan
 
-**Status:** Proposed · 2026-10-01 · no code yet. This plan reads the `/design` mockup
+**Status:** In progress · S9.0, S9.1 and S9.2 Done (PR #122), S9.3 next; progress is tracked in
+[UI_ROADMAP_PROGRESS.md](UI_ROADMAP_PROGRESS.md#phase-p9--performance-route). This plan reads the `/design` mockup
 *PushFlow Performance Route* (file `PushFlow_Performance_Route.html`, 11 screens plus a component
 sheet, 1600 × 1000, "Night Transit" fixture) as a feature set and lays out how it lands in PushFlow
 without replacing the layout-optimisation workflow. Once a session picks it up, its phases get
@@ -189,6 +190,11 @@ layouts. The Route adds a second kind of durable truth about the same timeline. 
 be closed in the canon before code, because the four canon files are the only planning truth.
 
 ### 4.1 New terms and truths (canon amendment, phase S9.0)
+
+*Landed in S9.0: the definitions now live in
+[PUSHFLOW_TERMINOLOGY.md](../canonical/PUSHFLOW_TERMINOLOGY.md#performance-route-terms) and the
+rules in [PUSHFLOW_CANON.md](../canonical/PUSHFLOW_CANON.md) truth 13, which win where this
+section differs. What follows is the reasoning behind them, kept until this plan leaves the tree.*
 - **Performance Route**: the project's authored plan of what the performer does over the song.
   One per project, bound to the one canonical timeline, independent of which layout is active.
 - **Section**: a named bar range `[start, end)` with "what you do" text. Sections tile the

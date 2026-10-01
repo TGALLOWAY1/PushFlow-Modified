@@ -127,6 +127,28 @@ The Layout Candidates surface presents generated alternatives and helps the user
 - fill the list with cosmetic copies
 - show scores without explaining what changed
 ---
+## 7. Performance Route
+### Purpose
+The Performance Route is the rehearsal and performance-planning view of the whole song.
+It says, bar by bar, what the performer does on Push, and zooms from the song down to the individual pad press, driven by the same transport, `Active Layout` and `Execution Plan` as the editor.
+### Core features
+- whole-song view with sections as cards sized by their bars
+- section name and "what you do" text
+- Push mode strip with a mode badge that follows the playhead
+- arrangement lanes showing clips and where the performer plays by hand
+- unplayable notes stay drawn and marked, never hidden
+- semantic zoom: song, section, phrase, action, pad
+- play, loop the current item, and practice tempo on the shared transport
+- edit mode: name sections, move and split boundaries, set Push modes and performed lanes
+- pad level: the Active Layout on the 8x8 grid with the next pad and finger, and a cue lane
+- a detected route before the user names anything
+### Should not do
+- move a sound, change a finger assignment, or edit any layout
+- show the `Working/Test Layout` or a `Candidate Solution`
+- claim a hand or finger the Active Layout's current execution plan does not give
+- change what the analysis evaluates
+- keep a tempo of its own (practice tempo is a playback rate on the project tempo)
+---
 ## Cross-Surface Rules
 These rules apply across the core objects:
 - the user must always know which layout state is being viewed or analyzed

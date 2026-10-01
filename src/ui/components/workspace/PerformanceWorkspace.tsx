@@ -12,9 +12,9 @@
  * - Right: tabbed Costs/Layouts panel (mirrors left panel structure)
  * - Bottom drawer: the transport bar, then the Timeline | Composer tabs (collapsible)
  *
- * The transport is the workspace's (S4.3a, TransportProvider): it plays
- * whichever drawer tab is shown, and its bar stays in view with the drawer
- * collapsed.
+ * The transport is the project's (S4.3a, TransportProvider, mounted by
+ * ProjectShell so the Performance Route shares it): it plays whichever drawer
+ * tab is shown, and its bar stays in view with the drawer collapsed.
  */
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useReducer, useMemo } from 'react';
@@ -28,13 +28,12 @@ import { useAutoSave } from '../../hooks/useAutoSave';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { exportProjectToFile } from '../../persistence/projectStorage';
 import { useToast } from '../shared/Toast';
-import { useViewSettings, ViewSettingsProvider } from '../../state/viewSettings';
+import { useViewSettings } from '../../state/viewSettings';
 import { getActiveTrace, getDisplayedCandidate, hasTraceOnScreen, isPadLocked, resolveInspectedLayout, type SoundStream } from '../../state/projectState';
 import { liveCompareIds, canCompare } from '../../state/compareSet';
 import { resolvePresetDrop, soundForPresetLane, FOREIGN_PRESET_MESSAGE } from '../../state/presetDrop';
 
 import { WorkspaceToolbar } from './WorkspaceToolbar';
-import { TransportProvider } from '../../audio/TransportProvider';
 import { TransportBar } from './TransportBar';
 import { DrawerToolbarSlot } from '../TimelineToolbar';
 import { VoicePalette } from '../VoicePalette';
@@ -133,17 +132,8 @@ function DrawerPanel({ tab, active, className = '', children }: {
   );
 }
 
+/** The editor. Its view settings and transport come from ProjectShell, shared with the Route. */
 export function PerformanceWorkspace() {
-  return (
-    <ViewSettingsProvider>
-      <TransportProvider>
-        <PerformanceWorkspaceInner />
-      </TransportProvider>
-    </ViewSettingsProvider>
-  );
-}
-
-function PerformanceWorkspaceInner() {
   const { state, dispatch, transact } = useProject();
   const navigate = useNavigate();
   const {
@@ -714,6 +704,7 @@ function PerformanceWorkspaceInner() {
       {/* ─── Top Toolbar ──────────────────────────────────────── */}
       <WorkspaceToolbar
         onNavigateLibrary={() => { saveNow(); navigate('/'); }}
+        onOpenRoute={() => navigate('route')}
         generateFull={handleGenerate}
         cancelGeneration={cancelGeneration}
         generationProgress={generationProgress}

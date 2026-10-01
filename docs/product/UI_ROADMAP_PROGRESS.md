@@ -68,6 +68,34 @@ Recorded 2026-09-23. "Default" means the recommendation in the "Decisions needed
 - Q4: CLAUDE.md invariant 7 now reads "Nothing is placed or fingered without a named user action…".
 - Q7: no change, because "moment" does not become a UI label.
 
+### Performance Route decisions (P9)
+
+Recorded 2026-10-01 by S9.0. "Default" means the default in section 9 of [PERFORMANCE_ROUTE_PLAN.md](PERFORMANCE_ROUTE_PLAN.md#9-decisions-to-record-defaults-apply-unless-the-user-says-otherwise); none was put to the owner, so each stands until the owner says otherwise. R-D1 should be confirmed before S9.2 merges.
+
+**R-D1 · Palette and type: the route's navy with Sofia Sans and DM Mono, or the app's warm charcoal with Inter and Space Grotesk?** Answer: default, so the app's.
+- Resolved: the Route is built on the app's tokens and fonts (the mockup's screen 10), with no new font bundles. The five mode colours are app tokens (`--mode-*` in src/index.css, `mode-*` in Tailwind) at the mockup's values. A restyle of the whole app stays a separate decision.
+- Affects: S9.0 (tokens), S9.2 (every Route surface uses tokens), S9.5 (the pad level).
+
+**R-D2 · Where do the Route's lanes come from?** Answer: default.
+- Resolved: a Sound group is one lane and a Sound in no group is its own lane; a Live Set (.als) import is later. Lanes are `midi`; the stored lane facts have room for `audio`.
+- Affects: S9.1 (routeLanes), S9.2 (the lanes).
+
+**R-D3 · Are phrases and actions authored?** Answer: default, so no.
+- Resolved: derived in v1: phrases of 4 bars from each section's start, and actions of one bar split where the Push mode changes. Authored titles are later.
+- Affects: S9.1 (phrasesFor, actionsFor), S9.3 (zoom).
+
+**R-D4 · Do Push modes or performed lanes change the analysis?** Answer: default, so no.
+- Resolved: the Route is a plan over the full Execution Plan; the solver plans every event. Making mode spans a solver input is a later phase with the Solver Change Checklist and the TEST MIDI 1 gate.
+- Affects: S9.1 (route edits never mark the analysis stale), S9.6 (Learn More states it).
+
+**R-D5 · Where does the Route live?** Answer: default.
+- Resolved: its own page at `/project/:id/route`, sharing the project and transport providers with the editor (a parent project route), not a drawer tab.
+- Affects: S9.2.
+
+**R-D6 · Which layout does the Route show?** Answer: default, so the Active Layout only.
+- Resolved: the Route shows the Active Layout and that layout's own plan from the per-layout cache, judged fresh against the Active Layout; the Working/Test Layout and Candidates stay in the editor and Compare.
+- Affects: S9.1 (performed lanes read the Active Layout), S9.5 (the pad level).
+
 ## 2. Sessions
 
 Sessions are listed in S0.1 … S8.3 order, as in [UI_IMPLEMENTATION_PROMPTS.md](UI_IMPLEMENTATION_PROMPTS.md#session-prompts). Deliverables use the roadmap's headings; the roadmap and the session prompt hold the detail.
@@ -1006,6 +1034,125 @@ Ephemeral actions (EPHEMERAL_ACTIONS) now list only document-touching actions th
 - [ ] **P8-5** If the sequencer basics ship (they do): 1/16 is the default, a velocity edit persists and undoes in one step, and at bar 16 the bar lines align with cells within 1 px at 1366 and 1600. · *PR / verified by:* —
 - [ ] **P8-6** If the keyboard grid ships (it does): all 7 TEST MIDI 1 Sounds can be placed, moved and swapped by keyboard alone, Space still toggles playback with a pad focused, and axe finds 0 critical violations on the grid. Every updated input-table row passes its registry test. · *PR / verified by:* —
 
+### Phase P9 · Performance Route
+
+The plan is [PERFORMANCE_ROUTE_PLAN.md](PERFORMANCE_ROUTE_PLAN.md) (PR #121); the roadmap's [P9](UI_ENHANCEMENT_ROADMAP.md#p9--performance-route-rehearse-the-whole-song-on-push) summarises it. Attach the mockup HTML (*PushFlow Performance Route*, `PushFlow_Performance_Route.html`) to every session from S9.2 on; it is not committed.
+
+#### S9.0 — Canon, decisions and tokens
+
+- **Status:** Done (PR #122, together with S9.1)
+- **Prerequisites:** PR #121 (the plan) merged.
+- **Decisions:** R-D1–R-D6 (recorded above).
+
+**Deliverables**
+- [x] Canon amendment · *PR / verified by:* PR #122. PUSHFLOW_TERMINOLOGY.md "Performance Route Terms" (Performance Route, Section, Push mode, Mode span, Arrangement lane, Clip, Performed lane, Phrase and Action, Cue) and its table; PUSHFLOW_CANON.md truth 13 (authored, bar-based, layout-independent, never an analysis input; shows the Active Layout's own plan); PUSHFLOW_SURFACE_FEATURES.md §7 Performance Route (core features, should not); PUSHFLOW_ENGINE_CONTRACT.md §7 (not an engine input).
+- [x] Decisions and the P9 sections · *PR / verified by:* PR #122. R-D1–R-D6 above; this phase section; P9 in [section 3](#p9); the roadmap's P9 phase and its row in the phase table.
+- [x] Mode tokens and ModeGlyph · *PR / verified by:* PR #122. `--mode-session/-instrument/-drum/-fx/-control` and `--mode-on-fill` in src/index.css, `mode-*` colours in tailwind.config.js; src/ui/components/shared/ModeGlyph.tsx (three clip rows, a keyboard, four round pads, a knob, a diamond), drawn in currentColor. Rendered at 9, 10 and 28 px in Chromium, in colour and in grey, and checked by eye: all five read apart at 9 px without colour.
+- [x] CLAUDE.md · *PR / verified by:* PR #122. The Performance Route in the architecture and the canonical terms, and "Performance Route Rules" under UI Non-Regression Rules.
+
+**Exit criteria**
+- [x] **P9-0a** The four canon files name every term in the plan's §4.1, and no other doc restates them. · *PR / verified by:* PR #122. Every term is defined in PUSHFLOW_TERMINOLOGY.md only; the canon, surface and engine files state the rules, not the definitions. The plan's §4.1 now defers to the canon (the plan leaves the tree with P9), and this file and the roadmap name the terms without defining them.
+- [x] **P9-0b** ModeGlyph renders five distinct shapes at 9, 10 and 28 px in a happy-dom test. · *PR / verified by:* PR #122. test/ui/components/modeGlyph.test.tsx: five distinct shapes at each size, drawn in currentColor only, decorative unless labelled.
+
+#### S9.1 — Route truth model and persistence
+
+- **Status:** Done (PR #122, together with S9.0)
+- **Prerequisites:** S9.0; S5.3, or the interim `SET_TEMPO` rescale. S5.3 is Not started, so the interim rescale ships, and S5.3 deletes it (`rescaleRoute` in src/types/performanceRoute.ts and its call in `SET_TEMPO`).
+- **Decisions:** R-D2, R-D3, R-D4, R-D6.
+
+**Deliverables**
+- [x] Route types and normalizeRoute · *PR / verified by:* PR #122. src/types/performanceRoute.ts: `PerformanceRoute { version, sections, modeSpans, performedSpans, lanes }`, `PUSH_MODES` with labels and abbreviations, `normalizeRoute(route, range, liveLaneIds)` (sections on whole bars and mode spans on sixteenths, both tiling the song; performed spans merged per live lane), `routeProblem`, `paintModeSpan`, `paintPerformed`, `rescaleRoute`, `performanceRouteOf` (the stored shape). test/types/performanceRoute.test.ts.
+- [x] Document field and migration 8 → 9 · *PR / verified by:* PR #122. deserializeProject re-tiles a stored route to the song (the editor opens that state without LOAD_PROJECT), and `performanceRouteOf` keeps each section id once. `ProjectDocument.performanceRoute: PerformanceRoute | null` in DOCUMENT_FIELD_SET, createEmptyProjectState, serializeProject, deserializeProject, applyPersistedDefaults and PersistedProject; MIGRATIONS gains `performance-route` (8 → 9, adds null, keeps a stored route); PERSISTED_SCHEMA_VERSION = 9. The migration, storage and round-trip tests expect the new step.
+- [x] Route actions and undo names · *PR / verified by:* PR #122. src/ui/state/routeReducer.ts, delegated from projectReducer: ROUTE_ADOPT_DETECTED, ROUTE_CLEAR, ROUTE_SET_SECTION_NAME, ROUTE_SET_SECTION_TEXT, ROUTE_MOVE_BOUNDARY, ROUTE_SPLIT_SECTION, ROUTE_MERGE_SECTION, ROUTE_SET_MODE_SPAN, ROUTE_SET_SPAN_ENDS, ROUTE_SET_PERFORMED; each bumps updatedAt and none touches analysisStale; names in historyLabels.ts ("Rename section", "What you do", "Move section boundary", "Split section", "Merge sections", "Push mode", "Push mode span", "Lanes you perform", "Name sections", "Clear route"). The first edit of a project with no route adopts the detected one in the same step. test/ui/state/routeReducer.test.ts.
+- [x] Derivations · *PR / verified by:* PR #122. src/ui/route/derive.ts: `songBarRange` (the transport's songSpan in bars), `routeLanes` (groups and ungrouped Sounds; performed when a Sound in it is on the Active Layout and in the analysis), `clipsFor` (split at 2 or more empty bars), `detectedRoute` (sections from 2 s silences, at least 4 bars; Drum Rack over the performed lanes' clips; each performed lane over its clips), `displayedRoute`, `routeInSync`, `phrasesFor`, `actionsFor`, `modeAt`. test/ui/route/derive.test.ts.
+- [x] Interim `SET_TEMPO` rescale · *PR / verified by:* PR #122. `SET_TEMPO` scales every route bound by newTempo / oldTempo (`rescaleRoute`), then the route re-tiles the new song. Until S5.3.
+- [x] Lane and Sound edits keep the route valid · *PR / verified by:* PR #122. `withRouteInSync` runs after every projectReducer step whose notes, tempo, lanes or groups changed (import, Composer sync, delete, regroup, tempo, load): sections and mode spans re-tile the song's bars and performed spans of lanes that are gone go, in the same undo step. A step that changes none of them leaves the route the same object.
+
+**Exit criteria**
+- [x] **P9-1a** A project saved by `main` (schema 8) loads with `performanceRoute: null`; the 8 → 9 migration is idempotent and backed up. · *PR / verified by:* PR #122. migrations.test.ts "performance-route (schema 8 → 9)": a schema-8 record migrates with only `performanceRoute: null` added and loads with none; a stored route is kept; the backup holds the untouched record, a second run applies nothing and the step on its own output is a no-op. projectStorageMigration.test.ts: loadProjectAsync writes `putBackup v8` then `putProject v9`, and a second load writes nothing. test/e2e/performance-route-migration.spec.ts (PWC): a schema-8 record put in IndexedDB opens in the editor with no route, the `@v8` backup equals it, autosave stores it at schema 9 with `performanceRoute: null`, and a reload backs nothing up.
+- [x] **P9-1b** On TEST MIDI 1, `detectedRoute` yields at least one section tiling the song, and `normalizeRoute` rejects overlap, gaps and reversed bounds. · *PR / verified by:* PR #122. derive.test.ts (TEST MIDI 1: one section, bars 0–8, `routeProblem` null; synthetic silences split at the right bar and never leave a section under 4 bars); performanceRoute.test.ts (`routeProblem` names each defect, and `normalizeRoute`'s output has none).
+- [x] **P9-1c** Every route action is one undo step with a readable label, and none marks the analysis stale. · *PR / verified by:* PR #122. test/ui/state/routeUndo.test.tsx (the real ProjectProvider: each of the nine edits sets its own undo name, one Undo restores the route exactly, Redo re-applies it, nine Undos reach no route, and analysisStale stays false throughout); routeReducer.test.ts (`analysisInputsChanged` is false for every edit, and the Active Layout and voiceConstraints are the same objects).
+- [x] **P9-1d** (seconds store) A tempo change keeps every section boundary on the note it was on: 120 → 60 BPM halves the bar numbers and the route still tiles the new song span. · *PR / verified by:* PR #122. routeReducer.test.ts: sections 0–4–12–16 become 0–2–6–8, the mode spans halve, the Verse still starts on the kick it started on, and on TEST MIDI 1 120 → 90 BPM keeps the route tiling. The beats-store clause is S5.3's (see [section 3](#p9)).
+- [x] **P9-1e** On a MIDI file whose first note starts in bar 3, the detected route starts at bar 2 (0-based), matching `songSpan().start`, and the position readout and the route agree on every bar number. · *PR / verified by:* PR #122. derive.test.ts at 97 BPM: the song span in bars is 2–7, the detected route starts at 2, the readout reads 3.1.1 there, and `formatBarBeat` reads bar b + 1 at every route bar b.
+- [x] **P9-1f** With TEST MIDI 1 placed, every lane is a performed lane and the default strip is Drum Rack over the bars with notes; with no Sound placed, no lane is performed, the strip is unset everywhere and the cards still show the detected sections. · *PR / verified by:* PR #122. derive.test.ts: after Suggest and Promote, 7 lanes, all performed, the strip Drum Rack over bars 0–8 and each lane performed over its own clips; imported only, none performed, one unset span, sections present. A draft placement or an excluded Sound performs nothing.
+
+#### S9.2 — Route page, Song level, read-only
+
+- **Status:** Done (PR #122, after S9.0 and S9.1), built without the mockup and with R-D1 at its default: both prerequisites below are still open, so the owner should confirm R-D1 and compare the page with the mockup before PR #122 merges (see Deviations).
+- **Prerequisites:** S9.1; R-D1 confirmed before it merges; the mockup attached.
+
+**Deliverables**
+- [x] Parent project route and `/project/:id/route` (first commit: providers lifted, no visible change) · *PR / verified by:* PR #122. src/ui/pages/ProjectShell.tsx loads the project and mounts ProjectProvider, LayoutActionsProvider, ViewSettingsProvider and TransportProvider above an Outlet (with a Suspense inside them); the editor is the index child and PerformanceRoutePage the `route` child. The lift's own commit (7ca0eed) ran the full Playwright suite in a worktree: 313 passed, and the 2 failures are the empty-Library screenshots that differ in every cloud container (the same result as on dcf434b before it).
+- [x] Header, zoom rail at the Song level, route band, route line and mode strip with the badge · *PR / verified by:* PR #122. src/ui/route/RouteHeader.tsx, RouteRail.tsx, RouteBand.tsx, ModeStrip.tsx; geometry and card detail in routeGeometry.ts (test/ui/route/routeGeometry.test.ts); the badge flips in 240 ms (none under reduced motion). The editor's toolbar has a Route button; the Route's header has "Editor".
+- [x] Canvas lanes layer (ruler, clips, performed overlays, density, unplayable outlines, playhead) and the lane sidebar · *PR / verified by:* PR #122. RouteLanes.tsx draws the pure laneScene (routeGeometry.ts) with drawLanes.ts in the app's tokens (`--mode-*`, `--route-*`); notes from 50 px a bar, density bars below; the lane names with their kind and a live dot.
+- [x] Route transport bar (Play/Stop, LOOP, PRACTICE TEMPO) and the empty state with NAME SECTIONS · *PR / verified by:* PR #122. RouteTransportBar.tsx: Up (disabled until S9.3), Play/Stop with PLAYING / STOPPED / END OF SONG, LOOP the song (L), PRACTICE TEMPO `[` `]` in BPM and percent, the shortcut hints; the page binds Space, L, `[` `]`, Home, Mod+S and `?` only (test/ui/components/performanceRoutePage.test.tsx: Delete and Mod+Z change nothing there).
+- [x] `window.__pf.status().route`; `zoom-in` and `zoom-out` input rows · *PR / verified by:* PR #122. `route: { level, viewStart, viewSpan, sectionId, editing }` while the page is open, else null (src/ui/route/liveRouteView.ts); `=` and `−` rows reserved with `from: 'P9'`, each with its registry test.
+
+**Exit criteria**
+- [x] **P9-2a** At 1366×768 and 1600×1000 the Route fills the viewport with no horizontal scroll; cards, strip and lanes share the bar axis to the pixel. · *PR / verified by:* PR #122. test/e2e/route-song.spec.ts (PWC): no horizontal or vertical page scroll, the transport bar ends at the viewport's bottom, the route line, cards, strip, ruler and lanes canvas have the same left edge and width to the pixel, and the Verse card, the Instrument span and the ruler's bar 3 sit within 1 px of their bars' x. Geometry, not a screenshot baseline (see Deviations); the spec attaches a screenshot.
+- [x] **P9-2b** Space in the Route starts playback; the badge and the active card follow the playhead; switching to the editor mid-play keeps playing. · *PR / verified by:* PR #122. route-song.spec.ts (PWC): from bar 2.5, Space runs the transport, the Verse card turns active and the Intro done, the badge turns from Drum Rack to Instrument at bar 3 and `status().route.sectionId` is the Verse; "Editor" mid-play shows the editor with the transport still running and moving, and the Route opens again on it. Ran 3 times in a row at both sizes, 36 of 36 passed.
+- [x] **P9-2c** With TEST MIDI 1 and an authored route of 3 sections the cards read the authored text; with no route, the detected sections appear with the placeholder and the CTA. · *PR / verified by:* PR #122. route-song.spec.ts (PWC): three cards with the authored text, which survives a save and a reload of /project/:id/route; after ROUTE_CLEAR, TEST MIDI 1's one detected section with "Add what you do here", "Found from silences" and NAME SECTIONS, disabled with its visible reason. performanceRoutePage.test.tsx: a file with a 4-bar silence shows two detected sections.
+- [x] **P9-2d** An unplayable strike in the plan is drawn with the red outline in its lane. · *PR / verified by:* PR #122. route-song.spec.ts (PWC): twelve Sounds struck together (more than ten fingers), placed and promoted: all 48 strikes are Unplayable in Active's plan, the canvas reports 48 marks and paints red pixels; the suggested TEST MIDI 1 layout paints none. routeGeometry.test.ts: an unplayable note keeps its place and is marked, as a note and as its bar at the density level.
+- [x] **P9-2e** No visible text under 11 px; every control at least 24 px; axe finds 0 serious issues. · *PR / verified by:* PR #122. route-song.spec.ts (PWC): a DOM audit finds no text under 11 px and no button under 24 × 24 px on the Route; axe (wcag2a, wcag2aa) on the page finds no serious or critical violation. It first found the Play button's white on emerald-600 (3.8:1); the Route's is emerald-700 (see Follow-ups for the editor's).
+
+#### S9.3 — Semantic zoom: Section, Phrase, Action
+
+- **Status:** Not started
+- **Prerequisites:** S9.2.
+
+**Deliverables**
+- [ ] View model, 520 ms zoom with the design's easing, reduced motion, LOD crossfades · *PR / verified by:* —
+- [ ] Phrase and action cards; rail marker and captions; follow and LOOP per item; ruler seek and breadcrumb · *PR / verified by:* —
+
+**Exit criteria**
+- [ ] **P9-3a** Enter on the active section card sets the route level to 1 and the span to the section; Esc returns to 0; `=` and `−` step the same path. · *PR / verified by:* —
+- [ ] **P9-3b** At the section level the lanes draw individual strikes and the cards are phrases; at the action level the ruler shows beats and sixteenths. · *PR / verified by:* —
+- [ ] **P9-3c** With LOOP on at the phrase level, playback wraps at the phrase's end. · *PR / verified by:* —
+- [ ] **P9-3d** With reduced motion, zoom completes in one frame. · *PR / verified by:* —
+
+#### S9.4 — Edit mode
+
+- **Status:** Not started
+- **Prerequisites:** S9.2 (S9.3 for the zoom being inert while editing).
+
+**Deliverables**
+- [ ] EDIT ROUTE / DONE EDITING, PAUSED FOR EDITING, name and "what you do" fields · *PR / verified by:* —
+- [ ] Boundary handles, split and merge; mode picker with span ends and "Lanes you perform"; UNDO · *PR / verified by:* —
+
+**Exit criteria**
+- [ ] **P9-4a** Renaming, dragging a boundary, splitting and picking a mode each add exactly one history entry with a readable label, and analysisStale stays false. · *PR / verified by:* —
+- [ ] **P9-4b** After DONE EDITING and a reload, the route is unchanged. · *PR / verified by:* —
+- [ ] **P9-4c** A boundary can't be dragged past its neighbours; sections still tile the song. · *PR / verified by:* —
+- [ ] **P9-4d** The empty-state → edit → named sections flow works with the keyboard only. · *PR / verified by:* —
+
+#### S9.5 — Pad / Control level
+
+- **Status:** Not started
+- **Prerequisites:** S9.3.
+
+**Deliverables**
+- [ ] PadGrid overlay (or a shared PadCell), Push chrome, cue rings and strike flash · *PR / verified by:* —
+- [ ] Cue lane, action header and action strip; the Instrument fallback (D6) · *PR / verified by:* —
+- [ ] `useActiveLayoutAnalysis()` as the page's only plan source; the neutral state and staleness chip · *PR / verified by:* —
+
+**Exit criteria**
+- [ ] **P9-5a** With TEST MIDI 1 placed and analysed, the pad level marks the next strike's pad with the finger the plan assigns. · *PR / verified by:* —
+- [ ] **P9-5b** With a Working/Test Layout that differs from Active, the pad level shows Active's fingering and no staleness chip; with no plan cached for Active it shows "–" chips and the chip until the plan is ready. · *PR / verified by:* —
+- [ ] **P9-5c** An unplayable strike is a red-outlined chip and never a hand colour. · *PR / verified by:* —
+- [ ] **P9-5d** The grid redraws only on cue or strike changes, not every frame (measured with the React profiler). · *PR / verified by:* —
+
+#### S9.6 — Integration and polish
+
+- **Status:** Not started
+- **Prerequisites:** S9.5.
+
+**Deliverables**
+- [ ] Library card route line; Learn More (Overview and Workflow); README and dataflow diagram; screenshots; the P9 audit · *PR / verified by:* —
+
+**Exit criteria**
+- [ ] **P9-6a** The full suite (typecheck, test:run, Playwright at 1366 and 1600) is green. · *PR / verified by:* —
+- [ ] **P9-6b** Every P9 criterion is ticked with its PR and verification. · *PR / verified by:* —
+
 ## 3. Criterion → session
 
 Every exit criterion of every phase in [UI_ENHANCEMENT_ROADMAP.md](UI_ENHANCEMENT_ROADMAP.md#phases), each owned by exactly one session. The rules, in order: the session prompt's "Done when" names it; otherwise it goes to the session whose deliverable it tests; if it needs work from two sessions, it goes to the later one. Tick criteria in section 2, not here.
@@ -1209,6 +1356,40 @@ Basis: **Done when** means the owner's "Done when" names it. **Inferred** means 
 | P8-6 | Keyboard grid: place, move and swap 7 Sounds by keyboard; Space; axe on the grid; input rows | S8.3 | Done when (in scope: S8.3 "do") |
 | P8-7 | Invariant 3 and 8 tests; voice-ID round trips | S8.1 | Done when |
 | P8-8 | The localStorage-pattern migration runs after its backup and is idempotent | S8.1 | Done when |
+
+### P9
+
+Basis **Plan** means [PERFORMANCE_ROUTE_PLAN.md](PERFORMANCE_ROUTE_PLAN.md#6-phase-by-phase-sequence-phase-p9) lists the criterion under that session.
+
+| ID | Criterion | Session | Basis |
+|---|---|---|---|
+| P9-0a | The canon names every route term; no other doc restates them | S9.0 | Plan |
+| P9-0b | ModeGlyph: five distinct shapes at 9, 10 and 28 px | S9.0 | Plan |
+| P9-1a | Schema 8 loads with no route; 8 → 9 idempotent and backed up | S9.1 | Plan |
+| P9-1b | Detected route on TEST MIDI 1 tiles the song; normalizeRoute rejects overlap, gaps, reversed bounds | S9.1 | Plan |
+| P9-1c | Every route action is one labelled undo step and never marks the analysis stale | S9.1 | Plan |
+| P9-1d | A tempo change keeps section boundaries on their notes | S9.1 (seconds store), S5.3 (beats store) | Split: S5.3 replaces the interim rescale and owns the "bar numbers unchanged" clause |
+| P9-1e | First note in bar 3: the route starts at bar 2 (0-based), as the readout does | S9.1 | Plan |
+| P9-1f | Placed: every lane performed, Drum Rack over the notes; unplaced: none, unset | S9.1 | Plan |
+| P9-2a | Fills the viewport at 1366 and 1600; one bar axis | S9.2 | Plan |
+| P9-2b | Space plays; badge and card follow; playback survives the page switch | S9.2 | Plan |
+| P9-2c | Authored text on the cards; detected sections and CTA with no route | S9.2 | Plan |
+| P9-2d | Unplayable strikes outlined red in their lane | S9.2 | Plan |
+| P9-2e | No text under 11 px, targets at least 24 px, axe clean | S9.2 | Plan |
+| P9-3a | Enter, Esc, `=` and `−` move between levels | S9.3 | Plan |
+| P9-3b | Strikes and phrase cards at the section level; beats and sixteenths at the action level | S9.3 | Plan |
+| P9-3c | LOOP at the phrase level wraps at the phrase's end | S9.3 | Plan |
+| P9-3d | Reduced motion: zoom in one frame | S9.3 | Plan |
+| P9-4a | Each edit gesture is one labelled history entry; analysis stays fresh | S9.4 | Plan |
+| P9-4b | The route survives DONE EDITING and a reload | S9.4 | Plan |
+| P9-4c | Boundaries stop at their neighbours; sections still tile | S9.4 | Plan |
+| P9-4d | Empty state → edit → named sections by keyboard alone | S9.4 | Plan |
+| P9-5a | The next strike's pad carries the plan's finger | S9.5 | Plan |
+| P9-5b | Active's fingering only; staleness judged against Active | S9.5 | Plan |
+| P9-5c | Unplayable strikes are red-outlined chips | S9.5 | Plan |
+| P9-5d | The grid redraws only on cue or strike changes | S9.5 | Plan |
+| P9-6a | Full suite green at 1366 and 1600 | S9.6 | Plan |
+| P9-6b | Every P9 criterion ticked with its PR and verification | S9.6 | Plan |
 
 ## 4. Phase audits
 
@@ -1668,6 +1849,17 @@ Record each one with the date, the session, what differs from the roadmap or the
 - **2026-09-28 · S4.4 · With every Sound excluded, the analysis clears.** As on an empty grid, no plan of Sounds that are no longer analysed stays on screen, and Generate is off with "Every Sound is excluded from analysis".
 - **2026-09-28 · S4.4 · The candidate list's pin note names exclusion.** `describePinnedPlacements` (engine text; no logic changed) now reads "1 Sound excluded from analysis kept its pad in every candidate."
 - **2026-09-28 · S4.4 · The Excluded badge is a crossed circle, not a word.** "Excluded" in a pill left an excluded Sound's name no room in the 320 px Sounds panel (at 1366 and 1600), and pushed the row's ⋯ past the panel's edge while the row had focus. The badge is the crossed circle its pads and lane already carry, with "Excluded" as its accessible name and a tooltip, so the name keeps the end that tells it apart.
+- **2026-10-01 · S9.0 + S9.1 · One PR for both sessions.** The plan sizes S9.0 at one PR and S9.1 at one or two; they shipped together because S9.1's types are what S9.0's tokens and glyphs name, and neither changes anything visible. Approved by: none needed (sequencing only); flagged in PR #122.
+- **2026-10-01 · S9.0 · Built without the mockup.** The *PushFlow Performance Route* HTML was not attached to the session. The mode colours are the plan's transcription of it (§2.10); the five glyph shapes are this repo's own (three clip rows, a keyboard, four pads, a knob, a diamond), drawn to read apart at 9 px without colour. S9.2, which must have the mockup, checks the glyphs and colours against it and changes them if they differ. Approved by: none needed; flagged in PR #122.
+- **2026-10-01 · S9.1 · Detected sections come from silences, not the engine's detectSections.** The plan reuses `detectSections` (src/engine/structure/sectionDetection.ts). It measures from one note's start to the next, so at 120 BPM a hit per bar (2 s apart) is a "silence" at every note, and it drops sections under 0.5 s together with their notes: a steady one-hit-per-bar part came back as one section holding only its last two notes. derive.ts scans for 2 s with nothing sounding instead (from the end of the last sounding note), keeping the plan's 2 s threshold and 4-bar minimum. Approved by: none needed (the plan's intent, "Found from silences"); flagged in PR #122.
+- **2026-10-01 · S9.1 · Mode and performed spans sit on sixteenths, not whole bars.** The plan types every route bound as a bar; the design's Control span is "the quarter-beat of presses between modes" and its actions split "at mode boundaries", which needs spans that start inside a bar. Sections stay on whole bars. Approved by: none needed; flagged in PR #122.
+- **2026-10-01 · S9.1 · No `hidden` flag on route lanes.** The plan's `RouteLaneMeta` has `hidden?`; no planned action sets it, and hiding a lane would let the Route drop a Sound's notes, which invariant 4 forbids. The lane facts keep `kind` only. Approved by: none needed; flagged in PR #122.
+- **2026-10-01 · S9.1 · The first edit adopts the detected route itself.** `ROUTE_ADOPT_DETECTED` exists as planned, and any route edit on a project with no route also adopts the detected route before applying the edit, in the same undo step, so S9.4's first edit can't be split into two steps or lose the detected bounds. An edit that would change nothing adopts nothing. Approved by: none needed; flagged in PR #122.
+- **2026-10-01 · S9.1 · The route is kept in sync after every step, not only in the lanes reducer.** The plan has the lanes reducer's `withSyncedStreams` call `normalizeRoute`. Tempo changes, the Composer's notes-only sync, regrouping (which doesn't pass through `withSyncedStreams`) and loading also move the song or the lanes, so `projectReducer` runs `withRouteInSync` after every step whose notes, tempo, lanes or groups changed. Approved by: none needed; flagged in PR #122.
+- **2026-10-01 · S9.2 · Built without the mockup, R-D1 at its default.** The session was asked to proceed with the mockup still not attached, so the page follows the plan's written reading of it (§2): layout, sizes, states and words are this repo's, on the app's tokens and fonts (R-D1's default). Before PR #122 merges, the owner should confirm R-D1 and compare the page with the mockup; differences become S9.2 fixes or S9.3 work. Approved by: the owner's "proceed with the next stage"; flagged in PR #122.
+- **2026-10-01 · S9.2 · P9-2a is checked by geometry, not a screenshot baseline.** Baselines are generated only in CI (CLAUDE.md) and the page animates with the transport; the spec measures every row's left edge and width and three bars' positions instead, which is what "to the pixel" asks, and attaches a screenshot for review. Approved by: none needed; flagged in PR #122.
+- **2026-10-01 · S9.2 · The Route binds its own keys and doesn't run the editor's analysis.** The plan has the page call the editor's useKeyboardShortcuts and useAutoAnalysis. The first also binds Delete (takes a Sound off a pad), Mod+Z, arrows and Esc on the event selection, which would let the read-only Route change layouts; the page binds Space, L, `[` `]`, Home, Mod+S and `?` itself. The second analyses the draft, which the Route never shows; it reads the Active Layout's own plan through the per-layout cache (useActiveLayoutPlan, the S9.5 source brought forward for P9-2d). Approved by: none needed (the canon's "the Route never writes"); flagged in PR #122.
+- **2026-10-01 · S9.2 · Notes at the Song level when the bars are wide enough.** The plan puts the switch from density bars to notes (at 50 px a bar) in S9.3; it is one rule on the zoom span, so S9.2 has it, and a short song (TEST MIDI 1's 8 bars) draws notes at the Song level. Approved by: none needed; flagged in PR #122.
 
 ## 6. Follow-ups
 
@@ -1830,3 +2022,8 @@ Record each one with the date, the session that found it, what and where (file:l
 - **2026-09-28 · P4 audit · The mute-as-exclusion notice on foreign records.** Two edges the migration's own rule reaches only with hand-edited or imported records, never with ones the app wrote (every pre-S4.4 writer set a lane's `isMuted` and `isSolo` together with its stream's `muted`): a stream stored `muted: true` while its lane is neither muted, soloed-out nor hidden is named by the notice but analysed after the editor's mount sync rebuilds the streams from the lanes (1,521 of 4,096 synthetic records; 0 of the 512 shaped as the app stored them); and a lane with neither key under another lane's solo is skipped by the step where the old rule counted it silent. The analysis itself is right in every case. Candidate one-liners: take a stream's verdict from its lane when lanes exist (`migrations.ts:197`), and apply the solo rule to keyless lanes (`:184`). Belongs to: S5.4 (the next stored-format session).
 - **2026-09-28 · P4 audit · The first open of a migrated project re-saves it.** By design (S4.4: the editor shows the notice once and saves the project without it): `DISMISS_NOTICE` bumps `updatedAt`, so the save status reads "unsaved" while the toast is up, autosave writes 2 s later, and a reload inside that window prompts "Leave site?" and, if left, shows the notice once more (measured 345–517 ms after the toast at both sizes; the pagehide flush's IndexedDB write didn't land). The one exception to S2.3's "opening a project no longer re-saves it"; the Library orders by opened and created dates, so nothing moves there. In development, React StrictMode's double load also runs the migration twice concurrently (two puts under the one backup key, byte-identical; production runs it once). Belongs to: S5.4 (saves that can't silently collide), which could dismiss the notice without an `updatedAt` change.
 - **2026-09-28 · P4 audit · The old frame-driven audio path stays until S8.2.** S4.3a's follow-up offered this audit its deletion once a release had shipped on the scheduler without a report against it. P4-5b's finding (above) is such a report, and the deletion touches `transportEngine.ts` (`transportModeFromStorage`, `playFrame`, the mode plumbing), `rehearsalAudio.ts` (`playWindow`, `playMetronomeWindow`, `reset`, the `fired` set), `TransportProvider.tsx` and a `transportEngine.test.ts` case, more than a one-line change. Belongs to: S8.2, as the follow-up already allows.
+- **2026-10-01 · S9.1 · P9-2c's "five detected sections" needs a file with silences.** TEST MIDI 1 has no 2 s silence (its 8 bars play throughout), so its detected route is one section; the plan's "five-bar-snapped detected sections" describes the mockup's fixture. S9.2's spec for P9-2c should build its no-route case on a project with silences (test/helpers/routeProject.ts makes one) or assert "the detected sections", not five. Belongs to: S9.2.
+- **2026-10-01 · S9.1 · Two fields called "sections".** `ProjectState.sections` (engine-detected, in seconds, always `[]`, and an analysis input in analysisInputs.ts and the analysis cache key) sits beside `performanceRoute.sections`. Retire the old one from the document, the analysis inputs and the cache key in its own PR; it is always empty, so nothing changes. The engine's `detectSections`, which only fills it, measures gaps from start to start (see Deviations, S9.1) and has no caller in src. Belongs to: a cleanup PR before S9.2 merges, or S9.6.
+- **2026-10-01 · S9.1 · `rescaleRoute` is interim.** S5.3 (notes in beats) deletes `rescaleRoute` and its call in `SET_TEMPO`, then adds P9-1d's beats-store clause: a tempo change leaves every route bar number as it was. Belongs to: S5.3.
+- **2026-10-01 · S9.2 · The editor's Play button is under AA contrast.** White on emerald-600 (`TransportBar.tsx`) is 3.8:1 for 12 px bold text; axe flagged the same style on the Route, whose button is now emerald-700 (5.5:1, darker on hover). Belongs to: S7.2 (tokens and readability sweeps; P7-3).
+- **2026-10-01 · S9.2 · Practice speeds of 0.9 and 0.95.** The plan (§4.3) suggests adding them for the Route's PRACTICE TEMPO; they would change the editor's `[` `]` steps too, so the Route uses the app's steps (0.25–1.5) for now. Belongs to: an owner decision; S9.3 at the earliest.

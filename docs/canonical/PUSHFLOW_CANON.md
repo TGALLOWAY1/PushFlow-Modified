@@ -86,6 +86,16 @@ It should help the user understand:
 - what transition comes next
 - what local factor is causing difficulty
 Event analysis is not a separate truth model. It is a local explanation layer for the same project, timeline, and layout states.
+### 13. The Performance Route is the authored rehearsal plan
+A project may carry one `Performance Route`: what the performer does over the song, section by section.
+It is project truth that the user authors, saved with the project, and each change is one undo step.
+It is:
+- bar-based: sections and mode spans tile the song's bars and move with the notes
+- layout-independent: it is the same whichever layout is active
+- never an analysis input: editing it never moves a sound, changes a finger assignment, or makes an analysis stale
+The Route shows the `Active Layout` and that layout's own `Execution Plan`, never the `Working/Test Layout` or a `Candidate Solution`. When the Active Layout's plan is missing or out of date, it shows timing without claiming a hand or finger.
+Until the user edits it, the Route shows a detected route (sections found from silences, Drum Rack wherever a placed lane plays), which is derived and not saved.
+Phrases, actions, clips, cues and what has been played are derived when shown and are never saved.
 ---
 ## Workflow Spine
 The canonical workflow is:

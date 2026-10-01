@@ -146,6 +146,7 @@ src/
 │   ├── engineConfig.ts            # EngineConfiguration, AnnealingConfig, OptimizationMode
 │   ├── performanceEvent.ts        # PerformanceEvent
 │   ├── performanceStructure.ts    # Performance, PerformanceEvent
+│   ├── performanceRoute.ts        # PerformanceRoute (sections, Push-mode spans, performed spans), normalizeRoute
 │   ├── padGrid.ts                 # Grid model
 │   └── fingerModel.ts             # Finger/biomechanical types
 ├── ui/
@@ -159,9 +160,12 @@ src/
 │   │   ├── composer/              # Composer preset library, cards, inspector
 │   │   ├── loop-editor/           # LoopGridCanvas, LoopLaneRow, LoopLaneSidebar
 │   │   └── Homepage/              # Library: ProjectHero, ProjectCard, LibraryStatsCard, QuickActionsCard
-│   ├── pages/                     # ProjectLibraryPage, ProjectEditorPage, OptimizerDebugPage, ConstraintValidatorPage, TemporalEvaluatorPage
+│   ├── pages/                     # ProjectLibraryPage, ProjectShell (a project's pages share its providers and transport),
+│   │                              #   ProjectEditorPage, PerformanceRoutePage, OptimizerDebugPage, ConstraintValidatorPage, TemporalEvaluatorPage
 │   ├── state/                     # ProjectContext, projectState, reducers, undo/redo, lifecycle actions
 │   ├── analysis/                  # Scoring worker + client, per-layout analysis cache, selection model, factor metadata
+│   ├── route/                     # Performance Route (P9): derivations (lanes, clips, detected route, phrases, actions),
+│   │                              #   the bar-axis geometry and lane scene, the canvas painter, and the page's components
 │   ├── persistence/               # projectStorage + indexedDbStore (IndexedDB), loopStorage and composerPresetStorage (localStorage), migrations
 │   ├── hooks/                     # useAutoAnalysis, useAutoSave, useKeyboardShortcuts, useLaneImport, useLayoutActions
 │   ├── audio/                     # Rehearsal audio
@@ -202,6 +206,7 @@ Key test invariants:
 |-------|------|---------|
 | `/` | ProjectLibraryPage | Project list and management |
 | `/project/:id` | ProjectEditorPage | Main workspace (full viewport) |
+| `/project/:id/route` | PerformanceRoutePage | Performance Route: what you do on Push over the song (read-only until S9.4) |
 | `/optimizer-debug` | OptimizerDebugPage | Solver debugging |
 | `/validator` | ConstraintValidatorPage | Constraint validation |
 | `/temporal-evaluator` | TemporalEvaluatorPage | Temporal cost evaluation |
@@ -251,6 +256,7 @@ Use these terms precisely:
 - `Pad`
 - `Grid Position`
 - `Sound identity`
+- `Performance Route` (and its terms: `Section`, `Push mode`, `Mode span`, `Arrangement lane`, `Clip`, `Performed lane`, `Cue`; see PUSHFLOW_TERMINOLOGY.md)
 
 Additional rules:
 - `Project` is the top-level container.
@@ -564,6 +570,11 @@ These rules protect against recurring UI regressions. Violating them requires ex
 
 ### Project Library Rules
 - Project cards in the library must display actual project data (BPM, sound count, bar length, event count, created date, last visited date). Mock/placeholder data must not appear on project cards.
+
+### Performance Route Rules
+- The Performance Route never writes to layouts, placement locks or voice constraints, and no route edit marks the analysis stale (it is not an analysis input; decision R-D4).
+- The Route shows the Active Layout and that layout's own Execution Plan only, never the Working/Test Layout or a Candidate Solution; with no current plan for Active it claims no hand or finger.
+- Route sections and mode spans always tile the song's bars (`normalizeRoute`); the route is kept in sync after any step that changes the notes, the tempo or the lanes.
 
 ### Sound Grouping Rules
 - When groups exist, ungrouped sounds must be labeled "Ungrouped", not "On Grid" (which is confusing since grouped sounds are also on the grid).
