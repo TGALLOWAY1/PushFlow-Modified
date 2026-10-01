@@ -160,10 +160,12 @@ src/
 │   │   ├── composer/              # Composer preset library, cards, inspector
 │   │   ├── loop-editor/           # LoopGridCanvas, LoopLaneRow, LoopLaneSidebar
 │   │   └── Homepage/              # Library: ProjectHero, ProjectCard, LibraryStatsCard, QuickActionsCard
-│   ├── pages/                     # ProjectLibraryPage, ProjectEditorPage, OptimizerDebugPage, ConstraintValidatorPage, TemporalEvaluatorPage
+│   ├── pages/                     # ProjectLibraryPage, ProjectShell (a project's pages share its providers and transport),
+│   │                              #   ProjectEditorPage, PerformanceRoutePage, OptimizerDebugPage, ConstraintValidatorPage, TemporalEvaluatorPage
 │   ├── state/                     # ProjectContext, projectState, reducers, undo/redo, lifecycle actions
 │   ├── analysis/                  # Scoring worker + client, per-layout analysis cache, selection model, factor metadata
-│   ├── route/                     # Performance Route derivations (P9): lanes, clips, detected route, phrases, actions
+│   ├── route/                     # Performance Route (P9): derivations (lanes, clips, detected route, phrases, actions),
+│   │                              #   the bar-axis geometry and lane scene, the canvas painter, and the page's components
 │   ├── persistence/               # projectStorage + indexedDbStore (IndexedDB), loopStorage and composerPresetStorage (localStorage), migrations
 │   ├── hooks/                     # useAutoAnalysis, useAutoSave, useKeyboardShortcuts, useLaneImport, useLayoutActions
 │   ├── audio/                     # Rehearsal audio
@@ -204,6 +206,7 @@ Key test invariants:
 |-------|------|---------|
 | `/` | ProjectLibraryPage | Project list and management |
 | `/project/:id` | ProjectEditorPage | Main workspace (full viewport) |
+| `/project/:id/route` | PerformanceRoutePage | Performance Route: what you do on Push over the song (read-only until S9.4) |
 | `/optimizer-debug` | OptimizerDebugPage | Solver debugging |
 | `/validator` | ConstraintValidatorPage | Constraint validation |
 | `/temporal-evaluator` | TemporalEvaluatorPage | Temporal cost evaluation |

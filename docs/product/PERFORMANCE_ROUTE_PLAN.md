@@ -1,6 +1,6 @@
 # Performance Route · design assessment and implementation plan
 
-**Status:** In progress · S9.0 and S9.1 Done (PR #122), S9.2 next; progress is tracked in
+**Status:** In progress · S9.0, S9.1 and S9.2 Done (PR #122), S9.3 next; progress is tracked in
 [UI_ROADMAP_PROGRESS.md](UI_ROADMAP_PROGRESS.md#phase-p9--performance-route). This plan reads the `/design` mockup
 *PushFlow Performance Route* (file `PushFlow_Performance_Route.html`, 11 screens plus a component
 sheet, 1600 × 1000, "Night Transit" fixture) as a feature set and lays out how it lands in PushFlow
