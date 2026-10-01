@@ -18,6 +18,9 @@ const ProjectShell = lazy(() =>
 const ProjectEditorPage = lazy(() =>
   import('./pages/ProjectEditorPage').then(m => ({ default: m.ProjectEditorPage })),
 );
+const PerformanceRoutePage = lazy(() =>
+  import('./pages/PerformanceRoutePage').then(m => ({ default: m.PerformanceRoutePage })),
+);
 const OptimizerDebugPage = lazy(() =>
   import('./pages/OptimizerDebugPage').then(m => ({ default: m.OptimizerDebugPage })),
 );
@@ -50,6 +53,7 @@ export function App() {
               </div>
             }>
               <Route index element={<ProjectEditorPage />} />
+              <Route path="route" element={<PerformanceRoutePage />} />
             </Route>
             {/* Non-editor routes: scrollable page with padding */}
             <Route path="/" element={

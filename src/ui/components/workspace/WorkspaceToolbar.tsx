@@ -20,7 +20,7 @@ import { useViewSettings } from '../../state/viewSettings';
 import { DisabledReason, useDisabledReason } from '../shared/DisabledReason';
 import { Popover } from '../shared/Overlay';
 import { useToast } from '../shared/Toast';
-import { Loader2, MoreHorizontal } from 'lucide-react';
+import { Loader2, MoreHorizontal, Route as RouteIcon } from 'lucide-react';
 import { LeaveProjectButton } from './LeaveProjectButton';
 import { type GenerationRunRecord } from '../../state/projectState';
 import {
@@ -33,6 +33,8 @@ import {
 
 interface WorkspaceToolbarProps {
   onNavigateLibrary: () => void;
+  /** Opens the Performance Route for this project (S9.2). */
+  onOpenRoute: () => void;
   generateFull: (mode?: GenerationMode) => Promise<unknown>;
   /** Cancels the Generate in flight (T35). */
   cancelGeneration?: () => void;
@@ -57,6 +59,7 @@ interface WorkspaceToolbarProps {
 
 export function WorkspaceToolbar({
   onNavigateLibrary,
+  onOpenRoute,
   generateFull,
   cancelGeneration,
   generationProgress,
@@ -357,6 +360,18 @@ export function WorkspaceToolbar({
         </button>
         <DisabledReason id={generateReason.id} reason={canGenerate ? null : generateDisabledReason} className="whitespace-nowrap" />
       </div>
+
+      {/* The Performance Route: the whole song, what you do on Push (S9.2) */}
+      <button
+        type="button"
+        data-testid="toolbar-route"
+        className="pf-btn pf-btn-subtle text-pf-sm flex items-center gap-1.5"
+        onClick={onOpenRoute}
+        title="Performance Route: what you do on Push, section by section, with the Active Layout"
+      >
+        <RouteIcon size={14} aria-hidden="true" />
+        Route
+      </button>
 
       {/* Compare */}
       <button

@@ -704,6 +704,7 @@ export function PerformanceWorkspace() {
       {/* ─── Top Toolbar ──────────────────────────────────────── */}
       <WorkspaceToolbar
         onNavigateLibrary={() => { saveNow(); navigate('/'); }}
+        onOpenRoute={() => navigate('route')}
         generateFull={handleGenerate}
         cancelGeneration={cancelGeneration}
         generationProgress={generationProgress}

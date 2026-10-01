@@ -42,6 +42,8 @@ import {
   PAD_TAKEN_MESSAGE,
   boundRows,
   displayInput,
+  inputRow,
+  isKeyInput,
   padClickMeaning,
   type InputRowId,
 } from '../../../src/ui/input/inputTable';
@@ -376,6 +378,19 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     mount(await suggestedTestMidi1());
     fireEvent.contextMenu(pad(occupiedPad()), { clientX: 100, clientY: 100 });
     expect(screen.getByRole('menu')).toBeTruthy();
+  },
+
+  'zoom-in': async () => {
+    // Reserved for the Route's semantic zoom (S9.3): listed, not bound, not in the sheet.
+    expect(boundRows().map(r => r.id)).not.toContain('zoom-in');
+    expect(isKeyInput('=')).toBe(true);
+    expect(inputRow('zoom-in').keys!({ key: '=', metaKey: false, ctrlKey: false, shiftKey: false, altKey: false })).toBe(true);
+  },
+
+  'zoom-out': async () => {
+    expect(boundRows().map(r => r.id)).not.toContain('zoom-out');
+    expect(isKeyInput('−')).toBe(true);
+    expect(inputRow('zoom-out').keys!({ key: '-', metaKey: false, ctrlKey: false, shiftKey: false, altKey: false })).toBe(true);
   },
 
   'pad-enter': async () => {
