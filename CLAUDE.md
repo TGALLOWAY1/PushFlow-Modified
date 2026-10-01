@@ -146,6 +146,7 @@ src/
 │   ├── engineConfig.ts            # EngineConfiguration, AnnealingConfig, OptimizationMode
 │   ├── performanceEvent.ts        # PerformanceEvent
 │   ├── performanceStructure.ts    # Performance, PerformanceEvent
+│   ├── performanceRoute.ts        # PerformanceRoute (sections, Push-mode spans, performed spans), normalizeRoute
 │   ├── padGrid.ts                 # Grid model
 │   └── fingerModel.ts             # Finger/biomechanical types
 ├── ui/
@@ -162,6 +163,7 @@ src/
 │   ├── pages/                     # ProjectLibraryPage, ProjectEditorPage, OptimizerDebugPage, ConstraintValidatorPage, TemporalEvaluatorPage
 │   ├── state/                     # ProjectContext, projectState, reducers, undo/redo, lifecycle actions
 │   ├── analysis/                  # Scoring worker + client, per-layout analysis cache, selection model, factor metadata
+│   ├── route/                     # Performance Route derivations (P9): lanes, clips, detected route, phrases, actions
 │   ├── persistence/               # projectStorage + indexedDbStore (IndexedDB), loopStorage and composerPresetStorage (localStorage), migrations
 │   ├── hooks/                     # useAutoAnalysis, useAutoSave, useKeyboardShortcuts, useLaneImport, useLayoutActions
 │   ├── audio/                     # Rehearsal audio
@@ -251,6 +253,7 @@ Use these terms precisely:
 - `Pad`
 - `Grid Position`
 - `Sound identity`
+- `Performance Route` (and its terms: `Section`, `Push mode`, `Mode span`, `Arrangement lane`, `Clip`, `Performed lane`, `Cue`; see PUSHFLOW_TERMINOLOGY.md)
 
 Additional rules:
 - `Project` is the top-level container.
@@ -564,6 +567,11 @@ These rules protect against recurring UI regressions. Violating them requires ex
 
 ### Project Library Rules
 - Project cards in the library must display actual project data (BPM, sound count, bar length, event count, created date, last visited date). Mock/placeholder data must not appear on project cards.
+
+### Performance Route Rules
+- The Performance Route never writes to layouts, placement locks or voice constraints, and no route edit marks the analysis stale (it is not an analysis input; decision R-D4).
+- The Route shows the Active Layout and that layout's own Execution Plan only, never the Working/Test Layout or a Candidate Solution; with no current plan for Active it claims no hand or finger.
+- Route sections and mode spans always tile the song's bars (`normalizeRoute`); the route is kept in sync after any step that changes the notes, the tempo or the lanes.
 
 ### Sound Grouping Rules
 - When groups exist, ungrouped sounds must be labeled "Ungrouped", not "On Grid" (which is confusing since grouped sounds are also on the grid).

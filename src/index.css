@@ -129,6 +129,17 @@
   --hand-left: #0088ff;
   --hand-right: #ff4400;
 
+  /* --- Push modes (PUSH_MODES, src/types/performanceRoute.ts): the
+         Performance Route's mode strip, badge and pills; always paired with
+         the mode's ModeGlyph, since shape carries the meaning, not colour --- */
+  --mode-session: #34d39a;
+  --mode-instrument: #5e9eff;
+  --mode-drum: #ffb33f;
+  --mode-fx: #ee6bd0;
+  --mode-control: #c7d0dc;
+  /* Text and glyphs on a mode-coloured fill */
+  --mode-on-fill: #0f141e;
+
   /* --- Event difficulty (eventDifficulty, src/ui/analysis/eventDifficulty.ts):
          the timeline's pill markers and the Events list's badges --- */
   --difficulty-medium: #a3a3a3;
