@@ -25,6 +25,8 @@ import { type AnnealingIterationSnapshot, type ExecutionPlanResult } from '../..
 import { type Section, type VoiceProfile } from '../../types/performanceStructure';
 import { type PerformanceLane, type LaneGroup, type SourceFile, cleanShortLabel } from '../../types/performanceLane';
 import { type LaneAction, isLaneAction, lanesReducer } from './lanesReducer';
+import { type PerformanceRoute, rescaleRoute } from '../../types/performanceRoute';
+import { type RouteAction, isRouteAction, routeReducer, withRouteInSync } from './routeReducer';
 import { type CostToggles, ALL_COSTS_ENABLED } from '../../types/costToggles';
 import { type PerformanceCostBreakdown } from '../../types/costBreakdown';
 import {
@@ -158,6 +160,13 @@ export interface ProjectDocument {
   performanceLanes: PerformanceLane[];
   laneGroups: LaneGroup[];
   sourceFiles: SourceFile[];
+
+  /**
+   * The Performance Route (P9): what the performer does over the song,
+   * authored by the user. Null until the first route edit; the Route then
+   * shows the detected one (ui/route/derive.ts). Never an analysis input.
+   */
+  performanceRoute: PerformanceRoute | null;
 }
 
 /**
@@ -812,7 +821,10 @@ export type ProjectAction =
   | { type: 'SET_HANDS_FILTER'; payload: HandsFilter }
 
   // Performance Lanes (delegated to lanesReducer)
-  | LaneAction;
+  | LaneAction
+
+  // Performance Route (delegated to routeReducer)
+  | RouteAction;
 
 /**
  * Actions that never record an undo step of their own.
@@ -1287,13 +1299,16 @@ function withExcluded<T extends { excluded?: boolean }>(item: T, excluded: boole
 // ============================================================================
 
 export function projectReducer(state: ProjectState, action: ProjectAction): ProjectState {
-  return withTraceOnScreen(state, reduceProject(state, action));
+  return withTraceOnScreen(state, withRouteInSync(state, reduceProject(state, action)));
 }
 
 function reduceProject(state: ProjectState, action: ProjectAction): ProjectState {
   // Delegate lane/group actions to the dedicated lanes reducer
   if (isLaneAction(action.type)) {
     return lanesReducer(state, action as LaneAction);
+  }
+  if (isRouteAction(action.type)) {
+    return routeReducer(state, action as RouteAction);
   }
 
   // Looking never writes (S3.2): no layout edit while the grid shows a layout
@@ -1357,6 +1372,11 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
         updatedAt: new Date().toISOString(),
         tempo: bpm,
         analysisStale: true,
+        // Notes keep their seconds, so they move to other bars; the route's
+        // bounds move with them (until S5.3 stores notes in beats).
+        performanceRoute: state.performanceRoute && bpm !== state.tempo && state.tempo > 0
+          ? rescaleRoute(state.performanceRoute, bpm / state.tempo)
+          : state.performanceRoute,
       };
     }
 
@@ -2341,6 +2361,7 @@ export function createEmptyProjectState(): ProjectState {
     performanceLanes: [],
     laneGroups: [],
     sourceFiles: [],
+    performanceRoute: null,
     selectedMomentKey: null,
     selectedNoteKey: null,
     selectionFromPause: false,
