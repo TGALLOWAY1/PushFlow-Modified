@@ -192,6 +192,7 @@ Primary Promote only in the state bar; rows and Compare keep a secondary Promote
 | P6 · One cost story and baseline-aware compare (spine steps 5-9) | 4-5 weeks, ~10 PRs (L). | [T21](UI_ISSUE_REGISTER.md#t21) (headline presentation), [T26](UI_ISSUE_REGISTER.md#t26), [T34](UI_ISSUE_REGISTER.md#t34), [T36](UI_ISSUE_REGISTER.md#t36), [T33](UI_ISSUE_REGISTER.md#t33), [T40](UI_ISSUE_REGISTER.md#t40), [T41](UI_ISSUE_REGISTER.md#t41), [T39](UI_ISSUE_REGISTER.md#t39) (custom weighting) |
 | P7 · Workspace by job and the accessibility sweep (all spine steps) | 3-4 weeks, ~8 PRs (M). Cuttable for a solo cut: the flag rollout (use a branch instead). | [T38](UI_ISSUE_REGISTER.md#t38), [T42](UI_ISSUE_REGISTER.md#t42) (raw-hex sweep), [T63](UI_ISSUE_REGISTER.md#t63) (sweep), [T64](UI_ISSUE_REGISTER.md#t64) (rest) |
 | P8 · The Composer joins the project, plus full keyboard placement (spine step 2 side entrance) | 5-7 weeks, ~12 PRs (L). Can overlap with P7. Cuttable for a solo cut: T70 sequencer basics and the full T62 keyboard grid. | [T67](UI_ISSUE_REGISTER.md#t67), [T66](UI_ISSUE_REGISTER.md#t66), [T68](UI_ISSUE_REGISTER.md#t68), [T65](UI_ISSUE_REGISTER.md#t65) (timeline insertion), [T70](UI_ISSUE_REGISTER.md#t70), [T69](UI_ISSUE_REGISTER.md#t69), [T60](UI_ISSUE_REGISTER.md#t60) (Composer on the shared transport), [T62](UI_ISSUE_REGISTER.md#t62) |
+| P9 · Performance Route: rehearse the whole song on Push | ~7 sessions, ~10 PRs (L). Added 2026-10-01 from [PERFORMANCE_ROUTE_PLAN.md](PERFORMANCE_ROUTE_PLAN.md); after P4 (transport) and S5.3 (notes in beats, or an interim tempo rescale). | Performance Route (no T-number: a new surface, not a critique finding) |
 
 ### P0 · Test and CI foundation (makes every later gate real)
 
@@ -1083,6 +1084,37 @@ The P1a Composer slice already removed the live invariant-6 break, the rename re
 - The data migration from localStorage patterns needs idempotency tests and a backup.
 - Roving-tabindex focus handling may fight the drag-and-drop handlers.
 - This phase has the most L items. Ship each sub-flow (persistence, identity, insert pattern, sequencer, keyboard grid) separately, behind its own flag (team) or on a short-lived branch (solo).
+
+### P9 · Performance Route: rehearse the whole song on Push
+
+**Size:** ~7 sessions (S9.0–S9.6), ~10 PRs (L). The detail (design reading, gap analysis, deliverables, risks) is in [PERFORMANCE_ROUTE_PLAN.md](PERFORMANCE_ROUTE_PLAN.md) until P9 is Done; the terms are defined in [PUSHFLOW_TERMINOLOGY.md](../canonical/PUSHFLOW_TERMINOLOGY.md#performance-route-terms).
+
+**Goal.** A rehearsal and performance-planning page for the whole song: bar by bar, which Push mode the performer is in and which lanes they play by hand, zooming from the song to the single pad press, on the same transport, Active Layout and Execution Plan as the editor. The optimiser workflow is unchanged: the Route reads the Active Layout and its plan, and writes only its own route.
+
+**Why now.** P4 gave the project one transport with loop, speed and the current event, and P3 the per-layout analysis cache the pad level reads. The route is bar-based, so it wants S5.3 (notes in beats) first; until then a tempo change rescales the route.
+
+**Deliverables**
+
+- S9.0 · Canon terms and truth 13, decisions R-D1–R-D6, Push-mode tokens and ModeGlyph.
+- S9.1 · The route as a document field (one undo step per edit, migration 8 → 9), its derivations (lanes, clips, the detected route, phrases, actions), never an analysis input.
+- S9.2 · The Route page at the Song level, read-only: section cards, mode strip and badge, canvas lanes, the Route's transport bar, the empty state.
+- S9.3 · Semantic zoom through Section, Phrase and Action, with follow and loop per item.
+- S9.4 · Edit mode: names, "what you do", boundaries, Push modes and performed lanes.
+- S9.5 · The pad level: the Active Layout on the 8×8 with the next pad and finger, and the cue lane.
+- S9.6 · Library card, Learn More, README, screenshots and the P9 audit.
+
+**Exit criteria**
+
+The criteria P9-0a … P9-6b, with their owners and verification, are in [UI_ROADMAP_PROGRESS.md](UI_ROADMAP_PROGRESS.md#phase-p9--performance-route). In short:
+
+- [ ] The route is saved, migrated, undone a step at a time and never marks the analysis stale; it tiles the song's bars and follows the notes through a tempo change.
+- [ ] The Route plays on the shared transport, at 1366 and 1600, with no text under 11 px and axe clean; unplayable notes stay drawn in red.
+- [ ] Zoom, loop per item and edit mode work by mouse and by keyboard; each edit gesture is one undo step.
+- [ ] The pad level shows only the Active Layout's own plan and claims no finger without a current plan.
+
+**Risks**
+
+See the plan's section 8: a second truth about the timeline until S5.3, leading rest bars, the old `sections` field, lane fidelity (groups, not Live tracks), the first canvas surface, lifting the providers to a parent route, per-frame work, and scope creep toward a Push simulator.
 
 ## Sequencing rationale
 
