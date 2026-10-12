@@ -27,6 +27,7 @@ import { cleanShortLabel } from '../../types/performanceLane';
 import { FALLBACK_LAYOUT_NAME, legacyRoleWords, withoutLegacyRoleWords } from '../state/layoutLabels';
 import { variantStamp } from '../state/variantNames';
 import { projectNoticesOf } from '../state/projectNotices';
+import { performanceRouteOf } from '../../types/performanceRoute';
 import { uniqueName } from '../../utils/uniqueName';
 
 /** A stored project record, as parsed JSON. */
@@ -153,6 +154,18 @@ export const MIGRATIONS: readonly Migration[] = [
     to: 8,
     name: 'mute-as-exclusion',
     up: muteAsExclusion,
+  },
+  {
+    // S9.1 (P9): the Performance Route, the user's plan of what they do over
+    // the song. A project stored before has none, so it starts at null (the
+    // Route shows the detected route); a stored route is kept.
+    from: 8,
+    to: 9,
+    name: 'performance-route',
+    up: record => ({
+      ...record,
+      performanceRoute: performanceRouteOf(record.performanceRoute),
+    }),
   },
 ];
 

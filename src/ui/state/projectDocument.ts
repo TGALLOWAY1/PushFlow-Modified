@@ -2,7 +2,8 @@
  * Project document slice.
  *
  * Undo and Redo cover the document (what the user authors: layouts, locks,
- * Sounds, voiceConstraints, lanes, tempo, names, variants) and never the session
+ * Sounds, voiceConstraints, lanes, tempo, names, variants, the Performance
+ * Route) and never the session
  * (analysis, candidates, trace, transport, selection, isProcessing, errors).
  * These helpers are the only place that knows which fields are which; the
  * ProjectDocument and ProjectSession types in projectState.ts are the other half.
@@ -39,6 +40,7 @@ const DOCUMENT_FIELD_SET: Record<keyof ProjectDocument, true> = {
   performanceLanes: true,
   laneGroups: true,
   sourceFiles: true,
+  performanceRoute: true,
 };
 
 export const DOCUMENT_FIELDS = Object.keys(DOCUMENT_FIELD_SET) as (keyof ProjectDocument)[];

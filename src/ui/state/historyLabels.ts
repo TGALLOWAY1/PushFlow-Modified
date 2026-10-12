@@ -53,6 +53,16 @@ const ACTION_LABELS: Partial<Record<ProjectAction['type'], string>> = {
   SET_LANE_GROUP_COLOR: 'Group color',
   REORDER_LANE_GROUPS: 'Reorder groups',
   DELETE_LANE_GROUP: 'Delete group',
+  ROUTE_ADOPT_DETECTED: 'Name sections',
+  ROUTE_CLEAR: 'Clear route',
+  ROUTE_SET_SECTION_NAME: 'Rename section',
+  ROUTE_SET_SECTION_TEXT: 'What you do',
+  ROUTE_MOVE_BOUNDARY: 'Move section boundary',
+  ROUTE_SPLIT_SECTION: 'Split section',
+  ROUTE_MERGE_SECTION: 'Merge sections',
+  ROUTE_SET_MODE_SPAN: 'Push mode',
+  ROUTE_SET_SPAN_ENDS: 'Push mode span',
+  ROUTE_SET_PERFORMED: 'Lanes you perform',
 };
 
 /** The undo step name for a single recorded dispatch. */

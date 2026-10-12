@@ -129,6 +129,24 @@
   --hand-left: #0088ff;
   --hand-right: #ff4400;
 
+  /* --- Push modes (PUSH_MODES, src/types/performanceRoute.ts): the
+         Performance Route's mode strip, badge and pills; always paired with
+         the mode's ModeGlyph, since shape carries the meaning, not colour --- */
+  --mode-session: #34d39a;
+  --mode-instrument: #5e9eff;
+  --mode-drum: #ffb33f;
+  --mode-fx: #ee6bd0;
+  --mode-control: #c7d0dc;
+  /* Text and glyphs on a mode-coloured fill */
+  --mode-on-fill: #0f141e;
+  /* The Route's lanes (R-D1: aliases of the app's tokens): clip boxes, note
+     marks, grid lines, and the outline of a note that can't be played */
+  --route-clip: var(--bg-hover);
+  --route-clip-edge: var(--border-strong);
+  --route-note: var(--text-tertiary);
+  --route-grid: var(--border-default);
+  --route-unplayable: var(--difficulty-unplayable);
+
   /* --- Event difficulty (eventDifficulty, src/ui/analysis/eventDifficulty.ts):
          the timeline's pill markers and the Events list's badges --- */
   --difficulty-medium: #a3a3a3;
@@ -474,4 +492,21 @@ button, a, [role="button"], select, input,
   height: 1px;
   background: var(--border-subtle);
   width: 100%;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Performance Route (S9.2): the mode badge flips when the Push mode changes
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes route-badge-flip {
+  from { transform: rotateX(90deg); }
+  to { transform: rotateX(0deg); }
+}
+
+.route-badge-flip {
+  animation: route-badge-flip 240ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-badge-flip { animation: none; }
 }

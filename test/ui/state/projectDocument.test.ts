@@ -154,14 +154,15 @@ describe('persistence round trip', () => {
     // S4.3a's starts the rehearsal preferences at Loop off, no region, 1x.
     // S5.1's (short labels) finds none to clean. S4.4's takes the mute and
     // solo flags out of the Sounds and lanes (nothing was muted, so nothing is
-    // excluded and there is no notice).
+    // excluded and there is no notice). S9.1's adds no Performance Route (null).
     expect(saved.activeLayout.name).toBe('Default (suggested)');
     expect(saved.workingLayout.name).toBe('Default (suggested) (draft)');
     const withoutFlags = (items: Record<string, unknown>[]) => items.map(({ muted: _m, isMuted: _i, isSolo: _s, ...rest }) => rest);
     expect(resavedFields).toEqual({
       ...savedFields,
-      schemaVersion: 8,
+      schemaVersion: 9,
       recoveredDrafts: [],
+      performanceRoute: null,
       lastOpenedAt: saved.updatedAt,
       activeLayout: { ...saved.activeLayout, name: 'Default', provenance: 'suggested' },
       workingLayout: { ...saved.workingLayout, name: 'Default' },

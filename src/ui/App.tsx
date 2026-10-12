@@ -12,8 +12,14 @@ import { ToastProvider } from './components/shared/Toast';
 const ProjectLibraryPage = lazy(() =>
   import('./pages/ProjectLibraryPage').then(m => ({ default: m.ProjectLibraryPage })),
 );
+const ProjectShell = lazy(() =>
+  import('./pages/ProjectShell').then(m => ({ default: m.ProjectShell })),
+);
 const ProjectEditorPage = lazy(() =>
   import('./pages/ProjectEditorPage').then(m => ({ default: m.ProjectEditorPage })),
+);
+const PerformanceRoutePage = lazy(() =>
+  import('./pages/PerformanceRoutePage').then(m => ({ default: m.PerformanceRoutePage })),
 );
 const OptimizerDebugPage = lazy(() =>
   import('./pages/OptimizerDebugPage').then(m => ({ default: m.OptimizerDebugPage })),
@@ -39,12 +45,16 @@ export function App() {
       <ToastProvider>
         <Suspense fallback={<RouteFallback />}>
           <Routes>
-            {/* Editor route: full-viewport app shell, no padding */}
+            {/* A project's pages: full-viewport app shell, no padding. The
+                shell loads the project and holds the transport they share. */}
             <Route path="/project/:id" element={
               <div className="h-[100dvh] overflow-hidden text-[var(--foreground)]">
-                <ProjectEditorPage />
+                <ProjectShell />
               </div>
-            } />
+            }>
+              <Route index element={<ProjectEditorPage />} />
+              <Route path="route" element={<PerformanceRoutePage />} />
+            </Route>
             {/* Non-editor routes: scrollable page with padding */}
             <Route path="/" element={
               <div className="min-h-screen text-[var(--foreground)] p-6">

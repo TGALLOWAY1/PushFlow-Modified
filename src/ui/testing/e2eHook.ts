@@ -22,6 +22,10 @@ import { getEventTimeline, resolveEventKey } from '../analysis/eventTimeline';
 import { peekLayoutAnalysis } from '../analysis/layoutAnalysis';
 import { fingerLabel } from '../../utils/fingerNotation';
 import { liveTransport } from '../audio/liveTransport';
+import { liveRouteView } from '../route/liveRouteView';
+import { displayedRoute } from '../route/derive';
+import { sectionAt } from '../route/routeGeometry';
+import { barSeconds } from '../../utils/musicalTime';
 import { type TransportDebug } from '../audio/transportEngine';
 import type { Layout } from '../../types/layout';
 import type { ExecutionPlanResult } from '../../types/executionPlan';
@@ -59,6 +63,17 @@ export interface PfStatus {
   selectedPadKey: string | null;
   loopEnabled: boolean;
   playbackRate: number;
+  /** The Performance Route while its page is open (S9.2), else null. */
+  route: PfRouteStatus | null;
+}
+
+/** The Route's view and the section the playhead is in (bars 0-based, as the route counts). */
+export interface PfRouteStatus {
+  level: number;
+  viewStart: number;
+  viewSpan: number;
+  sectionId: string | null;
+  editing: boolean;
 }
 
 /** The layout on screen (S3.2): its role, its id (a candidate's id for a candidate) and whether it is read-only. */
@@ -181,6 +196,14 @@ function withoutBulkyTraces(candidate: CandidateSolution): CandidateSolution {
   return copy;
 }
 
+function routeStatus(s: ProjectState): PfRouteStatus | null {
+  const view = liveRouteView();
+  if (!view) return null;
+  const position = liveTransport()?.isRunning() ? liveTransport()!.position() : s.currentTime;
+  const section = sectionAt(displayedRoute(s).sections, position / barSeconds(s.tempo));
+  return { ...view, sectionId: section?.id ?? null };
+}
+
 /** Installs window.__pf, reading through `get` so it always sees the latest render. Returns an uninstaller. */
 export function installE2EHook(get: () => E2EHookSource): () => void {
   const hook: PfTestHook = {
@@ -252,6 +275,7 @@ export function installE2EHook(get: () => E2EHookSource): () => void {
         selectedPadKey: s.selectedPadKey,
         loopEnabled: s.loopEnabled,
         playbackRate: s.playbackRate,
+        route: routeStatus(s),
       };
     },
     layoutHash(which = 'shown') {

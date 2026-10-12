@@ -30,6 +30,8 @@ import { type OptimizerMethodKey } from '../../engine/optimization/optimizerInte
 import { type GreedyLayoutStrategy } from '../../engine/optimization/greedyCandidatePipeline';
 import { buildLegacySourceFile, buildPerformanceLanesFromStreams } from '../state/streamsToLanes';
 import { projectNoticesOf } from '../state/projectNotices';
+import { performanceRouteOf } from '../../types/performanceRoute';
+import { routeInSync } from '../route/derive';
 import { runMigrations, type StoredRecord } from './migrations';
 
 // ============================================================================
@@ -71,6 +73,9 @@ export function serializeProject(state: ProjectState): PersistedProject {
     laneGroups: state.laneGroups,
     sourceFiles: state.sourceFiles,
 
+    // Performance Route (P9): authored, never an analysis input
+    performanceRoute: state.performanceRoute,
+
     // Engine config (user preferences)
     engineConfig: state.engineConfig,
     optimizerMethod: state.optimizerMethod,
@@ -108,6 +113,13 @@ export function serializeProject(state: ProjectState): PersistedProject {
  * Candidates and analysis are restored if present in the persisted data.
  */
 export function deserializeProject(persisted: PersistedProject): ProjectState {
+  const state = deserializedState(persisted);
+  // The editor opens this state as it is (ProjectProvider's initial state, no
+  // LOAD_PROJECT), so a stored route is made to tile the song here.
+  return state.performanceRoute ? { ...state, performanceRoute: routeInSync(state.performanceRoute, state) } : state;
+}
+
+function deserializedState(persisted: PersistedProject): ProjectState {
   const base = createEmptyProjectState();
 
   const soundStreams = Array.isArray(persisted.soundStreams)
@@ -174,6 +186,9 @@ export function deserializeProject(persisted: PersistedProject): ProjectState {
     sourceFiles: sourceFiles.length > 0 || performanceLanes.length === 0
       ? sourceFiles
       : [buildLegacySourceFile(soundStreams)],
+
+    // Performance Route: authored, never an analysis input.
+    performanceRoute: performanceRouteOf(persisted.performanceRoute),
 
     // Engine config
     engineConfig: persisted.engineConfig ?? base.engineConfig,
@@ -331,6 +346,7 @@ function applyPersistedDefaults(p: Partial<PersistedProject> & { id: string }): 
     performanceLanes: Array.isArray(p.performanceLanes) ? p.performanceLanes : [],
     laneGroups: Array.isArray(p.laneGroups) ? p.laneGroups : [],
     sourceFiles: Array.isArray(p.sourceFiles) ? p.sourceFiles : [],
+    performanceRoute: performanceRouteOf(p.performanceRoute),
     engineConfig: p.engineConfig ?? base.engineConfig,
     optimizerMethod: isValidOptimizerMethod(p.optimizerMethod) ? p.optimizerMethod : 'greedy',
     greedyStrategy: isValidGreedyStrategy(p.greedyStrategy) ? p.greedyStrategy : 'all',

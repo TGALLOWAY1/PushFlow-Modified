@@ -18,6 +18,7 @@ import { type GreedyLayoutStrategy } from '../../engine/optimization/greedyCandi
 import { type SoundStream } from '../state/projectState';
 import { type ProjectNotice } from '../state/projectNotices';
 import { type CandidateSolution } from '../../types/candidateSolution';
+import { type PerformanceRoute } from '../../types/performanceRoute';
 
 // ============================================================================
 // Schema Version
@@ -37,8 +38,9 @@ import { type CandidateSolution } from '../../types/candidateSolution';
  * 7: a Sound's optional short label, on its lane and its stream (S5.1, T17).
  * 8: Mute and Solo leave the stored project (rehearsal-only); a Sound that was
  *    muted is excluded from analysis instead, with a one-time notice (S4.4, T15).
+ * 9: the Performance Route, null until authored (S9.1).
  */
-export const PERSISTED_SCHEMA_VERSION = 8;
+export const PERSISTED_SCHEMA_VERSION = 9;
 
 // ============================================================================
 // Rehearsal preferences
@@ -131,6 +133,13 @@ export interface PersistedProject {
   performanceLanes: PerformanceLane[];
   laneGroups: LaneGroup[];
   sourceFiles: SourceFile[];
+
+  // --- Performance Route (authoring data, never an analysis input) ---
+  /**
+   * What the performer does over the song (P9). Added in schema 9; null until
+   * the user edits the route, and for every project stored before.
+   */
+  performanceRoute?: PerformanceRoute | null;
 
   // --- Engine Config (user preferences, not computed) ---
   engineConfig: EngineConfiguration;

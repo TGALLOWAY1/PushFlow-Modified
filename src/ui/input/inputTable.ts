@@ -33,6 +33,8 @@ export type InputRowId =
   | 'toggle-loop'
   | 'change-speed'
   | 'return-to-start'
+  | 'zoom-in'
+  | 'zoom-out'
   | 'loop-strip'
   | 'ruler-seek'
   | 'exit-replay'
@@ -77,7 +79,7 @@ export interface InputRow {
   /** Acts only while focus is inside an element matching this selector. */
   within?: string;
   /** A row reserved for a later phase: listed, not bound, not in the sheet. */
-  from?: 'P3' | 'P4' | 'P8';
+  from?: 'P3' | 'P4' | 'P8' | 'P9';
 }
 
 const noModifiers = (e: KeyLike) => !e.metaKey && !e.ctrlKey && !e.altKey;
@@ -212,6 +214,21 @@ export const INPUT_TABLE: readonly InputRow[] = [
     does: 'Moves the playhead to the start, or to the loop start while looping a passage, as Return does. Playing or stopped, it stays so.',
     keys: e => plain(e) && e.key === 'Home',
   },
+  // The Performance Route's semantic zoom (S9.3): reserved in S9.2.
+  {
+    id: 'zoom-in', group: 'Playback and events',
+    input: ['='], when: 'The Performance Route',
+    does: 'Zooms in one level: song, section, phrase, action, pad.',
+    keys: e => noModifiers(e) && (e.key === '=' || e.key === '+'),
+    from: 'P9',
+  },
+  {
+    id: 'zoom-out', group: 'Playback and events',
+    input: ['−'], when: 'The Performance Route',
+    does: 'Zooms out one level.',
+    keys: e => plain(e) && (e.key === '-' || e.key === '−'),
+    from: 'P9',
+  },
   {
     id: 'loop-strip', group: 'Playback and events',
     input: ['Drag on the loop strip'], when: 'The top strip of the timeline ruler',
@@ -314,7 +331,7 @@ export function displayInput(input: string, mac = isMacPlatform()): string {
   return parts.join(mac ? '' : '+');
 }
 
-const KEY_NAME = /^([A-Z0-9?←→↑↓[\]]|F\d{1,2}|Space|Esc|Enter|Delete|Backspace|Tab|Home)$/;
+const KEY_NAME = /^([A-Z0-9?←→↑↓[\]=−-]|F\d{1,2}|Space|Esc|Enter|Delete|Backspace|Tab|Home)$/;
 
 /** Whether an input alternative is a key or chord (shown as keycaps) rather than a gesture. */
 export function isKeyInput(input: string): boolean {

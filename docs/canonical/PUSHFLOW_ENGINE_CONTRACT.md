@@ -92,6 +92,11 @@ The workflow is built around `Sound identity`, not only imported pitch.
 - imported pitch retained as provenance metadata when useful
 - consistency across grid, timeline, compare, diagnostics, and saved outputs
 ---
+## 7. The Performance Route is not an engine input
+The `Performance Route` reads the `Active Layout`'s execution plan to show cues; it gives the engine nothing.
+The engine plans every event of the performance timeline whatever the route says about Push modes or performed lanes.
+Making mode spans or performed lanes change what the engine plans is a separate decision, and would change optimizer inputs.
+---
 ## Required Cross-Cutting Properties
 For the approved workflow to make sense, the engine must eventually support:
 - hard-feasibility verdicts with clear reasons (including outward-rotation rejection)

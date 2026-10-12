@@ -51,6 +51,13 @@ export default {
         /* Hands (S4.2): always with the L or R letter as the second cue */
         'hand-left': token('hand-left'),
         'hand-right': token('hand-right'),
+        /* Push modes (S9.0): always with the mode's ModeGlyph as the second cue */
+        'mode-session': token('mode-session'),
+        'mode-instrument': token('mode-instrument'),
+        'mode-drum': token('mode-drum'),
+        'mode-fx': token('mode-fx'),
+        'mode-control': token('mode-control'),
+        'mode-on-fill': token('mode-on-fill'),
         /* M3-inspired surface scale */
         'surface': '#131313',
         'surface-dim': '#0e0e0e',

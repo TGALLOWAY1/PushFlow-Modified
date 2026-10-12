@@ -115,7 +115,7 @@ describe('recovered-drafts-store (schema 1 → 2)', () => {
 
   it('a schema-1 project runs every later step too and lands on the current schema', () => {
     const { record, applied } = runMigrations(savedByMain());
-    expect(applied).toEqual(['recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names', 'rehearsal-preferences', 'sound-short-labels', 'mute-as-exclusion']);
+    expect(applied).toEqual(['recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names', 'rehearsal-preferences', 'sound-short-labels', 'mute-as-exclusion', 'performance-route']);
     expect(record.schemaVersion).toBe(PERSISTED_SCHEMA_VERSION);
   });
 
@@ -228,8 +228,8 @@ describe('clean-layout-names (schema 4 → 5)', () => {
 
   it('P3-10a: afterwards no stored layout name contains "(draft)" or "(suggested)", and none is empty', () => {
     const { record, applied } = runMigrations(withRoleSuffixes());
-    expect(applied).toEqual(['clean-layout-names', 'rehearsal-preferences', 'sound-short-labels', 'mute-as-exclusion']);
-    expect(record.schemaVersion).toBe(8);
+    expect(applied).toEqual(['clean-layout-names', 'rehearsal-preferences', 'sound-short-labels', 'mute-as-exclusion', 'performance-route']);
+    expect(record.schemaVersion).toBe(9);
     const names = allLayouts(record).map(l => l.name);
     expect(names).toHaveLength(9);
     expect(names.filter(n => ROLE_WORD.test(n) || !n.trim())).toEqual([]);
@@ -322,7 +322,7 @@ describe('rehearsal-preferences (schema 5 → 6)', () => {
       async (_record, fromVersion) => { log.push(`backup v${fromVersion}`); },
       record => runMigrations(record, MIGRATIONS.map(m => ({ ...m, up: (r: StoredRecord) => { log.push(m.name); return m.up(r); } }))).record,
     );
-    expect(log).toEqual(['backup v5', 'rehearsal-preferences', 'sound-short-labels', 'mute-as-exclusion']);
+    expect(log).toEqual(['backup v5', 'rehearsal-preferences', 'sound-short-labels', 'mute-as-exclusion', 'performance-route']);
     expect(runMigrations(structuredClone(once)).applied).toEqual([]);
     expect(onlyStep('rehearsal-preferences')[0].up(structuredClone(once))).toEqual(once);
   });
@@ -365,7 +365,7 @@ describe('sound-short-labels (schema 6 → 7)', () => {
       async (_record, fromVersion) => { log.push(`backup v${fromVersion}`); },
       record => runMigrations(record, MIGRATIONS.map(m => ({ ...m, up: (r: StoredRecord) => { log.push(m.name); return m.up(r); } }))).record,
     );
-    expect(log).toEqual(['backup v6', 'sound-short-labels', 'mute-as-exclusion']);
+    expect(log).toEqual(['backup v6', 'sound-short-labels', 'mute-as-exclusion', 'performance-route']);
     expect(once.performanceLanes).toEqual([lane({ shortLabel: 'Snare' })]);
     expect(runMigrations(structuredClone(once)).applied).toEqual([]);
     expect(onlyStep('sound-short-labels')[0].up(structuredClone(once))).toEqual(once);
@@ -388,8 +388,8 @@ describe('mute-as-exclusion (schema 7 → 8)', () => {
       performanceLanes: [laneOf('kick'), laneOf('snare', { isMuted: true }), laneOf('hat')],
       soundStreams: [streamOf('kick'), streamOf('snare', { muted: true }), streamOf('hat')],
     });
-    expect(applied).toEqual(['mute-as-exclusion']);
-    expect(record.schemaVersion).toBe(8);
+    expect(applied).toEqual(['mute-as-exclusion', 'performance-route']);
+    expect(record.schemaVersion).toBe(9);
     expect(ids(record.performanceLanes)).toEqual([['kick', false], ['snare', true], ['hat', false]]);
     expect(ids(record.soundStreams)).toEqual([['kick', false], ['snare', true], ['hat', false]]);
     expect([...flags(record.performanceLanes), ...flags(record.soundStreams)]).toEqual([]);
@@ -458,7 +458,7 @@ describe('mute-as-exclusion (schema 7 → 8)', () => {
       async (record, fromVersion) => { log.push(`backup v${fromVersion}`); backedUp = record; },
       record => runMigrations(record, MIGRATIONS.map(m => ({ ...m, up: (r: StoredRecord) => { log.push(m.name); return m.up(r); } }))).record,
     );
-    expect(log).toEqual(['backup v7', 'mute-as-exclusion']);
+    expect(log).toEqual(['backup v7', 'mute-as-exclusion', 'performance-route']);
     // The backup is the record as it was, mute flags and all.
     expect(backedUp).toEqual(untouched);
     expect(once.notices).toEqual([{ id: 'mute-as-exclusion', soundIds: ['kick'] }]);
@@ -490,6 +490,55 @@ describe('mute-as-exclusion (schema 7 → 8)', () => {
   });
 });
 
+describe('performance-route (schema 8 → 9)', () => {
+  const at8 = (): StoredRecord => runMigrations(savedByMain(), MIGRATIONS.filter(m => m.to <= 8)).record;
+  const ROUTE = {
+    version: 1,
+    sections: [{ id: 's1', name: 'Intro', text: 'Kick and hats', startBar: 0, endBar: 8 }],
+    modeSpans: [{ startBar: 0, endBar: 8, mode: 'drum' }],
+    performedSpans: [],
+    lanes: [],
+  };
+
+  it('P9-1a: a project saved at schema 8 loads with no route, and nothing else changes', () => {
+    const before = at8();
+    expect(before.schemaVersion).toBe(8);
+    expect('performanceRoute' in before).toBe(false);
+    const { record, applied } = runMigrations(before);
+    expect(applied).toEqual(['performance-route']);
+    expect(record.schemaVersion).toBe(9);
+    expect(record.performanceRoute).toBeNull();
+    const { schemaVersion: _a, performanceRoute: _b, ...rest } = record;
+    const { schemaVersion: _c, ...unchanged } = before;
+    expect(rest).toEqual(unchanged);
+    expect(deserializeProject(validateAndMigrateRaw(before)).performanceRoute).toBeNull();
+  });
+
+  it('a stored route is kept, and one that is not a route is dropped', () => {
+    expect(runMigrations({ ...at8(), performanceRoute: ROUTE }).record.performanceRoute).toEqual(ROUTE);
+    expect(runMigrations({ ...at8(), performanceRoute: 'route' }).record.performanceRoute).toBeNull();
+  });
+
+  it('P9-1a: runs once after its backup, and running it again changes nothing', async () => {
+    const before = at8();
+    const untouched = structuredClone(before);
+    const log: string[] = [];
+    let backedUp: StoredRecord | null = null;
+    const once = await migrateWithBackup(
+      before,
+      async (record, fromVersion) => { log.push(`backup v${fromVersion}`); backedUp = record; },
+      record => runMigrations(record, MIGRATIONS.map(m => ({ ...m, up: (r: StoredRecord) => { log.push(m.name); return m.up(r); } }))).record,
+    );
+    expect(log).toEqual(['backup v8', 'performance-route']);
+    expect(backedUp).toEqual(untouched);
+    expect(needsMigration(once)).toBe(false);
+    expect(runMigrations(structuredClone(once)).applied).toEqual([]);
+    expect(onlyStep('performance-route')[0].up(structuredClone(once))).toEqual(once);
+    const withRoute = { ...once, performanceRoute: ROUTE };
+    expect(onlyStep('performance-route')[0].up(structuredClone(withRoute))).toEqual(withRoute);
+  });
+});
+
 describe('migrateWithBackup', () => {
   it('writes the backup, with the untouched record, before any migration step runs', async () => {
     const log: string[] = [];
@@ -505,7 +554,7 @@ describe('migrateWithBackup', () => {
       },
       record => runMigrations(record, [...MIGRATIONS.map(m => ({ ...m, up: (r: StoredRecord) => { log.push(m.name); return m.up(r); } }))]),
     );
-    expect(log).toEqual(['backup v1', 'recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names', 'rehearsal-preferences', 'sound-short-labels', 'mute-as-exclusion']);
+    expect(log).toEqual(['backup v1', 'recovered-drafts-store', 'prune-ghost-locks', 'last-opened-at', 'clean-layout-names', 'rehearsal-preferences', 'sound-short-labels', 'mute-as-exclusion', 'performance-route']);
     expect(backedUp).toEqual(untouched);
     expect(result.record.schemaVersion).toBe(PERSISTED_SCHEMA_VERSION);
   });
