@@ -40,7 +40,6 @@ function makeLayout(placements: Array<[string, number, number, number]>): Layout
     padToVoice,
     fingerConstraints: {},
     placementLocks: {},
-    scoreCache: null,
     layoutMode: 'optimized' as const,
     role: 'working' as const,
   };

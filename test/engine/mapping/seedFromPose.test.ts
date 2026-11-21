@@ -35,7 +35,7 @@ function performance(): Performance {
 }
 
 const layoutWith = (padToVoice: Layout['padToVoice'], placementLocks: Record<string, string> = {}): Layout => ({
-  id: 'L', name: 'L', role: 'active', scoreCache: null, padToVoice, fingerConstraints: {}, placementLocks,
+  id: 'L', name: 'L', role: 'active', padToVoice, fingerConstraints: {}, placementLocks,
 });
 
 describe('orderSoundsByUsage', () => {

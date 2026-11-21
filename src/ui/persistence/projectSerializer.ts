@@ -110,7 +110,7 @@ export function serializeProject(state: ProjectState): PersistedProject {
 /**
  * Reconstruct a full ProjectState from persisted data.
  * Fills in defaults for missing fields and resets all ephemeral state.
- * Candidates and analysis are restored if present in the persisted data.
+ * Candidates and analysis are always reset, including in older records.
  */
 export function deserializeProject(persisted: PersistedProject): ProjectState {
   const state = deserializedState(persisted);

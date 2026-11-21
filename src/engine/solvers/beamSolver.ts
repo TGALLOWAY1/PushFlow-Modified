@@ -1673,8 +1673,6 @@ export class BeamSolver implements SolverStrategy {
       diagnostics,
       rejectionReasons,
       metadata: {
-        layoutIdUsed: this.layout?.id,
-        layoutHashUsed: this.layout ? hashLayout(this.layout) : undefined,
         layoutCoverage: coverage,
         strictMode: this.mappingResolverMode === 'strict',
         beamWidthUsed: config.beamWidth,

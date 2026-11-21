@@ -57,7 +57,6 @@ export const EMPTY_LAYOUT: Layout = {
   name: 'Empty Layout',
   padToVoice: {},
   fingerConstraints: {},
-  scoreCache: null,
 };
 
 // ============================================================================

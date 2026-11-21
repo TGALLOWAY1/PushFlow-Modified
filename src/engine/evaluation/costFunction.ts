@@ -11,7 +11,6 @@
  *   - calculateHandBalanceCost: left/right distribution penalty
  *
  * Deprecated (kept for backward compat but not used in V1 beam scoring):
- *   - calculatePoseNaturalness: legacy 3-component unified score
  *   - calculateAttractorCost: centroid distance from resting position
  *   - calculatePerFingerHomeCost: per-finger neutral pad distance
  */
@@ -148,45 +147,6 @@ export function calculateHandShapeDeviation(
 }
 
 // ============================================================================
-// Pose Naturalness (Legacy — 3-Component Model, kept for backward compat)
-// ============================================================================
-
-/**
- * @deprecated V1 (D-05): Replaced by calculateHandShapeDeviation + calculateFingerPreferenceCost.
- * Kept for backward compatibility with legacy ObjectiveComponents consumers.
- *
- * Unified pose naturalness score (3 sub-components):
- *   1. Centroid distance from resting pose (weight 0.4) — via calculateAttractorCost
- *   2. Per-finger distance from neutral pads (weight 0.4) — via calculatePerFingerHomeCost
- *   3. Finger preference penalty (weight 0.2) — via calculateFingerPreferenceCost
- */
-export function calculatePoseNaturalness(
-  grip: HandPose,
-  restingPose: HandPose,
-  stiffness: number,
-  handSide: 'left' | 'right',
-  neutralHandCenters: NeutralHandCentersResult | null,
-): number {
-  // Sub-component 1: Attractor cost (centroid distance from resting)
-  const attractorCost = calculateAttractorCost(grip, restingPose, stiffness);
-
-  // Sub-component 2: Per-finger home cost
-  const perFingerHomeCost = neutralHandCenters
-    ? calculatePerFingerHomeCost(grip, handSide, neutralHandCenters, 0.8)
-    : 0;
-
-  // Sub-component 3: Finger dominance cost
-  const dominanceCost = calculateFingerPreferenceCost(grip);
-
-  // Weighted combination
-  return (
-    0.4 * attractorCost +
-    0.4 * perFingerHomeCost +
-    0.2 * dominanceCost
-  );
-}
-
-// ============================================================================
 // Alternation Cost
 // ============================================================================
 
@@ -242,7 +202,7 @@ export function calculateHandBalanceCost(
  * Penalises use of anatomically suboptimal fingers (thumb, pinky).
  * Sums per-finger cost for all fingers assigned in this grip.
  *
- * Sub-component of poseNaturalness in legacy calculatePoseNaturalness (weight 0.2).
+ * Anatomical preference cost for the fingers used by a grip.
  * In V1, this is tracked as V1CostBreakdown.fingerPreference.
  */
 export function calculateFingerPreferenceCost(grip: HandPose): number {
@@ -261,7 +221,7 @@ export function calculateFingerPreferenceCost(grip: HandPose): number {
  * Attractor cost: spring model pulling hand back to resting pose.
  * Cost = distance(centroid, resting.centroid) * stiffness
  *
- * Sub-component of calculatePoseNaturalness (weight 0.4).
+ * Diagnostic cost relative to the resting pose.
  * Also available individually for legacy ObjectiveComponents display.
  */
 export function calculateAttractorCost(
@@ -279,7 +239,7 @@ export function calculateAttractorCost(
 /**
  * Per-finger home cost: penalizes each finger's distance from its neutral pad.
  *
- * Sub-component of calculatePoseNaturalness (weight 0.4).
+ * Diagnostic cost relative to the resting pose.
  * Also available individually for legacy ObjectiveComponents display.
  */
 export function calculatePerFingerHomeCost(

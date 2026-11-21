@@ -7,7 +7,7 @@
  * Canonical terminology:
  * - FingerAssignment: per-event hand/finger decision (was EngineDebugEvent)
  * - ExecutionPlanResult: full plan output (was EngineResult)
- * - DifficultyBreakdown: cost component breakdown (was CostBreakdown)
+ * - V1CostBreakdown: cost component breakdown
  */
 
 import { type DiagnosticsPayload, type V1CostBreakdown } from './diagnostics';
@@ -67,28 +67,6 @@ export interface MomentAssignment {
   difficulty: DifficultyLevel;
   /** Full cost breakdown for this moment (V1 schema). */
   costBreakdown: V1CostBreakdown;
-}
-
-/**
- * @deprecated Use V1CostBreakdown from diagnostics.ts instead.
- *
- * Legacy 7-component breakdown retained for backward compatibility.
- * Field mapping to V1CostBreakdown:
- *   movement   ← transitionCost
- *   stretch    ← fingerPreference
- *   drift      ← handShapeDeviation
- *   bounce     ← 0 (alternation removed)
- *   fatigue    ← 0 (no per-finger home tracking)
- *   crossover  ← constraintPenalty
- */
-export interface DifficultyBreakdown {
-  movement: number;
-  stretch: number;
-  drift: number;
-  bounce: number;
-  fatigue: number;
-  crossover: number;
-  total: number;
 }
 
 /** Difficulty classification for an event. */
@@ -163,7 +141,7 @@ export interface FingerAssignment {
   assignedHand: 'left' | 'right' | 'Unplayable';
   finger: FingerType | null;
   cost: number;
-  /** V1 cost breakdown (replaces legacy DifficultyBreakdown). */
+  /** Per-moment cost breakdown. */
   costBreakdown?: V1CostBreakdown;
   difficulty: DifficultyLevel;
   row?: number;
@@ -391,10 +369,6 @@ export interface ExecutionPlanResult {
 
   /** Run metadata for debugging and telemetry. */
   metadata?: {
-    /** @deprecated Use layoutBinding.layoutId instead. */
-    layoutIdUsed?: string;
-    /** @deprecated Use layoutBinding.layoutHash instead. */
-    layoutHashUsed?: string;
     layoutCoverage?: { totalNotes: number; unmappedNotesCount: number; fallbackNotesCount: number };
     invalidReason?: string;
     seed?: number;

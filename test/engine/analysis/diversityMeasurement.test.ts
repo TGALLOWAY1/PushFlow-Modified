@@ -50,7 +50,6 @@ function makeLayout(padToVoice: Record<string, Voice>, overrides?: Partial<Layou
     padToVoice,
     fingerConstraints: {},
     placementLocks: {},
-    scoreCache: null,
     role: 'active' as const,
     ...overrides,
   };

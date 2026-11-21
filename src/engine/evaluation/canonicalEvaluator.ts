@@ -13,7 +13,7 @@
  *   validateAssignment(input)   → AssignmentValidationResult
  *
  * These functions call the same atomic cost functions that the beam solver uses
- * (calculatePoseNaturalness, calculateTransitionCost, etc.) but without
+ * (calculateHandShapeDeviation, calculateTransitionCost, etc.) but without
  * requiring the beam search infrastructure.
  */
 

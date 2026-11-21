@@ -34,8 +34,6 @@ const DOCUMENT_FIELD_SET: Record<keyof ProjectDocument, true> = {
   workingLayout: true,
   savedVariants: true,
   recoveredDrafts: true,
-  layouts: true,
-  activeLayoutId: true,
   voiceConstraints: true,
   performanceLanes: true,
   laneGroups: true,

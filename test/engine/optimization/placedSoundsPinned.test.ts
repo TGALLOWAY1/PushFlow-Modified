@@ -48,7 +48,7 @@ function performanceWithout(muted: string[]): Performance {
 }
 
 const baseLayout = (extra: Partial<Layout> = {}): Layout => ({
-  id: 'L', name: 'L', role: 'active', scoreCache: null, fingerConstraints: {}, placementLocks: {},
+  id: 'L', name: 'L', role: 'active', fingerConstraints: {}, placementLocks: {},
   padToVoice: {
     '7,0': voice('kick', 36), '2,1': voice('snare', 37),
     '2,2': voice('hat', 38), '2,3': voice('tom', 39),
@@ -103,13 +103,12 @@ describe('pinnedPlacements', () => {
     const layout = baseLayout({ placementLocks: { kick: '7,0', tom: TOM_PAD } });
     const plan = {
       layoutBinding: { layoutId: layout.id, layoutHash: hashLayout(layout), layoutRole: 'active' as const },
-      metadata: { layoutIdUsed: layout.id, layoutHashUsed: hashLayout(layout) },
+      metadata: { },
     };
     const cleaned = withoutPins(layout, plan, { tom: TOM_PAD });
     expect(cleaned.layout.placementLocks).toEqual({ kick: '7,0' });
     expect(cleaned.layout.padToVoice).toBe(layout.padToVoice);
     expect(cleaned.executionPlan.layoutBinding.layoutHash).toBe(hashLayout(cleaned.layout));
-    expect(cleaned.executionPlan.metadata.layoutHashUsed).toBe(hashLayout(cleaned.layout));
     expect(cleaned.executionPlan.layoutBinding.layoutHash).not.toBe(plan.layoutBinding.layoutHash);
     // Nothing to strip: the very same objects come back.
     const untouched = withoutPins(baseLayout({ placementLocks: { kick: '7,0' } }), plan, { tom: TOM_PAD });
@@ -202,7 +201,7 @@ describe('Annealing with a muted, placed Sound', () => {
     const performance = performanceWithout(['tom']);
     const { candidates, summary } = await generateCandidates(performance, createDefaultPose0(), {
       count: 1,
-      useAnnealing: true,
+      optimizationMode: 'deep',
       engineConfig: DEFAULT_ENGINE_CONFIG,
       instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG,
       baseLayout: layout,

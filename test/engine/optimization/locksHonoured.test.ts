@@ -38,7 +38,7 @@ function fourSounds(): Performance {
 }
 
 const baseLayout = (extra: Partial<Layout> = {}): Layout => ({
-  id: 'L', name: 'L', role: 'active', scoreCache: null, fingerConstraints: {}, placementLocks: {},
+  id: 'L', name: 'L', role: 'active', fingerConstraints: {}, placementLocks: {},
   padToVoice: {
     '7,0': voice('kick', 36), '2,1': voice('snare', 37),
     '2,2': voice('hat', 38), '2,3': voice('tom', 39),

@@ -130,9 +130,9 @@ src/
 │   ├── evaluation/                # Canonical evaluator, Playability score, cost functions, objective, difficulty scoring
 │   ├── solvers/                   # Beam solver for finger assignment (~85KB), structural lookahead
 │   ├── prior/                     # Biomechanical model, feasibility checking, hand poses
-│   ├── analysis/                  # Baseline compare, candidate comparison, diversity, event explainer
+│   ├── analysis/                  # Candidate comparison, diversity, event explainer
 │   ├── structure/                 # Performance structure analysis, moments, role inference, event grouping
-│   ├── rudiment/                  # Rudiment library, pattern generation, coherence metrics
+│   ├── rudiment/                  # Composer rudiment generation, pad/finger assignment, complexity scoring
 │   ├── mapping/                   # Pad-to-event mapping, voice map, placement locks, coverage, seed from pose
 │   ├── debug/                     # Debug utilities, sanity checks, constraint validator
 │   ├── surface/                   # Hand zone, pad grid
@@ -156,7 +156,7 @@ src/
 │   │   │                          #   AnnealingTraceChart, PerformanceCostsPanel, CompareModal, LearnMoreModal
 │   │   ├── workspace/             # PerformanceWorkspace, WorkspaceToolbar, LayoutStateBar, WorkspacePatternStudio, sizing,
 │   │   │                          #   MomentDock beside the grid (MomentInspector, PadInspector, MomentViewControl)
-│   │   ├── shared/                # Primitives: Overlay (Dialog/Popover), Toast, Tabs, Checkbox, Card, FingerAssignmentInput
+│   │   ├── shared/                # Primitives: Overlay (Dialog/Popover), Toast, ToggleButton, IconButton, FingerAssignmentInput
 │   │   ├── composer/              # Composer preset library, cards, inspector
 │   │   ├── loop-editor/           # LoopGridCanvas, LoopLaneRow, LoopLaneSidebar
 │   │   └── Homepage/              # Library: ProjectHero, ProjectCard, LibraryStatsCard, QuickActionsCard
@@ -302,7 +302,7 @@ Do not let engine internals outrun the approved workflow contract.
 Cost evaluation has three layers (`docs/optimization/BIOMECHANICAL_ENGINE.md` describes the current implementation; the March cost-evaluation audit is archived, see `docs/ARCHIVE.md`):
 
 1. **Solver-Internal Cost Functions** (`src/engine/evaluation/costFunction.ts`) — pure functions called thousands of times during beam search (pose naturalness, transition cost, alternation, hand balance)
-2. **Objective Combination** (`src/engine/evaluation/objective.ts`) — two coexisting models: `PerformabilityObjective` (3-component, used for beam ranking) and `ObjectiveComponents` (7-component, legacy diagnostic display)
+2. **Objective Combination** (`src/engine/evaluation/objective.ts`) — `PerformabilityObjective` combines beam ranking costs; `V1CostBreakdown` maps to the canonical diagnostic factors
 3. **Post-Hoc Analysis** (multiple modules) — event metrics, transition analysis, passage difficulty scoring on `ExecutionPlanResult`
 
 The 5 canonical `DiagnosticFactors`: `transition`, `gripNaturalness`, `alternation`, `handBalance`, `constraintPenalty`.

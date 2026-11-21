@@ -43,7 +43,6 @@ function makeActiveLayout(): Layout {
     },
     fingerConstraints: {},
     placementLocks: {},
-    scoreCache: null,
     role: 'active' as const,
   };
 }

@@ -146,7 +146,6 @@ export function seedLayoutFromPose0(
     padToVoice,
     fingerConstraints: {},
     placementLocks: honouredLocks,
-    scoreCache: null,
     layoutMode: 'optimized',
     role: 'working' as const,
   };

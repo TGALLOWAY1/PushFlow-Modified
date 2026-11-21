@@ -42,7 +42,6 @@ function makeOptimizerInput(events: PerformanceEvent[], tempo: number): Optimize
     name: 'Rhythm Test Layout',
     padToVoice: {},
     fingerConstraints: {},
-    scoreCache: null,
   };
 
   const neutralPads = resolveNeutralPadPositions(emptyLayout, DEFAULT_TEST_INSTRUMENT_CONFIG);

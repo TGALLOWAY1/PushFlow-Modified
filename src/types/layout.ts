@@ -78,8 +78,6 @@ export interface Layout {
    * These survive promote/discard and are the canonical user-facing placement rule.
    */
   placementLocks: Record<string, string>;
-  /** Cached score (null if invalidated). */
-  scoreCache: number | null;
   /** How this layout was created. */
   layoutMode?: LayoutMode;
   /** The workflow role of this layout. */
@@ -107,7 +105,6 @@ export function createEmptyLayout(id: string, name: string, role: LayoutRole = '
     padToVoice: {},
     fingerConstraints: {},
     placementLocks: {},
-    scoreCache: null,
     layoutMode: 'none',
     role,
   };
@@ -204,7 +201,6 @@ export function cloneLayout(
     name,
     role,
     baselineId: source.id,
-    scoreCache: null,
     savedAt: role === 'variant' ? new Date().toISOString() : undefined,
     placementLocks: { ...source.placementLocks },
     padToVoice: { ...source.padToVoice },
