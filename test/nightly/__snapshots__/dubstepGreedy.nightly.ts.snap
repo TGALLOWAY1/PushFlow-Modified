@@ -1,0 +1,228 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`dubstep greedy '1-elements/bass-140-call-response.mid' > matches its summary snapshot (mode, relaxed moments, hard events, score) 1`] = `
+[
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 95.8,
+    "strategy": "Exploratory Variant (seed 1)",
+    "unplayable": 0,
+  },
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 94.6,
+    "strategy": "Coordination-Optimized (seed 1)",
+    "unplayable": 0,
+  },
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 94.6,
+    "strategy": "Exploratory Variant (seed 3)",
+    "unplayable": 0,
+  },
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 93.6,
+    "strategy": "Clustered Motif Layout (seed 1)",
+    "unplayable": 0,
+  },
+]
+`;
+
+exports[`dubstep greedy '1-elements/bass-150-riddim-triplets.m…' > matches its summary snapshot (mode, relaxed moments, hard events, score) 1`] = `
+[
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 95,
+    "strategy": "Natural Pose Anchor (seed 1)",
+    "unplayable": 0,
+  },
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 94.5,
+    "strategy": "Coordination-Optimized (seed 1)",
+    "unplayable": 0,
+  },
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 94.1,
+    "strategy": "Exploratory Variant (seed 1)",
+    "unplayable": 0,
+  },
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 93,
+    "strategy": "Exploratory Variant (seed 3)",
+    "unplayable": 0,
+  },
+]
+`;
+
+exports[`dubstep greedy '1-elements/drums-130-shuffle.mid' > matches its summary snapshot (mode, relaxed moments, hard events, score) 1`] = `
+[
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 93.3,
+    "strategy": "Exploratory Variant (seed 2)",
+    "unplayable": 0,
+  },
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 91.7,
+    "strategy": "Coordination-Optimized (seed 1)",
+    "unplayable": 0,
+  },
+]
+`;
+
+exports[`dubstep greedy '1-elements/drums-140-halftime.mid' > matches its summary snapshot (mode, relaxed moments, hard events, score) 1`] = `
+[
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 93,
+    "strategy": "Exploratory Variant (seed 3)",
+    "unplayable": 0,
+  },
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 93,
+    "strategy": "Exploratory Variant (seed 4)",
+    "unplayable": 0,
+  },
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 92.7,
+    "strategy": "Clustered Motif Layout (seed 1)",
+    "unplayable": 0,
+  },
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 90.8,
+    "strategy": "Exploratory Variant (seed 2)",
+    "unplayable": 0,
+  },
+]
+`;
+
+exports[`dubstep greedy '1-elements/drums-150-tearout.mid' > matches its summary snapshot (mode, relaxed moments, hard events, score) 1`] = `
+[
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 93.3,
+    "strategy": "Exploratory Variant (seed 1)",
+    "unplayable": 0,
+  },
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 93.1,
+    "strategy": "Exploratory Variant (seed 4)",
+    "unplayable": 0,
+  },
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 92.5,
+    "strategy": "Exploratory Variant (seed 2)",
+    "unplayable": 0,
+  },
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 91.6,
+    "strategy": "Natural Pose Anchor (seed 1)",
+    "unplayable": 0,
+  },
+]
+`;
+
+exports[`dubstep greedy '1-elements/melodic-130-breakdown.mid' > matches its summary snapshot (mode, relaxed moments, hard events, score) 1`] = `
+[
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 96.5,
+    "strategy": "Clustered Motif Layout (seed 1)",
+    "unplayable": 0,
+  },
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 96.4,
+    "strategy": "Exploratory Variant (seed 2)",
+    "unplayable": 0,
+  },
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 96.4,
+    "strategy": "Exploratory Variant (seed 4)",
+    "unplayable": 0,
+  },
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 96.1,
+    "strategy": "Natural Pose Anchor (seed 1)",
+    "unplayable": 0,
+  },
+]
+`;
+
+exports[`dubstep greedy '1-elements/melodic-150-intro.mid' > matches its summary snapshot (mode, relaxed moments, hard events, score) 1`] = `
+[
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 97.6,
+    "strategy": "Coordination-Optimized (seed 1)",
+    "unplayable": 0,
+  },
+  {
+    "hard": 0,
+    "mode": "strict",
+    "relaxedMoments": 0,
+    "score": 97.1,
+    "strategy": "Exploratory Variant (seed 1)",
+    "unplayable": 0,
+  },
+]
+`;

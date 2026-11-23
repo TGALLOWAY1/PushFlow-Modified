@@ -35,10 +35,15 @@ export const TEST_MIDI_1_PATH = path.resolve(__dirname, '../fixtures/midi/TEST M
 export const LOCK_PAD = '7,0';
 
 /** A fresh project with TEST MIDI 1 imported and nothing placed. */
-export async function importTestMidi1(): Promise<ProjectState> {
-  const buffer = fs.readFileSync(TEST_MIDI_1_PATH);
+export function importTestMidi1(): Promise<ProjectState> {
+  return importMidiFixture(TEST_MIDI_1_PATH);
+}
+
+/** A fresh project with any MIDI file imported the way the app does it, nothing placed. */
+export async function importMidiFixture(filePath: string): Promise<ProjectState> {
+  const buffer = fs.readFileSync(filePath);
   const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
-  const fileName = path.basename(TEST_MIDI_1_PATH);
+  const fileName = path.basename(filePath);
   const projectData = await parseMidiProject(arrayBuffer, fileName);
   const { lanes, sourceFile } = buildLanesFromMidiProject(projectData, fileName, {
     currentMaxOrder: -1,

@@ -1,0 +1,115 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`dubstep song '3-songs/song-130-deep.mid' > matches its summary snapshot (mode, relaxed moments, hard events, score) 1`] = `
+{
+  "analysis": {
+    "hard": 506,
+    "mode": "relaxed",
+    "relaxedMoments": 21,
+    "score": 0,
+    "unplayable": 0,
+  },
+  "beam": [
+    {
+      "hard": 535,
+      "mode": "relaxed",
+      "relaxedMoments": 12,
+      "score": 0,
+      "strategy": "pose0-offset-0",
+      "unplayable": 0,
+    },
+    {
+      "hard": 598,
+      "mode": "relaxed",
+      "relaxedMoments": 75,
+      "score": 0,
+      "strategy": "pose0-offset-1",
+      "unplayable": 0,
+    },
+    {
+      "hard": 567,
+      "mode": "relaxed",
+      "relaxedMoments": 59,
+      "score": 0,
+      "strategy": "pose0-offset-2",
+      "unplayable": 0,
+    },
+  ],
+}
+`;
+
+exports[`dubstep song '3-songs/song-140-halftime.mid' > matches its summary snapshot (mode, relaxed moments, hard events, score) 1`] = `
+{
+  "analysis": {
+    "hard": 338,
+    "mode": "relaxed",
+    "relaxedMoments": 6,
+    "score": 0,
+    "unplayable": 0,
+  },
+  "beam": [
+    {
+      "hard": 400,
+      "mode": "relaxed",
+      "relaxedMoments": 35,
+      "score": 0,
+      "strategy": "pose0-offset-0",
+      "unplayable": 0,
+    },
+    {
+      "hard": 417,
+      "mode": "relaxed",
+      "relaxedMoments": 35,
+      "score": 0,
+      "strategy": "pose0-offset-1",
+      "unplayable": 1,
+    },
+    {
+      "hard": 337,
+      "mode": "relaxed",
+      "relaxedMoments": 26,
+      "score": 0,
+      "strategy": "pose0-offset-2",
+      "unplayable": 1,
+    },
+  ],
+}
+`;
+
+exports[`dubstep song '3-songs/song-150-tearout.mid' > matches its summary snapshot (mode, relaxed moments, hard events, score) 1`] = `
+{
+  "analysis": {
+    "hard": 453,
+    "mode": "relaxed",
+    "relaxedMoments": 26,
+    "score": 0,
+    "unplayable": 0,
+  },
+  "beam": [
+    {
+      "hard": 447,
+      "mode": "relaxed",
+      "relaxedMoments": 8,
+      "score": 0,
+      "strategy": "pose0-offset-0",
+      "unplayable": 0,
+    },
+    {
+      "hard": 472,
+      "mode": "relaxed",
+      "relaxedMoments": 21,
+      "score": 0,
+      "strategy": "pose0-offset-1",
+      "unplayable": 0,
+    },
+    {
+      "hard": 452,
+      "mode": "relaxed",
+      "relaxedMoments": 50,
+      "score": 0,
+      "strategy": "pose0-offset-2",
+      "unplayable": 0,
+    },
+  ],
+}
+`;

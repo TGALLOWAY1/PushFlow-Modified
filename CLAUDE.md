@@ -23,7 +23,7 @@ PushFlow-Modified/
 │   ├── main.tsx                  # Application entry point
 │   └── index.css                 # Global styles
 ├── test/                         # Vitest, Playwright e2e and nightly suites
-├── scripts/                      # check-no-test-hook, README screenshots, UI-critique probes
+├── scripts/                      # check-no-test-hook, README screenshots, UI-critique probes, dubstep MIDI generator
 ├── public/                       # Fonts, favicon, demo MIDI, GitHub Pages 404 redirect
 ├── docs/
 │   ├── canonical/                # CANONICAL SOURCE OF TRUTH (4 canon docs)
@@ -88,7 +88,8 @@ npm run test:run         # Run tests once (CI mode)
 npm run test:coverage    # Run tests with coverage report
 npx playwright test      # e2e specs in test/e2e/ (Chromium at 1366x768 and 1600x1000)
 npm run check:no-test-hook  # after a build: fails if window.__pf leaked into dist/
-npm run test:nightly     # deep annealing on TEST MIDI 1 (~45 min; nightly.yml)
+npm run test:nightly     # deep annealing on TEST MIDI 1 (~45 min) and the dubstep songs + greedy (nightly.yml)
+node scripts/generate-dubstep-midi.mjs  # rewrite test/fixtures/midi/dubstep/*.mid after editing arrangements.mjs
 ```
 
 The C1–C9 regression specs (`test/e2e/c*.spec.ts`) started expected-fail; the
@@ -186,10 +187,11 @@ test/
 ├── ui/                    # state, persistence, analysis, hooks, input; components/ holds happy-dom *.test.tsx
 ├── types/, golden/        # Voice identity and layout roles; end-to-end golden scenarios
 ├── optimizer/, validator/, import/  # Deep optimization and stress tests, validator engine, Sound naming
-├── nightly/               # *.nightly.ts deep-annealing checks (npm run test:nightly)
-├── helpers/               # setup, DOM shims, testMidi1.ts (TEST MIDI 1 through the app's own paths)
+├── nightly/               # *.nightly.ts deep-annealing checks, dubstep songs and greedy (npm run test:nightly)
+├── helpers/               # setup, DOM shims, testMidi1.ts (TEST MIDI 1 through the app's own paths), dubstep.ts
 ├── e2e/                   # Playwright specs (*.spec.ts) + fixtures.ts
-└── fixtures/              # midi/TEST MIDI 1.mid (the copy every test and script reads), four-bars-120.mid, project JSON
+└── fixtures/              # midi/TEST MIDI 1.mid (the copy every test and script reads), four-bars-120.mid, project JSON,
+                           #   midi/dubstep/ (130–150 BPM test suite: elements, sections, songs; see its README)
 ```
 
 Key test invariants:
@@ -224,7 +226,7 @@ The UI uses CSS custom properties (defined in `src/index.css`) consumed via Tail
 
 GitHub Actions:
 - `ci.yml` (every PR and push to `main`): typecheck, `test:run`, build + `check:no-test-hook`, Playwright (Chromium, 2 shards).
-- `nightly.yml` (schedule + manual): `test:nightly` (deep annealing on TEST MIDI 1) and Playwright in Firefox.
+- `nightly.yml` (schedule + manual): `test:nightly` (deep annealing on TEST MIDI 1; the dubstep songs and greedy, in their own job) and Playwright in Firefox.
 - `update-snapshots.yml` (manual, or the `update-snapshots` PR label): regenerates screenshot baselines and commits them.
 - `deploy.yml` (push to `main`): typecheck + `test:run` + build + `check:no-test-hook`, then deploys `dist/` to GitHub Pages.
 
