@@ -206,6 +206,42 @@ describe('ordinary playing is not called impossible', () => {
     const to = { centroid: { x: 7, y: 7 }, fingers: {} };
     expect(exceedsHandSpeedLimit(from, to, 0.02)).toBe(true);
   });
+
+  it('times each hand from its own last strike, so the hand that sat out a roll takes the next note', async () => {
+    // The end of a build (dubstep song-140, bar 64): the left hand rolls a snare
+    // in 32nd notes at the bottom of its side, and 54 ms after the last one a vox
+    // it owns sits six rows up, too far for it. The right hand last played two
+    // seconds earlier. Timing that hand from the roll's last note too made the vox
+    // unplayable, or pushed the whole roll onto the right hand to keep it.
+    const vox = voice('vox', 53);
+    const snare = voice('snare', 38);
+    const stab = voice('stab', 48);
+    const layout: Layout = {
+      ...createEmptyLayout('L', 'L', 'active'),
+      padToVoice: { '0,1': vox, '6,2': snare, '6,7': stab },
+    };
+    const events: PerformanceEvent[] = [];
+    const strike = (v: Voice, startTime: number) => events.push({
+      noteNumber: v.originalMidiNote!, voiceId: v.id, startTime, duration: 0.05, velocity: 100,
+      eventKey: `${v.id}@${startTime.toFixed(3)}`,
+    });
+    strike(stab, 0.5);
+    strike(vox, 1);
+    for (let i = 0; i < 14; i++) strike(snare, 2 + i * 0.054);
+    const voxTime = 2 + 14 * 0.054;
+    strike(vox, voxTime);
+
+    const plan = await createBeamSolver({ instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG, layout })
+      .solve({ events, tempo: 140, name: 'roll into vox' } as never, { ...DEFAULT_ENGINE_CONFIG, beamWidth: 15 });
+
+    expect(plan.unplayableCount).toBe(0);
+    expect(plan.fingerAssignments.filter(a => a.voiceId === snare.id).map(a => a.assignedHand))
+      .toEqual(Array(14).fill('left'));
+    const lastVox = plan.fingerAssignments.find(a => a.voiceId === vox.id && Math.abs(a.startTime - voxTime) < 1e-9);
+    expect(lastVox?.assignedHand).toBe('right');
+    expect(lastVox?.relaxedConstraints).toEqual(['hand-zone', 'finger-ownership']);
+    expect(plan.constraintRelaxation?.relaxedMomentCount).toBe(1);
+  });
 });
 
 describe('the cost a user sees does not grow with performance length', () => {
