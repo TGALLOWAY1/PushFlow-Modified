@@ -26,6 +26,7 @@ import { type SolverConfig } from '../../../src/types/engineConfig';
 import { type FingerType } from '../../../src/types/fingerModel';
 import { type CandidateSolution } from '../../../src/types/candidateSolution';
 import { countHandUsage } from '../../helpers/testHelpers';
+import { expectCompactReplayableTrace } from '../../helpers/greedyTrace';
 import { groupIntoMoments, summarizeMomentCost, COMFORTABLE_PLAN_SCORE } from '../../../src/engine';
 import {
   LOCK_PAD,
@@ -169,6 +170,20 @@ describe('TEST MIDI 1.mid end-to-end', () => {
           expect(candidate.beamSummary?.noteCount).toBe(candidate.executionPlan.fingerAssignments.length);
         }
       }
+    });
+
+    // Greedy's iteration trace keeps a sample of the moves each step weighed
+    // (moveTraceSample.ts). Keeping every move with its full evaluation made it
+    // 10–190 MB per candidate here and greedy needed over 1 GB of heap.
+    it.runIf(method === 'greedy')('the iteration trace stays compact and replayable step by step', () => {
+      for (const candidate of candidates) {
+        expectCompactReplayableTrace(candidate.iterationTrace!);
+        expect(JSON.stringify(candidate.iterationTrace).length).toBeLessThan(2 * 1024 * 1024);
+      }
+      // The replay checks see real hill-climb moves, not only finger changes.
+      const climbs = candidates.flatMap(c => c.iterationTrace!).filter(s => s.phase === 'hill-climb');
+      expect(climbs.some(s => s.chosenMove!.moveType !== 'finger_reassignment')).toBe(true);
+      expect(climbs.some(s => s.candidateMoveCount > s.candidateMoves.length)).toBe(true);
     });
 
     // S1b.1 (T22): one moment grouping, keyed by the performance itself.

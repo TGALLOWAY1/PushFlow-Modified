@@ -150,7 +150,7 @@ describe('MoveTracePanel · greedy', () => {
     const [step] = iterations(1);
     const chosen = { moveType: 'pad_move', description: 'Move D', fromPadKey: '7,0', toPadKey: '6,0', deltaTotal: -6.78, accepted: true } as const;
     const other = { moveType: 'pad_move', description: 'Move A', fromPadKey: '1,1', toPadKey: '1,2', deltaTotal: -4.31, accepted: false } as const;
-    renderPanel({ trace: [{ ...step!, scoreAfter: 97.66, netDelta: -6.78, candidateMoves: [other, chosen], chosenMove: chosen }], subject: subject() });
+    renderPanel({ trace: [{ ...step!, scoreAfter: 97.66, netDelta: -6.78, candidateMoves: [other, chosen], candidateMoveCount: 2, chosenMove: chosen }], subject: subject() });
     expect(screen.getByTestId('trace-row-change').textContent).toBe('−6.8');
     fireEvent.click(within(screen.getByTestId('trace-row')).getByRole('button'));
     expect(screen.getByTestId('trace-row-cost').textContent).toBe('Cost 104.5 → 97.7 · −6.8 cost · better');
@@ -311,6 +311,8 @@ function iterations(n: number): OptimizationIteration[] {
     netDelta: -1,
     stateBefore: { layout: createEmptyProjectState().activeLayout, assignment: {} },
     candidateMoves: [],
+    candidateMoveCount: 0,
+    blockedMoveCount: 0,
     chosenMove: null,
     summary: `Iteration ${i}`,
   }) as OptimizationIteration);

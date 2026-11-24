@@ -538,6 +538,13 @@ Each `OptimizerMove` must include:
 - `rejectedAlternatives`: how many other moves were considered (optional)
 - `attemptIndex`: which restart attempt produced this move (when restarts are used)
 
+Each `OptimizationIteration` in greedy's `iterationTrace` (the steps the trace panel lists and replays on the grid) must include:
+- `stateBefore` / `stateAfter`: the layout and assignment around the step (consecutive steps share these objects; treat them as read-only)
+- `chosenMove`, and `candidateMoveCount` / `blockedMoveCount`: how many moves the step weighed, and how many hand separation blocked
+- `candidateMoves`: a sample, not every move weighed (`moveTraceSample.ts`: the chosen one, the 8 best, the 3 best and 3 worst that relocate a Sound), each hill-climb move with its per-factor `factorDeltas`
+
+Do not go back to keeping every considered move or its full `PerformanceCostBreakdown`: that made each candidate's trace 10–190 MB, and greedy could not finish on a 15-Sound section within an 8 GB heap.
+
 ### Trace Shape (Annealing)
 
 Each `AnnealingIterationSnapshot` must include:
