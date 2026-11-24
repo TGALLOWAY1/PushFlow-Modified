@@ -59,6 +59,6 @@ describe.each(SONGS)('dubstep song $path', (spec) => {
   });
 
   it('matches its summary snapshot (mode, relaxed moments, hard events, score)', () => {
-    expect({ analysis: planSummary(analysis), beam: beam.map(candidateSummary) }).toMatchSnapshot();
+    expect({ analysis: planSummary(state, analysis), beam: beam.map((c) => candidateSummary(state, c)) }).toMatchSnapshot();
   });
 });

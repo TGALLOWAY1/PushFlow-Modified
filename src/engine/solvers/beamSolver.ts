@@ -1629,21 +1629,29 @@ export class BeamSolver implements SolverStrategy {
       });
     }
 
-    // computePlanScore is calibrated in MOMENTS (see planScore.ts), so it must be
-    // fed the moment counters, not the per-event ones. Passing event counts here
-    // made the beam path report 0/100 for layouts the greedy path scored 96, even
-    // though both claim to produce the same comparable 0-100 "Score".
-    //
-    // The ergonomic term comes from the canonical evaluator rather than this
-    // solver's own internal cost. The two are on different scales, so feeding
-    // each path its own number left the same layout scoring 94 through Generate
-    // and 82 through auto-analysis — the engine contract asks for ONE coherent
-    // cost story, and this is where the user reads it.
-    const score = computePlanScore({
-      hardCount: hardMomentCount,
-      unplayableCount: unplayableMomentCount,
-      avgErgonomicCost: canonical?.costPerMoment ?? averageMetrics.total,
-    });
+    // The plan's score is its Playability: computePlanScore of the canonical
+    // evaluator's counts for this plan's fingering, in events (moments), exactly as
+    // every displayed Score is computed (playability.ts). Candidates are ranked by
+    // it, so their order follows the yardstick their cards print. This solver's
+    // own hard rule (internal cost > 10) is on another scale: on a dense drop it
+    // called 13–56% of events hard where the canonical evaluator found none, which
+    // pinned every candidate's score at 0 and ordered the cards by a rule the user
+    // never sees. Its own counters stay on the plan (hardMomentCount, the
+    // difficulty labels) and stand in only when canonical evaluation is unavailable.
+    const scoredCounts = canonical
+      ? {
+          hardCount: canonical.aggregateMetrics.hardMomentCount,
+          unplayableCount: canonical.aggregateMetrics.infeasibleMomentCount,
+          eventCount: canonical.aggregateMetrics.momentCount,
+          avgErgonomicCost: canonical.costPerMoment,
+        }
+      : {
+          hardCount: hardMomentCount,
+          unplayableCount: unplayableMomentCount,
+          eventCount: momentAssignments.length,
+          avgErgonomicCost: averageMetrics.total,
+        };
+    const score = computePlanScore(scoredCounts);
 
     // Post-hoc diagnostics for unplayable events
     const rejectionReasons = unplayableCount > 0 && eventsWithPositions

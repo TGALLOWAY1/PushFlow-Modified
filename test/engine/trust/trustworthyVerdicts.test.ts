@@ -306,10 +306,11 @@ describe('one cost story across engines', () => {
     const solver = createBeamSolver({ instrumentConfig: DEFAULT_TEST_INSTRUMENT_CONFIG, layout });
     const plan = await solver.solve(perf, { ...DEFAULT_ENGINE_CONFIG, beamWidth: 15 });
 
-    // Both paths read their ergonomic term from the canonical evaluator, so the
-    // beam score must track the canonical cost of its own result. Feeding each
-    // engine its own internal cost left the same layout scoring 94 through
-    // Generate and 82 through auto-analysis on a scale documented as shared.
+    // Every path scores its plan with the canonical evaluator, so the beam score
+    // must be the canonical score of its own result: its hard and unplayable
+    // events and its cost per event. Feeding each engine its own internal cost
+    // left the same layout scoring 94 through Generate and 82 through
+    // auto-analysis on a scale documented as shared.
     const moments = buildPerformanceMoments(perf.events);
     const canonical = evaluatePerformance({
       moments,
@@ -324,8 +325,9 @@ describe('one cost story across engines', () => {
     });
 
     const expected = computePlanScore({
-      hardCount: plan.hardMomentCount ?? 0,
-      unplayableCount: plan.unplayableMomentCount ?? 0,
+      hardCount: canonical.aggregateMetrics.hardMomentCount,
+      unplayableCount: canonical.aggregateMetrics.infeasibleMomentCount,
+      eventCount: canonical.aggregateMetrics.momentCount,
       avgErgonomicCost: canonical.costPerMoment,
     });
 

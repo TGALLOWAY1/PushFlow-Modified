@@ -59,7 +59,7 @@ describe('saved variant cards', () => {
       resolveScoring.get(variant.id)!({
         analysis: { id: 'analysis', layout: variant, executionPlan: { score: 12, fingerAssignments: [] } },
         // The plan's own score (12) is never shown: the row reads the LayoutScore.
-        score: { evaluatorId: 'canonical-v1', playability: 81.6, events: 32, hardEvents: 1, unplayableEvents: 1 },
+        score: { evaluatorId: 'canonical-v2', playability: 81.6, events: 32, hardEvents: 1, unplayableEvents: 1 },
       } as unknown as ScoredLayoutAnalysis);
     });
     expect(within(row).getByTestId('variant-score').textContent).toBe('Score 82% · 1 hard · 1 unplayable');

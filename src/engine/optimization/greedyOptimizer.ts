@@ -1046,15 +1046,19 @@ class GreedyOptimizer implements OptimizerMethod {
     }
 
     // diagnostics.total is a sum over the whole performance; normalize to an
-    // average per moment so the ergonomic term is comparable to the beam solver's.
+    // average per moment so averageMetrics is comparable to the beam solver's.
     const momentDivisor = Math.max(1, momentAssignments.length);
     const avgErgonomicCost = momentAssignments.length > 0
       ? diagnostics.total / momentDivisor
       : 0;
+    // The plan's score is its Playability: computePlanScore of the canonical
+    // evaluator's counts for this layout and fingering, in events (moments), as
+    // the beam solver and every displayed Score compute it (playability.ts).
     const score = computePlanScore({
-      hardCount: hardMomentCount,
-      unplayableCount: unplayableMomentCount,
-      avgErgonomicCost,
+      hardCount: diagnostics.aggregateMetrics.hardMomentCount,
+      unplayableCount: diagnostics.aggregateMetrics.infeasibleMomentCount,
+      eventCount: diagnostics.aggregateMetrics.momentCount,
+      avgErgonomicCost: diagnostics.costPerMoment,
     });
     const diagnosticsPayload = buildDiagnosticsPayload(diagnostics);
 

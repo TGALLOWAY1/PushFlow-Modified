@@ -21,7 +21,7 @@ import { importTestMidi1 } from '../../helpers/testMidi1';
 vi.mock('../../../src/ui/analysis/scoreLayout', () => ({
   analyseAndScoreLayout: vi.fn(async (request: { layout: Layout }) => ({
     analysis: { id: `analysis-${request.layout.id}`, layout: request.layout, executionPlan: { fingerAssignments: [] } },
-    score: { evaluatorId: 'canonical-v1', playability: 50, events: 32, hardEvents: 0, unplayableEvents: 0 },
+    score: { evaluatorId: 'canonical-v2', playability: 50, events: 32, hardEvents: 0, unplayableEvents: 0 },
   }) as unknown as ScoredLayoutAnalysis),
 }));
 import { analyseAndScoreLayout } from '../../../src/ui/analysis/scoreLayout';

@@ -3,16 +3,25 @@
  *
  * A single 0–100 "how playable is this layout" percentage shared by every solver
  * (beam, annealing, greedy) so their headline scores are directly comparable.
+ * Every caller feeds it the canonical evaluator's counts (Playability).
  *
- * The score combines two things:
- *   1. Hard/unplayable moment counts — the dominant, discrete penalty.
- *   2. A bounded ergonomic term — average per-unit movement/grip cost.
- *
- * The ergonomic term is what keeps the score HONEST: without it, any layout with
- * zero hard/unplayable moments scored a flat 100 regardless of how scattered its
- * pads were, so a comfortable clustered layout and an awkward spread-out one looked
- * identical. The term is capped so it can never overturn the hard/unplayable signal
- * (a genuinely unplayable layout must always score worse than a merely awkward one).
+ * The score combines three things, all in events (everything struck at one
+ * instant is one event):
+ *   1. The SHARE of events that are hard. A share, not a count, so the score
+ *      rates how playable the material is, not how long it is: an 8-bar loop and
+ *      a whole song with the same density of strained grips score the same. As a
+ *      count (−5 each) any passage with 20 hard events read 0, and every
+ *      candidate for a whole song tied there.
+ *   2. Unplayable events, counted one by one (−20 each): each is a note the
+ *      performer cannot play as written, a must-fix however long the song is.
+ *      Candidates are also ranked by their unplayable count before their score.
+ *   3. An ergonomic term from the average cost per event, rising steeply at
+ *      first and then ever more slowly towards its cap, which it never reaches.
+ *      It keeps the score honest (a comfortable clustered layout must beat an
+ *      awkward spread-out one with no hard events either), and because it never
+ *      flattens, dense material still ranks: a linear term capped at 25 hit its
+ *      cap from a cost of about 4 per event, so every layout of a dense drop
+ *      (5–18 per event) read exactly 75.
  */
 
 /**
@@ -22,35 +31,44 @@
  */
 export const COMFORTABLE_PLAN_SCORE = 80;
 
-/** Points removed per hard moment. */
-const HARD_MOMENT_PENALTY = 5;
+/** Points removed per percentage point of events that are hard. */
+const HARD_SHARE_PENALTY_PER_PERCENT = 2;
 
-/** Points removed per unplayable moment. */
-const UNPLAYABLE_MOMENT_PENALTY = 20;
+/** Points removed per unplayable event. */
+const UNPLAYABLE_EVENT_PENALTY = 20;
 
-/** Points removed per unit of average ergonomic cost. */
-const ERGONOMIC_SCORE_WEIGHT = 6;
+/** The ergonomic term approaches this many points as the cost per event grows, and never reaches it. */
+const ERGONOMIC_SCORE_CAP = 50;
 
-/** Maximum points the ergonomic term may remove — never dominates hard/unplayable. */
-const ERGONOMIC_SCORE_CAP = 25;
+/** The average cost per event at which the ergonomic term removes half its cap. */
+const ERGONOMIC_HALF_CAP_COST = 5;
 
 /** The weights above, so Learn More explains the score from the numbers it uses (invariant 2). */
 export const PLAN_SCORE_WEIGHTS = {
-  hardEvent: HARD_MOMENT_PENALTY,
-  unplayableEvent: UNPLAYABLE_MOMENT_PENALTY,
+  hardEventPercent: HARD_SHARE_PENALTY_PER_PERCENT,
+  unplayableEvent: UNPLAYABLE_EVENT_PENALTY,
   ergonomicCap: ERGONOMIC_SCORE_CAP,
+  ergonomicHalfCapCost: ERGONOMIC_HALF_CAP_COST,
 } as const;
 
 export interface PlanScoreInput {
-  /** Number of hard (but playable) moments. */
+  /** Hard events: playable, but only with a grip beyond the strict hand-geometry limits. */
   hardCount: number;
-  /** Number of unplayable moments. */
+  /** Events that can't be played. */
   unplayableCount: number;
+  /** Every event scored: the whole the hard events are a share of. */
+  eventCount: number;
   /**
-   * Average per-unit ergonomic cost (transition/grip/etc.). Lower = more
+   * Average ergonomic cost per event (transition/grip/etc.). Lower = more
    * comfortable and compact. Omit (or pass 0) when unavailable.
    */
   avgErgonomicCost?: number;
+}
+
+/** The points the ergonomic term removes at an average cost per event: cap · c / (c + half-cap cost). */
+export function ergonomicPenalty(avgErgonomicCost: number): number {
+  const cost = Math.max(0, avgErgonomicCost);
+  return (ERGONOMIC_SCORE_CAP * cost) / (cost + ERGONOMIC_HALF_CAP_COST);
 }
 
 /**
@@ -58,15 +76,12 @@ export interface PlanScoreInput {
  * Higher is better. Clamped to [0, 100].
  */
 export function computePlanScore(input: PlanScoreInput): number {
-  const { hardCount, unplayableCount, avgErgonomicCost = 0 } = input;
-  const ergonomicPenalty = Math.min(
-    ERGONOMIC_SCORE_CAP,
-    Math.max(0, ERGONOMIC_SCORE_WEIGHT * avgErgonomicCost),
-  );
+  const { hardCount, unplayableCount, eventCount, avgErgonomicCost = 0 } = input;
+  const hardShare = Math.min(1, Math.max(0, hardCount) / Math.max(1, eventCount));
   const score =
     100 -
-    HARD_MOMENT_PENALTY * hardCount -
-    UNPLAYABLE_MOMENT_PENALTY * unplayableCount -
-    ergonomicPenalty;
+    HARD_SHARE_PENALTY_PER_PERCENT * 100 * hardShare -
+    UNPLAYABLE_EVENT_PENALTY * unplayableCount -
+    ergonomicPenalty(avgErgonomicCost);
   return Math.max(0, Math.min(100, score));
 }
