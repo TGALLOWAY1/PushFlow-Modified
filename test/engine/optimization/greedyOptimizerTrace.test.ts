@@ -15,6 +15,8 @@ import { describe, it, expect } from 'vitest';
 import { type Layout } from '../../../src/types/layout';
 import { type Voice } from '../../../src/types/voice';
 import { type OptimizerInput } from '../../../src/engine/optimization/optimizerInterface';
+import { TRACE_BEST_MOVES } from '../../../src/engine/optimization/moveTraceSample';
+import { expectCompactReplayableTrace } from '../../helpers/greedyTrace';
 import { ALL_COSTS_ENABLED } from '../../../src/types/costToggles';
 import { DEFAULT_TEST_INSTRUMENT_CONFIG, DEFAULT_ENGINE_CONFIG, DEFAULT_RESTING_POSE } from '../../helpers/testHelpers';
 
@@ -152,6 +154,22 @@ describe('Greedy Optimizer — Trace Production', () => {
     expect(typeof result.diagnostics.dimensions.poseNaturalness).toBe('number');
     expect(typeof result.diagnostics.dimensions.transitionCost).toBe('number');
     expect(typeof result.diagnostics.dimensions.handBalance).toBe('number');
+  });
+});
+
+describe('Greedy Optimizer — Iteration Trace', () => {
+  // The hill-climb half of these checks runs on TEST MIDI 1 in
+  // testMidi1Integration.test.ts: three Sounds here barely climb.
+  it('keeps a compact, replayable trace of placement: a sample of the pads weighed, and how many', async () => {
+    const input = makeTestInput({ seed: 0 });
+    input.layout = { id: 'empty', name: 'Empty', padToVoice: {}, fingerConstraints: {}, scoreCache: null };
+    const trace = (await getOptimizer('greedy').optimize(input)).iterationTrace!;
+
+    const placing = trace.filter(s => s.phase === 'init-layout');
+    // Every empty pad weighed: 64, then 63, then 62; a few kept.
+    expect(placing.map(s => s.candidateMoveCount)).toEqual([64, 63, 62]);
+    expect(placing.every(s => s.candidateMoves.length === TRACE_BEST_MOVES)).toBe(true);
+    expectCompactReplayableTrace(trace);
   });
 });
 
