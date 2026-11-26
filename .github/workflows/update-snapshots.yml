@@ -23,7 +23,9 @@ concurrency:
 jobs:
   update:
     if: github.event_name == 'workflow_dispatch' || (github.event.label.name == 'update-snapshots' && github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest is now 26.04, where Playwright 1.58.2 cannot install its
+    # browsers. Unpin when Playwright is upgraded to a release that supports it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       PW_FIREFOX: '1'

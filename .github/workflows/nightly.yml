@@ -4,6 +4,8 @@ name: Nightly
 # - The Playwright suite in Firefox.
 # - The deep-annealing TEST MIDI 1 gate (npm run test:nightly), which writes its
 #   duration to the job summary.
+# - The dubstep test suite's slow half: the three whole songs, and greedy on the
+#   8-bar tier-1 files (test/fixtures/midi/dubstep), durations in the job summary.
 
 on:
   schedule:
@@ -26,10 +28,28 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run test:nightly
+      - run: npm run test:nightly -- testMidi1
+
+  dubstep:
+    runs-on: ubuntu-latest
+    # Songs: ~2 min of auto-analysis and Beam. Greedy: ~5 min over the 8-bar tier-1
+    # files; its iteration trace needs over 1 GB of heap on even the smallest.
+    timeout-minutes: 45
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run test:nightly -- dubstep
 
   e2e-firefox:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest is now 26.04, where Playwright 1.58.2 cannot install its
+    # browsers. Unpin when Playwright is upgraded to a release that supports it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       PW_FIREFOX: '1'
