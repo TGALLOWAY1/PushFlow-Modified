@@ -44,6 +44,6 @@ describe.each(GREEDY_FILES)('dubstep greedy $path', (spec) => {
   });
 
   it('matches its summary snapshot (mode, relaxed moments, hard events, score)', () => {
-    expect(greedy.map(candidateSummary)).toMatchSnapshot();
+    expect(greedy.map((c) => candidateSummary(state, c))).toMatchSnapshot();
   });
 });

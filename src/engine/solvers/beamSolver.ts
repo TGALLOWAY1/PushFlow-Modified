@@ -222,6 +222,12 @@ interface BeamNode {
    */
   prevFingers: Array<{ hand: 'left' | 'right'; finger: FingerType }>;
   prevTimestamp: number;
+  /**
+   * When each hand last struck (null before its first strike). A hand's move to
+   * its next grip is timed from its own last strike — see `handTravel`.
+   */
+  leftStrikeTime: number | null;
+  rightStrikeTime: number | null;
 }
 
 interface PerformanceGroup {
@@ -271,6 +277,26 @@ interface PadOwner {
  * the rule-keeping children are enough to fill the beam.
  */
 type ExpansionMode = 'strict' | 'relaxed';
+
+/**
+ * How long a hand has had to get to a moment at `now`: the time since its own
+ * last strike. A hand's pose changes only when it plays, so its move is timed
+ * from that strike, not from the previous moment, which may have been the other
+ * hand's. Timing it from the previous moment made an idle hand look as if it had
+ * to cross the grid in the gap after the other hand's last note (a 32nd-note
+ * snare roll left the free hand 54 ms to reach a pad it had seconds to reach).
+ *
+ * A hand that has not played yet, or has played only at the opening (t = 0), is
+ * still setting up: it moves with no speed limit and at least a second to get
+ * there. That is how the search has always treated the first moment and the one
+ * after a t = 0 opening; the opening strikes pin each Sound's finger for the
+ * whole song, so timing them differently is a separate change.
+ */
+function handTravel(lastStrike: number | null, now: number): { timeDelta: number; settingUp: boolean } {
+  const since = now - (lastStrike ?? 0);
+  if (lastStrike === null || lastStrike === 0) return { timeDelta: Math.max(since, 1.0), settingUp: true };
+  return { timeDelta: since, settingUp: false };
+}
 
 /**
  * Tie-breaking cost for an unavoidable zone violation. Grows with how far past
@@ -496,20 +522,18 @@ export class BeamSolver implements SolverStrategy {
       deferredBreaks: 0,
       prevFingers: [],
       prevTimestamp: 0,
+      leftStrikeTime: null,
+      rightStrikeTime: null,
     }];
   }
 
   private expandNodeForGroup(
     node: BeamNode,
     group: PerformanceGroup,
-    prevTimestamp: number,
     mode: ExpansionMode,
     naturalDistances?: { left: Map<string, number>; right: Map<string, number> },
   ): BeamNode[] {
     const children: BeamNode[] = [];
-    const rawTimeDelta = group.timestamp - prevTimestamp;
-    const isFirstGroup = node.depth === 0 || prevTimestamp === 0;
-    const timeDelta = isFirstGroup ? Math.max(rawTimeDelta, 1.0) : rawTimeDelta;
 
     // Deduplicate pads to prevent multiple fingers on the same pad
     const uniquePads: PadCoord[] = [];
@@ -534,6 +558,7 @@ export class BeamSolver implements SolverStrategy {
 
       const zoneCost = zoneReachCost(uniquePads, hand);
       const prevPose = hand === 'left' ? node.leftPose : node.rightPose;
+      const travel = handTravel(hand === 'left' ? node.leftStrikeTime : node.rightStrikeTime, group.timestamp);
       const gripResults = generateValidGripsWithTier(uniquePads, hand);
 
       for (const gripResult of gripResults) {
@@ -543,7 +568,7 @@ export class BeamSolver implements SolverStrategy {
 
         // Reject transitions that exceed physiological hand speed. Everything
         // slower is merely expensive, and its cost is already finite.
-        if (!isFirstGroup && exceedsHandSpeedLimit(prevPose, grip, timeDelta)) continue;
+        if (!travel.settingUp && exceedsHandSpeedLimit(prevPose, grip, travel.timeDelta)) continue;
 
         // Map notes to the exact finger assigned to their target pad
         const resolvedFingers: FingerType[] = [];
@@ -572,7 +597,7 @@ export class BeamSolver implements SolverStrategy {
         // the strict one.
         if (mode === 'strict' ? !isStrict : isStrict) continue;
 
-        const transitionCost = calculateTransitionCost(prevPose, grip, timeDelta);
+        const transitionCost = calculateTransitionCost(prevPose, grip, travel.timeDelta);
 
         // V1 (D-05, D-20): Translation-invariant hand shape deviation + finger preference
         const handNaturalDist = naturalDistances
@@ -658,6 +683,8 @@ export class BeamSolver implements SolverStrategy {
           deferredBreaks: node.deferredBreaks + deferred,
           prevFingers: currentFingers,
           prevTimestamp: group.timestamp,
+          leftStrikeTime: hand === 'left' ? group.timestamp : node.leftStrikeTime,
+          rightStrikeTime: hand === 'right' ? group.timestamp : node.rightStrikeTime,
         });
       }
     }
@@ -668,7 +695,6 @@ export class BeamSolver implements SolverStrategy {
   private expandNodeForSplitChord(
     node: BeamNode,
     group: PerformanceGroup,
-    prevTimestamp: number,
     mode: ExpansionMode,
     naturalDistances?: { left: Map<string, number>; right: Map<string, number> },
   ): BeamNode[] {
@@ -687,10 +713,6 @@ export class BeamSolver implements SolverStrategy {
 
     if (uniquePads.length < 2) return children;
 
-    const rawTimeDelta = group.timestamp - prevTimestamp;
-    const isFirstGroup = node.depth === 0 || prevTimestamp === 0;
-    const timeDelta = isFirstGroup ? Math.max(rawTimeDelta, 1.0) : rawTimeDelta;
-
     // Sort left-to-right so partitions are enumerated in a stable, deterministic order.
     const sortedPads = [...uniquePads].sort((a, b) =>
       a.col !== b.col ? a.col - b.col : a.row - b.row);
@@ -708,8 +730,7 @@ export class BeamSolver implements SolverStrategy {
         ownedByOtherHand(node.padOwnership, rightPads, 'right')
       )) continue;
       for (const child of this.expandSplitPartition(
-        node, group, leftPads, rightPads, zoneViolations, timeDelta, isFirstGroup, mode,
-        naturalDistances,
+        node, group, leftPads, rightPads, zoneViolations, mode, naturalDistances,
       )) {
         children.push(child);
       }
@@ -727,14 +748,14 @@ export class BeamSolver implements SolverStrategy {
     leftPads: PadCoord[],
     rightPads: PadCoord[],
     zoneViolations: number,
-    timeDelta: number,
-    isFirstGroup: boolean,
     mode: ExpansionMode,
     naturalDistances?: { left: Map<string, number>; right: Map<string, number> },
   ): BeamNode[] {
     const children: BeamNode[] = [];
 
     const zoneCost = zoneReachCost(leftPads, 'left') + zoneReachCost(rightPads, 'right');
+    const leftTravel = handTravel(node.leftStrikeTime, group.timestamp);
+    const rightTravel = handTravel(node.rightStrikeTime, group.timestamp);
 
     const leftPadKeys = new Set(leftPads.map(p => `${p.row},${p.col}`));
     const leftNoteIndices: number[] = [];
@@ -751,7 +772,7 @@ export class BeamSolver implements SolverStrategy {
     for (const leftResult of leftGripResults) {
       const leftFingers = Object.keys(leftResult.pose.fingers) as FingerType[];
       if (leftFingers.length < leftPads.length) continue;
-      if (!isFirstGroup && exceedsHandSpeedLimit(node.leftPose, leftResult.pose, timeDelta)) continue;
+      if (!leftTravel.settingUp && exceedsHandSpeedLimit(node.leftPose, leftResult.pose, leftTravel.timeDelta)) continue;
 
       // Map left notes to the exact finger standing on their pad.
       const resolvedLeftFingers: FingerType[] = [];
@@ -767,7 +788,7 @@ export class BeamSolver implements SolverStrategy {
       for (const rightResult of rightGripResults) {
         const rightFingers = Object.keys(rightResult.pose.fingers) as FingerType[];
         if (rightFingers.length < rightPads.length) continue;
-        if (!isFirstGroup && exceedsHandSpeedLimit(node.rightPose, rightResult.pose, timeDelta)) continue;
+        if (!rightTravel.settingUp && exceedsHandSpeedLimit(node.rightPose, rightResult.pose, rightTravel.timeDelta)) continue;
 
         const resolvedRightFingers: FingerType[] = [];
         for (const i of rightNoteIndices) {
@@ -797,8 +818,8 @@ export class BeamSolver implements SolverStrategy {
         const isStrict = relaxations === 0 && deferred === 0;
         if (mode === 'strict' ? !isStrict : isStrict) continue;
 
-        const leftTransition = calculateTransitionCost(node.leftPose, leftResult.pose, timeDelta);
-        const rightTransition = calculateTransitionCost(node.rightPose, rightResult.pose, timeDelta);
+        const leftTransition = calculateTransitionCost(node.leftPose, leftResult.pose, leftTravel.timeDelta);
+        const rightTransition = calculateTransitionCost(node.rightPose, rightResult.pose, rightTravel.timeDelta);
 
         // V1 (D-05, D-20): Translation-invariant hand shape deviation
         const leftShapeDev = calculateHandShapeDeviation(
@@ -885,6 +906,8 @@ export class BeamSolver implements SolverStrategy {
           deferredBreaks: node.deferredBreaks + deferred,
           prevFingers: splitFingers,
           prevTimestamp: group.timestamp,
+          leftStrikeTime: group.timestamp,
+          rightStrikeTime: group.timestamp,
         });
       }
     }
@@ -913,7 +936,6 @@ export class BeamSolver implements SolverStrategy {
   private buildBestEffortChild(
     node: BeamNode,
     group: PerformanceGroup,
-    prevTimestamp: number,
   ): BeamNode | null {
     const uniquePads: PadCoord[] = [];
     const seen = new Set<string>();
@@ -930,7 +952,8 @@ export class BeamSolver implements SolverStrategy {
     const LEFT_ORDER: FingerType[] = ['pinky', 'ring', 'middle', 'index', 'thumb'];
     const RIGHT_ORDER: FingerType[] = ['thumb', 'index', 'middle', 'ring', 'pinky'];
 
-    const timeDelta = group.timestamp - prevTimestamp;
+    const leftTravel = handTravel(node.leftStrikeTime, group.timestamp);
+    const rightTravel = handTravel(node.rightStrikeTime, group.timestamp);
 
     // Lays the pads out on fingers, optionally keeping each pad on its owner.
     const layOut = (honourOwners: boolean) => {
@@ -1000,8 +1023,8 @@ export class BeamSolver implements SolverStrategy {
       // a merely-expensive one: a layout that would need a hand to move faster
       // than physiologically possible is no layout at all.
       if (
-        exceedsHandSpeedLimit(node.leftPose, leftPose, timeDelta) ||
-        exceedsHandSpeedLimit(node.rightPose, rightPose, timeDelta)
+        (!leftTravel.settingUp && exceedsHandSpeedLimit(node.leftPose, leftPose, leftTravel.timeDelta)) ||
+        (!rightTravel.settingUp && exceedsHandSpeedLimit(node.rightPose, rightPose, rightTravel.timeDelta))
       ) {
         return null;
       }
@@ -1033,8 +1056,8 @@ export class BeamSolver implements SolverStrategy {
     const handBalanceCost = calculateHandBalanceCost(newLeftCount, newRightCount);
     // Real movement cost, not zero — the hands genuinely travel to reach this pose.
     const transitionCost =
-      calculateTransitionCost(node.leftPose, leftPose, timeDelta) +
-      calculateTransitionCost(node.rightPose, rightPose, timeDelta);
+      calculateTransitionCost(node.leftPose, leftPose, leftTravel.timeDelta) +
+      calculateTransitionCost(node.rightPose, rightPose, rightTravel.timeDelta);
     const constraintPenalty = BEST_EFFORT_PENALTY + ownership.relaxationCost;
     const stepCost =
       constraintPenalty + transitionCost + handBalanceCost * HAND_BALANCE_BEAM_WEIGHT;
@@ -1086,6 +1109,8 @@ export class BeamSolver implements SolverStrategy {
       deferredBreaks: node.deferredBreaks + ownership.heldDeviations,
       prevFingers: strikes.map(({ hand, finger }) => ({ hand, finger })),
       prevTimestamp: group.timestamp,
+      leftStrikeTime: leftStrikes > 0 ? group.timestamp : node.leftStrikeTime,
+      rightStrikeTime: leftStrikes < strikes.length ? group.timestamp : node.rightStrikeTime,
     };
   }
 
@@ -1629,21 +1654,29 @@ export class BeamSolver implements SolverStrategy {
       });
     }
 
-    // computePlanScore is calibrated in MOMENTS (see planScore.ts), so it must be
-    // fed the moment counters, not the per-event ones. Passing event counts here
-    // made the beam path report 0/100 for layouts the greedy path scored 96, even
-    // though both claim to produce the same comparable 0-100 "Score".
-    //
-    // The ergonomic term comes from the canonical evaluator rather than this
-    // solver's own internal cost. The two are on different scales, so feeding
-    // each path its own number left the same layout scoring 94 through Generate
-    // and 82 through auto-analysis — the engine contract asks for ONE coherent
-    // cost story, and this is where the user reads it.
-    const score = computePlanScore({
-      hardCount: hardMomentCount,
-      unplayableCount: unplayableMomentCount,
-      avgErgonomicCost: canonical?.costPerMoment ?? averageMetrics.total,
-    });
+    // The plan's score is its Playability: computePlanScore of the canonical
+    // evaluator's counts for this plan's fingering, in events (moments), exactly as
+    // every displayed Score is computed (playability.ts). Candidates are ranked by
+    // it, so their order follows the yardstick their cards print. This solver's
+    // own hard rule (internal cost > 10) is on another scale: on a dense drop it
+    // called 13–56% of events hard where the canonical evaluator found none, which
+    // pinned every candidate's score at 0 and ordered the cards by a rule the user
+    // never sees. Its own counters stay on the plan (hardMomentCount, the
+    // difficulty labels) and stand in only when canonical evaluation is unavailable.
+    const scoredCounts = canonical
+      ? {
+          hardCount: canonical.aggregateMetrics.hardMomentCount,
+          unplayableCount: canonical.aggregateMetrics.infeasibleMomentCount,
+          eventCount: canonical.aggregateMetrics.momentCount,
+          avgErgonomicCost: canonical.costPerMoment,
+        }
+      : {
+          hardCount: hardMomentCount,
+          unplayableCount: unplayableMomentCount,
+          eventCount: momentAssignments.length,
+          avgErgonomicCost: averageMetrics.total,
+        };
+    const score = computePlanScore(scoredCounts);
 
     // Post-hoc diagnostics for unplayable events
     const rejectionReasons = unplayableCount > 0 && eventsWithPositions
@@ -1741,7 +1774,6 @@ export class BeamSolver implements SolverStrategy {
     policy: 'dead-ends' | 'fill' | 'reach' = 'dead-ends',
   ): { beam: BeamNode[]; exhaustedGroupIndices: Set<number> } {
     let beam = initialBeam;
-    let prevTimestamp = 0;
     const exhaustedGroupIndices = new Set<number>();
 
     for (let gi = 0; gi < groups.length; gi++) {
@@ -1749,18 +1781,18 @@ export class BeamSolver implements SolverStrategy {
       const newBeam: BeamNode[] = [];
       const deadEnds: BeamNode[] = [];
       const relax = (node: BeamNode) => {
-        newBeam.push(...this.expandNodeForGroup(node, group, prevTimestamp, 'relaxed', natDist));
+        newBeam.push(...this.expandNodeForGroup(node, group, 'relaxed', natDist));
         if (group.activePads.length >= 2) {
-          newBeam.push(...this.expandNodeForSplitChord(node, group, prevTimestamp, 'relaxed', natDist));
+          newBeam.push(...this.expandNodeForSplitChord(node, group, 'relaxed', natDist));
         }
       };
 
       for (const node of beam) {
         // One hand, then (for chords) every two-hand split — keeping hand-zone
         // separation and one finger per sound.
-        const strict = this.expandNodeForGroup(node, group, prevTimestamp, 'strict', natDist);
+        const strict = this.expandNodeForGroup(node, group, 'strict', natDist);
         if (group.activePads.length >= 2) {
-          strict.push(...this.expandNodeForSplitChord(node, group, prevTimestamp, 'strict', natDist));
+          strict.push(...this.expandNodeForSplitChord(node, group, 'strict', natDist));
         }
         newBeam.push(...strict);
         if (strict.length === 0) deadEnds.push(node);
@@ -1782,7 +1814,7 @@ export class BeamSolver implements SolverStrategy {
       // dead end as a physical impossibility.
       if (newBeam.length === 0) {
         for (const node of beam) {
-          const child = this.buildBestEffortChild(node, group, prevTimestamp);
+          const child = this.buildBestEffortChild(node, group);
           if (child) newBeam.push(child);
         }
         // Genuinely beyond two hands — the one honest unplayable verdict.
@@ -1796,7 +1828,6 @@ export class BeamSolver implements SolverStrategy {
             .slice(0, beamWidth)
           : this.pruneBeam(newBeam, beamWidth);
       }
-      prevTimestamp = group.timestamp;
     }
 
     return { beam, exhaustedGroupIndices };

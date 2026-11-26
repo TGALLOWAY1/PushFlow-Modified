@@ -185,9 +185,16 @@ describe('Learn More sync (P1b-8)', () => {
     const text = screen.getByTestId('learn-score').textContent ?? '';
     expect(text).toContain('Score is its Playability, from 0 to 100: higher is easier');
     expect(text).toContain('canonical evaluator');
-    expect(text).toContain(`minus ${PLAN_SCORE_WEIGHTS.hardEvent} for each hard event`);
+    expect(text).toContain('an event is everything struck at one instant');
+    expect(text).toContain(`minus ${PLAN_SCORE_WEIGHTS.hardEventPercent} for every 1% of the events that are hard`);
     expect(text).toContain(`minus ${PLAN_SCORE_WEIGHTS.unplayableEvent} for each event that can’t be played`);
-    expect(text).toContain(`minus up to ${PLAN_SCORE_WEIGHTS.ergonomicCap} for the average cost per event`);
+    expect(text).toContain('minus a cost term for the average cost per event');
+    // The cost term's shape, from the same constants computePlanScore uses.
+    expect(text).toContain(
+      `takes ${PLAN_SCORE_WEIGHTS.ergonomicCap / 2} at a cost of ${PLAN_SCORE_WEIGHTS.ergonomicHalfCapCost} per event`,
+    );
+    expect(text).toContain(`towards ${PLAN_SCORE_WEIGHTS.ergonomicCap} without reaching it`);
+    expect(text).toContain('Hard events count as a share');
     for (const key of FACTOR_KEYS) expect(text).toContain(FACTOR_META[key].label);
     expect(text).toContain('the same layout scores the same wherever it appears');
     expect(text).toContain('whichever optimizer proposed it');

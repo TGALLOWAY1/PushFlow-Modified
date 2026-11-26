@@ -618,20 +618,26 @@ export const UNFINISHED_EXAMPLE = { placed: 5, total: 7 } as const;
  * Only placed Sounds are scored (S3.3, T25).
  */
 function ScoreSection() {
-  const { hardEvent, unplayableEvent, ergonomicCap } = PLAN_SCORE_WEIGHTS;
+  const { hardEventPercent, unplayableEvent, ergonomicCap, ergonomicHalfCapCost } = PLAN_SCORE_WEIGHTS;
   return (
     <div className="space-y-3 pt-2 border-t border-[var(--border-subtle)]">
       <h4 className="text-pf-base font-medium text-[var(--text-primary)]">Score</h4>
       <p data-testid="learn-score" className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
         Every layout&rsquo;s Score is its Playability, from 0 to 100: higher is easier. PushFlow plays the layout with
         its own fingering (the same analysis for the Active Layout, your draft, each candidate and each saved variant),
-        and the canonical evaluator scores that fingering: 100, minus {hardEvent} for each hard event, minus{' '}
-        {unplayableEvent} for each event that can&rsquo;t be played, and minus up to {ergonomicCap} for the average cost
-        per event of the {listNames(FACTOR_KEYS.map(k => FACTOR_META[k].label))} factors above (a cost family you switch
-        off adds nothing). A hard event needs a grip beyond the strict hand-geometry limits; an event can&rsquo;t be
-        played when one finger would strike two pads at once, or a hand would have to move faster than it can. So the
-        same layout scores the same wherever it appears (its row, the Analysis panel and Compare), whichever optimizer
-        proposed it. &lsquo;Scoring&hellip;&rsquo; shows while a layout is being scored.
+        and the canonical evaluator scores that fingering, event by event (an event is everything struck at one
+        instant): 100, minus {hardEventPercent} for every 1% of the events that are hard, minus {unplayableEvent} for
+        each event that can&rsquo;t be played, and minus a cost term for the average cost per event of the{' '}
+        {listNames(FACTOR_KEYS.map(k => FACTOR_META[k].label))} factors above (a cost family you switch off adds
+        nothing). The cost term takes {ergonomicCap / 2} at a cost of {ergonomicHalfCapCost} per event and grows ever
+        more slowly after that, towards {ergonomicCap} without reaching it, so even very dense material still ranks.
+        Hard events count as a share, so a short loop and a whole song that are equally hard to play score alike; each
+        event that can&rsquo;t be played costs the same however long the song is, because each one has to be fixed. A
+        hard event needs a grip beyond the strict hand-geometry limits; an event can&rsquo;t be played when one finger
+        would strike two pads at once, or a hand would have to move faster than it can. So the same layout scores the
+        same wherever it appears (its row, the Analysis panel and Compare), whichever optimizer proposed it, and
+        candidates are listed by the same Score of the plan their optimizer found. &lsquo;Scoring&hellip;&rsquo; shows
+        while a layout is being scored.
       </p>
       <p data-testid="learn-placed-only" className="text-pf-sm text-[var(--text-tertiary)] leading-relaxed">
         Only placed Sounds are scored. The notes of a Sound with no pad yet are left out of the analysis, the verdict and
@@ -847,7 +853,7 @@ export const HARD_CONSTRAINTS = [
       {
         name: 'Transition Speed',
         key: 'speed',
-        description: 'Hand movement between consecutive events cannot exceed 80 grid units/second (about 1.8 m/s on the Push 3\u2019s ~2.2\u202Fcm pad pitch \u2014 a hand crossing the full grid in roughly 100\u202Fms). Above 24 units/second the movement is still playable but costs steeply more.',
+        description: 'A hand cannot move faster than 80 grid units/second (about 1.8 m/s on the Push 3\u2019s ~2.2\u202Fcm pad pitch \u2014 a hand crossing the full grid in roughly 100\u202Fms). Each hand is timed from its own last strike, so a hand that sat out the last few events has had all that time to get into place. Above 24 units/second the movement is still playable but costs steeply more.',
       },
       {
         name: 'Outward Rotation',

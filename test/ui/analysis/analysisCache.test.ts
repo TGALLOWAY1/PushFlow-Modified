@@ -118,8 +118,8 @@ describe('analyseLayoutCached on TEST MIDI 1', () => {
 
   it('keys by the canonical evaluator: the beam-fast entries are retired', async () => {
     const state = await suggestedTestMidi1();
-    expect(PLAYABILITY_EVALUATOR_ID).toBe('canonical-v1');
-    expect(analysisKeyFor(state, getDisplayedLayout(state)!).evaluatorId).toBe('canonical-v1');
+    expect(PLAYABILITY_EVALUATOR_ID).toBe('canonical-v2');
+    expect(analysisKeyFor(state, getDisplayedLayout(state)!).evaluatorId).toBe('canonical-v2');
   });
 
   it('a change to the performance is a new key; Mute and Solo are not one (S4.4)', async () => {

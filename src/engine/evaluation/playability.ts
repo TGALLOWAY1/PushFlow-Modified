@@ -6,10 +6,11 @@
  * evaluation settings and the cost toggles — never on which optimizer proposed
  * the layout. It scores the fingering of the layout's own analysis plan, and
  * all three inputs of computePlanScore come from the canonical evaluator run on
- * that fingering: its hard events (fallback grips), its unplayable events (a
- * note with no pad or finger, one finger on two pads, a move faster than a hand
- * can go) and its average cost per event. Each solver's own `plan.score`, which
- * classifies hard and unplayable its own way, stays internal to that solver.
+ * that fingering: its hard events (fallback grips) as a share of all its
+ * events, its unplayable events (a note with no pad or finger, one finger on
+ * two pads, a move faster than a hand can go) and its average cost per event.
+ * Each solver's own `plan.score` is the same function of the same evaluator,
+ * run on the plan the solver produced.
  *
  * Pure: no state, no I/O, safe to run in a worker.
  */
@@ -28,7 +29,9 @@ import { buildPerformanceMoments, extractPadOwnership } from '../structure/momen
 import { getNeutralHandCenters } from '../prior/handPose';
 
 /** Names this yardstick in caches and on every score. Change it when the formula changes. */
-export const PLAYABILITY_EVALUATOR_ID = 'canonical-v1';
+// v2: hard events count as a share of all events, and the ergonomic term rises
+// smoothly towards 50 instead of stopping at 25 (planScore.ts).
+export const PLAYABILITY_EVALUATOR_ID = 'canonical-v2';
 
 /** One layout's score on the one yardstick. */
 export interface LayoutScore {
@@ -144,7 +147,12 @@ export function scoreLayoutPlayability(input: ScoreLayoutPlayabilityInput): Layo
   const d = breakdown.dimensions;
   return {
     evaluatorId: PLAYABILITY_EVALUATOR_ID,
-    playability: computePlanScore({ hardCount: hardEvents, unplayableCount: unplayableEvents, avgErgonomicCost: breakdown.costPerMoment }),
+    playability: computePlanScore({
+      hardCount: hardEvents,
+      unplayableCount: unplayableEvents,
+      eventCount: moments.length,
+      avgErgonomicCost: breakdown.costPerMoment,
+    }),
     events: moments.length,
     hardEvents,
     unplayableEvents,

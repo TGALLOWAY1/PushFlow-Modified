@@ -57,13 +57,15 @@ describe('scoreLayoutPlayability on TEST MIDI 1', () => {
     expect(s.evaluatorId).toBe(PLAYABILITY_EVALUATOR_ID);
     expect(s.events).toBe(32);
     expect(s.unplayableEvents).toBe(0);
-    expect(s.playability).toBe(computePlanScore({ hardCount: s.hardEvents, unplayableCount: s.unplayableEvents, avgErgonomicCost: s.costPerEvent }));
+    expect(s.playability).toBe(computePlanScore({ hardCount: s.hardEvents, unplayableCount: s.unplayableEvents, eventCount: s.events, avgErgonomicCost: s.costPerEvent }));
     expect(s.playability).toBeGreaterThan(0);
     expect(s.playability).toBeLessThanOrEqual(100);
     // The beam solver scores its own result with the same evaluator (all costs
     // on), re-fingered strikes included: the same fingering gives the same cost.
     expect(s.factors.total).toBeCloseTo(analysis.executionPlan.diagnostics!.factors.total, 9);
     expect(s.factors.transition).toBeCloseTo(analysis.executionPlan.diagnostics!.factors.transition, 9);
+    // ...and its plan.score, which ranks candidates, is that same Playability.
+    expect(analysis.executionPlan.score).toBeCloseTo(s.playability, 9);
     const { total, ...parts } = s.factors;
     expect(Object.values(parts).reduce((a, b) => a + b, 0)).toBeCloseTo(total, 9);
     expect(s.feasibility.level).not.toBe('infeasible');
@@ -107,7 +109,11 @@ describe('scoreLayoutPlayability on TEST MIDI 1', () => {
     const off = score(layout, analysis.executionPlan, performance, ALL_COSTS_DISABLED);
     expect(off.factors.total).toBe(0);
     expect(off.costPerEvent).toBe(0);
-    expect(off.playability).toBe(100 - PLAN_SCORE_WEIGHTS.hardEvent * off.hardEvents - PLAN_SCORE_WEIGHTS.unplayableEvent * off.unplayableEvents);
+    const hardPercent = (100 * off.hardEvents) / off.events;
+    expect(off.playability).toBeCloseTo(
+      100 - PLAN_SCORE_WEIGHTS.hardEventPercent * hardPercent - PLAN_SCORE_WEIGHTS.unplayableEvent * off.unplayableEvents,
+      9,
+    );
   });
 });
 

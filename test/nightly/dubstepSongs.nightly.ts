@@ -25,14 +25,8 @@ import { type CandidateSolution } from '../../src/types/candidateSolution';
 
 const SONGS = FILES.filter((spec) => spec.path.startsWith('3-songs/'));
 
-/** Known engine gaps, by file: what fails, where, and why it should not. */
-const BEAM_GAPS: Record<string, string> = {
-  // Build 2's last bar: a vox stutter 54 ms after a 32nd-note snare roll. Two of the
-  // three candidates keep the Vox Chop on a left-hand finger while the left hand rolls
-  // the snare five pads away; the free right hand could play it, and the other
-  // candidate shows the song is playable as it stands.
-  '3-songs/song-140-halftime.mid': 'Vox Chop at bar 64, beat 3 is unplayable in pose0-offset-1 and -2',
-};
+/** Known engine gaps, by file: what fails, where, and why it should not. None today. */
+const BEAM_GAPS: Record<string, string> = {};
 
 describe.each(SONGS)('dubstep song $path', (spec) => {
   let state: ProjectState;
@@ -59,6 +53,6 @@ describe.each(SONGS)('dubstep song $path', (spec) => {
   });
 
   it('matches its summary snapshot (mode, relaxed moments, hard events, score)', () => {
-    expect({ analysis: planSummary(analysis), beam: beam.map(candidateSummary) }).toMatchSnapshot();
+    expect({ analysis: planSummary(state, analysis), beam: beam.map((c) => candidateSummary(state, c)) }).toMatchSnapshot();
   });
 });
