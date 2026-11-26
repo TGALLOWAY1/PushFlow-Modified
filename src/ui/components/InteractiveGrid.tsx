@@ -47,6 +47,7 @@ import { formatPadPosition, spokenPadPosition } from '../../utils/padPosition';
 import { fingerLabel, handColor } from '../../utils/fingerNotation';
 import { COMPOSER_PRESET_DRAG_TYPE } from './composer/PresetCard';
 import { type PresetDragPreview } from '../../types/composerPreset';
+import { spatialHighlights } from '../../engine/optimization/moveTraceSample';
 import {
   AXIS_WIDTH,
   COLUMN_LABELS_HEIGHT,
@@ -335,23 +336,9 @@ export function InteractiveGrid({ assignments, layoutOverride, momentView = 'now
   const debuggerPaths = useMemo(() => {
     if (!debuggerIteration) return [];
     
-    const allMoves = debuggerIteration.candidateMoves
-      .filter(move => move.fromPadKey && move.toPadKey && move.fromPadKey !== move.toPadKey);
-
-    // Filter to best 3 (lowest delta) + worst 3 (highest delta) + accepted
-    let filteredMoves: typeof allMoves;
-    if (allMoves.length <= 7) {
-      filteredMoves = allMoves;
-    } else {
-      const sorted = [...allMoves].sort((a, b) => a.deltaTotal - b.deltaTotal);
-      const best3 = sorted.slice(0, 3);
-      const worst3 = sorted.slice(-3);
-      const accepted = allMoves.filter(m => m.accepted);
-      const selectedSet = new Set([...best3, ...worst3, ...accepted]);
-      filteredMoves = [...selectedSet];
-    }
-
-    return filteredMoves
+    // The moves that relocate a Sound: best 3 (lowest delta), worst 3 and the
+    // chosen one, the same ones the trace keeps for each step.
+    return spatialHighlights(debuggerIteration.candidateMoves)
       .map(move => {
         const [fromRow, fromCol] = move.fromPadKey!.split(',').map(Number);
         const [toRow, toCol] = move.toPadKey!.split(',').map(Number);

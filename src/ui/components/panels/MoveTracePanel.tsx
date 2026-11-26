@@ -300,8 +300,8 @@ function StepDetail({ step, change }: { step: TraceStep; change: CostChange | nu
                 </li>
               ))}
           </ul>
-          {iteration.candidateMoves.length > 4 && (
-            <div className="text-pf-micro">and {iteration.candidateMoves.length - 4} more</div>
+          {iteration.candidateMoveCount > 4 && (
+            <div className="text-pf-micro">and {iteration.candidateMoveCount - 4} more</div>
           )}
         </>
       )}

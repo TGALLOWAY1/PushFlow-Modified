@@ -21,7 +21,7 @@
 import { type Performance, type InstrumentConfig } from '../../types/performance';
 import { type Layout } from '../../types/layout';
 import { type ExecutionPlanResult, type PadFingerAssignment } from '../../types/executionPlan';
-import { type PerformanceCostBreakdown } from '../../types/costBreakdown';
+import { type CostDimensions, type PerformanceCostBreakdown } from '../../types/costBreakdown';
 import { type CostToggles } from '../../types/costToggles';
 import { type SolverConstraints } from '../solvers/types';
 import { type EvaluationConfig } from '../../types/evaluationConfig';
@@ -119,8 +119,13 @@ export interface CandidateMoveRecord {
   voiceName?: string;
   /** Total cost difference (negative = improvement) */
   deltaTotal: number;
-  /** Full evaluation breakdown for the candidate state */
-  costBreakdown?: PerformanceCostBreakdown;
+  /**
+   * Change in each cost factor from the state before the move (negative =
+   * better), from the canonical evaluator. Absent for placement steps, which
+   * score pads without evaluating the performance. Hill-climb `deltaTotal` also
+   * counts the rhythm-peer alignment cost, which is not a canonical factor.
+   */
+  factorDeltas?: CostDimensions;
   /** Whether the optimizer chose this move */
   accepted: boolean;
   /** (Optional) why this move was chosen or rejected */
@@ -129,7 +134,9 @@ export interface CandidateMoveRecord {
 
 /**
  * OptimizationIteration: A single step in an interpretable optimization run.
- * Captures before/after state and all candidate moves considered.
+ * Captures before/after state, a sample of the moves considered and how many
+ * there were. Steps share state objects (one step's stateAfter is the next
+ * one's stateBefore), so treat them as read-only.
  */
 export interface OptimizationIteration {
   iterationIndex: number;
@@ -155,8 +162,16 @@ export interface OptimizationIteration {
     assignment: PadFingerAssignment;
   };
   
-  /** All valid moves considered in this iteration */
+  /**
+   * The moves considered that the trace keeps (moveTraceSample.ts): the chosen
+   * one, the best few and the best and worst Sound-relocating ones, in the order
+   * they were weighed. candidateMoveCount says how many were weighed in all.
+   */
   candidateMoves: CandidateMoveRecord[];
+  /** How many moves this iteration weighed, kept or not (blocked ones included). */
+  candidateMoveCount: number;
+  /** Of those, how many the hand-separation rule blocked. */
+  blockedMoveCount: number;
   /** The single move actually selected (null if local minimum reached) */
   chosenMove: CandidateMoveRecord | null;
   

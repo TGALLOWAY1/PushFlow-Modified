@@ -25,6 +25,7 @@ import {
   type StopReason,
 } from './optimizerInterface';
 import { registerOptimizer } from './optimizerRegistry';
+import { sampleTraceMoves } from './moveTraceSample';
 import { formatPadPosition, formatRowCol } from '../../utils/padPosition';
 import { evaluatePerformance } from '../evaluation/canonicalEvaluator';
 import { computePlanScore } from '../evaluation/planScore';
@@ -319,7 +320,7 @@ class GreedyOptimizer implements OptimizerMethod {
             targetId: move.voiceId,
             voiceName: move.voiceName,
             deltaTotal: newCostResult.total - currentCost.total,
-            costBreakdown: newCostResult,
+            factorDeltas: factorDeltas(newCostResult.dimensions, currentCost.dimensions),
             accepted: false,
             reason: 'Blocked: would put a sound outside its hand\'s zone without making anything playable',
           });
@@ -366,8 +367,10 @@ class GreedyOptimizer implements OptimizerMethod {
         break;
       }
 
-      // Accept selected move
-      const stateBefore = { layout: deepCopyLayout(layout), assignment: { ...assignment } };
+      // Accept selected move. The hill climb never mutates a layout or an
+      // assignment in place (applyMove copies), so the trace shares them: this
+      // step's stateBefore is the previous step's stateAfter.
+      const stateBefore = { layout, assignment };
 
       const bestMove = moveMap[selected.index];
       const costDelta = selected.costDelta;
@@ -388,7 +391,7 @@ class GreedyOptimizer implements OptimizerMethod {
       };
       moveHistory.push(moveRecord);
 
-      // Build CandidateMoveRecords for the Visual Debugger
+      // Build CandidateMoveRecords for the trace panel and the Visual Debugger
       const candidateMovesRecords: CandidateMoveRecord[] = evaluatedMoves.map(em => {
         const mappedOrig = moveMap[em.index];
         return {
@@ -400,7 +403,7 @@ class GreedyOptimizer implements OptimizerMethod {
           targetId: mappedOrig.voiceId,
           voiceName: mappedOrig.voiceName,
           deltaTotal: em.costDelta,
-          costBreakdown: em.breakdown,
+          factorDeltas: em.breakdown && factorDeltas(em.breakdown.dimensions, currentCost.dimensions),
           accepted: em.index === selected.index,
           reason: em.index === selected.index ? moveRecord.reason : undefined,
         };
@@ -415,7 +418,11 @@ class GreedyOptimizer implements OptimizerMethod {
         netDelta: costDelta,
         stateBefore,
         stateAfter: { layout: bestMove.newLayout!, assignment: bestMove.newAssignment! },
-        candidateMoves: [...candidateMovesRecords, ...blockedMoves],
+        // A sample of what it weighed, not all of it: up to 500 moves a step
+        // made a candidate's trace hundreds of MB (moveTraceSample.ts).
+        candidateMoves: sampleTraceMoves([...candidateMovesRecords, ...blockedMoves]),
+        candidateMoveCount: candidateMovesRecords.length + blockedMoves.length,
+        blockedMoveCount: blockedMoves.length,
         chosenMove: candidateMovesRecords.find(m => m.accepted) ?? null,
         summary: moveRecord.description,
       });
@@ -563,6 +570,10 @@ class GreedyOptimizer implements OptimizerMethod {
     // Noise scale: seed 0 = no noise (baseline), seed > 0 = add randomness
     const noiseScale = seed === 0 ? 0 : 0.3;
 
+    // The layout as it stands, copied once per placement: each step's stateAfter
+    // is the next one's stateBefore (the layout itself is mutated below).
+    let snapshot = deepCopyLayout(layout);
+
     // Place sounds one at a time
     for (const [soundId, voice] of sortedSounds) {
       const emptyPads = getEmptyPadPositions(
@@ -576,7 +587,7 @@ class GreedyOptimizer implements OptimizerMethod {
       let bestPad = emptyPads[0];
       let bestScore = Infinity;
 
-      const stateBefore = { layout: deepCopyLayout(layout), assignment: {} };
+      const stateBefore = { layout: snapshot, assignment: {} };
       const candidateMoves: CandidateMoveRecord[] = [];
 
       for (const pad of emptyPads) {
@@ -679,6 +690,7 @@ class GreedyOptimizer implements OptimizerMethod {
         chosenMove.reason = `Best placement score: ${bestScore.toFixed(2)}`;
       }
 
+      snapshot = deepCopyLayout(layout);
       iterationTrace.push({
         iterationIndex: iterationTrace.length,
         phase: 'init-layout',
@@ -687,8 +699,10 @@ class GreedyOptimizer implements OptimizerMethod {
         scoreAfter: 0, // In init, we don't eval full performance yet
         netDelta: bestScore,
         stateBefore,
-        stateAfter: { layout: deepCopyLayout(layout), assignment: {} },
-        candidateMoves,
+        stateAfter: { layout: snapshot, assignment: {} },
+        candidateMoves: sampleTraceMoves(candidateMoves),
+        candidateMoveCount: candidateMoves.length,
+        blockedMoveCount: 0,
         chosenMove: chosenMove ?? null,
         summary: `Placed ${voice.name ?? soundId} at ${formatRowCol(bestPad.row, bestPad.col)}`
       });
@@ -1219,6 +1233,18 @@ function combineMomentDimensions(
     alternation,
     handBalance,
     total: poseNaturalness + transitionCost + constraintPenalty + alternation + handBalance,
+  };
+}
+
+/** Each cost factor's change from `before` to `after` (negative = better). */
+function factorDeltas(after: CostDimensions, before: CostDimensions): CostDimensions {
+  return {
+    poseNaturalness: after.poseNaturalness - before.poseNaturalness,
+    transitionCost: after.transitionCost - before.transitionCost,
+    constraintPenalty: after.constraintPenalty - before.constraintPenalty,
+    alternation: after.alternation - before.alternation,
+    handBalance: after.handBalance - before.handBalance,
+    total: after.total - before.total,
   };
 }
 
