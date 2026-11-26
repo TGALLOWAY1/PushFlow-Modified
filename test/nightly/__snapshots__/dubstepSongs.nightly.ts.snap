@@ -3,23 +3,23 @@
 exports[`dubstep song '3-songs/song-130-deep.mid' > matches its summary snapshot (mode, relaxed moments, hard events, score) 1`] = `
 {
   "analysis": {
-    "hard": 506,
+    "hard": 438,
     "mode": "relaxed",
-    "relaxedMoments": 21,
+    "relaxedMoments": 23,
     "score": 0,
     "unplayable": 0,
   },
   "beam": [
     {
-      "hard": 535,
+      "hard": 443,
       "mode": "relaxed",
-      "relaxedMoments": 12,
+      "relaxedMoments": 15,
       "score": 0,
       "strategy": "pose0-offset-0",
       "unplayable": 0,
     },
     {
-      "hard": 598,
+      "hard": 560,
       "mode": "relaxed",
       "relaxedMoments": 75,
       "score": 0,
@@ -27,9 +27,9 @@ exports[`dubstep song '3-songs/song-130-deep.mid' > matches its summary snapshot
       "unplayable": 0,
     },
     {
-      "hard": 567,
+      "hard": 533,
       "mode": "relaxed",
-      "relaxedMoments": 59,
+      "relaxedMoments": 72,
       "score": 0,
       "strategy": "pose0-offset-2",
       "unplayable": 0,
@@ -41,7 +41,7 @@ exports[`dubstep song '3-songs/song-130-deep.mid' > matches its summary snapshot
 exports[`dubstep song '3-songs/song-140-halftime.mid' > matches its summary snapshot (mode, relaxed moments, hard events, score) 1`] = `
 {
   "analysis": {
-    "hard": 338,
+    "hard": 308,
     "mode": "relaxed",
     "relaxedMoments": 6,
     "score": 0,
@@ -49,7 +49,7 @@ exports[`dubstep song '3-songs/song-140-halftime.mid' > matches its summary snap
   },
   "beam": [
     {
-      "hard": 400,
+      "hard": 347,
       "mode": "relaxed",
       "relaxedMoments": 35,
       "score": 0,
@@ -57,20 +57,20 @@ exports[`dubstep song '3-songs/song-140-halftime.mid' > matches its summary snap
       "unplayable": 0,
     },
     {
-      "hard": 417,
+      "hard": 399,
       "mode": "relaxed",
-      "relaxedMoments": 35,
+      "relaxedMoments": 36,
       "score": 0,
       "strategy": "pose0-offset-1",
-      "unplayable": 1,
+      "unplayable": 0,
     },
     {
-      "hard": 337,
+      "hard": 316,
       "mode": "relaxed",
-      "relaxedMoments": 26,
+      "relaxedMoments": 27,
       "score": 0,
       "strategy": "pose0-offset-2",
-      "unplayable": 1,
+      "unplayable": 0,
     },
   ],
 }
@@ -79,7 +79,7 @@ exports[`dubstep song '3-songs/song-140-halftime.mid' > matches its summary snap
 exports[`dubstep song '3-songs/song-150-tearout.mid' > matches its summary snapshot (mode, relaxed moments, hard events, score) 1`] = `
 {
   "analysis": {
-    "hard": 453,
+    "hard": 402,
     "mode": "relaxed",
     "relaxedMoments": 26,
     "score": 0,
@@ -87,23 +87,23 @@ exports[`dubstep song '3-songs/song-150-tearout.mid' > matches its summary snaps
   },
   "beam": [
     {
-      "hard": 447,
+      "hard": 461,
       "mode": "relaxed",
-      "relaxedMoments": 8,
-      "score": 0,
-      "strategy": "pose0-offset-0",
-      "unplayable": 0,
-    },
-    {
-      "hard": 472,
-      "mode": "relaxed",
-      "relaxedMoments": 21,
+      "relaxedMoments": 16,
       "score": 0,
       "strategy": "pose0-offset-1",
       "unplayable": 0,
     },
     {
-      "hard": 452,
+      "hard": 409,
+      "mode": "relaxed",
+      "relaxedMoments": 11,
+      "score": 0,
+      "strategy": "pose0-offset-0",
+      "unplayable": 0,
+    },
+    {
+      "hard": 437,
       "mode": "relaxed",
       "relaxedMoments": 50,
       "score": 0,
