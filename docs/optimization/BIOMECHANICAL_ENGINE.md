@@ -70,7 +70,7 @@ soft cost.
 | Pair span | Every active finger pair must be within its strict Euclidean limit. | The proposed spread is anatomically out of range. |
 | Hand topology | Fingers must retain their expected left-to-right order for the selected hand; the thumb receives only the configured delta allowance. | A finger crossover or incompatible thumb placement is rejected. |
 | Outward rotation | For adjacent non-thumb fingers in the **same column**, the outer finger may not be below the inner finger. | The grip would require outward forearm/hand rotation (supination). |
-| Transition speed | Hand-centroid speed may not exceed 12 grid units/second. | Transition cost becomes `Infinity`. |
+| Transition speed | Hand-centroid speed may not exceed 80 grid units/second (`MAX_HAND_SPEED`). The beam times each hand from its own last strike. | `exceedsHandSpeedLimit` rejects the move (beam) or flags it as infeasible (canonical evaluator); the cost takes a finite `SPEED_LIMIT_PENALTY` of 1000. |
 | Mapping and ownership | Every performed Sound must resolve to a pad and that pad must have a finger owner. | The event is unassigned/unplayable and the performance cannot be considered fully feasible. |
 | Explicit assignments | Solver hard assignments must be satisfied exactly. | A conflicting candidate is invalid, rather than merely expensive. |
 
@@ -168,8 +168,19 @@ transitionCost = centroidCost + perFingerCost
 ```
 
 Only fingers active in both poses contribute to per-finger movement. If
-`Δt <= 0.001s`, transition cost is zero to avoid division instability. If
-centroid speed exceeds 12 grid units/second, the result is `Infinity`.
+`Δt <= 0.001s`, transition cost is zero to avoid division instability. Above
+24 grid units/second (`COMFORTABLE_HAND_SPEED`) the speed term ramps up by
+1.5 per unit; above 80 grid units/second (`MAX_HAND_SPEED`) the move is
+physically impossible: `exceedsHandSpeedLimit` reports it, and the cost adds a
+finite 1000 so comparisons stay orderable.
+
+What `Δt` is depends on the caller. The canonical evaluator scores a hand only
+when it plays in both of two consecutive moments, so `Δt` is the gap between
+them. The beam keeps each hand's pose from its own last strike, so it times
+that hand from the same strike: a hand that sat out the other hand's 32nd-note
+roll has had the whole roll to move, not the 54 ms since the roll's last note.
+A hand that has not played yet, or has played only at t = 0, is still setting
+up: no speed limit, and `Δt` of at least one second.
 
 Despite comments describing this as “Fitts's Law,” the implementation is a
 linear distance-plus-speed proxy with per-finger travel; it does not use the
@@ -294,8 +305,9 @@ overrides, although the global hard constraint values are fixed constants today.
 3. Generate all distinct finger permutations for each hand.
 4. Incrementally prune pair-span violations, then reject topology and
    outward-rotation violations.
-5. Calculate transition speed/cost from the previous beam node. Discard
-   non-finite transitions.
+5. Calculate each playing hand's transition speed/cost from its pose at its
+   own last strike, over the time since that strike. Discard transitions over
+   the speed limit.
 6. Calculate grip shape, finger preference, and running hand balance.
 7. Add step cost to the node's cumulative cost.
 8. Keep only the best `beamWidth` nodes and continue through time.
@@ -352,7 +364,8 @@ moment as an infeasibility. A speed-limit violation therefore cannot retain a
 | --- | ---: | --- |
 | `beamWidth` | caller supplied | Search breadth; no change to hard rules. |
 | `stiffness` | caller supplied, documented range 0–1 | Strength of canonical evaluator's centroid attractor. |
-| `max hand speed` | 12 units/s | Hard `Infinity` threshold for centroid movement. |
+| `max hand speed` | 80 units/s | Hard limit for centroid movement (`exceedsHandSpeedLimit`). |
+| `comfortable hand speed` | 24 units/s | Above it, transition cost ramps steeply. |
 | speed weight | 0.5 | Strength of speed within transition cost. |
 | mean finger movement weight | 1.0 | Strength of average shared-finger travel. |
 | maximum finger jump weight | 0.8 | Extra pressure against one large finger jump. |
@@ -400,8 +413,8 @@ These are current implementation facts, not desired future behavior:
    the strict CLP predicate and additionally rejects duplicate simultaneous
    finger ownership and wrong-hand zones. Reach remains a transition concern.
 3. **Transition speed is centroid-based.** A shared finger can move very far and
-   incur a large soft cost without independently triggering `Infinity` when the
-   centroid remains under 12 units/s.
+   incur a large soft cost without independently tripping the speed limit when
+   the centroid remains under 80 units/s.
 4. **Newly activated fingers have no transition travel.** Per-finger movement
    only considers fingers shared by both poses; a published activation constant
    exists but is not used in the active transition equation.

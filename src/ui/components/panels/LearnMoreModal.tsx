@@ -853,7 +853,7 @@ export const HARD_CONSTRAINTS = [
       {
         name: 'Transition Speed',
         key: 'speed',
-        description: 'Hand movement between consecutive events cannot exceed 80 grid units/second (about 1.8 m/s on the Push 3\u2019s ~2.2\u202Fcm pad pitch \u2014 a hand crossing the full grid in roughly 100\u202Fms). Above 24 units/second the movement is still playable but costs steeply more.',
+        description: 'A hand cannot move faster than 80 grid units/second (about 1.8 m/s on the Push 3\u2019s ~2.2\u202Fcm pad pitch \u2014 a hand crossing the full grid in roughly 100\u202Fms). Each hand is timed from its own last strike, so a hand that sat out the last few events has had all that time to get into place. Above 24 units/second the movement is still playable but costs steeply more.',
       },
       {
         name: 'Outward Rotation',
