@@ -12,12 +12,12 @@
 import { describe, it, expect } from 'vitest';
 import { type Layout } from '../../../src/types/layout';
 import { type Voice } from '../../../src/types/voice';
-import { type ExecutionPlanResult, type ExecutionPlanLayoutBinding } from '../../../src/types/executionPlan';
+import { type ExecutionPlanResult } from '../../../src/types/executionPlan';
 import { type PerformanceEvent } from '../../../src/types/performanceEvent';
 import { type Performance } from '../../../src/types/performance';
 import { padKey } from '../../../src/types/padGrid';
 import { applyRandomMutation, applyZoneTransferMutation } from '../../../src/engine/optimization/mutationService';
-import { checkPlanFreshness, getEffectiveLayoutBinding } from '../../../src/engine/evaluation/executionPlanValidation';
+import { checkPlanFreshness, } from '../../../src/engine/evaluation/executionPlanValidation';
 import { hashLayout } from '../../../src/engine/mapping/mappingResolver';
 import {
   runSolver,
@@ -52,7 +52,6 @@ function makeTestLayout(overrides?: Partial<Layout>): Layout {
     },
     fingerConstraints: {},
     placementLocks: {},
-    scoreCache: null,
     role: 'active',
     ...overrides,
   };
@@ -329,99 +328,5 @@ describe('Phase 2: Staleness Detection', () => {
     const result = checkPlanFreshness(unboundPlan, layout);
     expect(result.isFresh).toBe(false);
     expect(result.reason).toContain('no layout binding');
-  });
-
-  it('should support legacy metadata fields for pre-Phase-2 plans', () => {
-    const legacyPlan: ExecutionPlanResult = {
-      ...freshPlan,
-      layoutBinding: undefined,
-      metadata: {
-        layoutIdUsed: 'test-layout-001',
-        layoutHashUsed: layoutHash,
-      },
-    };
-    const result = checkPlanFreshness(legacyPlan, layout);
-    expect(result.isFresh).toBe(true);
-  });
-
-  it('should detect legacy plan staleness when hash changes', () => {
-    const legacyPlan: ExecutionPlanResult = {
-      ...freshPlan,
-      layoutBinding: undefined,
-      metadata: {
-        layoutIdUsed: 'test-layout-001',
-        layoutHashUsed: 'outdated-hash',
-      },
-    };
-    const result = checkPlanFreshness(legacyPlan, layout);
-    expect(result.isFresh).toBe(false);
-    expect(result.reason).toContain('changed');
-  });
-});
-
-// ============================================================================
-// 5. getEffectiveLayoutBinding
-// ============================================================================
-
-describe('Phase 2: getEffectiveLayoutBinding', () => {
-  it('should return layoutBinding when present', () => {
-    const binding: ExecutionPlanLayoutBinding = {
-      layoutId: 'layout-1',
-      layoutHash: 'hash-1',
-      layoutRole: 'active',
-    };
-    const plan: ExecutionPlanResult = {
-      score: 0,
-      unplayableCount: 0,
-      hardCount: 0,
-      fingerAssignments: [],
-      fingerUsageStats: {},
-      fatigueMap: {},
-      averageDrift: 0,
-      averageMetrics: { fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0, handBalance: 0, constraintPenalty: 0, total: 0 },
-      layoutBinding: binding,
-    };
-
-    const result = getEffectiveLayoutBinding(plan);
-    expect(result).toBe(binding);
-  });
-
-  it('should fall back to legacy metadata', () => {
-    const plan: ExecutionPlanResult = {
-      score: 0,
-      unplayableCount: 0,
-      hardCount: 0,
-      fingerAssignments: [],
-      fingerUsageStats: {},
-      fatigueMap: {},
-      averageDrift: 0,
-      averageMetrics: { fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0, handBalance: 0, constraintPenalty: 0, total: 0 },
-      metadata: {
-        layoutIdUsed: 'legacy-id',
-        layoutHashUsed: 'legacy-hash',
-      },
-    };
-
-    const result = getEffectiveLayoutBinding(plan);
-    expect(result).not.toBeNull();
-    expect(result!.layoutId).toBe('legacy-id');
-    expect(result!.layoutHash).toBe('legacy-hash');
-    expect(result!.layoutRole).toBe('active'); // default for legacy
-  });
-
-  it('should return null when no binding and no legacy metadata', () => {
-    const plan: ExecutionPlanResult = {
-      score: 0,
-      unplayableCount: 0,
-      hardCount: 0,
-      fingerAssignments: [],
-      fingerUsageStats: {},
-      fatigueMap: {},
-      averageDrift: 0,
-      averageMetrics: { fingerPreference: 0, handShapeDeviation: 0, transitionCost: 0, handBalance: 0, constraintPenalty: 0, total: 0 },
-    };
-
-    const result = getEffectiveLayoutBinding(plan);
-    expect(result).toBeNull();
   });
 });

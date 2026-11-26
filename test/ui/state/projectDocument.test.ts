@@ -49,7 +49,7 @@ const FIXTURE = path.resolve(__dirname, '../../fixtures/projects/saved-by-main.j
 describe('document/session field table', () => {
   it('classifies every ProjectState field exactly once', () => {
     const all = Object.keys(createEmptyProjectState()).sort();
-    const doc = DOCUMENT_FIELDS.filter(k => k !== 'layouts' && k !== 'activeLayoutId');
+    const doc = DOCUMENT_FIELDS;
     expect([...doc, ...SESSION_FIELDS].sort()).toEqual(all);
     expect(doc.filter(k => SESSION_FIELDS.includes(k))).toEqual([]);
   });

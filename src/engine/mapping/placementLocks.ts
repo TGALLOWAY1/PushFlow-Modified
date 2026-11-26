@@ -133,7 +133,7 @@ export function fixedPlacements(
  * the cleaned layout (whose hash no longer counts those pads as locked).
  * Returns the inputs themselves when the layout carries no pin.
  */
-export function withoutPins<P extends Pick<ExecutionPlanResult, 'layoutBinding' | 'metadata'>>(
+export function withoutPins<P extends Pick<ExecutionPlanResult, 'layoutBinding'>>(
   layout: Layout,
   executionPlan: P,
   pins: Record<string, string>,
@@ -147,9 +147,6 @@ export function withoutPins<P extends Pick<ExecutionPlanResult, 'layoutBinding' 
   let plan: P = executionPlan;
   if (plan.layoutBinding) {
     plan = { ...plan, layoutBinding: { ...plan.layoutBinding, layoutHash } };
-  }
-  if (plan.metadata?.layoutHashUsed) {
-    plan = { ...plan, metadata: { ...plan.metadata, layoutHashUsed: layoutHash } };
   }
   return { layout: cleaned, executionPlan: plan };
 }

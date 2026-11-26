@@ -2,9 +2,8 @@
  * Persisted Project Shape.
  *
  * Defines the exact durable fields stored in IndexedDB.
- * The optional `candidates`/`analysisResult` fields are legacy: they may exist in
- * previously-persisted data but are no longer written or restored (analysis-only
- * state is not project truth). They remain here only for backward-compatible reads.
+ * Analysis and candidates are derived session state. Older records may contain
+ * them, but the serializer neither writes nor restores them.
  */
 
 import { type Layout } from '../../types/layout';
@@ -17,7 +16,6 @@ import { type OptimizerMethodKey } from '../../engine/optimization/optimizerInte
 import { type GreedyLayoutStrategy } from '../../engine/optimization/greedyCandidatePipeline';
 import { type SoundStream } from '../state/projectState';
 import { type ProjectNotice } from '../state/projectNotices';
-import { type CandidateSolution } from '../../types/candidateSolution';
 import { type PerformanceRoute } from '../../types/performanceRoute';
 
 // ============================================================================
@@ -146,12 +144,6 @@ export interface PersistedProject {
   optimizerMethod: OptimizerMethodKey;
   greedyStrategy?: GreedyLayoutStrategy;
   costToggles: CostToggles;
-
-  // --- Analysis / Candidates (persisted so they survive refresh) ---
-  /** Solver candidates generated during analysis. */
-  candidates?: CandidateSolution[];
-  /** Currently displayed analysis result. */
-  analysisResult?: CandidateSolution | null;
 
   // --- Metadata ---
   createdAt: string;

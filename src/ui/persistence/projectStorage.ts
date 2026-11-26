@@ -4,7 +4,7 @@
  * Public API for project persistence. Uses IndexedDB as the primary store.
  * Migrates existing localStorage projects on first access.
  *
- * Candidates and analysis results are persisted so they survive refresh.
+ * Candidates and analysis results are derived and reset on load.
  */
 
 import { type ProjectState } from '../state/projectState';
@@ -156,20 +156,19 @@ export async function loadProjectAsync(id: string): Promise<ProjectState | null>
     return deserializeProject(persisted);
   }
 
-  // Fallback: try localStorage directly (for edge cases during migration)
+  // A project opened by URL may not have appeared in the old library index.
+  // Read failures can mean storage is unavailable, but a migration or backup
+  // failure must reject the load so the editor cannot autosave over its source.
+  let json: string | null;
   try {
-    const json = localStorage.getItem(`${LEGACY_PROJECT_PREFIX}${id}`);
-    if (json) {
-      const parsed = JSON.parse(json);
-      const migrated = await migrateStoredRecord(parsed);
-      await putProject(migrated); // Save to IndexedDB for next time
-      return deserializeProject(migrated);
-    }
+    json = localStorage.getItem(`${LEGACY_PROJECT_PREFIX}${id}`);
   } catch {
-    // Ignore localStorage fallback failures
+    return null;
   }
-
-  return null;
+  if (!json) return null;
+  const migrated = await migrateStoredRecord(JSON.parse(json));
+  await putProject(migrated);
+  return deserializeProject(migrated);
 }
 
 /**
@@ -277,28 +276,6 @@ export async function restoreDeletedProject(deleted: DeletedProject): Promise<vo
 export async function getFullPersistedProject(id: string): Promise<PersistedProject | null> {
   await ensureMigration();
   return getFullProject(id);
-}
-
-// ============================================================================
-// Synchronous API (legacy localStorage fallback)
-// ============================================================================
-
-/**
- * Synchronous load — tries localStorage first.
- * Used only as the editor's fallback for pre-migration edge cases.
- * Prefer loadProjectAsync() for new code.
- */
-export function loadProject(id: string): ProjectState | null {
-  try {
-    const json = localStorage.getItem(`${LEGACY_PROJECT_PREFIX}${id}`);
-    if (!json) return null;
-    const parsed = JSON.parse(json);
-    const persisted = validateAndMigrateRaw(parsed);
-    return deserializeProject(persisted);
-  } catch (err) {
-    console.error('Failed to load project:', err);
-    return null;
-  }
 }
 
 // ============================================================================

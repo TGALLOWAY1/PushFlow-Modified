@@ -175,7 +175,6 @@ export async function parseMidiProject(
     padToVoice: {},
     fingerConstraints: {},
     placementLocks: {},
-    scoreCache: null,
     layoutMode: 'none',
     role: 'active' as const,
   };

@@ -31,7 +31,7 @@ const voice = (id: string, midi: number | null, name = id): Voice => ({
 /** Kick A is placed; Kick B shares its pitch and has no pad. */
 function sharedPitchLayout(): Layout {
   return {
-    id: 'L', name: 'L', role: 'active', scoreCache: null,
+    id: 'L', name: 'L', role: 'active',
     padToVoice: { '2,2': voice('kick-a', 36), '2,5': voice('hat', 42) },
     fingerConstraints: {},
     placementLocks: {},

@@ -56,7 +56,6 @@ function createTestLayout(pads: Array<{ row: number; col: number; noteNumber: nu
     name: 'Test Layout',
     padToVoice,
     fingerConstraints: {},
-    scoreCache: null,
   };
 }
 
@@ -202,13 +201,6 @@ describe('Zone transfer mutation', () => {
 
     expect(mutated).not.toBe(layout);
     expect(mutated.padToVoice).not.toBe(layout.padToVoice);
-  });
-
-  it('clears scoreCache on mutation', () => {
-    const layout = { ...createLeftZoneLayout(), scoreCache: { score: 42 } as any };
-    const rng = createSeededRng(42);
-    const mutated = applyZoneTransferMutation(layout, rng);
-    expect(mutated.scoreCache).toBeNull();
   });
 });
 

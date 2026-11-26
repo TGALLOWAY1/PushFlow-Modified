@@ -163,7 +163,6 @@ function applySwapMutation(
     ...layout,
     padToVoice: newPadToVoice,
     fingerConstraints: newFingerConstraints,
-    scoreCache: null,
   };
 }
 
@@ -206,7 +205,6 @@ function applyMoveMutation(
     ...layout,
     padToVoice: newPadToVoice,
     fingerConstraints: newFingerConstraints,
-    scoreCache: null,
   };
 }
 
@@ -392,7 +390,6 @@ function applyMultiMove(
     ...layout,
     padToVoice: newPadToVoice,
     fingerConstraints: newFingerConstraints,
-    scoreCache: null,
   };
 }
 
@@ -456,7 +453,6 @@ export function applyZoneTransferMutation(layout: Layout, rng: Rng = Math.random
     ...layout,
     padToVoice: newPadToVoice,
     fingerConstraints: newFingerConstraints,
-    scoreCache: null,
   };
 }
 

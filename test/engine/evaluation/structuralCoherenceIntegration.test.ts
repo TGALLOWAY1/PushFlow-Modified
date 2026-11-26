@@ -226,7 +226,6 @@ describe('Structural coherence integration', () => {
         padToVoice: {} as Record<string, Voice>,
         fingerConstraints: {},
         placementLocks: {},
-        scoreCache: null,
         layoutMode: 'optimized' as const,
         role: 'working' as const,
       };

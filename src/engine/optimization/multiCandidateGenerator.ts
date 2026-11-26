@@ -110,14 +110,8 @@ export interface CandidateGenerationConfig {
   /** Number of candidates to generate. Default: 3. */
   count?: number;
   /**
-   * Whether to run annealing optimization (slower but better). Default: false.
-   * @deprecated Use `optimizationMode` instead. If `optimizationMode` is set, this is ignored.
-   */
-  useAnnealing?: boolean;
-  /**
-   * Optimization mode: 'fast' (annealing with conservative budget) or 'deep'
-   * (annealing with restarts and larger budget). When set, overrides `useAnnealing`.
-   * Default: undefined (falls back to `useAnnealing` for backward compatibility).
+   * Optimization mode: 'fast' runs beam search; 'deep' runs annealing with
+   * restarts and a larger budget. Default: beam search.
    */
   optimizationMode?: OptimizationMode;
   /** Base engine configuration. */
@@ -297,7 +291,6 @@ function generateCompactLayout(
     padToVoice,
     fingerConstraints: {},
     placementLocks: honouredLocks,
-    scoreCache: null,
     layoutMode: 'optimized' as const,
   };
 }
@@ -413,8 +406,7 @@ export async function generateCandidates(
 
   // Only 'deep' mode uses annealing (thousands of iterations); 'fast' mode is
   // beam search only, for near-instant results.
-  const shouldAnneal = config.optimizationMode === 'deep'
-    || (config.optimizationMode === undefined && (config.useAnnealing ?? false));
+  const shouldAnneal = config.optimizationMode === 'deep';
   const annealingConfig = config.annealingConfig
     ?? (config.optimizationMode === 'deep' ? DEEP_ANNEALING_CONFIG : FAST_ANNEALING_CONFIG);
   const annealingPlan = planAnnealingRun(annealingConfig);
@@ -493,7 +485,6 @@ export async function generateCandidates(
             padToVoice: {},
             fingerConstraints: {},
             placementLocks: {},
-            scoreCache: null,
             role: 'working' as const,
           };
     } else if (ls.type === 'compact' && baseLayout) {
@@ -513,7 +504,6 @@ export async function generateCandidates(
         padToVoice: {},
         fingerConstraints: {},
         placementLocks: {},
-        scoreCache: null,
         role: 'working' as const,
       };
     }

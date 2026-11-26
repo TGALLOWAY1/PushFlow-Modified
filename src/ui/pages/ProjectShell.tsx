@@ -18,7 +18,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { Outlet, useParams, useNavigate } from 'react-router-dom';
 import { type ProjectState } from '../state/projectState';
 import { ProjectProvider } from '../state/ProjectContext';
-import { loadProjectAsync, loadProject, markProjectOpened } from '../persistence/projectStorage';
+import { loadProjectAsync, markProjectOpened } from '../persistence/projectStorage';
 import { LayoutActionsProvider } from '../hooks/useLayoutActions';
 import { ViewSettingsProvider } from '../state/viewSettings';
 import { TransportProvider } from '../audio/TransportProvider';
@@ -27,14 +27,17 @@ export function ProjectShell() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [initialState, setInitialState] = useState<ProjectState | null | 'loading'>('loading');
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
+    setLoadFailed(false);
+    setInitialState('loading');
     if (!id) {
       setInitialState(null);
       return;
     }
 
-    // Try async (IndexedDB) first, then sync fallback
+    // Storage owns legacy recovery and the backup-before-migration boundary.
     let cancelled = false;
     loadProjectAsync(id)
       .then(state => {
@@ -47,15 +50,13 @@ export function ProjectShell() {
           setInitialState({ ...state, lastOpenedAt: openedAt });
           void markProjectOpened(id, openedAt).catch(() => {});
         } else {
-          // Sync fallback for edge cases
-          const syncState = loadProject(id);
-          setInitialState(syncState);
+          setInitialState(null);
         }
       })
       .catch(() => {
         if (cancelled) return;
-        const syncState = loadProject(id);
-        setInitialState(syncState);
+        setLoadFailed(true);
+        setInitialState(null);
       });
 
     return () => { cancelled = true; };
@@ -72,7 +73,9 @@ export function ProjectShell() {
   if (!initialState) {
     return (
       <div className="max-w-2xl mx-auto text-center py-12">
-        <p className="text-pf-sm text-[var(--text-secondary)] mb-4">Project not found.</p>
+        <p role={loadFailed ? 'alert' : undefined} className="text-pf-sm text-[var(--text-secondary)] mb-4">
+          {loadFailed ? 'Could not open project. Try reopening it from the Library.' : 'Project not found.'}
+        </p>
         <button
           className="pf-btn pf-btn-subtle text-pf-sm"
           onClick={() => navigate('/')}

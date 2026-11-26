@@ -1111,8 +1111,6 @@ class GreedyOptimizer implements OptimizerMethod {
       },
       diagnostics: diagnosticsPayload,
       metadata: {
-        layoutIdUsed: layout.id,
-        layoutHashUsed: hashLayout(layout),
         layoutCoverage: {
           totalNotes: fingerAssignments.length,
           unmappedNotesCount: unplayableCount,
@@ -1346,8 +1344,6 @@ function buildEmptyOutput(input: OptimizerInput, startTime: number): OptimizerOu
         topContributors: [],
       },
       metadata: {
-        layoutIdUsed: input.layout.id,
-        layoutHashUsed: hashLayout(input.layout),
         layoutCoverage: {
           totalNotes: 0,
           unmappedNotesCount: 0,

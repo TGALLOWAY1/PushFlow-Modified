@@ -1,7 +1,7 @@
 /**
  * Phase 6: Execution plan validation tests.
  *
- * Validates freshness checking, layout binding extraction, and
+ * Validates freshness checking and
  * staleness detection for execution plans.
  */
 
@@ -13,7 +13,6 @@ import { type V1CostBreakdown } from '../../../src/types/diagnostics';
 import { hashLayout } from '../../../src/engine/mapping/mappingResolver';
 import {
   checkPlanFreshness,
-  getEffectiveLayoutBinding,
 } from '../../../src/engine/evaluation/executionPlanValidation';
 
 // ============================================================================
@@ -38,7 +37,6 @@ function makeLayout(id: string, padToVoice: Record<string, Voice>): Layout {
     padToVoice,
     fingerConstraints: {},
     placementLocks: {},
-    scoreCache: null,
     role: 'active' as const,
   };
 }
@@ -140,7 +138,7 @@ describe('checkPlanFreshness', () => {
     expect(check.reason).toContain('changed');
   });
 
-  it('should return stale for plan with no binding and no legacy metadata', () => {
+  it('should return stale for a plan with no binding', () => {
     const layout = makeLayout('layout-001', { '0,0': v1 });
     const plan = makePlan(); // no layoutBinding, no metadata
 
@@ -150,125 +148,12 @@ describe('checkPlanFreshness', () => {
     expect(check.reason).toContain('no layout binding');
   });
 
-  it('should use legacy metadata when no layoutBinding present', () => {
-    const layout = makeLayout('layout-001', { '0,0': v1, '0,2': v2 });
-    const plan = makePlan({
-      metadata: {
-        layoutIdUsed: 'layout-001',
-        layoutHashUsed: hashLayout(layout),
-      },
-    });
-
-    const check = checkPlanFreshness(plan, layout);
-
-    expect(check.isFresh).toBe(true);
-  });
-
-  it('should detect stale via legacy hash mismatch', () => {
-    const originalLayout = makeLayout('layout-001', { '0,0': v1 });
-    const modifiedLayout = makeLayout('layout-001', { '0,0': v1, '2,4': v2 });
-
-    const plan = makePlan({
-      metadata: {
-        layoutIdUsed: 'layout-001',
-        layoutHashUsed: hashLayout(originalLayout),
-      },
-    });
-
-    const check = checkPlanFreshness(plan, modifiedLayout);
-
-    expect(check.isFresh).toBe(false);
-    expect(check.reason).toContain('changed');
-  });
-
-  it('should detect stale via legacy ID mismatch', () => {
-    const layout = makeLayout('layout-002', { '0,0': v1 });
-    const plan = makePlan({
-      metadata: {
-        layoutIdUsed: 'layout-001',
-        layoutHashUsed: hashLayout(layout),
-      },
-    });
-
-    const check = checkPlanFreshness(plan, layout);
-
-    // Hash matches but ID doesn't — should be stale
-    // Note: the function checks hash first, and if hash matches it then checks ID
-    expect(check.isFresh).toBe(false);
-  });
-});
-
-// ============================================================================
-// Tests: getEffectiveLayoutBinding
-// ============================================================================
-
-describe('getEffectiveLayoutBinding', () => {
-  it('should return layoutBinding directly when present', () => {
-    const binding = {
-      layoutId: 'layout-001',
-      layoutHash: 'abc123',
-      layoutRole: 'active' as const,
-    };
-    const plan = makePlan({ layoutBinding: binding });
-
-    const result = getEffectiveLayoutBinding(plan);
-
-    expect(result).toEqual(binding);
-  });
-
-  it('should fall back to legacy metadata', () => {
-    const plan = makePlan({
-      metadata: {
-        layoutIdUsed: 'layout-legacy',
-        layoutHashUsed: 'hash-legacy',
-      },
-    });
-
-    const result = getEffectiveLayoutBinding(plan);
-
-    expect(result).not.toBeNull();
-    expect(result!.layoutId).toBe('layout-legacy');
-    expect(result!.layoutHash).toBe('hash-legacy');
-    expect(result!.layoutRole).toBe('active'); // Default for legacy plans
-  });
-
-  it('should return null when no binding or legacy metadata', () => {
-    const plan = makePlan();
-
-    const result = getEffectiveLayoutBinding(plan);
-
-    expect(result).toBeNull();
-  });
-
-  it('should return null when legacy metadata is incomplete (only ID)', () => {
-    const plan = makePlan({
-      metadata: {
-        layoutIdUsed: 'layout-legacy',
-        // No hash
-      },
-    });
-
-    const result = getEffectiveLayoutBinding(plan);
-
-    expect(result).toBeNull();
-  });
-
-  it('should prefer layoutBinding over legacy metadata', () => {
-    const plan = makePlan({
-      layoutBinding: {
-        layoutId: 'layout-new',
-        layoutHash: 'hash-new',
-        layoutRole: 'working',
-      },
-      metadata: {
-        layoutIdUsed: 'layout-legacy',
-        layoutHashUsed: 'hash-legacy',
-      },
-    });
-
-    const result = getEffectiveLayoutBinding(plan);
-
-    expect(result!.layoutId).toBe('layout-new');
-    expect(result!.layoutRole).toBe('working');
+  it('does not trust a pre-binding plan, even when its old metadata matches', () => {
+    const layout = makeLayout('layout-001', { '0,0': v1 });
+    const plan = {
+      ...makePlan(),
+      metadata: { layoutIdUsed: layout.id, layoutHashUsed: hashLayout(layout) },
+    } as unknown as ExecutionPlanResult;
+    expect(checkPlanFreshness(plan, layout).isFresh).toBe(false);
   });
 });

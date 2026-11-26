@@ -49,6 +49,7 @@ beforeEach(() => {
   projects.clear();
   backups.clear();
   failBackup = false;
+  localStorage.clear();
   localStorage.setItem('pushflow_idb_migrated', 'true');
 });
 
@@ -192,6 +193,38 @@ describe('loadProjectAsync migrates behind a backup', () => {
     await expect(loadProjectAsync(saved.id)).rejects.toThrow('backup write failed');
     expect(log).toEqual([]);
     expect(projects.get(saved.id)).toEqual(saved);
+  });
+
+  it('recovers a legacy project opened by URL through the same backup boundary', async () => {
+    const { schemaVersion: _version, ...saved } = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
+    const legacy = { ...saved, version: 2, tempo: saved.bpm };
+    const json = JSON.stringify(legacy);
+    localStorage.setItem(`pushflow_project_${legacy.id}`, json);
+
+    const state = await loadProjectAsync(legacy.id);
+    expect(state?.id).toBe(legacy.id);
+    expect(state?.activeLayout.padToVoice).toEqual(legacy.activeLayout.padToVoice);
+    expect(log).toEqual(['putBackup v0', 'putProject v9']);
+    expect((await getLatestBackup(legacy.id))?.record).toEqual(legacy);
+    expect(localStorage.getItem(`pushflow_project_${legacy.id}`)).toBe(json);
+
+    log.length = 0;
+    await loadProjectAsync(legacy.id);
+    expect(log).toEqual([]);
+  });
+
+  it('rejects legacy recovery when its backup fails, keeping the original untouched', async () => {
+    const { schemaVersion: _version, ...saved } = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
+    const legacy = { ...saved, version: 2, tempo: saved.bpm };
+    const json = JSON.stringify(legacy);
+    localStorage.setItem(`pushflow_project_${legacy.id}`, json);
+    failBackup = true;
+
+    await expect(loadProjectAsync(legacy.id)).rejects.toThrow('backup write failed');
+    expect(projects.has(legacy.id)).toBe(false);
+    expect(backups.size).toBe(0);
+    expect(log).toEqual([]);
+    expect(localStorage.getItem(`pushflow_project_${legacy.id}`)).toBe(json);
   });
 });
 

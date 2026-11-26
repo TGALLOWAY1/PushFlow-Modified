@@ -7,18 +7,13 @@
  *   3. constraintPenalty: constraint violation penalty (V1: always 0, no fallback grips)
  *
  * Also tests:
- *   - V1CostBreakdown backward compatibility mappings
+ *   - V1CostBreakdown diagnostic mappings
  *   - combinePerformabilityComponents
- *   - v1CostBreakdownToDifficultyBreakdown
  *   - Beam solver produces valid results under V1 scoring
  */
 
 import { describe, it, expect } from 'vitest';
 import {
-  calculatePoseNaturalness,
-  calculateAttractorCost,
-  calculatePerFingerHomeCost,
-  calculateFingerPreferenceCost,
   calculateTransitionCost,
   calculateAlternationCost,
   calculateHandBalanceCost,
@@ -27,16 +22,12 @@ import {
   type PerformabilityObjective,
   combinePerformabilityComponents,
   createZeroPerformabilityComponents,
-  v1CostBreakdownToDifficultyBreakdown,
   v1CostBreakdownToCanonicalFactors,
   v1CostBreakdownToV1Factors,
 } from '../../../src/engine/evaluation/objective';
 import {
   type V1CostBreakdown,
-  createZeroV1CostBreakdown,
 } from '../../../src/types/diagnostics';
-import { type HandPose, type FingerCoordinate } from '../../../src/types/performance';
-import { type NeutralHandCentersResult } from '../../../src/engine/prior/handPose';
 import {
   createTestPerformance,
   createTestSolver,
@@ -44,55 +35,6 @@ import {
   assertNoNaNs,
   assertMappingIntegrity,
 } from '../../helpers/testHelpers';
-
-// ============================================================================
-// Test Fixtures
-// ============================================================================
-
-/** A simple right-hand resting pose centered at (5, 3.5). */
-const RIGHT_RESTING_POSE: HandPose = {
-  centroid: { x: 5, y: 3.5 },
-  fingers: {
-    index: { x: 5, y: 3 },
-    middle: { x: 5, y: 4 },
-  },
-};
-
-/** A grip close to resting. */
-const NATURAL_GRIP: HandPose = {
-  centroid: { x: 5.5, y: 3.5 },
-  fingers: {
-    index: { x: 5, y: 3 },
-    middle: { x: 6, y: 4 },
-  },
-};
-
-/** A grip far from resting. */
-const UNNATURAL_GRIP: HandPose = {
-  centroid: { x: 1, y: 1 },
-  fingers: {
-    index: { x: 0, y: 0 },
-    middle: { x: 2, y: 2 },
-  },
-};
-
-/** A grip using thumb and pinky (high dominance cost). */
-const HIGH_DOMINANCE_GRIP: HandPose = {
-  centroid: { x: 5, y: 3.5 },
-  fingers: {
-    thumb: { x: 4, y: 2 },
-    pinky: { x: 6, y: 5 },
-  },
-};
-
-/** A grip using index and middle (low dominance cost). */
-const LOW_DOMINANCE_GRIP: HandPose = {
-  centroid: { x: 5, y: 3.5 },
-  fingers: {
-    index: { x: 5, y: 3 },
-    middle: { x: 5, y: 4 },
-  },
-};
 
 // ============================================================================
 // Tests: PerformabilityObjective Type
@@ -130,97 +72,6 @@ describe('PerformabilityObjective', () => {
     it('should return 0 for zero components', () => {
       expect(combinePerformabilityComponents(createZeroPerformabilityComponents())).toBe(0);
     });
-  });
-});
-
-// ============================================================================
-// Tests: calculatePoseNaturalness (legacy, kept for backward compat)
-// ============================================================================
-
-describe('calculatePoseNaturalness', () => {
-  it('should return lower score for natural grip near resting pose', () => {
-    const naturalScore = calculatePoseNaturalness(
-      NATURAL_GRIP, RIGHT_RESTING_POSE, 0.3, 'right', null
-    );
-    const unnaturalScore = calculatePoseNaturalness(
-      UNNATURAL_GRIP, RIGHT_RESTING_POSE, 0.3, 'right', null
-    );
-    expect(naturalScore).toBeLessThan(unnaturalScore);
-  });
-
-  it('should increase with stiffness', () => {
-    const lowStiffness = calculatePoseNaturalness(
-      UNNATURAL_GRIP, RIGHT_RESTING_POSE, 0.1, 'right', null
-    );
-    const highStiffness = calculatePoseNaturalness(
-      UNNATURAL_GRIP, RIGHT_RESTING_POSE, 1.0, 'right', null
-    );
-    expect(highStiffness).toBeGreaterThan(lowStiffness);
-  });
-
-  it('should be zero for identical poses (no neutral centers)', () => {
-    const score = calculatePoseNaturalness(
-      RIGHT_RESTING_POSE, RIGHT_RESTING_POSE, 0.3, 'right', null
-    );
-    expect(score).toBe(0);
-  });
-
-  it('should penalize thumb/pinky usage via dominance cost', () => {
-    const thumbPinkyScore = calculatePoseNaturalness(
-      HIGH_DOMINANCE_GRIP, RIGHT_RESTING_POSE, 0.3, 'right', null
-    );
-    const indexMiddleScore = calculatePoseNaturalness(
-      LOW_DOMINANCE_GRIP, RIGHT_RESTING_POSE, 0.3, 'right', null
-    );
-    expect(thumbPinkyScore).toBeGreaterThan(indexMiddleScore);
-  });
-
-  it('should be consistent with sub-component weighted sum', () => {
-    const stiffness = 0.3;
-    const combined = calculatePoseNaturalness(
-      NATURAL_GRIP, RIGHT_RESTING_POSE, stiffness, 'right', null
-    );
-
-    const attractor = calculateAttractorCost(NATURAL_GRIP, RIGHT_RESTING_POSE, stiffness);
-    const dominance = calculateFingerPreferenceCost(NATURAL_GRIP);
-    const expected = 0.4 * attractor + 0.4 * 0 + 0.2 * dominance;
-
-    expect(combined).toBeCloseTo(expected, 10);
-  });
-});
-
-// ============================================================================
-// Tests: V1CostBreakdown backward compatibility mappings
-// ============================================================================
-
-describe('v1CostBreakdownToDifficultyBreakdown', () => {
-  it('should map V1 fields to legacy DifficultyBreakdown format', () => {
-    const v1: V1CostBreakdown = {
-      fingerPreference: 2.0,
-      handShapeDeviation: 3.0,
-      transitionCost: 5.0,
-      handBalance: 1.0,
-      constraintPenalty: 100,
-      total: 111.0,
-    };
-    const breakdown = v1CostBreakdownToDifficultyBreakdown(v1);
-
-    expect(breakdown.movement).toBe(5.0);     // transitionCost
-    expect(breakdown.stretch).toBe(2.0);       // fingerPreference
-    expect(breakdown.drift).toBe(3.0);         // handShapeDeviation
-    expect(breakdown.bounce).toBe(0);          // always 0 in V1
-    expect(breakdown.fatigue).toBe(0);         // always 0 in V1
-    expect(breakdown.crossover).toBe(100);     // constraintPenalty
-    expect(breakdown.total).toBe(111.0);
-  });
-
-  it('should handle zero breakdown', () => {
-    const v1 = createZeroV1CostBreakdown();
-    const breakdown = v1CostBreakdownToDifficultyBreakdown(v1);
-    expect(breakdown.total).toBe(0);
-    expect(breakdown.movement).toBe(0);
-    expect(breakdown.stretch).toBe(0);
-    expect(breakdown.drift).toBe(0);
   });
 });
 

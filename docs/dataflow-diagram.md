@@ -176,7 +176,7 @@ flowchart TD
         end
 
         subgraph Analysis["Analysis"]
-            BASELINE_CMP["baselineCompare\ncompareWithDiagnostics()"]
+            CANDIDATE_CMP["candidateComparator\ncompareCandidates()"]
             DIVERSITY["diversityMeasurement\nfilterTrivialDuplicates()"]
             EXPLAINER["eventExplainer\nexplainEvent() / identifyHardMoments()"]
         end
@@ -184,7 +184,7 @@ flowchart TD
         subgraph Structure["Structure"]
             MOMENTS["momentBuilder\nbuildPerformanceMoments()"]
             ROLES["inferVoiceRoles()"]
-            GROUPING["groupEventsByTime()"]
+            GROUPING["momentGrouping\ngroupIntoMoments()"]
         end
 
         subgraph Prior["Prior / Biomechanics"]
@@ -260,7 +260,7 @@ flowchart TD
     %% ── Analysis panels consume engine ────────────────────────
     ANALYSIS_P -->|"plan + layout"| EXPLAINER
     ANALYSIS_P -->|"plan + layout"| DIFFICULTY
-    COMPARE_M -->|"layoutA, layoutB"| BASELINE_CMP
+    COMPARE_M -->|"layoutA, layoutB"| CANDIDATE_CMP
     TRACE_P -->|"reads moveHistory\nfrom state"| PSTATE
     CANDIDATE_C -->|"reads candidates\nfrom state"| PSTATE
 
@@ -295,6 +295,6 @@ flowchart TD
     class REGISTRY,BEAM_ADAPT,ANNEAL_ADAPT,GREEDY,MULTI_GEN engine
     class BEAM_S,ANNEAL_S solver
     class CANON_EVAL,COST_FN,OBJECTIVE,COST_TOGGLE,DIFFICULTY eval
-    class MAP_RESOLVER,VOICE_PAD_IDX,COVERAGE,BASELINE_CMP,DIVERSITY,EXPLAINER,MOMENTS,ROLES,GROUPING,FEASIBILITY,ERGONOMICS,HAND_ZONE,PAD_GRID engine
+    class MAP_RESOLVER,VOICE_PAD_IDX,COVERAGE,CANDIDATE_CMP,DIVERSITY,EXPLAINER,MOMENTS,ROLES,GROUPING,FEASIBILITY,ERGONOMICS,HAND_ZONE,PAD_GRID engine
     class TONEJS external
 ```

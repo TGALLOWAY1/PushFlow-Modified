@@ -81,7 +81,7 @@ PushFlow uses a three-tier layout lifecycle:
 - Diversity enforcement — trivial duplicates rejected
 
 ### Pattern Composer
-- Generative pattern pipeline: motif sampling, phrase building, two-hand coordination
+- Create and edit patterns in the loop editor; save and place Composer presets
 - Rudiment library with standard drumming patterns
 - Pattern-based event generation for testing layouts against musical material
 
@@ -168,7 +168,7 @@ src/
     solvers/           # Beam solver (finger assignment), structural lookahead
     optimization/      # Annealing solver, greedy optimizer, multi-candidate generator, optimizer registry
     evaluation/        # Canonical evaluator, Playability score, cost functions, difficulty scoring
-    analysis/          # Baseline compare, candidate comparison, diversity, event explainer
+    analysis/          # Candidate comparison, diversity, event explainer
     prior/             # Biomechanical model, feasibility checking, hand poses
     mapping/           # Pad resolution, voice map, placement locks
     structure/         # Performance structure analysis, moments, sections, roles
@@ -216,7 +216,7 @@ For a code-level graph, see [docs/dataflow-diagram.md](docs/dataflow-diagram.md)
 | **3. Derived-performance build** | `getActivePerformance()`, `getDisplayedLayout()` | Muted streams are filtered out, current layout context is selected, and solver-facing performance data is rebuilt on demand | `getActiveStreams()`, `getActivePerformance()`, layout/display selectors in `projectState.ts` | current `Performance`, displayed `Layout`, displayed `ExecutionPlanResult` context |
 | **4. Constraint projection** | `useAutoAnalysis.ts` | User intent is projected from UI state onto solver inputs | `buildSolverConstraints()`, `constraintsToManualAssignments()`, `computeInitialOwnership()` | `SolverConstraints`, legacy manual assignments, initial pad ownership |
 | **5. Solver / optimizer execution** | auto-analysis or manual Generate | PushFlow computes either a single fast analysis plan or a multi-candidate search result | `createBeamSolver()`, `generateCandidates()`, `generateGreedyCandidates()`, optimizer registry, `BeamSolver`, `AnnealingSolver`, `GreedyOptimizer` | `ExecutionPlanResult`, `OptimizerOutput`, candidate `Layout`s, greedy move trace |
-| **6. Canonical evaluation and ranking** | post-solve engine pipeline | Layouts and assignments are rescored with the canonical evaluator, then ranked and filtered | `evaluatePerformance()`, `difficultyScoring.ts`, `candidateRanker.ts`, `diversityMeasurement.ts`, `baselineCompare.ts` | `PerformanceCostBreakdown`, `DiagnosticsPayload`, `DifficultyAnalysis`, `TradeoffProfile`, filtered `CandidateSolution[]` |
+| **6. Canonical evaluation and ranking** | post-solve engine pipeline | Layouts and assignments are rescored with the canonical evaluator, then ranked and filtered | `evaluatePerformance()`, `difficultyScoring.ts`, `candidateRanker.ts`, `diversityMeasurement.ts`, `candidateComparator.ts` | `PerformanceCostBreakdown`, `DiagnosticsPayload`, `DifficultyAnalysis`, `TradeoffProfile`, filtered `CandidateSolution[]` |
 | **7. Workflow materialization** | reducer promotion / save actions | Results are committed into workflow artifacts the user can keep | `PROMOTE_WORKING_LAYOUT`, `PROMOTE_CANDIDATE`, `SAVE_AS_VARIANT`, `LOAD_SAVED_VARIANT` | new `activeLayout`, `workingLayout`, durable `savedVariants` |
 | **8. Persistence** | autosave + explicit save | Durable state is serialized and written to browser storage | `useAutoSave.ts`, `projectStorage.ts`, `indexedDbStore.ts`, `projectSerializer.ts` | persisted `ProjectState` snapshot |
 
@@ -278,7 +278,7 @@ PushFlow does not call remote AI/LLM services. The "models" in this repo are loc
 | **Greedy hill-climb model** | interpretable local optimization with move traces | `src/engine/optimization/greedyOptimizer.ts` |
 | **Canonical evaluation model** | compute cost dimensions for events, transitions, and full performances | `src/engine/evaluation/canonicalEvaluator.ts`, `src/engine/evaluation/costFunction.ts` |
 | **Difficulty / ranking model** | turn raw plans into user-facing candidate scores and tradeoffs | `src/engine/evaluation/difficultyScoring.ts`, `src/engine/optimization/candidateRanker.ts` |
-| **Diversity / baseline compare model** | keep generated candidates meaningfully different from the baseline | `src/engine/analysis/diversityMeasurement.ts`, `src/engine/analysis/baselineCompare.ts` |
+| **Diversity / baseline compare model** | keep generated candidates meaningfully different from the baseline | `src/engine/analysis/diversityMeasurement.ts`, `src/engine/analysis/candidateComparator.ts` |
 
 ### Artifact Lifecycle
 

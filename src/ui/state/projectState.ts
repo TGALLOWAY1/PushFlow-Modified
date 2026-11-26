@@ -147,12 +147,6 @@ export interface ProjectDocument {
    */
   recoveredDrafts: Layout[];
 
-  // === Legacy compatibility (kept for migration, will be removed) ===
-  /** @deprecated Use activeLayout. Kept only for migration from V1 format. */
-  layouts?: Layout[];
-  /** @deprecated Use activeLayout.id. Kept only for migration from V1 format. */
-  activeLayoutId?: string;
-
   // Voice-level constraints (hand/finger per voice, key is stream ID)
   voiceConstraints: Record<string, { hand?: 'left' | 'right'; finger?: string }>;
 
@@ -953,7 +947,7 @@ function updateWorkingLayout(
     // refuses them otherwise); a Sound's finger preference, which also lands
     // here, keeps a read-only inspection on screen.
     inspectedLayout: isInspectedReadOnly(state) ? state.inspectedLayout : null,
-    workingLayout: draftOrNull({ ...updater(withWorking.workingLayout), scoreCache: null }, state.activeLayout),
+    workingLayout: draftOrNull({ ...updater(withWorking.workingLayout), }, state.activeLayout),
   };
 }
 
@@ -2005,7 +1999,6 @@ function reduceProject(state: ProjectState, action: ProjectAction): ProjectState
         baselineId: state.activeLayout.id,
         provenance: undefined,
         savedAt: undefined,
-        scoreCache: null,
       }, state.voiceConstraints);
       // The draft being replaced may itself need keeping (restoring over a
       // hand-made draft); the restored entry leaves the list either way.

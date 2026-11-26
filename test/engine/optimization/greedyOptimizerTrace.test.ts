@@ -54,7 +54,6 @@ function makeTestInput(overrides?: Partial<OptimizerInput['config']>): Optimizer
     },
     fingerConstraints: {},
     placementLocks: {},
-    scoreCache: null,
     role: 'active' as const,
   };
 
@@ -201,7 +200,6 @@ describe('Greedy Optimizer — Deterministic Mode', () => {
       name: 'Empty',
       padToVoice: {},
       fingerConstraints: {},
-      scoreCache: null,
     };
 
     const input0 = makeTestInput({ seed: 0 });
@@ -244,7 +242,6 @@ describe('Greedy Optimizer — Restart Support', () => {
       name: 'Empty',
       padToVoice: {},
       fingerConstraints: {},
-      scoreCache: null,
     };
     const input = makeTestInput({ seed: 1, restartCount: 2 });
     input.layout = emptyLayout;
@@ -266,7 +263,6 @@ describe('Greedy Optimizer — Restart Support', () => {
       name: 'Empty',
       padToVoice: {},
       fingerConstraints: {},
-      scoreCache: null,
     };
     const input = makeTestInput({ seed: 1, restartCount: 2 });
     input.layout = emptyLayout;

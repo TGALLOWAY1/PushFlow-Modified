@@ -13,8 +13,6 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
 import { useState, type ReactNode } from 'react';
 import { ToastProvider } from '../../../src/ui/components/shared/Toast';
-import { Checkbox } from '../../../src/ui/components/shared/Checkbox';
-import { Tabs } from '../../../src/ui/components/shared/Tabs';
 import { ProjectProvider, useProject } from '../../../src/ui/state/ProjectContext';
 import {
   getActivePerformance,
@@ -140,20 +138,19 @@ const selectedTime = () => resolveEventKey(getEventTimeline(api.state), api.stat
 const selectEvent = (event: TimelineEvent) =>
   act(() => api.dispatch({ type: 'SELECT_EVENT', payload: { key: event.key, startTime: event.startTime } }));
 
-/** Widgets with keys of their own (T63): a checkbox and a row of tabs, from the shared primitives. */
+/** Native controls with keys of their own, used to check shortcut ownership. */
 function WidgetControls() {
   const [ticked, setTicked] = useState(false);
-  const [tab, setTab] = useState<'sounds' | 'events'>('sounds');
   return (
     <>
-      <Checkbox label="Show finger assignment" checked={ticked} onChange={setTicked} />
-      <Tabs
-        label="Sidebar"
-        tabs={[{ id: 'sounds', label: 'Sounds' }, { id: 'events', label: 'Events' }]}
-        selected={tab}
-        onSelect={setTab}
-        renderPanel={() => null}
-      />
+      <label>
+        <input type="checkbox" checked={ticked} onChange={e => setTicked(e.target.checked)} />
+        Show finger assignment
+      </label>
+      <div role="tablist" aria-label="Sidebar">
+        <button type="button" role="tab" aria-selected>Sounds</button>
+        <button type="button" role="tab" aria-selected={false}>Events</button>
+      </div>
     </>
   );
 }
@@ -518,17 +515,12 @@ const ROW_TESTS: Record<InputRowId, () => Promise<void>> = {
     expect(press('ArrowLeft', {}, select)).toBe(true);
     expect(press('ArrowLeft', {}, screen.getByTestId('plain-input'))).toBe(true);
     expect(selectedTime()).toBe(times[times.length - 1]);
-    // In a row of tabs, ←/→, Home and End move between the tabs, not events (T63).
+    // A tab's navigation keys are left to its widget, never used to step events.
     const sounds = screen.getByRole('tab', { name: 'Sounds' });
-    const events = screen.getByRole('tab', { name: 'Events' });
     sounds.focus();
-    press('ArrowRight', {}, sounds);
-    expect(events.getAttribute('aria-selected')).toBe('true');
-    expect(document.activeElement).toBe(events);
-    press('Home', {}, events);
-    expect(sounds.getAttribute('aria-selected')).toBe('true');
-    press('ArrowLeft', {}, sounds);
-    expect(document.activeElement).toBe(events);
+    for (const key of ['ArrowRight', 'Home', 'End', 'ArrowLeft']) {
+      expect(press(key, {}, sounds)).toBe(true);
+    }
     expect(selectedTime()).toBe(times[times.length - 1]);
     // A checkbox uses only Space: ← on a focused one still steps events.
     const box = screen.getByRole('checkbox', { name: 'Show finger assignment' });

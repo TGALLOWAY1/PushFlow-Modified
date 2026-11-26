@@ -48,7 +48,6 @@ function makeLayout(
     padToVoice,
     fingerConstraints: {},
     placementLocks: {},
-    scoreCache: null,
     layoutMode: 'manual',
     role: 'active',
   };

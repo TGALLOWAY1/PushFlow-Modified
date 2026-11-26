@@ -55,7 +55,6 @@ const LAYOUT: Layout = {
   padToVoice: { '0,1': voice('kick', 36), '0,2': voice('snare', 38), '1,5': voice('hat', 42) },
   fingerConstraints: {},
   placementLocks: {},
-  scoreCache: null,
   role: 'active',
 };
 

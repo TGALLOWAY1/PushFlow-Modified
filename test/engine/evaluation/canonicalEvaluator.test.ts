@@ -57,7 +57,6 @@ function makeSimpleLayout(): Layout {
     },
     fingerConstraints: {},
     placementLocks: {},
-    scoreCache: null,
     role: 'active',
   };
 }
@@ -84,7 +83,6 @@ function makeTwoHandLayout(): Layout {
     },
     fingerConstraints: {},
     placementLocks: {},
-    scoreCache: null,
     role: 'active',
   };
 }

@@ -21,7 +21,7 @@ describe('buildEvaluationConfig', () => {
       id: 'test', name: 'Test', padToVoice: {
         [padKey(3, 4)]: makeVoice('v1', 64),
       },
-      fingerConstraints: {}, placementLocks: {}, scoreCache: null, role: 'active',
+      fingerConstraints: {}, placementLocks: {}, role: 'active',
     };
     const config = buildEvaluationConfig(layout);
     expect(config.restingPose).toBeDefined();

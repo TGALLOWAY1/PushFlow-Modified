@@ -69,45 +69,6 @@ export function combinePerformabilityComponents(components: PerformabilityObject
   );
 }
 
-// ============================================================================
-// V1 Cost Breakdown Utilities
-// ============================================================================
-
-/**
- * Maps a V1CostBreakdown to legacy DifficultyBreakdown format.
- *
- * Provides backward compatibility for ExecutionPlanResult.averageMetrics
- * and FingerAssignment.costBreakdown which still use the DifficultyBreakdown
- * shape (movement/stretch/drift/bounce/fatigue/crossover).
- *
- * Field mapping:
- *   movement   ← transitionCost
- *   stretch    ← fingerPreference
- *   drift      ← handShapeDeviation
- *   bounce     ← 0 (alternation removed from V1)
- *   fatigue    ← 0 (no per-finger home tracking in V1)
- *   crossover  ← constraintPenalty
- */
-export function v1CostBreakdownToDifficultyBreakdown(v1: V1CostBreakdown): {
-  movement: number;
-  stretch: number;
-  drift: number;
-  bounce: number;
-  fatigue: number;
-  crossover: number;
-  total: number;
-} {
-  return {
-    movement: v1.transitionCost,
-    stretch: v1.fingerPreference,
-    drift: v1.handShapeDeviation,
-    bounce: 0,
-    fatigue: 0,
-    crossover: v1.constraintPenalty,
-    total: v1.total,
-  };
-}
-
 /**
  * Maps a V1CostBreakdown to legacy DiagnosticFactors.
  *

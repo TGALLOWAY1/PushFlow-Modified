@@ -59,7 +59,6 @@ export { seedLayoutFromPose0, orderSoundsByUsage, type SeedFromPoseOptions } fro
 export {
   calculateHandShapeDeviation,
   buildNaturalPairwiseDistances,
-  calculatePoseNaturalness,
   calculateTransitionCost,
   calculateAttractorCost,
   calculateFingerPreferenceCost,
@@ -84,7 +83,7 @@ export {
 export { analyzeTransition } from './evaluation/transitionAnalyzer';
 export { scorePassage, scorePassagesFromSections, scorePassagesFixedWindow } from './evaluation/passageDifficulty';
 export { analyzeDifficulty, classifyDifficulty, computeTradeoffProfile } from './evaluation/difficultyScoring';
-export { checkPlanFreshness, getEffectiveLayoutBinding, type FreshnessCheck } from './evaluation/executionPlanValidation';
+export { checkPlanFreshness, type FreshnessCheck } from './evaluation/executionPlanValidation';
 export { summarizeConstraintRelaxation, countRelaxedStrikes } from './evaluation/constraintRelaxation';
 export {
   scoreStructuralCoherence,
@@ -92,9 +91,6 @@ export {
   type GroupCoherenceDetail,
   type PairParallelismDetail,
 } from './evaluation/structuralCoherence';
-
-// Structure analysis
-export { groupEventsByTime, getPolyphonyTimeline, getMaxPolyphony } from './structure/eventGrouping';
 export { buildPerformanceMoments, extractPadOwnership, validatePadOwnershipConsistency } from './structure/momentBuilder';
 export { computePlanScore, COMFORTABLE_PLAN_SCORE, PLAN_SCORE_WEIGHTS } from './evaluation/planScore';
 export {
@@ -113,15 +109,8 @@ export {
   type MomentItem,
   type MomentCost,
 } from './structure/momentGrouping';
-export { computeDensityProfile, classifyDensity } from './structure/densityAnalysis';
-export { detectSections } from './structure/sectionDetection';
-export { buildCooccurrenceGraph } from './structure/cooccurrence';
 export { buildTransitionGraph } from './structure/transitionGraph';
 export { inferVoiceRoles } from './structure/roleInference';
-export {
-  detectTemporalClusters,
-  computeTemporalAffinities,
-} from './structure/temporalClustering';
 export {
   SHAPE_CATALOG,
   getMatchingShapes,
@@ -159,7 +148,7 @@ export {
   Yielder,
   YIELD_SLICE_MS,
 } from './optimization/runControl';
-export { rankCandidates, filterPareto, compositeScore, compareDimensions } from './optimization/candidateRanker';
+export { compositeScore } from './optimization/candidateRanker';
 
 // Pluggable optimizer framework
 export {
@@ -195,29 +184,6 @@ export { SEED_GENERATORS, getSeedGenerator, type SeedGenerator, type SeedContext
 export { UPDATE_POLICIES, getUpdatePolicy, type UpdatePolicy, type EvaluatedMove, type UpdateContext } from './optimization/updatePolicies';
 export { extractSoundFeatures, rankByImportance, type SoundFeatures, type SoundFeatureMap } from './structure/soundFeatures';
 
-// Pattern generation (rudiment/ostinato candidate generator)
-export { RudimentGenerator } from './rudiment/patternGenerator';
-export { getMotifSeed, getAllMotifFamilies, type MotifSeed } from './rudiment/motifLibrary';
-export {
-  mirror, rotate, accentShift, subdivisionInsertion,
-  densityLift, sparseReduction, callResponseSwap,
-  applyTransform, ALL_TRANSFORMS,
-  type TransformName,
-} from './rudiment/transforms';
-export { buildPhrase } from './rudiment/phraseBuilder';
-export {
-  coordinateHands,
-  anchorAlignmentScore, interlockScore, collisionPressureScore,
-  independenceScore, phraseCoherenceScore,
-  type CoordinationScores,
-} from './rudiment/coordination';
-export {
-  computeDensity, computeSyncopationRatio, computeIndependenceScore,
-  computeRepetitionScore, computePhraseCoherenceScore,
-  computeCollisionPressureScore, computeAllMetrics,
-} from './rudiment/coherenceMetrics';
-export { filterAndDiversify } from './rudiment/candidateFilter';
-
 // Analysis (explainability)
 export { compareCandidates, summarizeComparison } from './analysis/candidateComparator';
 
@@ -231,17 +197,6 @@ export {
   explainLowDiversity,
   buildGenerationSummary,
 } from './analysis/diversityMeasurement';
-
-// Baseline-aware compare (Phase 5)
-export {
-  compareWithDiagnostics,
-  compareWorkingVsActive,
-  compareCandidateVsActive,
-  compareCandidateVsCandidate,
-  type CompareMode,
-  type FactorDelta,
-  type BaselineComparison,
-} from './analysis/baselineCompare';
 
 // Event-level diagnostic explanations (Phase 5)
 export {

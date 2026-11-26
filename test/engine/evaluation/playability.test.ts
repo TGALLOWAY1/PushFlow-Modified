@@ -114,7 +114,7 @@ describe('scoreLayoutPlayability on TEST MIDI 1', () => {
 describe('scoreLayoutPlayability on a hand-made plan', () => {
   const voice = (id: string) => ({ id, name: id, sourceType: 'midi_track' as const, sourceFile: '', originalMidiNote: null, color: '#fff' });
   const twoPads: Layout = {
-    id: 'l', name: 'two pads', role: 'working', scoreCache: null, placementLocks: {}, fingerConstraints: {},
+    id: 'l', name: 'two pads', role: 'working', placementLocks: {}, fingerConstraints: {},
     padToVoice: { '3,4': voice('a'), '3,5': voice('b') },
   } as unknown as Layout;
   const events = [

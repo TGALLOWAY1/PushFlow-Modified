@@ -8,6 +8,7 @@ the commit that still has it.
 
 | Date | What left the tree | Recover from |
 |------|--------------------|--------------|
+| 2026-11-21 | Disconnected pattern/structure/comparison pipelines, unused UI primitives, their dedicated tests and obsolete runtime compatibility code ([details](#what-the-2026-11-21-cleanup-removed)) | `63de2c3d11e68fafb927b83ce80bf53bffdef9d4` |
 | 2026-09-26 (PR #112) | `archive/`, P0–P3 screenshot evidence, stale March docs, retired UI-critique probes, unreachable source files ([details](#what-the-2026-09-26-cleanup-removed)) | `fa04025f6ecbd90ffd14689ad9a31778370836dc` |
 
 `fa04025f` is the `main` commit the cleanup started from ("Merge pull request #110"). It stays in
@@ -59,6 +60,24 @@ The tree went from 1,137 files (54.0 MB) to 516 files (10.5 MB).
 | `src/engine/analysis/constraintExplainer.ts`, `structure/performanceAnalyzer.ts`, `prior/ergonomicConstants.ts`, `diagnostics/fatigueModel.ts` | Engine modules, re-exported by `src/engine/index.ts` | Nothing imported them, directly or through the barrel. |
 | npm packages `clsx`, `tailwind-merge`, `uuid`, `@types/uuid` | Dependencies | Imported nowhere. |
 | `public/pwa-192x192.png`, `pwa-512x512.png` | PWA icons | The PWA service worker was removed on 2026-03-24 (`ee7401b1`); no manifest uses them. |
+
+## What the 2026-11-21 cleanup removed
+
+Recover these files from `63de2c3d11e68fafb927b83ce80bf53bffdef9d4` (PR #122),
+using that SHA with the recovery commands above.
+
+| Removed | Why it went |
+|---------|-------------|
+| `src/engine/rudiment/{patternGenerator,motifLibrary,phraseBuilder,coordination,coherenceMetrics,candidateFilter,transforms}.ts`, `src/types/patternCandidate.ts`; the four dedicated rudiment test files | The two-hand candidate generator had no application callers. The live Composer uses `rudimentGenerator.ts`, `padAssignment.ts`, `fingerAssigner.ts` and `complexityScorer.ts`, which stay. |
+| `src/engine/structure/{eventGrouping,cooccurrence,densityAnalysis,sectionDetection,temporalClustering}.ts`, the temporal seed and its types; `test/engine/structure/temporalClustering.test.ts` | Only barrel re-exports or dedicated tests kept these modules reachable. No candidate family selected the temporal seed or supplied its cluster data. Current moment grouping, structural groups and phrase analysis stay. |
+| `src/engine/analysis/baselineCompare.ts` and its test | Compare uses `candidateComparator.ts` and `ui/analysis/layoutDiff.ts`. |
+| `src/ui/components/shared/{Card,Checkbox,Tabs}.tsx`, Card-only CSS and their dedicated test cases | Application components never rendered these primitives. Input ownership tests still cover native checkbox/tab roles, and the active primitives keep their tests. |
+| `Layout.scoreCache`, V1 live-state layout aliases, legacy execution-plan metadata/converters, unused ranking helpers and `useAnnealing` | No production consumers needed these fields or interfaces. The per-layout analysis cache, canonical layout binding and `optimizationMode` are the live paths. |
+| Synchronous `projectStorage.loadProject` | Duplicated the asynchronous loader's legacy recovery and could bypass the pre-migration backup. A failed load now stays closed and shows an error. |
+
+Saved-project schema migrations and raw V1/V2 import conversion stay supported.
+The dev-only frame audio path also stays: the roadmap's S8.2 follow-up still
+records the scheduler issue that blocks its retirement.
 
 ## How the repository got here
 
